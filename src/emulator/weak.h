@@ -15,4 +15,10 @@ void rebuild_wp_hashtable(void);
 ref_t ref_to_wp(ref_t r);
 extern unsigned long post_gc_wp(void);
 
+/* Weak pointer table and weak pointer hashtable */
+
+extern const int wp_table_size, wp_hashtable_size;
+extern ref_t *wp_table;
+extern int wp_index;
+
 #endif

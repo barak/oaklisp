@@ -8,7 +8,7 @@
 
 #include "config.h"
 #include "data.h"
-#include "threads.h"
+#include "stacks.h"
 
 /* Version and greeting */
 const char *version = "1.00", *compilation_date = __DATE__, *compilation_time = __TIME__;
@@ -20,6 +20,7 @@ int byte_gender = little_endian;
 /* spaces */
 
 space_t new_space, old_space, spatic;
+
 ref_t *free_point = 0;
 
 #ifndef THREADS
@@ -27,11 +28,6 @@ ref_t *free_point = 0;
 stack_t value_stack = {1024, 1024/2};
 stack_t context_stack = {512, 512/2};
 #endif
-
-/* Weak pointer table and weak pointer hashtable */
-
-const int wp_table_size = 3000;
-const int wp_hashtable_size = 3017;
 
 
 /* Virtual Machine registers */
@@ -57,8 +53,9 @@ u_int16_t *e_pc;
 unsigned e_nargs = 0;
 #endif
 
+/* This should generally be defined in the Makefile */
 #ifndef DEFAULT_WORLD
-#define DEFAULT_WORLD "/home/bap/usr/oaklisp/src/lib/oakworld.bin"
+#define DEFAULT_WORLD "/usr/lib/oaklisp/oakworld.bin"
 #endif
 
 char *world_file_name = DEFAULT_WORLD;

@@ -12,9 +12,38 @@
 #include "xmalloc.h"
 #include "gc.h"
 #include "stacks.h"
-#include "threads.h"
 
 int max_segment_size = 256;
+
+ref_t
+stack_top(stack_t *stack_p)
+{
+  return *stack_p->sp;
+}
+
+void
+stack_newtos(stack_t *stack_p, ref_t x)
+{
+  *stack_p->sp = x;
+}
+
+ref_t
+stack_pop(stack_t *stack_p)
+{
+  if (stack_p->sp <= stack_p->bp) {
+    stack_unflush(stack_p, stack_p->filltarget);
+  }
+  return *stack_p->sp;
+}
+
+void
+stack_push(stack_t *stack_p, ref_t x)
+{
+  if (stack_p->sp == stack_p->bp + stack_p->size)
+    stack_flush(stack_p, stack_p->filltarget);
+  *++stack_p->sp = x;
+}
+
 
 void
 stack_flush(stack_t * stack_p, int amount_to_leave)
@@ -195,26 +224,24 @@ init_stacks(void)
   *value_stack.bp = INT_TO_REF(1234);
 
   /* This becomes e_nil when segment_type is loaded. */
-/*value_stack.segment = INT_TO_REF(0);*/
+  /*value_stack.segment = INT_TO_REF(0);*/
   value_stack.segment = e_nil;
+
   value_stack.pushed_count = 0;
 
   /* Initialise context stack */
-
 
  
   ptr = (ref_t *) xmalloc((context_stack.size + 2)
 			  * sizeof(ref_t));
   *ptr = PATTERN;
   ptr[context_stack.size + 1] = PATTERN;
-
   context_stack.bp = ptr + 1;
   context_stack.sp = context_stack.bp;
   *context_stack.bp = INT_TO_REF(1234);
+
   /* This becomes e_nil when segment_type is loaded. */
-/*context_stack.segment = INT_TO_REF(0);*/
+  /*context_stack.segment = INT_TO_REF(0);*/
   context_stack.segment = e_nil;
   context_stack.pushed_count = 0;
 }
-
-

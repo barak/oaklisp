@@ -12,12 +12,14 @@
 #include "xmalloc.h"
 #include "stacks.h"
 #include "gc.h"
-#include "threads.h"
 
 
 #ifdef USE_VADVISE
 #include <sys/vadvise.h>
 #endif
+
+
+#define FORTHREADS THREADY( for (my_index=0; my_index<next_index; my_index++) )
 
 
 
@@ -124,8 +126,7 @@ printref(FILE * fd, ref_t refin)
 static unsigned long
 gc_get_length(ref_t x)
 {
-  if TAG_IS
-    (x, PTR_TAG)
+  if (TAG_IS(x, PTR_TAG))
     {
       ref_t typ = REF_SLOT(x, 0);
       ref_t vlen_p = REF_SLOT(typ, TYPE_VAR_LEN_P_OFF);
@@ -197,9 +198,11 @@ gc_touch0(ref_t r)
 #ifndef FAST
 	    if (free_point >= new_space.end)
 	      {
-		fprintf(stderr, "\n; New space exhausted while transporting ");
+		fprintf(stderr,
+			"\n; New space exhausted while transporting ");
 		printref(stderr, r);
-		fprintf(stderr, ".\n; This indicates a bug in the garbage collector.\n");
+		fprintf(stderr,
+			".\n; This indicates a bug in the garbage collector.\n");
 		exit(EXIT_FAILURE);
 	      }
 #endif
@@ -281,9 +284,11 @@ loc_touch0(ref_t r, bool warn_if_unmoved)
 #ifndef FAST
 	  if (free_point >= new_space.end)
 	    {
-	      fprintf(stderr, "\n; New space exhausted while transporting the cell ");
+	      fprintf(stderr,
+		      "\n; New space exhausted while transporting the cell ");
 	      printref(stderr, r);
-	      fprintf(stderr, ".\n; This indicates a bug in the garbage collector.\n");
+	      fprintf(stderr,
+		      ".\n; This indicates a bug in the garbage collector.\n");
 	      exit(EXIT_FAILURE);
 	    }
 #endif
@@ -383,15 +388,16 @@ pc_touch(u_int16_t * o_pc)
   ref_t *pcell = (ref_t *) ((unsigned long)o_pc & ~TAG_MASKL);
 
   /*
-    It is possible that the gc was called while a vm was executing the las
+    It is possible that the gc was called while a vm was executing the last
     instruction in a code block (hopefully a branch or funcall) in
     a multithreaded enviornment.  So let's back up the pc one before gc'ing
-    it.  However, this means the gc general should not be called until the
+    it.  However, this means the gc generally should not be called until the
     loop has read at least one instruction in the code block.
   */
-/*pcell--;  Changed my mind.  Moved POLL_GC_SIGNALS to top of loop. */
+  /* pcell--;  Changed my mind.  Moved POLL_GC_SIGNALS to top of loop. */
   LOC_TOUCH_PTR(pcell);
-/*pcell++;*/
+  /* pcell++; */
+
   return
     (u_int16_t *) ((u_int32_t) pcell
 		   | ((u_int32_t) o_pc & TAG_MASK));
@@ -404,7 +410,7 @@ set_external_full_gc(bool full)
 }
 
 void
-gc (bool pre_dump, bool full_gc, char *reason, size_t amount)
+gc(bool pre_dump, bool full_gc, char *reason, size_t amount)
 /*
  *     pre_dump        About to dump world?  (discards stacks)
  *     full_gc         Reclaim garbage from spatic space too?
@@ -450,16 +456,12 @@ gc_top:
 
   if (trace_gc > 2 && !pre_dump)
     {
-#ifdef THREADS
-      for (my_index = 0; my_index < next_index; my_index++) {
-#endif
-      fprintf (stderr, "value ");
-      dump_stack (value_stack_address);
-      fprintf (stderr, "context ");
-      dump_stack (context_stack_address);
-#ifdef THREADS
+      FORTHREADS {
+	fprintf (stderr, "value ");
+	dump_stack (value_stack_address);
+	fprintf (stderr, "context ");
+	dump_stack (context_stack_address);
       }
-#endif
     }
   if (trace_gc > 1)
     fprintf(stderr, "; Flipping...");
@@ -491,7 +493,6 @@ gc_top:
 
     if (!pre_dump)
       {
-
 	GC_TOUCH(e_t);
 	GC_TOUCH(e_fixnum_type);
 	GC_TOUCH(e_loc_type);
@@ -503,50 +504,35 @@ gc_top:
 	GC_TOUCH_PTR (e_arged_tag_trap_table, 2);
 	GC_TOUCH (e_object_type);
 	GC_TOUCH (e_segment_type);
-#ifdef THREADS
-        for (my_index = 0; my_index < next_index; my_index++) {
-#endif
-	/* e_bp is a locative, but a pointer to the object should exist, so we
-	   need only touch it in the locative pass. */
-	GC_TOUCH_PTR(e_env, 0);
-	GC_TOUCH (e_code_segment);
-	GC_TOUCH (e_current_method);
-	GC_TOUCH (e_process);
-#ifdef THREADS
+	FORTHREADS {
+	  /* e_bp is a locative, but a pointer to the object should exist, so we
+	     need only touch it in the locative pass. */
+	  GC_TOUCH_PTR(e_env, 0);
+	  GC_TOUCH (e_code_segment);
+	  GC_TOUCH (e_current_method);
+	  GC_TOUCH (e_process);
 	}
-#endif
 	GC_TOUCH (e_uninitialized);
 	GC_TOUCH (e_method_type);
 	GC_TOUCH (e_operation_type);
 
-#ifdef THREADS
-        for (my_index = 0; my_index < next_index; my_index++) {
-#endif
-	for (p = gc_examine_buffer; p < gc_examine_ptr; p++)
-	  GC_TOUCH(*p);
-#ifdef THREADS
+	FORTHREADS {
+	  for (p = gc_examine_buffer; p < gc_examine_ptr; p++)
+	    GC_TOUCH(*p);
 	}
-#endif
-
-
-
 
 	/* Scan the stacks. */
-#ifdef THREADS
-        for (my_index=0; my_index<next_index; my_index++) {
-#endif
-	for (p = value_stack.bp; p <= value_stack.sp; p++)
-	  GC_TOUCH(*p);
+	FORTHREADS {
+	  for (p = value_stack.bp; p <= value_stack.sp; p++)
+	    GC_TOUCH(*p);
 
-	for (p = context_stack.bp; p <= context_stack.sp; p++)
-	  GC_TOUCH(*p);
+	  for (p = context_stack.bp; p <= context_stack.sp; p++)
+	    GC_TOUCH(*p);
 
-	/* Scan the stack segments. */
-	GC_TOUCH(value_stack.segment);
-	GC_TOUCH(context_stack.segment);
-#ifdef THREADS
+	  /* Scan the stack segments. */
+	  GC_TOUCH(value_stack.segment);
+	  GC_TOUCH(context_stack.segment);
 	}
-#endif
 
 	/* Scan static space. */
 	if (!full_gc)
@@ -571,25 +557,22 @@ gc_top:
 
     if (!pre_dump)
       {
-#ifdef THREADS
-        for (my_index=0; my_index<next_index; my_index++) {
-#endif
-	LOC_TOUCH_PTR (e_bp);
-        e_pc = pc_touch (e_pc);
+	FORTHREADS {
+	  LOC_TOUCH_PTR (e_bp);
+	  e_pc = pc_touch (e_pc);
 
-	LOC_TOUCH(e_uninitialized);
+	  LOC_TOUCH(e_uninitialized);
 
-	for (p = gc_examine_buffer; p < gc_examine_ptr; p++)
-	  LOC_TOUCH(*p);
+	  for (p = gc_examine_buffer; p < gc_examine_ptr; p++)
+	    LOC_TOUCH(*p);
 
-	for (p = value_stack.bp; p <= value_stack.sp; p++)
-	  LOC_TOUCH(*p);
+	  for (p = value_stack.bp; p <= value_stack.sp; p++)
+	    LOC_TOUCH(*p);
 
-	for (p = context_stack.bp; p <= context_stack.sp; p++)
-	  LOC_TOUCH(*p);
-#ifdef THREADS
+	  for (p = context_stack.bp; p <= context_stack.sp; p++)
+
+	    LOC_TOUCH(*p);
 	}
-#endif
 
 	/* Scan spatic space. */
 	if (!full_gc)
@@ -634,53 +617,41 @@ gc_top:
 	GGC_CHECK (e_loc_type);
 	GGC_CHECK (e_cons_type);
 	GC_CHECK (PTR_TO_REF (e_subtype_table - 2), "e_subtype_table");
-#ifdef THREADS
-        for (my_index = 0; my_index < next_index; my_index++) {
-#endif
-	GC_CHECK (PTR_TO_LOC (e_bp), "PTR_TO_LOC(E_BP)");
-	GC_CHECK (PTR_TO_REF (e_env), "e_env");
-#ifdef THREADS
+	FORTHREADS {
+	  GC_CHECK (PTR_TO_LOC (e_bp), "PTR_TO_LOC(E_BP)");
+	  GC_CHECK (PTR_TO_REF (e_env), "e_env");
         }
-#endif
 	/* e_nargs is a fixnum.  Nor is it global... */
 	GGC_CHECK (e_env_type);
 	GC_CHECK (PTR_TO_REF (e_argless_tag_trap_table - 2), "e_argless_tag_trap_table");
 	GC_CHECK (PTR_TO_REF (e_arged_tag_trap_table - 2), "e_arged_tag_trap_table");
 	GGC_CHECK (e_object_type);
 	GGC_CHECK (e_segment_type);
-#ifdef THREADS
-        for (my_index = 0; my_index < next_index; my_index++) {
-#endif
-	GGC_CHECK (e_code_segment);
-	GGC_CHECK (e_current_method);
-	GGC_CHECK (e_process);
-#ifdef THREADS
+	FORTHREADS {
+	  GGC_CHECK (e_code_segment);
+	  GGC_CHECK (e_current_method);
+	  GGC_CHECK (e_process);
 	}
-#endif
 	GGC_CHECK (e_uninitialized);
 	GGC_CHECK (e_method_type);
 	GGC_CHECK (e_operation_type);
 
 	/* Scan the stacks. */
-#ifdef THREADS
-        for (my_index = 0; my_index < next_index; my_index++) {
-#endif
-	for (p = value_stack.bp; p <= value_stack.sp; p++)
-	  GC_CHECK1(*p, "value_stack.bp[%d] = ",
-		    (long)(p - value_stack.bp));
+	FORTHREADS {
+	  for (p = value_stack.bp; p <= value_stack.sp; p++)
+	    GC_CHECK1(*p, "value_stack.bp[%d] = ",
+		      (long)(p - value_stack.bp));
 
-	for (p = context_stack.bp; p <= context_stack.sp; p++)
-	  GC_CHECK1(*p, "context_stack.bp[%d] = ",
-		    (long)(p - context_stack.bp));
+	  for (p = context_stack.bp; p <= context_stack.sp; p++)
+	    GC_CHECK1(*p, "context_stack.bp[%d] = ",
+		      (long)(p - context_stack.bp));
 
-	GGC_CHECK(value_stack.segment);
-	GGC_CHECK(context_stack.segment);
+	  GGC_CHECK(value_stack.segment);
+	  GGC_CHECK(context_stack.segment);
 
-	/* Make sure the program counter is okay. */
-	GC_CHECK ((ref_t) ((ref_t) e_pc | LOC_TAG), "e_pc");
-#ifdef THREADS
+	  /* Make sure the program counter is okay. */
+	  GC_CHECK ((ref_t) ((ref_t) e_pc | LOC_TAG), "e_pc");
 	}
-#endif
       }
     /* Scan the heap. */
 
@@ -710,17 +681,15 @@ gc_top:
 
   if (trace_gc > 2 && !pre_dump)
     {
+      FORTHREADS {
 #ifdef THREADS
-      for (my_index = 0; my_index < next_index; my_index++) {
-        fprintf (stderr, "Thread %d\n", my_index);
+	fprintf (stderr, "Thread %d\n", my_index);
 #endif
-      fprintf (stderr, "value_stack ");
-      dump_stack (value_stack_address);
-      fprintf (stderr, "context_stack ");
-      dump_stack (context_stack_address);
-#ifdef THREADS
+	fprintf (stderr, "value_stack ");
+	dump_stack (value_stack_address);
+	fprintf (stderr, "context_stack ");
+	dump_stack (context_stack_address);
       }
-#endif
     }
   {
     long new_taken = free_point - new_space.start;
@@ -756,9 +725,9 @@ gc_top:
 	  case 1:
 	    fprintf(stderr, ",resize:%ld", (long)e_next_newspace_size);
 	    break;
-
 	  default:
-	    fprintf(stderr, "; Expanding next new space from %ld to %ld (%ld%%).\n",
+	    fprintf(stderr,
+		    "; Expanding next new space from %ld to %ld (%ld%%).\n",
 		    (long)new_space.size, (long)e_next_newspace_size,
 		    (long)(100 * (e_next_newspace_size - new_space.size))
 		    / new_space.size);
@@ -770,7 +739,9 @@ gc_top:
 #ifdef MAX_NEW_SPACE_SIZE
 	    if (((new_space.end - free_point) + amount) < e_next_newspace_size)
 	      {
-		fprintf(stderr, "\nFatal GC error: Essential new space size exceeds maximum allowable.\n");
+		fprintf(stderr,
+			"\nFatal GC error:"
+			"Essential new space size exceeds maximum allowable.\n");
 		exit(EXIT_FAILURE);
 	      }
 #endif
@@ -778,12 +749,16 @@ gc_top:
 	    goto gc_top;
 	  }
       }
+
+    if (full_gc)
+      free_space(&spatic);
+
     if (full_gc && !pre_dump)
       {
 	/* Ditch old spatic, move _new to spatic, and reallocate new. */
 	/* This is a bug
 	   free_space (&spatic);
-	 */
+	*/
 	spatic = new_space;
 	realloc_space(&spatic, free_point - new_space.start);
 
@@ -803,9 +778,11 @@ gc_top:
 		break;
 	      default:
 		fprintf(stderr,
-			"; expanding next new space %ld to %ld (%ld%%).\n",
-			(long)new_space.size, (long)e_next_newspace_size,
-			(long)(100 * (e_next_newspace_size - new_space.size)) / new_space.size);
+			"; expanding next new space %ld to %ld (%d%%).\n",
+			(long)new_space.size,
+			(long)e_next_newspace_size,
+			(int)((100 * (e_next_newspace_size - new_space.size))
+			      / new_space.size));
 		break;
 	      }
 	    new_space.size = e_next_newspace_size;
@@ -813,8 +790,10 @@ gc_top:
 	alloc_space(&new_space, new_space.size);
 	free_point = new_space.start;
       }
+
     if (trace_gc == 1)
       fprintf(stderr, "\n");
+
     if (trace_gc)
       fflush(stdout);
   }

@@ -1,8 +1,8 @@
-/*********************************************************************
- *     Copyright (c) by Barak Pearlmutter and Kevin Lang, 1987-99.   *
- *     Copyright (c) by Alex Stuebinger, 1998-99.                    *
- *     Distributed under the GNU General Public License v2 or later  *
- *********************************************************************/
+/*******************************************************************
+ *   Copyright (c) by Barak Pearlmutter and Kevin Lang, 1987-99.   *
+ *   Copyright (c) by Alex Stuebinger, 1998-99.                    *
+ *   Distributed under the GNU General Public License v2 or later  *
+ *******************************************************************/
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -15,6 +15,7 @@
 #include "config.h"
 #include "data.h"
 #include "stacks.h"
+#include "stacks-loop.h"
 #include "gc.h"
 #include "signal.h"
 #include "timers.h"
@@ -23,7 +24,6 @@
 #include "loop.h"
 #include "cmdline.h"
 #include "xmalloc.h"
-#include "threads.h"
 
 #ifndef FAST
 #include "instr.h"
@@ -37,18 +37,10 @@
 #define ENABLE_TIMER	1
 
 
-#ifdef FAST
+bool trace_traps = false;	/* trace tag traps */
+bool trace_files = false;	/* trace file opening */
 
-#define trace_insts	0
-#define trace_valcon	0
-#define trace_cxtcon	0
-#define trace_stks	0
-#define trace_meth	0
-#define trace_segs	0
-#define trace_mcache	0
-
-#else
-
+#ifndef FAST
 bool trace_insts = false;	/* trace instruction execution */
 bool trace_valcon = false;	/* trace stack contents */
 bool trace_cxtcon = false;	/* trace contents stack contents */
@@ -58,35 +50,33 @@ bool trace_meth = false;	/* trace method lookup */
 #ifdef OP_TYPE_METH_CACHE
 bool trace_mcache = false;	/* trace method cache hits and misses */
 #endif
-
 #endif
-
-bool trace_traps = false;	/* trace tag traps */
-bool trace_files = false;	/* trace file opening */
 
 
 
 bool gc_before_dump = true;	/* do a GC before dumping the world */
 
 
-void inline
+#ifdef FAST
+#define maybe_put(x,s)
+#else
+static inline void
 maybe_put(bool v, char *s)
 {
-#ifndef FAST
   if (v)
     {
       printf(s);
       fflush(stdout);
     }
-#endif
 }
+#endif
 
 
 
 #define NEW_STORAGE e_uninitialized
 
-static void
-maybe_dump_world (int dumpstackp)
+void
+maybe_dump_world(int dumpstackp)
 {
 #ifdef THREADS
   int *my_index_p;
@@ -94,7 +84,6 @@ maybe_dump_world (int dumpstackp)
   my_index_p = pthread_getspecific (index_key);
   my_index = *(my_index_p);
 #endif
-
   if (dumpstackp > 2)
     {				/* 0,1,2 are normal exits. */
       /* will be changed */
@@ -105,8 +94,8 @@ maybe_dump_world (int dumpstackp)
     {
       if (gc_before_dump && dumpstackp == 0)
 	{
-	  gc (true, true, "impending world dump", 0);
-	  dump_world (true);
+	  gc(true, true, "impending world dump", 0);
+	  dump_world(true);
 	}
       else
 	dump_world(false);
@@ -115,7 +104,7 @@ maybe_dump_world (int dumpstackp)
 
 
 
-inline ref_t
+static inline ref_t
 get_type(ref_t x)
 {
 #ifndef USE_SWITCH_FOR_GET_TYPE
@@ -150,13 +139,13 @@ get_type(ref_t x)
 }
 
 
-inline ref_t *
+static inline ref_t *
 pcar(ref_t x)
 {
   return &REF_SLOT(x, CONS_PAIR_CAR_OFF);
 }
 
-inline ref_t *
+static inline ref_t *
 pcdr(ref_t x)
 {
   return &REF_SLOT(x, CONS_PAIR_CDR_OFF);
@@ -164,13 +153,13 @@ pcdr(ref_t x)
 
 
 
-inline ref_t
+static inline ref_t
 car(ref_t x)
 {
   return *pcar(x);
 }
 
-inline ref_t
+static inline ref_t
 cdr(ref_t x)
 {
   return *pcdr(x);
@@ -179,48 +168,73 @@ cdr(ref_t x)
 
 
 
-
-
-int inline
-lookup_bp_offset(ref_t y_type, ref_t meth_type)
+static inline ref_t
+assq(ref_t elt, ref_t lis, ref_t notfound)
 {
-  ref_t alist = REF_SLOT(y_type, TYPE_TYPE_BP_ALIST_OFF);
-
-  while (alist != e_nil)
-    {
-      ref_t car_cache = car(alist);
-      if (car(car_cache) == meth_type)
-	return cdr(car_cache);
-      alist = cdr(alist);
-    }
-  return INT_TO_REF(0);
+  while (lis != e_nil) {
+    ref_t this = car(lis);
+    if (car(this) == elt)
+      return this;
+    lis = cdr(lis);
+  }
+  return notfound;
 }
 
 
 
-void inline
+static inline ref_t
+assqcdr(ref_t elt, ref_t lis, ref_t notfound)
+{
+  while (lis != e_nil) {
+    ref_t this = car(lis);
+    if (car(this) == elt)
+      return cdr(this);
+    lis = cdr(lis);
+  }
+  return notfound;
+}
+
+
+
+
+static inline int
+lookup_bp_offset(ref_t y_type, ref_t meth_type)
+{
+  return assqcdr(meth_type,
+		 REF_SLOT(y_type, TYPE_TYPE_BP_ALIST_OFF),
+		 INT_TO_REF(0));
+}
+
+
+
+static inline void
 find_method_type_pair(ref_t op,
 		      ref_t obj_type,
-		      ref_t * method_ptr,
-		      ref_t * type_ptr)
+		      ref_t *method_ptr,
+		      ref_t *type_ptr)
 {
   ref_t alist;
   ref_t car_cache;
   ref_t *locl = NULL;
+#ifdef OP_METH_ALIST_MTF
   ref_t thelist;
   ref_t *loclist;
+#endif
   /* stack of lists of types that remain to be searched */
   ref_t later_lists[100];
   ref_t *llp = &later_lists[-1];
- 
 
   while (1)			/* forever */
     {
       /* First look for it in the local method alist of obj_type: */
 
+
+#ifdef OP_METH_ALIST_MTF
       alist = thelist =
 	*(loclist = &REF_SLOT(obj_type, TYPE_OP_METHOD_ALIST_OFF));
-
+#else
+      alist = REF_SLOT(obj_type, TYPE_OP_METHOD_ALIST_OFF);
+#endif
       while (alist != e_nil)
 	{
 	  if (car((car_cache = car(alist))) == op)
@@ -242,8 +256,8 @@ find_method_type_pair(ref_t op,
 	  maybe_put(trace_meth, "-");
 	}
 
-      /* Not there, stack the supertype list and then fetch the top guy
-         available from the stack. */
+      /* Not found in local alist, so stack the entire supertype list
+         and then fetch the top guy available on the stack. */
 
       *++llp = REF_SLOT(obj_type, TYPE_SUPER_LIST_OFF);
 
@@ -265,43 +279,50 @@ find_method_type_pair(ref_t op,
 void
 loop()
 {
- /* This is used for instructions to communicate with 
-     the trap code, when a fault is encountered. */
-  unsigned trap_nargs;
   u_int16_t instr;
   u_int8_t op_field;
   u_int8_t arg_field;
+
+  /* trap_nargs is used by instructions when they trap, to tell the
+     trap code about a property of the instruction.  It might be
+     better to instead give the trap code a table that it could look
+     it up instead. */
+  unsigned trap_nargs;
+
 #ifdef THREADS
-  int* my_index_p;
-  int  my_index;
+  int* my_index_p = pthread_getspecific (index_key);
+  int  my_index = *(my_index_p);
 #endif
-  ref_t *local_value_sp;
-  ref_t *local_context_sp;
-  ref_t *value_stack_end;
-  u_int16_t *local_epc;
-  ref_t x=INT_TO_REF(0), y; /* initialized to turn off -Wall message */
- 
+
+  ref_t x = INT_TO_REF(0);	/* x, y initialized for -Wall message */
+  ref_t y = INT_TO_REF(0);
+
 #if ENABLE_TIMER
   unsigned timer_counter = 0;
   unsigned timer_increment = 0;
 #endif
 
-#ifdef THREADS
-  my_index_p = pthread_getspecific (index_key);
-  my_index = *(my_index_p);
-#endif
 
-  local_value_sp = value_stack.sp;
-  local_context_sp = context_stack.sp;
-  value_stack_end
-  = &value_stack.bp[value_stack.size];
-  local_epc = e_pc;
+  /* These are "local" versions of some globals, to make sure the C
+     compiler can keep these in registers or on the stack instead of
+     reloading from main memory. */
 
+  u_int16_t *local_epc;
+
+  ref_t *local_value_sp;
+  ref_t *value_stack_bp = value_stack.bp;
+  ref_t *value_stack_end = &value_stack.bp[value_stack.size];
+
+  ref_t *local_context_sp;
+  ref_t *context_stack_bp = context_stack.bp;
+  ref_t *context_stack_end = &context_stack.bp[context_stack.size];
+
+  LOCALIZE_ALL();
 
   /* This fixes a bug in which the initial CHECK-NARGS 
      in the boot code tries to pop the operation and fails. */
   if (value_stack.sp == value_stack.bp)
-      PUSHVAL_IMM(INT_TO_REF(4321));
+    PUSHVAL_IMM(INT_TO_REF(4321));
 
   /* These TRAPx(n) macros jump to the trap code, notifying it that x
      arguments have been popped off the stack and need to be put back
@@ -320,6 +341,7 @@ loop()
 
 #define CHECKCHAR0(X,N) \
     TRAP0_IF(!SUBTAG_IS((X),CHAR_SUBTAG),(N))
+
 #define CHECKCHAR1(X,N) \
     TRAP1_IF(!SUBTAG_IS((X),CHAR_SUBTAG),(N))
 
@@ -344,7 +366,6 @@ loop()
 #define POLL_TIMER_SIGNALS()
 #endif
 
-
 #ifdef THREADS
 #define POLL_GC_SIGNALS()	if (gc_pending) {			     \
                                     value_stack.sp = local_value_sp;	     \
@@ -360,8 +381,7 @@ loop()
 #endif
 
 #define POLL_SIGNALS()		POLL_USER_SIGNALS() ;		\
-				POLL_TIMER_SIGNALS() ;		\
-			      /*POLL_GC_SIGNALS() Do this once at top of loop.*/
+				POLL_TIMER_SIGNALS() ;
 
   /* This is the big instruction fetch/execute loop. */
 
@@ -384,8 +404,8 @@ top_of_loop:
   while (1)			/* forever */
     {
 #ifndef FAST
-     if (trace_valcon) DUMP_VALUE_STACK ();
-     if (trace_cxtcon) DUMP_CONTEXT_STACK ();
+      if (trace_valcon) DUMP_VALUE_STACK();
+      if (trace_cxtcon) DUMP_CONTEXT_STACK();
       if (trace_stks)
 	{
 	  printf("heights val: %d = %d + %d, cxt: %d = %d + %d\n",
@@ -405,7 +425,8 @@ top_of_loop:
 		  val_buffer_count);
 	  exit(EXIT_FAILURE);
 	}
-	if (cxt_buffer_count < 0 || cxt_buffer_count > context_stack.size) {
+	/* Should this be a zero ???  < 0  ??? */
+	if (cxt_buffer_count < 1 || cxt_buffer_count > context_stack.size) {
 	  fprintf(stderr, "vm error: cxt_buffer_count = %d\n",
 		  cxt_buffer_count);
 	  exit(1);
@@ -470,25 +491,24 @@ top_of_loop:
 	    case 3:		/* EQ? */
 	      POPVAL(x);
 	      y = PEEKVAL();
-	      PEEKVAL() = (x == y) ? e_t : e_false;
+	      PEEKVAL() = BOOL_TO_REF(x == y);
 	      GOTO_TOP;
 
 	    case 4:		/* NOT */
-	      PEEKVAL() = PEEKVAL() == e_false ? e_t : e_false;
+	      PEEKVAL() = BOOL_TO_REF(PEEKVAL() == e_false);
 	      GOTO_TOP;
 
 	    case 5:		/* TIMES */
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
-	      /* Tag trickery: */
 #ifdef HAVE_LONG_LONG
 	      {
-		long long a = (long long)REF_TO_INT(x) * (long long)y;
-		long highcrap = a >> (WORDSIZE - 1);
-		if ((highcrap != 0) && (highcrap != -1L))
+		int64_t a = (int64_t)REF_TO_INT(x) * (int64_t)REF_TO_INT(y);
+		int highcrap = a >> (WORDSIZE - (TAGSIZE+1));
+		if (highcrap && highcrap+1)
 		  TRAP1(2);
-		PEEKVAL() = (ref_t) a;
+		PEEKVAL() = INT_TO_REF(a);
 	      }
 
 #elif defined(DOUBLES_FOR_OVERFLOW)
@@ -526,8 +546,9 @@ top_of_loop:
 		if (hh || hllh >> 15)
 		  TRAP1(2);
 		answer = (hllh << 15) + ll;
+		if (neg) answer = -answer;
 		OVERFLOWN_INT(answer, TRAP1(2));
-		PEEKVAL() = INT_TO_REF(neg ? -answer : answer);
+		PEEKVAL() = INT_TO_REF(answer);
 	      }
 #endif
 	      GOTO_TOP;
@@ -560,8 +581,7 @@ top_of_loop:
 	    case 8:		/* =0? */
 	      x = PEEKVAL();
 	      CHECKTAG0(x, INT_TAG, 1);
-
-	      PEEKVAL() = ( (x == INT_TO_REF(0)) ? e_t : e_false);
+	      PEEKVAL() = BOOL_TO_REF(x == INT_TO_REF(0));
 	      GOTO_TOP;
 
 	    case 9:		/* GET-TAG */
@@ -609,7 +629,7 @@ top_of_loop:
 		  {
 		    long i = REF_TO_INT(x);
 
-		    /* For now, preclude creation of very odd references. */
+		    /* Preclude creation of very odd references. */
 		    TRAP1_IF(i < 0, 2);
 		    if (i < (long)spatic.size)
 		      z = PTR_TO_LOC(spatic.start + i);
@@ -640,8 +660,10 @@ top_of_loop:
 	      CHECKCHAR0(x, 1);
 	      putc(REF_TO_CHAR(x), stdout);
 	      fflush(stdout);
+#ifndef FAST
 	      if (trace_insts || trace_valcon || trace_cxtcon)
 		printf("\n");
+#endif
 	      GOTO_TOP;
 
 	    case 14:		/* CONTENTS */
@@ -680,7 +702,7 @@ top_of_loop:
 	      CHECKTAG0(x, INT_TAG, 1);
 	      /* Tag trickery: */
 
-	      PEEKVAL() = ( ((int32_t)x < 0) ? e_t : e_false );
+	      PEEKVAL() = BOOL_TO_REF((int32_t)x < 0);
 	      GOTO_TOP;
 
 	    case 19:		/* MODULO */
@@ -779,35 +801,15 @@ top_of_loop:
 	      }
 
 	    case 26:		/* ASSQ */
-	      {
-		ref_t z, t;
+	      POPVAL(x);
+	      PEEKVAL() = assq(x, PEEKVAL(), e_false);
+	      GOTO_TOP;
 
-		POPVAL(z);
-		x = PEEKVAL();
-		/* y = assq(z,x); */
-		while (x != e_nil && car(t = car(x)) != z)
-		  x = cdr(x);
-
-		if (x == e_nil)
-		  {
-		    PEEKVAL() = e_nil;
-		    GOTO_TOP;
-		  }
-		else
-		  {
-		    /*
-		       PEEKVAL() = car (x);
-		     */
-		    PEEKVAL() = t;
-		    GOTO_TOP;
-		  }
-
-	      }
 	    case 27:		/* LOAD-LENGTH */
 	      x = PEEKVAL();
 	      PEEKVAL() =
 		(TAG_IS(x, PTR_TAG) ?
-		 (REF_SLOT(REF_SLOT(x, 0), TYPE_VAR_LEN_P_OFF) == e_nil ?
+		 (REF_SLOT(REF_SLOT(x, 0), TYPE_VAR_LEN_P_OFF) == e_false ?
 		  REF_SLOT(REF_SLOT(x, 0), TYPE_LEN_OFF) :
 		  REF_SLOT(x, 1)) :
 		 INT_TO_REF(0));
@@ -850,34 +852,17 @@ top_of_loop:
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
-	      if (x == y)
-		{
-		  PEEKVAL() = e_t;
-		  GOTO_TOP;
-		}
-	      else
-		{
-		  PEEKVAL() = e_nil;
-		  GOTO_TOP;
-		}
-
+	      /* Tag trickery: */
+	      PEEKVAL() = BOOL_TO_REF(x == y);
+	      GOTO_TOP;
 
 	    case 33:		/* < */
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
 	      /* Tag trickery: */
-	      if ((long)x < (long)y)
-		{
-		  PEEKVAL() = e_t;
-		  GOTO_TOP;
-		}
-	      else
-		{
-		  PEEKVAL() = e_nil;
-		  GOTO_TOP;
-		}
-
+	      PEEKVAL() = BOOL_TO_REF((long)x < (long)y);
+	      GOTO_TOP;
 
 	    case 34:		/* LOG-NOT */
 	      x = PEEKVAL();
@@ -901,8 +886,6 @@ top_of_loop:
 	      else
 		local_epc += ASHR2(SIGN_16BIT_ARG(*local_epc)) + 1;
 	      GOTO_TOP;
-
-
 
 	    case 37:		/* LONG-BRANCH-T distance (signed) */
 	      POLL_SIGNALS();
@@ -1011,18 +994,14 @@ top_of_loop:
 	      GOTO_TOP;
 
 	    case 51:		/* GC */
-	      value_stack.sp = local_value_sp;
-	      context_stack.sp = local_context_sp;
-	      e_pc = local_epc;
+	      UNLOCALIZE_ALL();
 	      gc(false, false, "explicit call", 0);
-	      local_value_sp = value_stack.sp;
-	      local_context_sp = context_stack.sp;
-	      local_epc = e_pc;
-	      PUSHVAL(e_nil);
+	      LOCALIZE_ALL();
+	      PUSHVAL(e_false);
 	      GOTO_TOP;
 
 	    case 52:		/* BIG-ENDIAN? */
-	      x = (byte_gender == big_endian) ? e_t : e_nil;
+	      x = BOOL_TO_REF(byte_gender == big_endian);
 	      PUSHVAL(x);
 	      GOTO_TOP;
 
@@ -1131,8 +1110,7 @@ top_of_loop:
 
 
 	    case 58:		/* MOST-NEGATIVE-FIXNUM? */
-
-	      PEEKVAL() = (PEEKVAL() == MIN_REF) ? e_t : e_false;
+	      PEEKVAL() = BOOL_TO_REF( PEEKVAL() == MIN_REF );
 	      GOTO_TOP;
 
 	    case 59:		/* FX-PLUS */
@@ -1192,16 +1170,10 @@ top_of_loop:
 	      GOTO_TOP;
 
 	    case 64:		/* FULL-GC */
-	      value_stack.sp = local_value_sp;
-	      context_stack.sp = local_context_sp;
-	      e_pc = local_epc;
-
+	      UNLOCALIZE_ALL();
 	      gc(false, true, "explicit call", 0);
-
-	      local_value_sp = value_stack.sp;
-	      local_context_sp = context_stack.sp;
-	      local_epc = e_pc;
-	      PUSHVAL(e_nil);
+	      LOCALIZE_ALL();
+	      PUSHVAL(e_false);
 	      GOTO_TOP;
 
 	    case 65:		/* MAKE-LAMBDA */
@@ -1234,7 +1206,7 @@ top_of_loop:
 	      CHECKTAGS_INT_1(x, y, 2);
 	      {
 		int c = program_arg_char(REF_TO_INT(x), REF_TO_INT(y));
-		PEEKVAL() = (c == -1) ? e_nil : CHAR_TO_REF(c);
+		PEEKVAL() = (c == -1) ? e_false : CHAR_TO_REF(c);
 	      }
 	      GOTO_TOP;
 
@@ -1257,51 +1229,49 @@ top_of_loop:
 	      if (create_thread(PEEKVAL())) {
 		  PEEKVAL() = e_t;
 	      } else {
-		  PEEKVAL() = e_nil;
+		  PEEKVAL() = e_false;
 	      }
 	      GOTO_TOP;
 
 	  case 71:		/* TEST-AND-SET-CAR */
 	      CONSINSTR(1);
 	      y = car(x);
-	      if (y != e_nil) {		/* Fails test. */
-		  PEEKVAL() = e_nil;
-		  GOTO_TOP;
+	      if (y != e_false) { /* Fails test. */
+		PEEKVAL() = e_false;
+		GOTO_TOP;
 	      }
 	      if (pthread_mutex_trylock(&testandsetcar_lock) != 0) {
-		  PEEKVAL() = e_nil;	/* Can't aquire lock. */
-		  GOTO_TOP;
+		PEEKVAL() = e_nil;	/* Can't aquire lock. */
+		GOTO_TOP;
 	      }
-	    /* In Critical Section.  Don't GOTO_TOP. */
+	      /* In Critical Section.  Don't GOTO_TOP. */
 	      if (y == e_nil) {
-		  *(pcar(x)) = e_t;
-		  PEEKVAL() = e_t;
+		*(pcar(x)) = e_t;
+		PEEKVAL() = e_t;
 	      } else {
-		  PEEKVAL() = e_nil;
+		PEEKVAL() = e_nil;
 	      }
 	      pthread_mutex_unlock(&testandsetcar_lock);
-	    /* Out of Critical Section. */
+	      /* Out of Critical Section. */
 	      GOTO_TOP;
 
-	     case 75:		/* TEST-INSTRUCTION */
-		 printf("This is my stupid test instruction\n");
-	       /*
-		 PUSHVAL(e_nil);
-		 GOTO_TOP;
-	       */
-		 instr = (22 << 2);
-		 op_field = 22;
-		 arg_field = 0;
-		 e_nargs = e_nargs - 1;
-		 goto funcall_tail;
+	    case 75:		/* TEST-INSTRUCTION */
+	      printf("This is my stupid test instruction\n");
+	      /*
+		PUSHVAL(e_nil);
+		GOTO_TOP;
+	      */
+	      instr = (22 << 2);
+	      op_field = 22;
+	      arg_field = 0;
+	      e_nargs = e_nargs - 1;
+	      goto funcall_tail;
 
 #ifndef FAST
 	    default:
 	      printf("\nError (vm interpreter): "
 		     "Illegal argless instruction %d.\n", arg_field);
-	      value_stack.sp = local_value_sp;
-	      context_stack.sp = local_context_sp;
-	      e_pc = local_epc;
+	      UNLOCALIZE_ALL();
 	      maybe_dump_world(333);
 	      exit(EXIT_FAILURE);
 #endif
@@ -1324,9 +1294,7 @@ top_of_loop:
 	      {
 		int halt_code = arg_field;
 
-		value_stack.sp = local_value_sp;
-		context_stack.sp = local_context_sp;
-		e_pc = local_epc;
+		UNLOCALIZE_ALL();
 		maybe_dump_world(halt_code);
 		exit(halt_code);
 	      }
@@ -1638,7 +1606,7 @@ top_of_loop:
 		default:
 		  fprintf(stderr, "Error (vm interpreter): "
 			  "LOAD-REG %d, unknown .\n", arg_field);
-		  PUSHVAL(e_nil);
+		  PUSHVAL(e_false);
 		  GOTO_TOP;
 		}
 #ifdef _ICC
@@ -1646,7 +1614,7 @@ top_of_loop:
 #endif
 
 
-	    case (21):		/* FUNCALL-CXT, FUNCALL-CXT-BR distance */
+	    case 21:		/* FUNCALL-CXT, FUNCALL-CXT-BR distance */
 	      /* NOTE: (FUNCALL-CXT) == (FUNCALL-CXT-BR 0) */
 
 	      POLL_SIGNALS();
@@ -1655,7 +1623,7 @@ top_of_loop:
 	      /* Fall through to tail recursive case: */
 	      goto funcall_tail;
 
-	    case (22):		/* FUNCALL-TAIL */
+	    case 22:		/* FUNCALL-TAIL */
 
 	      /* This polling should not be moved below the trap label, 
 	         since the interrupt code will fail on a fake 
@@ -1670,14 +1638,13 @@ top_of_loop:
 	      /***********/
 
 	      x = PEEKVAL();
-	      
 	      CHECKTAG0(x, PTR_TAG, e_nargs + 1);
 	      CHECKVAL_POP(1);
 	      y = PEEKVAL_UP(1);
 
 	      e_current_method = REF_SLOT(x, OPERATION_LAMBDA_OFF);
 
-	      if (e_current_method == e_nil)
+	      if (e_current_method == e_false)
 		{		/* SEARCH */
 		  ref_t y_type = (e_nargs == 0) ? e_object_type : get_type(y);
 
@@ -1859,18 +1826,18 @@ top_of_loop:
 			       arg_field == 3 ? READ_MODE :
 			       arg_field == 4 ? WRITE_MODE : APPEND_MODE);
 		    free(s);
-		    PEEKVAL() = ((fd == NULL) ? e_nil : (ref_t) fd);
+		    PEEKVAL() = ((fd == NULL) ? e_false : (ref_t) fd);
 		  }
 		  GOTO_TOP;
 
 		case 6:	/* fclose */
-		  PEEKVAL() =
-		    fclose((FILE *) PEEKVAL()) == EOF ? e_nil : e_t;
+		  PEEKVAL()
+		    = BOOL_TO_REF( fclose((FILE *) PEEKVAL()) != EOF );
 		  GOTO_TOP;
 
 		case 7:	/* fflush */
-		  PEEKVAL() =
-		    fflush((FILE *) PEEKVAL()) == EOF ? e_nil : e_t;
+		  PEEKVAL()
+		    = BOOL_TO_REF( fflush((FILE *) PEEKVAL()) != EOF );
 		  GOTO_TOP;
 
 		case 8:	/* putc */
@@ -1878,7 +1845,7 @@ top_of_loop:
 		  y = PEEKVAL();
 		  CHECKCHAR1(y, 2);
 		  PEEKVAL()
-		    = putc(REF_TO_CHAR(y), (FILE *) x) == EOF ? e_nil : e_t;
+		    = BOOL_TO_REF( putc(REF_TO_CHAR(y), (FILE *) x) != EOF);
 		  GOTO_TOP;
 
 		case 9:	/* getc */
@@ -1938,13 +1905,11 @@ top_of_loop:
 		  printf("\nError (vm interpreter): "
 			 "bad stream primitive %d.\n",
 			 arg_field);
-		 value_stack.sp = local_value_sp;
-		 context_stack.sp = local_context_sp;
-		 e_pc = local_epc;
-		 maybe_dump_world (333);
-		 exit (EXIT_FAILURE);
-		 GOTO_TOP;
-	       }
+		  UNLOCALIZE_ALL();
+		  maybe_dump_world(333);
+		  exit(EXIT_FAILURE);
+		  GOTO_TOP;
+		}
 #ifdef _ICC
 	      break;
 #endif
@@ -1989,7 +1954,7 @@ top_of_loop:
 		ref_t meth_type;
 
 		POPVAL(the_type);
-		CHECKTAG1 (the_type, PTR_TAG, e_nargs + 2);
+		CHECKTAG1(the_type, PTR_TAG, e_nargs + 2);
 
 		x = PEEKVAL();	/* The operation. */
 		CHECKTAG1(x, PTR_TAG, e_nargs + 2);
@@ -2020,26 +1985,24 @@ top_of_loop:
 		}
 	      }
 
-	     x = e_current_method;
+	      x = e_current_method;
 
-	     e_env = REF_TO_PTR (REF_SLOT (x, METHOD_ENV_OFF));
-	     local_epc = CODE_SEG_FIRST_INSTR (e_code_segment =
-					       REF_SLOT (x, METHOD_CODE_OFF));
-	     GOTO_TOP;
+	      e_env = REF_TO_PTR(REF_SLOT(x, METHOD_ENV_OFF));
+	      local_epc = CODE_SEG_FIRST_INSTR(e_code_segment =
+					       REF_SLOT(x, METHOD_CODE_OFF));
+	      GOTO_TOP;
 
 #ifndef FAST
-	   default:
-	     printf ("\nError (vm interpreter): "
-		     "Illegal parametric instruction % d \n", op_field);
-	     value_stack.sp = local_value_sp;
-	     context_stack.sp = local_context_sp;
-	     e_pc = local_epc;
-	     maybe_dump_world (333);
-	     exit (EXIT_FAILURE);
+	    default:
+	      printf("\nError (vm interpreter): "
+		     "Illegal parametric instruction %d\n", op_field);
+	      UNLOCALIZE_ALL();
+	      maybe_dump_world(333);
+	      exit(EXIT_FAILURE);
 #endif
-	   }
-       }
-   }
+	    }
+	}
+    }
 
 #ifndef _ICC
   /* The above loop is infinite.  We branch down to here when instructions
@@ -2057,36 +2020,36 @@ intr_trap:
        properly.  It is passed the old NARGS. */
 
     /* the NOOP instruction. */
-      arg_field = op_field = instr = 0;
-      signal_poll_flag = 0;
+    arg_field = op_field = instr = 0;
+    signal_poll_flag = 0;
 #if ENABLE_TIMER
   } else if (timer_counter > TIMEOUT) {
     /* We notify Oaklisp of a timeout trap by telling it that an
        "alarm" instruction failed.  This instruction, bound to
        arg_field 127, does not really exist.  There is, however,
        a handler function bound to that trap. */
-      arg_field = 127;
-      op_field = 0;
-      instr = (127 << 8);
-      timer_counter = 0;
+    arg_field = 127;
+    op_field = 0;
+    instr = (127 << 8);
+    timer_counter = 0;
 #endif
   } else {
     /* How did we get here?  Just do a user trap to get to the debugger. */
-      arg_field = op_field = instr = 0;
+    arg_field = op_field = instr = 0;
   }
-
 
 #ifndef FAST
   if (trace_traps)
     printf("\nINTR: opcode %d, argfield %d.",
 	   op_field, arg_field);
 #endif
+
   /* Back off of the current intruction so it will get executed 
      when we get back from the trap code. */
   local_epc--;
 
   /* Pass the trap code the current NARGS. */
-  x = INT_TO_REF (e_nargs);
+  x = INT_TO_REF(e_nargs);
   trap_nargs = 1;
 #endif
 
@@ -2105,7 +2068,7 @@ arg0_tt:
   if (trace_traps)
     {
       printf("\nTag trap: ");
-      print_instr(op_field, arg_field, e_pc);
+      print_instr(op_field, arg_field, local_epc);
       printf("Top of stack: ");
       printref(stdout, PEEKVAL());
       printf("\n");

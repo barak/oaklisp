@@ -14,8 +14,8 @@
 extern bool full_gc;
 extern void printref(FILE * fd, ref_t refin);
 
-extern void gc (bool pre_dump, bool full_gc, char *reason,
-		size_t amount);
+extern void gc(bool pre_dump, bool full_gc, char *reason,
+	       size_t amount);
 
 #define GC_MEMORY(v) \
 {*gc_examine_ptr++ = (v);}
@@ -28,5 +28,16 @@ extern void gc (bool pre_dump, bool full_gc, char *reason,
 		/*
 		   assert(gc_examine_ptr >= gc_examine_buffer);\
 		   } */
+
+#ifdef THREADS
+extern int gc_ready[];
+extern bool gc_pending;
+extern pthread_mutex_t gc_lock;
+#endif
+
+extern void set_gc_flag (bool flag);
+extern int get_next_index();
+extern void free_registers();
+extern void wait_for_gc();
 
 #endif

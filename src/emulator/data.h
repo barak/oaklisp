@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include "config.h"
+#include "threads.h"
 
 /* Version and greeting */
 extern const char *version, *compilation_date, *compilation_time;
@@ -41,57 +42,18 @@ typedef u_int32_t ref_t;
 
 /* space type */
 
-typedef struct
-  {
-    ref_t *start;
-    ref_t *end;
-    size_t size;		/* in size reference_t */
+typedef struct {
+  ref_t *start;
+  ref_t *end;
+  size_t size;		/* in size reference_t */
 #ifdef UNALIGNED_MALLOC
-    size_t displacement;
+  size_t displacement;
 #endif
-  }
-space_t;
+} space_t;
 
 
 extern space_t new_space, old_space, spatic;
 extern ref_t *free_point;
-
-
-extern int max_segment_size;
-
-typedef struct
-  {
-    /* Do not rearange this structure or you'll be sorry! */
-    ref_t type_field;
-    ref_t length_field;
-    ref_t previous_segment;
-    ref_t data[1];
-  }
-segment_t;
-
-#define SEGMENT_HEADER_LENGTH (sizeof(segment_t)/sizeof(ref_t)-1)
-
-/* stack type */
-
-
-typedef struct
-  {
-    int size;			/* size of stack buffer */
-    int filltarget;		/* how high to fill buffer ideally */
-    ref_t *bp;			/* pointer to this stack's "buffer" */
-    ref_t *sp;			/* pointer to top element in stack */
-    ref_t segment;		/* head of linked list of flushed segments */
-    int pushed_count;		/* number of ref's in flushed segment list */
-  }
-stack_t;
-
-#ifndef THREADS
-extern stack_t value_stack;
-extern stack_t context_stack;
-#endif
-
-#define value_stack_bp		value_stack.bp
-#define context_stack_bp	context_stack.bp
 
 /* Size of first newspace, in K */
 #define DEFAULT_NEWSPACE 128
@@ -102,13 +64,6 @@ extern stack_t context_stack;
 
 #define CONTEXT_FRAME_SIZE 3	/* not a tunable parameter */
 
-
-/* Weak pointer table and weak pointer hashtable */
-
-extern const int wp_table_size, wp_hashtable_size;
-
-extern ref_t *wp_table;
-extern int wp_index;
 
 /* Garbage collection */
 
@@ -196,14 +151,16 @@ extern bool trace_files;
 #define READ_MODE "r"
 #define WRITE_MODE "w"
 #define APPEND_MODE "a"
-#define READ_BINARY_MODE "rb+"
-#define WRITE_BINARY_MODE "wb+"
+#define READ_BINARY_MODE "rb"
+#define WRITE_BINARY_MODE "wb"
 
 
 
 /* Tag Scheme */
 
 #define SIGN_16BIT_ARG(x)	((int16_t)(x))
+
+#define TAGSIZE 2
 
 #define TAG_MASK	3
 #define TAG_MASKL	3l
@@ -223,9 +180,9 @@ extern bool trace_files;
 #define SUBTAG_IS(X,SUBTAG)	(((X)&SUBTAG_MASK)==(SUBTAG))
 
 
-#define OR_TAG
+/* #define OR_TAG */
 
-#define REF_TO_INT(r)   ((int32_t)r>>2)
+#define REF_TO_INT(r)   ((int32_t)r>>TAGSIZE)
 
 
 #define REF_TO_PTR(r)	((ref_t*)((r)-PTR_TAG))
@@ -234,55 +191,58 @@ extern bool trace_files;
  */
 /* This maybe used in slot calculations, where tag corrections
    can be done by the address calculation unit */
-#define REF_TO_PTR_ADDR(r) ((ref_t*)((r)-PTR_TAG))
+#define REF_TO_PTR_ADDR(r) ((ref_t*)((r) - PTR_TAG))
 
 
-#define LOC_TO_PTR(r)	((ref_t*)((r)-LOC_TAG))
-/*
-   #define LOC_TO_PTR(r)   ((ref_t*)((r)&~2ul))
- */
-#define ANY_TO_PTR(r)	((ref_t*)((r)&~TAG_MASKL))
+#define LOC_TO_PTR(r)	((ref_t*)((r) - LOC_TAG))
+#define ANY_TO_PTR(r)	((ref_t*)((r) & ~TAG_MASKL))
 
 #ifndef OR_TAG
-#define PTR_TO_LOC(p)	((ref_t)((ref_t)(p)+LOC_TAG))
-#define PTR_TO_REF(p)	((ref_t)((ref_t)(p)+PTR_TAG))
+#define PTR_TO_LOC(p)	((ref_t)((ref_t)(p) + LOC_TAG))
+#define PTR_TO_REF(p)	((ref_t)((ref_t)(p) + PTR_TAG))
 #else
-#define PTR_TO_LOC(p)   ((ref_t)((ref_t)(p)|LOC_TAG))
-#define PTR_TO_REF(p)   ((ref_t)((ref_t)(p)|PTR_TAG))
+#define PTR_TO_LOC(p)   ((ref_t)((ref_t)(p) | LOC_TAG))
+#define PTR_TO_REF(p)   ((ref_t)((ref_t)(p) | PTR_TAG))
 #endif
 
 /* Put q's tag onto p */
-#define PTR_TO_TAGGED(p,q) ((ref_t)((ref_t)(p)+((q)&TAG_MASK)))
+#define PTR_TO_TAGGED(p,q) ((ref_t)((ref_t)(p) + ((q) & TAG_MASK)))
 
 #define REF_TO_CHAR(r)	((char)((r)>>8))
 #ifndef OR_TAG
-#define CHAR_TO_REF(c)	(((ref_t)(c)<<8)+CHAR_SUBTAG)
+#define CHAR_TO_REF(c)	(((ref_t)(c)<<8) + CHAR_SUBTAG)
 #else
-#define CHAR_TO_REF(c)  (((ref_t)(c)<<8)|IMM_TAG)
+#define CHAR_TO_REF(c)  (((ref_t)(c)<<8) | IMM_TAG)
 #endif
 
 #ifndef OR_TAG
-#define INT_TO_REF(i)	((ref_t)(((int32_t)(i)<<2)+INT_TAG))
+#define INT_TO_REF(i)	((ref_t)(((int32_t)(i)<<TAGSIZE) + INT_TAG))
 #else
-#define INT_TO_REF(i)   ((ref_t)(((int32_t)(i)<<2)|INT_TAG))
+#define INT_TO_REF(i)   ((ref_t)(((int32_t)(i)<<TAGSIZE) | INT_TAG))
 #endif
+
+#define BOOL_TO_REF(x)   ( (x) ? e_t : e_false )
 
 /* MIN_REF is the most negative fixnum.  There is no corresponding
    positive fixnum, an asymmetry inherent in a twos complement
    representation. */
 
 #define MIN_REF     ((ref_t)(1<<(WORDSIZE-1)))
-#define MAX_REF ((ref_t)-((int32_t)MIN_REF+1))
+#define MAX_REF     ((ref_t)-((int32_t)MIN_REF+1))
 
 /* Check if high three bits are equal. */
+
 /*
-   #define OVERFLOWN_INT(i,code)                                        \
-   { register highcrap = ((unsigned long)(i)) >> (WORDSIZE-3);  \
-   if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
- */
+#define OVERFLOWN_INT(i,code)					\
+{ register int highcrap						\
+	= ((u_int32_t)(i)) >> (WORDSIZE-(TAGSIZE+1));		\
+if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
+*/
+
 /* The following is for 32-bit ref_t only */
-#define OVERFLOWN_INT(i,code)	\
-{ u_int32_t highcrap = i & 0xe0000000;	\
+
+#define OVERFLOWN_INT(i,code)					\
+{ u_int32_t highcrap = (i) & 0xe0000000;			\
 if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 
 /*
@@ -351,11 +311,11 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 /* This is used to allocate some storage */
 
 #define ALLOCATE_SS(p, words, reason)			\
-  ALLOCATE_PROT(p, words, reason,				\
-		{ value_stack.sp = local_value_sp;			\
+  ALLOCATE_PROT(p, words, reason,			\
+		{ value_stack.sp = local_value_sp;	\
           context_stack.sp = local_context_sp;		\
-		  e_pc = local_epc; },					\
-		{ local_epc = e_pc;						\
+		  e_pc = local_epc; },			\
+		{ local_epc = e_pc;			\
           local_context_sp = context_stack.sp;		\
 		  local_value_sp = value_stack.sp; })
 
@@ -363,48 +323,36 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 /* This allocates some storage, assuming that v must be protected from gc. */
 
 #define ALLOCATE1(p, words, reason, v)			\
-  ALLOCATE_PROT(p, words, reason,				\
-		{ GC_MEMORY(v);							\
-		  value_stack.sp = local_value_sp;			\
+  ALLOCATE_PROT(p, words, reason,			\
+		{ GC_MEMORY(v);				\
+		  value_stack.sp = local_value_sp;	\
           context_stack.sp = local_context_sp;		\
-		  e_pc = local_epc; },					\
-		{ local_epc = e_pc;						\
+		  e_pc = local_epc; },			\
+		{ local_epc = e_pc;			\
           local_context_sp = context_stack.sp;		\
-		  local_value_sp = value_stack.sp;			\
+		  local_value_sp = value_stack.sp;	\
 		  GC_RECALL(v); })
 
 
-#ifdef THREADS
 #define ALLOCATE_PROT(p, words, reason, before, after)	\
-{							                            \
-  while (pthread_mutex_trylock(&alloc_lock) != 0) {		\
-	  if (gc_pending) {									\
-		  before; wait_for_gc(); after;					\
-	  }													\
-  }														\
+{							\
+  THREADY(						\
+      while (pthread_mutex_trylock(&alloc_lock) != 0) {	\
+	      if (gc_pending) {				\
+		      before; wait_for_gc(); after;	\
+	      }						\
+      }							\
+  )							\
   if (free_point + (words) >= new_space.end)            \
-    {													\
-      before;											\
-      gc(false, false, (reason), (words));				\
-      after;											\
-    }													\
-  (p) = free_point;										\
-  free_point += (words);								\
-  pthread_mutex_unlock (&alloc_lock);					\
+    {							\
+      before;						\
+      gc(false, false, (reason), (words));		\
+      after;						\
+    }							\
+  (p) = free_point;					\
+  free_point += (words);				\
+  THREADY( pthread_mutex_unlock (&alloc_lock); )	\
 }
-#else
-#define ALLOCATE_PROT(p, words, reason, before, after)	\
-{							                            \
-  if (free_point + (words) >= new_space.end)            \
-    {													\
-      before;											\
-      gc(false, false, (reason), (words));				\
-      after;											\
-    }													\
-  (p) = free_point;										\
-  free_point += (words);						       }
-
-#endif
 
 /* These get slots out of Oaklisp objects, and may be used as lvalues. */
 
@@ -419,6 +367,7 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 
 
 #ifdef THREADS
+
 #define reg_set register_array[my_index]
 #define value_stack (*value_stack_array[my_index])
 #define context_stack (*cntxt_stack_array[my_index])
@@ -438,12 +387,17 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
   (  (reg_set->e_nargs)  )
 #define e_process \
   (  (reg_set->e_process)  )
+
 #else
-register_set_t* reg_set;
+
+extern register_set_t* reg_set;
 #define value_stack_address &value_stack
 #define context_stack_address &context_stack
-#endif
 
 #endif
 
+extern int create_thread(ref_t start_method);
 
+extern register_set_t* register_array[];
+
+#endif

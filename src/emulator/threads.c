@@ -1,11 +1,12 @@
-#include "threads.h"
-#include "xmalloc.h"
-#include "stacks.h"
-#include "loop.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
+#include "threads.h"
+#include "xmalloc.h"
+#include "stacks.h"
+#include "loop.h"
+#include "gc.h"
 
 #ifdef THREADS
 int next_index = 0;
@@ -46,6 +47,7 @@ int create_thread(ref_t start_operation)
     info_p->start_operation = start_operation;
     info_p->parent_index = *((int *)pthread_getspecific(index_key));
     info_p->my_index = index;
+    /* TODO: Check if thread is actually created !!! */
     pthread_create(&new_thread, NULL,
 		   (void *)init_thread, (void *)info_p);
     return 1;

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <wait.h>
+#include <pthread.h>
 #include "config.h"
 #include "data.h"
 #include "cmdline.h"
@@ -16,8 +17,6 @@
 #include "worldio.h"
 #include "loop.h"
 #include "xmalloc.h"
-#include "threads.h"
-#include <pthread.h>
 
 int
 get_byte_gender(void)
@@ -31,6 +30,8 @@ get_byte_gender(void)
   else
     return big_endian;
 }
+
+
 
 int
 main(int argc, char **argv)
@@ -60,9 +61,11 @@ main(int argc, char **argv)
   gc_examine_ptr = gc_examine_buffer;
 #endif
 
- parse_cmd_line (argc, argv);
+  byte_gender = get_byte_gender();
 
-  init_weakpointer_tables ();
+  parse_cmd_line(argc, argv);
+
+  init_weakpointer_tables();
 
   init_stacks();
 
@@ -96,26 +99,3 @@ main(int argc, char **argv)
 
   return 0;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

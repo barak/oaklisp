@@ -12,7 +12,6 @@
 #include "config.h"
 #include "data.h"
 #include "xmalloc.h"
-#include "threads.h"
 
 
 

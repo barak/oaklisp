@@ -13,22 +13,21 @@
 #include "data.h"
 #include "cmdline.h"
 #include "xmalloc.h"
-#include "threads.h"
+#include "stacks.h"
 
-enum
-  {
-    FLAG_ARG = 0,
-    HELP_ARG,
-    WORLD_ARG,
-    DUMP_ARG,
-    DUMP_BASE_ARG,
-    PREDUMP_GC_ARG,
-    HEAP_ARG,
-    VALSIZ_ARG,
-    CXTSIZ_ARG,
-    MAX_SEG_ARG,
-    VERBOSE_GC_ARG,
-  };
+enum {
+  FLAG_ARG = 0,
+  HELP_ARG,
+  WORLD_ARG,
+  DUMP_ARG,
+  DUMP_BASE_ARG,
+  PREDUMP_GC_ARG,
+  HEAP_ARG,
+  VALSIZ_ARG,
+  CXTSIZ_ARG,
+  MAX_SEG_ARG,
+  VERBOSE_GC_ARG,
+};
 
 
 void
@@ -43,7 +42,6 @@ usage(char *prog)
 	  "\n"
 	  "\t--help               print this message and terminate\n"
 	  "\n"
-	  /* "\t--audit [file]\n" */
 	  "\t--world file         file is world to load\n"
 	  "\t--dump file          dump world to file upon exit\n"
 	  "\t--d file             synonym for --dump\n"
@@ -73,10 +71,12 @@ usage(char *prog)
 	  "\n"
 	  "    oaklisp options:\n"
 	  "\n"
-	  "\tsee users manual, or type (MAP CAR COMMANDLINE-OPTIONS)\n"
-	  "\tto a running oaklisp\n"
+	  "\tTry \"man oaklisp\" or run \"%s -- --help\"\n"
 	  "\n",
-	  prog, DEFAULT_NEWSPACE);
+
+	  /* "\type (MAP CAR COMMANDLINE-OPTIONS) to a running oaklisp\n" */
+
+	  prog, DEFAULT_NEWSPACE, prog);
 }
 
 
@@ -105,6 +105,10 @@ parse_cmd_line(int argc, char **argv)
   int retval, option_index = 0;
 
 #ifdef THREADS
+  /* This is so value_stack.size and value_stack.filltarget can be set.
+     Something is wrong because these should apply to all threads even the first, so they
+     shouldn't need to know anything about threads ... ?
+   */
   int my_index;
   int *my_index_p;
   my_index_p = pthread_getspecific (index_key);

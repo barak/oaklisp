@@ -42,19 +42,6 @@
 #define _CONFIG_H_INCLUDED
 
 
-/* Speed parameters */
-
-/* Turn off most runtime debugging features that slow down the system. */
-// #define FAST
-
-/* Toggle specific optimizations. */
-
-/* Activate operation-method association list move-to-front. */
-/* #define OP_METH_ALIST_MTF */
-
-/* Activate operation-type method cache. */
-/* #define OP_TYPE_METH_CACHE */
-
 
 #if defined(linux) && defined (__GNUC__) && defined(i386)
 /*** Linux with GCC on Intel target ***/
@@ -68,6 +55,19 @@
 #define MAX_THREAD_COUNT 200
 
 #include <unistd.h>		/* for the chdir() and isatty() functions */
+
+
+#elif defined(linux) && defined (__GNUC__) && defined(__mc68000__)
+/*** Linux with GCC on m68k target ***/
+
+#define WORDSIZE 32
+#define HAVE_LONG_LONG
+#define ASHR2(x) ((x)>>2)
+#define BYTE_GENDER big_endian
+#define HAVE_GETRUSAGE
+
+#include <unistd.h>             /* for the chdir() and isatty() functions */
+
 
 #elif defined(sun) && defined(__GNUC__)
 /*** Sun with GCC ***/
@@ -168,6 +168,24 @@
 #else
 /*** no machine specified ***/
 #error must edit config.h
+#endif
+
+/* Speed parameters */
+
+/* Turn off most runtime debugging features that slow down the system. */
+// #define FAST
+
+
+/* Toggle specific optimizations. */
+
+/* Activate operation-method association list move-to-front. */
+#ifndef THREADS
+#define OP_METH_ALIST_MTF
+#endif
+
+/* Activate operation-type method cache. */
+#ifndef THREADS
+#define OP_TYPE_METH_CACHE
 #endif
 
 #endif
