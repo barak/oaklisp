@@ -438,8 +438,7 @@ futures: promises in a multitasking world
 
 (define-syntax future
   (lambda (form)
-    (let ((foosym (genvar)))
-      `(let ((,foosym (delay ,form)))
-	 (process-run-fn force (list ,foosym))
-	 foo))))
+    `(let ((foosym (delay ,form)))
+       (process-run-fn force (list foosym))
+       foosym))))
 
