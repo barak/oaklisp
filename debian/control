@@ -2,7 +2,7 @@ Source: oaklisp
 Section: interpreters
 Priority: optional
 Maintainer: Barak Pearlmutter <bap@debian.org>
-Standards-Version: 3.5.10
+Standards-Version: 3.6.0
 Build-depends: oaklisp, debhelper, tetex-extra
 
 Package: oaklisp
