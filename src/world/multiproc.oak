@@ -77,15 +77,10 @@ after the 64th for now.
 
 (define (fluid *number-of-processes*) 64) ;; limited by the number of mutex flags
 
-;;--------------------------------------------------
-;; bootstrap initial process
-;;--------------------------------------------------
 (add-method (initialize (process pid) self)
   (set! pid 0)
   ;; (set! fluid-binding-list (copy-fluid-bindings))
   self)
-(%store-process (make process))
-;;--------------------------------------------------
 
 (add-method (process-id (process pid) self)
   pid)
@@ -177,11 +172,18 @@ the rest of the multithreading system has been tested.
     (release-mutex *pid-counter-mutex*)
     newp))
 
-;; now redefine the initialization for processes after the first...
-(add-method (initialize (process pid) self)
-  (set! pid (new-pid))
-  ;; (set! fluid-binding-list (copy-fluid-bindings))
-  self)
+;;--------------------------------------------------
+;; bootstrap initial process and redefine initialization
+;; redefine the initialization for processes after the first...
+;;--------------------------------------------------
+(define (setup-initial-process-object)
+  (%store-process (make process))
+  (add-method (initialize (process pid) self)
+    (set! pid (new-pid))
+    ;; (set! fluid-binding-list (copy-fluid-bindings))
+    self)
+  (%load-process))
+;;--------------------------------------------------
 
 ;;; testandset.oak
 

@@ -48,7 +48,7 @@ size_t original_newspace_size = 128 * 1024;
 ref_t *e_bp, *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type,
   e_env_type, *e_subtype_table, e_object_type, e_segment_type, e_boot_code,
   e_code_segment, *e_arged_tag_trap_table, *e_argless_tag_trap_table, e_current_method,
-  e_uninitialized, e_method_type, e_operation_type;
+  e_uninitialized, e_method_type, e_operation_type, e_process;
 
 size_t e_next_newspace_size;
 size_t original_newspace_size = DEFAULT_NEWSPACE * 1024;

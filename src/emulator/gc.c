@@ -405,8 +405,8 @@ gc (bool pre_dump, bool full_gc, char *reason, size_t amount)
 {
   long old_taken;
   ref_t *p;
-  bool ready=false;
 #ifdef THREADS
+  bool ready=false;
   int my_index;
   int i;
   int *my_index_p;
@@ -501,7 +501,7 @@ gc_top:
 #endif
 	GC_TOUCH (e_code_segment);
 	GC_TOUCH (e_current_method);
-        GC_TOUCH (e_process);
+	GC_TOUCH (e_process);
 #ifdef THREADS
 	}
 #endif
@@ -637,7 +637,7 @@ gc_top:
 #endif
 	GGC_CHECK (e_code_segment);
 	GGC_CHECK (e_current_method);
-        GGC_CHECK (e_process);
+	GGC_CHECK (e_process);
 #ifdef THREADS
 	}
 #endif
@@ -806,8 +806,8 @@ gc_top:
     my_index_p = pthread_getspecific (index_key);
     my_index = *my_index_p;
     gc_ready[my_index] = 0;
-#endif 
     set_gc_flag (false);
+#endif 
 }
 
 
