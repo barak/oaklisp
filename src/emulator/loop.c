@@ -29,6 +29,8 @@
 #pragma IMS_linkage ("section%loop")
 #endif
 
+#define ENABLE_TIMER	0
+
 
 #ifdef FAST
 
@@ -191,6 +193,10 @@ loop(void)
   = &value_stack.bp[value_stack_size];
   u_int16_t *local_epc = e_pc;
 
+#if ENABLE_TIMER
+  unsigned timer_counter = 0;
+#endif
+
 
   /* This fixes a bug in which the initial CHECK-NARGS 
      in the boot code tries to pop the operation and fails. */
@@ -224,10 +230,20 @@ loop(void)
 
 
 #ifndef _ICC
-#define POLL_SIGNALS()	if (signal_poll_flag) {goto intr_trap;}
+#define POLL_USER_SIGNALS()	if (signal_poll_flag) {goto intr_trap;}
 #else
-#define POLL_SIGNALS()
+#define POLL_USER_SIGNALS()
 #endif
+
+#if ENABLE_TIMER
+#define TIMEOUT	200000
+#define POLL_TIMER_SIGNALS()	if (timer_counter > TIMEOUT) {goto intr_trap;}
+#else
+#define POLL_TIMER_SIGNALS()
+#endif
+
+#define POLL_SIGNALS()		POLL_USER_SIGNALS() ;		\
+				POLL_TIMER_SIGNALS()
 
   /* This is the big instruction fetch/execute loop. */
 
@@ -261,6 +277,15 @@ loop(void)
        DUMP_CONTEXT_STACK ();
 #endif
 
+#if ENABLE_TIMER
+   /*
+     if (++timer_counter > 200000) {
+	 timer_counter = 0;
+	 printf("*Bing*");
+     }
+   */
+     timer_counter++;
+#endif
 
      instr = *local_epc++;
 
@@ -2002,7 +2027,31 @@ intr_trap:
 /*************/
 
   /* clear signal */
-  signal_poll_flag = 0;
+/*signal_poll_flag = 0;*/
+  if (signal_poll_flag) {
+    /* We notify Oaklisp of the user trap by telling it that a noop
+       instruction failed.  The Oaklisp trap code must be careful to
+       return nothing extra on the stack, and to restore NARGS
+       properly.  It is passed the old NARGS. */
+
+    /* the NOOP instruction. */
+      arg_field = op_field = instr = 0;
+      signal_poll_flag = 0;
+#if ENABLE_TIMER
+  } else if (timer_counter > TIMEOUT) {
+    /* We notify Oaklisp of a timeout trap by telling it that an
+       "alarm" instruction failed.  This instruction, bound to
+       arg_field 127, does not really exist.  There is, however,
+       a handler function bound to that trap. */
+      arg_field = 127;
+      op_field = 0;
+      instr = (127 << 8);
+      timer_counter = 0;
+#endif
+  } else {
+    /* How did we get here?  Just do a user trap to get to the debugger. */
+      arg_field = op_field = instr = 0;
+  }
 
 
 #ifndef FAST
@@ -2011,14 +2060,6 @@ intr_trap:
 	    op_field, arg_field);
 
 #endif
-  /* We notify Oaklisp of the user trap by telling it that a noop
-     instruction failed.  The Oaklisp trap code must be careful to
-     return nothing extra on the stack, and to restore NARGS
-     properly.  It is passed the old NARGS. */
-
-  /* the NOOP instruction. */
-  arg_field = op_field = instr = 0;
-
   /* Back off of the current intruction so it will get executed 
      when we get back from the trap code. */
   local_epc--;

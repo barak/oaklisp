@@ -157,6 +157,8 @@
     apropos
     time
     ;; pretty-print
+
+    alarm
     ))
 
 (define compiler-files
