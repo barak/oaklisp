@@ -28,26 +28,11 @@
 
 (set! (fluid fancy-references) #t)
 
-(define (make-initialized-vector n initial-element)
-  (let ((v (make simple-vector n)))
-    (dotimes (i n) (set! (nth v i) initial-element))
-    v))
-
 (define-syntax (until test . body)
   `(labels ((fn (lambda ()
 	       ,@body
 	       (if ,test #t (fn)))))
      (fn)))
-
-(define-syntax (without-interrupts . body)
-  `(wind-protect (%disable-alarms)
-		 (progn ,@body)
-		 (%enable-alarms)))
-
-(define (copy-list l)
-  (if (list? l)
-      (cons (copy-list (car l)) (copy-list (cdr l)))
-      l))
 
 ;;; process.oak
 
@@ -61,21 +46,13 @@ running the task.
 The count of process id number is protected by a mutex, however, which
 requires that some process already be running. The first process is 
 created before mutexes are defined, therefore, and so initialization
-of this class is redefined after the first one is made. See process2.oak
-for more code.
-
-Note the rather primitive fluid binding of the maximum number of processes.
-This is inadequate in a futures system, but for now mutexes have an array
-of flags that is indexed by the process id number. It will be fixed after
-everything else is working, and we'll just have to not create new processes
-after the 64th for now.
+of this class is redefined after the first one is made (as a warm boot
+action). See process2.oak for more code.
 
 |#
 
 (define-instance process type '(pid fluid-binding-list) (list object))
 (define-instance process-id operation)
-
-(define *number-of-processes* 64) ;; limited by the number of mutex flags
 
 (add-method (initialize (process pid) self)
   (set! pid 0)
@@ -108,59 +85,30 @@ list.
 A process had better not release a mutex it has not acuired, for obvious
 reasons.
 
-This implementation requires a list of flags, one for each process that might
-acquire the mutex. Since this requires a predefined limit on the number of
-processes, we will probably move to a barbershop (take-a-number) mutex after
-the rest of the multithreading system has been tested.
+This implementation uses a low-level testandsetcar opcode which is atomic
+even between heavyweight threads. The mutex has a cons cell that controls
+access to the critical section between an arbitrary number of asynchronous
+tasks, which is important in a future system with no reasonable bounds on
+the number of processes.
+
+testandsetcar is a spin-lock, so mutexes are too. Semaphores should be used
+when possible since the amount of busy waiting will be lessened.
 |#
 
-(define-instance mutex type '(flags turn) (list object))
+(define-instance mutex type '(access-cons) (list object))
 
-(define-instance acquire-mutex-pid operation)
-(define-instance release-mutex-pid operation)
+(define-instance acquire-mutex operation)
+(define-instance release-mutex operation)
 
-(add-method (initialize (mutex flags turn) self)
-  (set! turn 0)
-  (set! flags (make-initialized-vector *number-of-processes* 'idle))
+(add-method (initialize (mutex access-cons) self)
+  (set! access-cons (cons nil nil))
   self)
 
-; for debugging purposes only...
-(define-instance flag operation)
-(define-instance nturn operation)
-(add-method (flag (mutex flags turn) self) flags)
-(add-method (nturn (mutex flags turn) self) turn)
+(add-method (acquire-mutex (mutex access-cons) self)
+  (until (testandsetcar access-cons)))
 
-(add-method (acquire-mutex-pid (mutex flags turn) self pid)
-  (let ((j 0)
-	(i pid))
-    (until (and (>= j *number-of-processes*)
-		(or (= turn i) (eq? (nth flags turn) 'idle)))
-	   (set! (nth flags i) 'want-in)
-	   (set! j turn)
-	   (while (not (= j i))
-		  (if (not (eq? (nth flags j) 'idle))
-		      (set! j turn)
-		      (set! j (modulo (+ j 1) *number-of-processes*))))
-	   (set! (nth flags i) 'in-cs)
-	   (set! j 0)
-	   (while (and (< j *number-of-processes*)
-		       (or (= j i)
-			   (not (eq? (nth flags j) 'in-cs))))
-		  (set! j (+ j 1))))
-    (set! turn i)))
-(define (acquire-mutex self)
-  (acquire-mutex-pid self (process-id (current-process))))
-
-; this should make sure the current process owns the mutex, at the very least
-(add-method (release-mutex-pid (mutex flags turn) self pid)
-  (let ((i pid)
-	(j (modulo (+ 1 turn) *number-of-processes*)))
-    (while (eq? (nth flags j) 'idle)
-	   (set! j (modulo (+ j 1) *number-of-processes*)))
-    (set! turn j)
-    (set! (nth flags i) 'idle)))
-(define (release-mutex self)
-  (release-mutex-pid self (process-id (current-process))))
+(add-method (release-mutex (mutex access-cons) self)
+  (set-car access-cons nil))
 
 ;;; process2.oak
 
@@ -198,7 +146,12 @@ the rest of the multithreading system has been tested.
 
 test-and-set in terms of mutexes. when the test (a predicate on the
 test-and-settable object) is true, the new value is assigned and returned,
-otherwise #f is returned
+otherwise #f is returned.
+
+This is NOT the same as testandsetcar behavior, where the only predicate
+is (essentially) null? and the only non-null value is #t; here the predicate
+can be any function and the set value can be any non-nil value (so that
+success/failure can be distinguished when the set value is returned).
 
 |#
 
@@ -246,13 +199,6 @@ because the scheduler is acquired whenever these things are happening, it
 (define *scheduleQ* (make-queue))
 (define *scheduleQ-mutex* (make mutex))
 
-(define (acquire-scheduler-pid pid)
-  (%disable-alarms)
-  (acquire-mutex-pid *scheduleQ-mutex* pid))
-(define (release-scheduler-pid pid)
-  (release-mutex-pid *scheduleQ-mutex* pid)
-  (%enable-alarms))
-
 (define (acquire-scheduler)
   (%disable-alarms)
   (acquire-mutex *scheduleQ-mutex*))
@@ -266,15 +212,14 @@ because the scheduler is acquired whenever these things are happening, it
 	   *scheduleQ*)
   (release-scheduler))
 (define (start)
-  (let ((next nil)
-	(pid (process-id (current-process))))
-    (acquire-scheduler-pid pid)
+  (let ((next nil))
+    (acquire-scheduler)
     (if (qempty? *scheduleQ*)
 	'()
 	(set! next (dequeue *scheduleQ*)))
     (when next (%store-process (car next))) ;; fix process register and proceed
     (%reset-alarm-counter)
-    (release-scheduler-pid pid) ;; using the process prior to the %store-process call
+    (release-scheduler)
     (when next ((cdr next)))))
 
 #|
@@ -291,7 +236,7 @@ on lwp and start being atomic
 (define (pause)
   (let ((next nil)
 	(pid (process-id (current-process))))
-    (acquire-scheduler-pid pid)
+    (acquire-scheduler)
     (call/cc
      (lambda (k)
        ;; (lwp (lambda () (k #f)))
@@ -304,7 +249,7 @@ on lwp and start being atomic
 	   (set! next (dequeue *scheduleQ*)))
        (when next (%store-process (car next))) ;; fix process register and proceed
        (%reset-alarm-counter)
-       (release-scheduler-pid pid) ;; using the process prior to the %store-process call
+       (release-scheduler)
        (when next ((cdr next)))))))
 
 ;; no longer calls lwp because this must create a new process object
