@@ -1216,32 +1216,38 @@ loop(ref_t initial_tos)
 #endif
 	      GOTO_TOP;
 
-	    case 71:		/* TEST-AND-SET-CAR */
-	      CONSINSTR(1);
-	      y = car(x);
-	      if (y != e_false) { /* Fails test. */
+	    case 71:		/* TEST-AND-SET-LOCATIVE */
+	      POPVAL(x);
+	      CHECKTAG1(x, LOC_TAG, 2);
+	      POPVAL(y);
+	      if (*LOC_TO_PTR(x) != y) {
+		// fail
 		PEEKVAL() = e_false;
 		GOTO_TOP;
 	      }
-#ifdef THREADS
+#ifndef THREADS
+	      *LOC_TO_PTR(x) = PEEKVAL();
+	      PEEKVAL() = e_t;
+	      GOTO_TOP;
+#else
 	      if (pthread_mutex_trylock(&testandsetcar_lock) != 0) {
-		PEEKVAL() = e_nil;	/* Can't aquire lock. */
+		PEEKVAL() = e_nil;	/* Failed to acquire lock. */
 		GOTO_TOP;
 	      }
-#endif
-	      /* In Critical Section.  Don't GOTO_TOP. */
-	      if (y == e_nil) {
-		*(pcar(x)) = e_t;
-		PEEKVAL() = e_t;
+	      /* Start Critical Section. */
+	      if (*(volatile ref *)LOC_TO_PTR(x) != y) {
+		// fail
+		PEEKVAL() = e_false;
 	      } else {
-		PEEKVAL() = e_nil;
+		// succeed
+		*LOC_TO_PTR(x) = PEEKVAL();
+		PEEKVAL() = e_t;
 	      }
-#ifdef THREADS
 	      pthread_mutex_unlock(&testandsetcar_lock);
-#endif
-	      /* Out of Critical Section. */
-
+	      /* End Critical Section. */
 	      GOTO_TOP;
+#endif
+
 
 #ifndef FAST
 	    default:

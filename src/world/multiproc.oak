@@ -100,16 +100,14 @@
 ;;; A process had better not release a mutex it has not acuired, for
 ;;; obvious reasons.
 
-;;; This implementation uses a low-level %test-and-set-car opcode
-;;; which is atomic even between heavyweight threads. The mutex has a
-;;; cons cell that controls access to the critical section between an
-;;; arbitrary number of asynchronous tasks, which is important in a
-;;; future system with no reasonable bounds on the number of
-;;; processes.
+;;; This implementation uses a low-level %TEST-AND-SET-LOCATIVE opcode
+;;; which is atomic.  The mutex has a location that controls access to
+;;; the critical section between an arbitrary number of asynchronous
+;;; tasks, which is important in a future system with no reasonable
+;;; bounds on the number of processes.
 
-;;; %test-and-set-car is a spin-lock, so mutexes are too. Semaphores
-;;; should be used when possible since the amount of busy waiting will
-;;; be lessened.
+;;; %TEST-AND-SET-LOCATIVE is used to create a spin-lock, so mutexes
+;;; spin lock too.  Hence semaphores should be used when possible.
 
 
 (define-instance mutex type '(access-cons) (list object))
@@ -122,7 +120,7 @@
   self)
 
 (add-method (acquire-mutex (mutex access-cons) self)
-  (until (%test-and-set-car access-cons)))
+  (until (%test-and-set-locative (car access-cons) #f #t)))
 
 (add-method (release-mutex (mutex access-cons) self)
   (set! (car access-cons) nil))
@@ -166,7 +164,7 @@
 ;;; testandset.oak
 
 
-;;; test-and-set in terms of mutexes. when the test (a predicate on
+;;; Test-and-set in terms of mutexes.  When the test (a predicate on
 ;;; the test-and-settable object) is true, the new value is assigned
 ;;; and returned, otherwise #f is returned.
 

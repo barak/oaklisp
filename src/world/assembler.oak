@@ -364,6 +364,7 @@
 ;;  in0
 ;;  in1
 ;;  in2
+;;  in3
 ;;  inn (number consumed determined by inline argument)
 ;;  out0
 ;;  out1
@@ -501,7 +502,7 @@
 (define-opcode disable-alarms		(0 68) in0 out1 ns)
 (define-opcode reset-alarm-counter	(0 69) in0 out1 ns)
 (define-opcode make-heavyweight-thread	(0 70) in1 out0 ns)
-(define-opcode test-and-set-car		(0 71) in1 out1 ns)
+(define-opcode test-and-set-locative	(0 71) in3 out1 ns)
 
 
 

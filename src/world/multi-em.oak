@@ -38,14 +38,11 @@
 	       (object) value)
 	      (%store-process value)))
 
-;;
-;; An atomic operation that test the car of a cons cell and sets it to
-;; t if the value is currently nil.  Only one heavyweight thread may
-;; run this method at once.  If the previous car was nil and was set to
-;; t, then t is returned.  Otherwise nil is returned.  Note that a
-;; return value of nil does not guarantee that the car is not nil.
-;;
-(define-constant %test-and-set-car
-  (add-method ((make-open-coded-operation '((test-and-set-car)) 1 1)
-	       (object) cons-cell)
-	      (%test-and-set-car cons-cell)))
+;; An atomic operation that tests the value in a locative and sets it
+;; to NEW if the value is currently OLD.  A boolean is returned to
+;; indicate success or failure.
+
+(define-constant %test-and-set-locative
+  (add-method ((make-open-coded-operation '((test-and-set-locative)) 3 1)
+	       (locative) loc old new)
+	      (%test-and-set-locative loc old new)))
