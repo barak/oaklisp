@@ -1,3 +1,20 @@
+% This file is part of Oaklisp.
+%
+% This program is free software; you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation; either version 2 of the License, or
+% (at your option) any later version.
+%
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+%
+% The GNU GPL is available at http://www.gnu.org/licenses/gpl.html
+% or from the Free Software Foundation, 59 Temple Place - Suite 330,
+% Boston, MA 02111-1307, USA
+
+
 \chapter{Stack Machine Architecture}
 
 
@@ -86,7 +103,7 @@ need for it to be modified from the Oaklisp level.
 
 \section{Instruction Set}
 The instructions follow the same argument order conventions as the
-language itself.  For example, \texttt{(\df{store-loc} \em loc ref \tt)}
+language itself.  For example, \texttt{(\df{store-loc} \emph{loc ref})}
 expects to get \emph{loc} on the top of the value stack and \emph{ref}
 below it.  The instruction format
 \begin{center} \begin{tabular}{|c|c|c|}\hline

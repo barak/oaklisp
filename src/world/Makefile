@@ -1,3 +1,19 @@
+# This file is part of Oaklisp.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# The GNU GPL is available at http://www.gnu.org/licenses/gpl.html
+# or from the Free Software Foundation, 59 Temple Place - Suite 330,
+# Boston, MA 02111-1307, USA
+
 # This value of prefix will usually be overridden
 prefix=/usr/local
 
@@ -56,7 +72,7 @@ oakworld-3.bin: oakworld-2.bin $(COMPFILES)
 oakworld.bin: oakworld-3.bin $(RNRSFILES)
 	$(OAK) $(OAKFLAGS) --world oakworld-3.bin --dump $@ \
 	-- \
-	-eval '(define-instance scheme-locale locale (list system-locale))'\
+	--eval '(define-instance scheme-locale locale (list system-locale))'\
 	--locale scheme-locale \
 	$(foreach f, $(RNRSFILES:.oa=), --load $(f)) \
 	--locale system-locale --exit
@@ -69,9 +85,12 @@ Makefile-vars: $(MAKEFILES) $(FILESFILES)
 	   --load files --load make-makefile --eval '(make-makefile "$@")' \
 	   --exit
 
+d=$(DESTDIR)$(prefix)/lib/oaklisp
+
 .PHONY: install
 install: oakworld.bin
-	cp -a $^ $(DESTDIR)$(prefix)/lib/oaklisp/
+	mkdir --parents $d
+	cp -a $^ $d/
 
 .PHONY: clean
 clean: clean-oa-files

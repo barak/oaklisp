@@ -3,9 +3,25 @@
 .SH NAME
 oaklisp \- An implementation of the Oaklisp language
 
+\" This file is part of Oaklisp.
+\" 
+\" This program is free software; you can redistribute it and/or modify
+\" it under the terms of the GNU General Public License as published by
+\" the Free Software Foundation; either version 2 of the License, or
+\" (at your option) any later version.
+\" 
+\" This program is distributed in the hope that it will be useful,
+\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+\" GNU General Public License for more details.
+\" 
+\" The GNU GPL is available at http://www.gnu.org/licenses/gpl.html
+\" or from the Free Software Foundation, 59 Temple Place - Suite 330,
+\" Boston, MA 02111-1307, USA
+
 .SH SYNOPSIS
 .B oaklisp
-[ emulator-switches ... [ -- oaklisp-switches ... ]]
+[ emulator-options ... [ -- oaklisp-options ... ]]
 
 .SH DESCRIPTION
 .I Oaklisp
@@ -150,7 +166,12 @@ routines from a running Oaklisp.  (Again, there are a couple
 implementations of foreign function interfaces which are not merged
 in.)
 
-Bug reports and enhancements should be sent to bap@cs.unm.edu.
+The memory format does not support uninterpreted "blobs".
+
+Porting the system to 64-bit machines has not been done, and would be
+quite difficult.
+
+Bug reports and enhancements should be sent to barak@cs.may.ie.
 
 .SH REFERENCES
 
@@ -188,13 +209,12 @@ both online, as an MIT technical report, and in SIGPLAN Notices.
 The
 .I Oaklisp
 copyright belongs to its authors.  It is distributed under the
-.I GNU General Public License version 2,
+.I GNU General Public License,
 a copy of which is included in the source distribution in the file
 .I COPYING.
 For further information or to make alternate arrangements please
 contact the authors, who are surprisingly reasonable people.
 
-
 .SH AUTHOR
-Oaklisp was originally written and documented by Barak Pearlmutter and
-Kevin Lang.
+Oaklisp was originally designed, implemented, and documented by Barak
+A. Pearlmutter and Kevin J. Lang.

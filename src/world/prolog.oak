@@ -1,4 +1,21 @@
-;;;;;;; Copyright (C) 1990,1993 Barak A. Pearlmutter & Kevin J. Lang ;;;;;;;;;;;;;;;
+;;; This file is part of Oaklisp.
+;;;
+;;; This program is free software; you can redistribute it and/or modify
+;;; it under the terms of the GNU General Public License as published by
+;;; the Free Software Foundation; either version 2 of the License, or
+;;; (at your option) any later version.
+;;;
+;;; This program is distributed in the hope that it will be useful,
+;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;; GNU General Public License for more details.
+;;;
+;;; The GNU GPL is available at http://www.gnu.org/licenses/gpl.html
+;;; or from the Free Software Foundation, 59 Temple Place - Suite 330,
+;;; Boston, MA 02111-1307, USA
+
+
+;;;; Copyright (C) 1993 Barak A. Pearlmutter & Kevin J. Lang
 
 
 ;;; The "relation" is the main interface between normal Oaklisp and
@@ -247,7 +264,7 @@
 
 
 
-;;; In Oaklisp logic variables can be integrated with the rest of the
+;;; Logic variables can be integrated with the rest of the Oaklisp
 ;;; language in a principled way.  In this file we first define a new
 ;;; kind of forcible object, a logic variable, and then use it to
 ;;; write a general unifier with the ability to back out of
