@@ -205,7 +205,7 @@
 
 (define-syntax (bind clauses . body)
   (let ((place1 (genvar)) (place2 (genvar)))
-    `(let* ((,place1 (make-locative fluid-binding-list))
+    `(let* ((,place1 (make-locative (get-current-fluid-bindings place1))
 	    (,place2 (contents ,place1)))
        ,(if (null? clauses)
 	    'nil

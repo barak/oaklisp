@@ -53,6 +53,9 @@ action). See process2.oak for more code.
 
 (define-instance process type '(pid process-fluid-binding-list) (list object))
 (define-instance process-id operation)
+(define-instance get-fluid-bindings operation)
+(define-instance get-current-fluid-bindings operation)
+(define-instance copy-fluid-bindings operation)
 
 (add-method (initialize (process pid process-fluid-binding-list) self)
   (set! pid 0)
@@ -66,6 +69,18 @@ action). See process2.oak for more code.
 
 (define (current-process)
   (%load-process))
+
+(add-method (get-fluid-bindings (process process-fluid-binding-list) self)
+   process-fluid-binding-list)
+
+(add-method (get-current-fluid-bindings (symbol) self)
+   (let ((z (current-process)))
+     (if (= z 0) fluid-binding-list
+	 (get-fluid-bindings z))))
+
+(add-method (copy-fluid-bindings (process process-fluid-binding-list) self)
+  (map (lambda (z)(cons (car z)(cdr z)))
+       process-fluid-binding-list))
 
 ;;; mutex.oak
 
@@ -130,6 +145,7 @@ when possible since the amount of busy waiting will be lessened.
 ;;--------------------------------------------------
 ;; bootstrap initial process and redefine initialization
 ;; redefine the initialization for processes after the first...
+;; redefine fluid operations ater the first...
 ;;--------------------------------------------------
 (define (setup-initial-process-object)
   (%store-process (make process))
@@ -138,6 +154,32 @@ when possible since the amount of busy waiting will be lessened.
     (set! process-fluid-binding-list 
 	  (copy-fluid-bindings (current-process)))
     self)
+#|
+  (add-method (%fluid (symbol) sym)
+    (iterate aux ()
+       (let ((x (%assq sym (get-fluid-bindings (current-process)))))
+	 (cond (x => cdr)
+	       (else (cerror
+		      (format #f "Try looking up (FLUID ~S) again." sym)
+		      "(FLUID ~S) not found." sym)
+		     (aux))))))
+  (add-method ((setter %fluid) (symbol) sym val)
+    (let ((x (%assq sym (get-fluid-bindings (current-process)))))
+     (cond (x (set! (cdr x) val))
+	   (else (set! (cdr top-level-fluid-binding-list)
+		       (cons (cons sym val)
+			     (cdr top-level-fluid-binding-list)))
+		 val))))
+  (add-method ((locater %fluid) (symbol) sym)
+    (iterate aux ()
+       (let ((x (%assq sym (get-fluid-bindings (current-process)))))
+	 (cond (x (make-locative (cdr x)))
+	       (else
+		(cerror
+		 (format #f "Try looking up (FLUID ~S) again." sym)
+		 "Locative to (FLUID ~S) not found." sym)
+		(aux))))))
+|# 
   (%load-process))
 
 ;;(add-warm-boot-action setup-initial-process-object)

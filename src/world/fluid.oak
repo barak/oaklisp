@@ -23,7 +23,7 @@
 
 (add-method (%fluid (symbol) sym)
   (iterate aux ()
-    (let ((x (%assq sym fluid-binding-list)))
+    (let ((x (%assq sym (get-current-fluid-bindings sym))))
       (cond (x => cdr)
 	    (else (cerror
 		   (format #f "Try looking up (FLUID ~S) again." sym)
@@ -31,7 +31,7 @@
 		  (aux))))))
 
 (add-method ((setter %fluid) (symbol) sym val)
-  (let ((x (%assq sym fluid-binding-list)))
+  (let ((x (%assq sym (get-current-fluid-bindings sym)))
     (cond (x (set! (cdr x) val))
 	  (else (set! (cdr top-level-fluid-binding-list)
 		     (cons (cons sym val)
@@ -40,7 +40,7 @@
 
 (add-method ((locater %fluid) (symbol) sym)
   (iterate aux ()
-    (let ((x (%assq sym fluid-binding-list)))
+    (let ((x (%assq sym (get-current-fluid-bindings sym)))
       (cond (x (make-locative (cdr x)))
 	    (else
 	     (cerror
