@@ -2,7 +2,7 @@
 ;; regression tests start here...
 
 (process-id (current-process))
-(%heavyweight-thread start-busy-work)
+(%make-heavyweight-thread start-busy-work)
 
 (define x (make mutex))
 (acquire-mutex x)

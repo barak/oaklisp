@@ -157,7 +157,8 @@
     self)
   (spawn-heavyweight-threads))
 
-(add-warm-boot-action setup-initial-process-object)
+;;; XXX removed to make it boot!!!
+;;; (add-warm-boot-action setup-initial-process-object)
 
 
 ;;--------------------------------------------------
@@ -306,7 +307,7 @@
 
 
 ;;; this is the function that bootstraps a new heavyweight process...
-;;; start new hw threads as (%heavyweight-thread start-busy-work)
+;;; start new hw threads as (%make-heavyweight-thread start-busy-work)
 ;;; THIS IS DONE AT WARM BOOT TIME AND SHOULD NOT BE DONE BY A USER
 
 (define (start-busy-work)
@@ -324,8 +325,8 @@
   (when (> heavyweight-thread-count 1)
     (format t "Spawning ~s pthreads.~%" heavyweight-thread-count)
     (dotimes (i (- heavyweight-thread-count 1))
-       (if (%heavyweight-thread start-busy-work) nil
-	   (format t "Could not start heavyweight thread ~s.~%" (+ i 1))))))
+       (unless (%make-heavyweight-thread start-busy-work)
+	  (format t "Could not start heavyweight thread ~s.~%" (+ i 1))))))
 
 ;;; semaphore.oak
 

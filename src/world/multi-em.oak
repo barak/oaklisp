@@ -13,10 +13,10 @@
 ;; This function returns t if the thread is created, nil if it could
 ;; not be created.
 ;;
-(define-constant %heavyweight-thread
-  (add-method ((make-open-coded-operation '((heavyweight-thread)) 1 1)
+(define-constant %make-heavyweight-thread
+  (add-method ((make-open-coded-operation '((make-heavyweight-thread)) 1 1)
 	       (object) target)
-	      (%heavyweight-thread target)))
+	      (%make-heavyweight-thread target)))
 
 ;;
 ;; Returns the variable stored in the "process" register.  Each virtual
