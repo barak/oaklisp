@@ -1,13 +1,10 @@
-
-
-
-
-
 /**********************************************************************
  *     Copyright (c) by Barak Pearlmutter and Kevin Lang, 1987-2000.  *
  *     Copyright (c) by Alex Stuebinger, 1998-99.                     *
  *     Distributed under the GNU General Public License v2 or later   *
  **********************************************************************/
+
+#define _REENTRANT
 
 #include <stddef.h>
 #include <stdlib.h>

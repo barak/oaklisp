@@ -5,7 +5,7 @@
 
 ;;; When an error occurs the appropriate type of error object is
 ;;; created, then the appropriate message to send to that guy is
-;;; looked up on the (fluid error-handlers) list, and then that
+;;; looked up on the #*error-handlers list, and then that
 ;;; message is sent to the error tail recursively, so if the method
 ;;; for that returns a value that's what the signal call returns.
 

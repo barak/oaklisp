@@ -1,3 +1,5 @@
+#define _REENTRANT
+
 #include "data.h"
 
 #ifndef FAST

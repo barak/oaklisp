@@ -95,7 +95,7 @@
       (lambda ()
 	(format #t
 		"
-Welcome to Oaklisp 1.3.1
+Welcome to Oaklisp 1.3.3
   Distributed under GNU General Public License v2 or later.
   See http://www.cs.unm.edu/~~bap/oaklisp/ for details.
 ")

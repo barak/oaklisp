@@ -26,7 +26,7 @@
 
 ;;; potpourri.oak
 
-(set! (fluid fancy-references) #t)
+(set! #*fancy-references #t)
 
 (define-syntax (until test . body)
   `(labels ((fn (lambda ()
@@ -36,31 +36,30 @@
 
 ;;; process.oak
 
-#|
+;;; This is the initial process object class. The current-process
+;;; object is stored in a register of the virtual machine for uniform
+;;; access from the task code independant of which virtual machine
+;;; (i.e. pthread) is running the task.
 
-This is the initial process object class. The current-process object
-is stored in a register of the virtual machine for uniform access from
-the task code independant of which virtual machine (i.e. pthread) is
-running the task.
-
-The count of process id number is protected by a mutex, however, which
-requires that some process already be running. The first process is 
-created before mutexes are defined, therefore, and so initialization
-of this class is redefined after the first one is made (as a warm boot
-action). See process2.oak for more code.
-
-|#
+;;; The count of process id number is protected by a mutex, however,
+;;; which requires that some process already be running. The first
+;;; process is created before mutexes are defined, therefore, and so
+;;; initialization of this class is redefined after the first one is
+;;; made (as a warm boot action). See process2.oak for more code.
 
 (define-instance process type '(pid process-fluid-binding-list) (list object))
 (define-instance process-id operation)
-(define-instance get-fluid-bindings operation)
-(define-instance set-fluid-bindings operation)
+(define-instance fluid-bindings settable-operation)
 (define-instance copy-fluid-bindings operation)
 
+(define trace-processes #t)
+
 (add-method (initialize (process pid process-fluid-binding-list) self)
+  (when trace-processes
+     (format #t "init: oak process descriptor~%"))
   (set! pid 0)
   (set! process-fluid-binding-list 
-	(map (lambda (z)(cons (car z)(cdr z)))
+	(map (lambda (z) (cons (car z) (cdr z)))
 	     fluid-binding-list))
   self)
 
@@ -70,46 +69,48 @@ action). See process2.oak for more code.
 (define (current-process)
   (%load-process))
 
-(add-method (get-fluid-bindings (process process-fluid-binding-list) self)
-   process-fluid-binding-list)
+(add-method (fluid-bindings (process process-fluid-binding-list) self)
+  process-fluid-binding-list)
 
-(add-method (set-fluid-bindings (process process-fluid-binding-list)
-				self new-fluid-binding-list)
-   (set! process-fluid-binding-list new-fluid-binding-list))
+(add-method ((setter fluid-bindings) (process process-fluid-binding-list)
+	     self new-fluid-binding-list)
+  (set! process-fluid-binding-list new-fluid-binding-list))
 
 (add-method (copy-fluid-bindings (process process-fluid-binding-list) self)
-  (map (lambda (z)(cons (car z)(cdr z)))
+  (map (lambda (z) (cons (car z) (cdr z)))
        process-fluid-binding-list))
 
 ;;; mutex.oak
 
-#|
-A solution to the critical section problem for multiple asynchronous 
-processes, which must have shared access to a set of access flags and a 
-contended turn value.
+;;; A solution to the critical section problem for multiple
+;;; asynchronous processes, which must have shared access to a set of
+;;; access flags and a contended turn value.
 
-This is supposed to be used to build higher-level access control objects,
-so that the amount of time spent using the lock to achive something is small
-and so processes will not have to be in busy waiting for very long.
+;;; This is supposed to be used to build higher-level access control
+;;; objects, so that the amount of time spent using the lock to achive
+;;; something is small and so processes will not have to be in busy
+;;; waiting for very long.
 
-In practice, if we get this system running across multiple processors and have
-a situation that we don't expect to tkae very long to resolve, this may be 
-adequate because the waiting process on another processor will not have to 
-context switch itself out and back in because of being put on some waiting 
-list.
+;;; In practice, if we get this system running across multiple
+;;; processors and have a situation that we don't expect to tkae very
+;;; long to resolve, this may be adequate because the waiting process
+;;; on another processor will not have to context switch itself out
+;;; and back in because of being put on some waiting list.
 
-A process had better not release a mutex it has not acuired, for obvious
-reasons.
+;;; A process had better not release a mutex it has not acuired, for
+;;; obvious reasons.
 
-This implementation uses a low-level %test-and-set-car opcode which is atomic
-even between heavyweight threads. The mutex has a cons cell that controls
-access to the critical section between an arbitrary number of asynchronous
-tasks, which is important in a future system with no reasonable bounds on
-the number of processes.
+;;; This implementation uses a low-level %test-and-set-car opcode
+;;; which is atomic even between heavyweight threads. The mutex has a
+;;; cons cell that controls access to the critical section between an
+;;; arbitrary number of asynchronous tasks, which is important in a
+;;; future system with no reasonable bounds on the number of
+;;; processes.
 
-%test-and-set-car is a spin-lock, so mutexes are too. Semaphores should be used
-when possible since the amount of busy waiting will be lessened.
-|#
+;;; %test-and-set-car is a spin-lock, so mutexes are too. Semaphores
+;;; should be used when possible since the amount of busy waiting will
+;;; be lessened.
+
 
 (define-instance mutex type '(access-cons) (list object))
 
@@ -141,11 +142,12 @@ when possible since the amount of busy waiting will be lessened.
     (release-mutex *pid-counter-mutex*)
     newp))
 
-;;--------------------------------------------------
-;; bootstrap initial process and redefine initialization
-;; redefine the initialization for processes after the first...
-;; redefine fluid operations ater the first...
-;;--------------------------------------------------
+;;; --------------------------------------------------
+;;; bootstrap initial process and redefine initialization
+;;; redefine the initialization for processes after the first...
+;;; redefine fluid operations ater the first...
+;;; --------------------------------------------------
+
 (define (setup-initial-process-object)
   (%store-process (make process))
   (add-method (initialize (process pid process-fluid-binding-list) self)
@@ -153,7 +155,6 @@ when possible since the amount of busy waiting will be lessened.
     (set! process-fluid-binding-list 
 	  (copy-fluid-bindings (current-process)))
     self)
-  (%load-process)
   (spawn-heavyweight-threads))
 
 (add-warm-boot-action setup-initial-process-object)
@@ -163,18 +164,17 @@ when possible since the amount of busy waiting will be lessened.
 
 ;;; testandset.oak
 
-#|
 
-test-and-set in terms of mutexes. when the test (a predicate on the
-test-and-settable object) is true, the new value is assigned and returned,
-otherwise #f is returned.
+;;; test-and-set in terms of mutexes. when the test (a predicate on
+;;; the test-and-settable object) is true, the new value is assigned
+;;; and returned, otherwise #f is returned.
 
-This is NOT the same as %test-and-set-car behavior, where the only predicate
-is (essentially) null? and the only non-null value is #t; here the predicate
-can be any function and the set value can be any non-nil value (so that
-success/failure can be distinguished when the set value is returned).
+;;; This is NOT the same as %test-and-set-car behavior, where the only
+;;; predicate is (essentially) null? and the only non-null value is
+;;; #t; here the predicate can be any function and the set value can
+;;; be any non-nil value (so that success/failure can be distinguished
+;;; when the set value is returned).
 
-|#
 
 (define-instance test-and-settable type '(ts-value) (list mutex))
 (define-instance test-and-set operation)
@@ -198,24 +198,28 @@ success/failure can be distinguished when the set value is returned).
 
 ;;; schedule.oak
 
-#|
 
-in order to avoid deadlock, the interrupt that invokes context switching
-must be disabled during scheduler interaction on a per-virtual-machine
-basis (between virtual machines, a mutex is used to preserve the critical
-section)
+;;; in order to avoid deadlock, the interrupt that invokes context
+;;; switching must be disabled during scheduler interaction on a
+;;; per-virtual-machine basis (between virtual machines, a mutex is
+;;; used to preserve the critical section)
 
-at context switch time, the process register is fixed:
-  when a process is switched out, lwp gets the current process and saves it
-  when a process is switched in, start gets the saved process and sets it
-  when process-run-fn is called, it creates a new process and task and
-       adds the block to the scheduler
-because the scheduler is acquired whenever these things are happening, it
-  should not be possible for two different pthreads to think they are running
-  the same process at any time (this would clearly be bad because then two
-  threads of computation could acquire the same mutex at the same time)
-
-|#
+;;; at context switch time, the process register is fixed:
+;;;
+;;;  * when a process is switched out, lwp gets the current process
+;;;    and saves it
+;;;
+;;;  * when a process is switched in, start gets the saved process and
+;;;    sets it
+;;;
+;;;  * when process-run-fn is called, it creates a new process and
+;;;    task and adds the block to the scheduler
+;;;
+;;; because the scheduler is acquired whenever these things are
+;;;   happening, it should not be possible for two different pthreads
+;;;   to think they are running the same process at any time (this
+;;;   would clearly be bad because then two threads of computation
+;;;   could acquire the same mutex at the same time)
 
 (define *scheduleQ* (make-queue))
 (define *scheduleQ-mutex* (make mutex))
@@ -243,21 +247,25 @@ because the scheduler is acquired whenever these things are happening, it
     (release-scheduler)
     (when next ((cdr next)))))
 
-#|
-pause causes a context switch. here is an easier-to-read version,
-it's expanded in order to make it atomic instead of just depending
-on lwp and start being atomic
 
+;;; pause causes a context switch. here is an easier-to-read version,
+;;; it's expanded in order to make it atomic instead of just depending
+;;; on lwp and start being atomic
+
+#|
 (define (pause)
   (call/cc
    (lambda (k)
      (lwp (lambda () (k #f)))
      (start))))
 |#
+
 (define (pause)
   (let ((next nil)
 	(pid (process-id (current-process))))
     (acquire-scheduler)
+    (when trace-processes
+       (format #t "pause: acquired sched~%"))
     (call/cc
      (lambda (k)
        ;; (lwp (lambda () (k #f)))
@@ -269,11 +277,14 @@ on lwp and start being atomic
 	   '()
 	   (set! next (dequeue *scheduleQ*)))
        (when next (%store-process (car next))) ;; fix process register and proceed
+       (when trace-processes
+	  (format #t "pause: pre-reset alarm counter~%"))
        (%reset-alarm-counter)
        (release-scheduler)
        (when next ((cdr next)))))))
 
-;; no longer calls lwp because this must create a new process object
+;;; no longer calls lwp because this must create a new process object
+
 (define (process-run-fn fn args)
   (acquire-scheduler)
   (enqueue (cons (make process)
@@ -284,28 +295,29 @@ on lwp and start being atomic
   (release-scheduler)
   nil)
 
-#|
-when heavyweight threads have nothing else to do, they have to be given
-a job that keeps them monitoring the scheduler. probably a sleep should
-be added to this (as another opcode which makes the VM sleep) to make
-busy waiting take less machine time
-|#
+
+;;; when heavyweight threads have nothing else to do, they have to be given
+;;; a job that keeps them monitoring the scheduler. probably a sleep should
+;;; be added to this (as another opcode which makes the VM sleep) to make
+;;; busy waiting take less machine time
+
 (define (busy-work)
   (while #t (pause)))
 
-#|
-this is the function that bootstraps a new heavyweight process...
-start new hw threads as (%heavyweight-thread start-busy-work)
-THIS IS DONE AT WARM BOOT TIME AND SHOULD NOT BE DONE BY A USER
-|#
+
+;;; this is the function that bootstraps a new heavyweight process...
+;;; start new hw threads as (%heavyweight-thread start-busy-work)
+;;; THIS IS DONE AT WARM BOOT TIME AND SHOULD NOT BE DONE BY A USER
+
 (define (start-busy-work)
   (process-run-fn busy-work nil)
   (start))
 
-;;--------------------------------------------------
-;; Check to see if the user added a -pthreads option
-;; and launch some heavyweight threads accordingly.
-;;--------------------------------------------------
+;;; --------------------------------------------------
+;;;  Check to see if the user added a -pthreads option
+;;;  and launch some heavyweight threads accordingly.
+;;; --------------------------------------------------
+
 (define heavyweight-thread-count 1)
 
 (define (spawn-heavyweight-threads)
@@ -317,15 +329,15 @@ THIS IS DONE AT WARM BOOT TIME AND SHOULD NOT BE DONE BY A USER
 
 ;;; semaphore.oak
 
-#|
 
-semaphores in terms of queues and mutexes.
 
-When processes wait on a semaphore, they are put in the queue as a pair
-of a process object and the closure representing it's continuing computation.
-This can then be moved directly to the scheduler when the semaphore is signaled.
+;;; semaphores in terms of queues and mutexes.
 
-|#
+;;; When processes wait on a semaphore, they are put in the queue as a
+;;; pair of a process object and the closure representing it's
+;;; continuing computation.  This can then be moved directly to the
+;;; scheduler when the semaphore is signaled.
+
 
 (define-instance semaphore type '(s-value s-Q) (list mutex))
 
@@ -354,11 +366,12 @@ This can then be moved directly to the scheduler when the semaphore is signaled.
       (release-mutex self))
   nil)
 
-;; WARNING: make sure that no other virtual process acquires a semaphore
-;; without first acquiring the scheduler! disabling alarms only prevents
-;; interrupts from occuring within the current pthread!
-;; (this should not be a problem since only these routines should acquire 
-;; the semaphore)
+;;; WARNING: make sure that no other virtual process acquires a
+;;; semaphore without first acquiring the scheduler! disabling alarms
+;;; only prevents interrupts from occuring within the current pthread!
+;;; (this should not be a problem since only these routines should
+;;; acquire the semaphore)
+
 (add-method (signal (semaphore s-value s-Q) self)
   (acquire-scheduler)
   (acquire-mutex self)
@@ -373,40 +386,38 @@ This can then be moved directly to the scheduler when the semaphore is signaled.
 
 ;;; future.oak
 
-#|
-futures: promises in a multitasking world
-|#
+
+;;; futures: promises in a multitasking world
+
 
 (define-instance future-obj type
   '(flag val scheduled? dependantsQ sched-policy err-policy)
-  (list promise mutex))
+  (list forcible mutex))
 
 (add-method (initialize (future-obj flag val scheduled? dependantsQ sched-policy err-policy) self oper)
   (set! scheduled? (make test-and-settable))
   (set! dependantsQ (make-queue))
   (set! sched-policy 'unused)
   (set! err-policy 'unused)
-  ;; not doing this because flag and val have to be instance variables of futures
-  ;; (^super promise initialize self)
   (set! flag #f)
   (set! val oper)
+  ;;(^super forcible initialize self)
   (^super mutex initialize self)
-  self
-  )
+  self)
 
 (add-method (force (future-obj flag val scheduled? dependantsQ sched-policy err-policy) self)
-  (acquire-mutex self) ;; this mutex prevents dependants from enqueueing badly
+  (acquire-mutex self) ; this mutex prevents dependants from enqueueing badly
   (if flag
       (block (release-mutex self)
 	     val)
       (call/cc (lambda (c)
 		 ;; suspend the current task into the destination queue
-		 (enqueue (cons (current-process) ;; process calling force
+		 (enqueue (cons (current-process);; process calling force
 				(lambda ()
 				  (let ((result (force self)))
 				    (c result))))
 			  dependantsQ)
-		 (release-mutex self) ;; now that we're enqueued, we're safe
+		 (release-mutex self) ; now that we're enqueued, we're safe
 		 ;; someone claim responsibility for and initiate future computation
 		 (let ((schedule? (test-and-set scheduled? null? #t)))
 		   (when schedule?
@@ -434,4 +445,3 @@ futures: promises in a multitasking world
     `(let ((foosym (make future-obj (lambda () . ,(cdr form)))))
        (process-run-fn force (list foosym))
        foosym)))
-

@@ -27,3 +27,5 @@
 (bind (((fluid hello) "hello")) (set! (fluid world) "world"))
 (fluid world)	;Returns "world"
 (fluid hello)  	;Should error
+
+(set! #*forcible-print-magic #f)

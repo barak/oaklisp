@@ -4,6 +4,8 @@
  *     Distributed under the GNU General Public License v2 or later   *
  **********************************************************************/
 
+#define _REENTRANT
+
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -95,7 +97,7 @@ main(int argc, char **argv)
   e_nargs = 0;
 
   /* Big virtual machine interpreter loop */
-  loop();
+  loop(INT_TO_REF(54321));
 
   return 0;
 }

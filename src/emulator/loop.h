@@ -8,6 +8,6 @@
 #ifndef _LOOP_H_INCLUDED
 #define _LOOP_H_INCLUDED
 #include "data.h"
-extern void loop();
+extern void loop(ref_t);
 
 #endif

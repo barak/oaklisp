@@ -6,6 +6,8 @@
 
 /* This file contains many tunable parameters */
 
+#define _REENTRANT
+
 #include "config.h"
 #include "data.h"
 #include "stacks.h"

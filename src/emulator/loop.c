@@ -4,6 +4,8 @@
  *   Distributed under the GNU General Public License v2 or later  *
  *******************************************************************/
 
+#define _REENTRANT
+
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -277,7 +279,7 @@ find_method_type_pair(ref_t op,
 
 
 void
-loop()
+loop(ref_t initial_tos)
 {
   u_int16_t instr;
   u_int8_t op_field;
@@ -321,8 +323,9 @@ loop()
 
   /* This fixes a bug in which the initial CHECK-NARGS 
      in the boot code tries to pop the operation and fails. */
-  if (value_stack.sp == value_stack.bp)
-    PUSHVAL_IMM(INT_TO_REF(4321));
+
+  PUSHVAL_IMM(INT_TO_REF(4321));
+  PUSHVAL(initial_tos);
 
   /* These TRAPx(n) macros jump to the trap code, notifying it that x
      arguments have been popped off the stack and need to be put back
@@ -394,13 +397,13 @@ loop()
 #elif defined __GNUC__
 #define GOTO_TOP        break;
 #else
-/* this is a compiler bug in the Inmos compiler */
+  /* this is a compiler bug in the Inmos compiler */
 #define GOTO_TOP    break;
 #endif
 
 
 
-top_of_loop:
+ top_of_loop:
   while (1)			/* forever */
     {
 #ifndef FAST
@@ -425,8 +428,8 @@ top_of_loop:
 		  val_buffer_count);
 	  exit(EXIT_FAILURE);
 	}
-	/* Should this be a zero ???  < 0  ??? */
-	if (cxt_buffer_count < 1 || cxt_buffer_count > context_stack.size) {
+	/* Should this be a zero ??? */
+	if (cxt_buffer_count < 0 || cxt_buffer_count > context_stack.size) {
 	  fprintf(stderr, "vm error: cxt_buffer_count = %d\n",
 		  cxt_buffer_count);
 	  exit(1);
@@ -437,7 +440,7 @@ top_of_loop:
       POLL_GC_SIGNALS();
 
 #if ENABLE_TIMER
-     timer_counter += timer_increment;
+      timer_counter += timer_increment;
 #endif
 
       instr = *local_epc++;
@@ -452,12 +455,12 @@ top_of_loop:
 #endif
 
       /*
-         fprintf(stdout, "Asserting...\n");
-         assert(value_stack_bp[-1] == PATTERN);
-         assert(value_stack_bp[value_stack.size] == PATTERN);
-         assert(context_stack_bp[-1] == PATTERN);
-         assert(context_stack_bp[context_stack.size] == PATTERN);
-       */
+	fprintf(stdout, "Asserting...\n");
+	assert(value_stack_bp[-1] == PATTERN);
+	assert(value_stack_bp[value_stack.size] == PATTERN);
+	assert(context_stack_bp[-1] == PATTERN);
+	assert(context_stack_bp[context_stack.size] == PATTERN);
+      */
 
       if (op_field == 0)
 	{
@@ -602,16 +605,16 @@ top_of_loop:
 
 		  PEEKVAL() =
 		    INT_TO_REF(
-				SPATIC_PTR(p) ?
-				p - spatic.start :
-				NEW_PTR(p) ?
-				(p - new_space.start) + spatic.size :
-				(	/* This is one weird reference: */
-				  printf("GET-DATA of "),
-				  printref(stdout, x),
-				  printf("\n"),
-				  -(long)p - 1)
-		    );
+			       SPATIC_PTR(p) ?
+			       p - spatic.start :
+			       NEW_PTR(p) ?
+			       (p - new_space.start) + spatic.size :
+			       (	/* This is one weird reference: */
+				printf("GET-DATA of "),
+				printref(stdout, x),
+				printf("\n"),
+				-(long)p - 1)
+			       );
 		}
 	      else
 		PEEKVAL() = (x & ~TAG_MASKL) | INT_TAG;
@@ -1210,30 +1213,25 @@ top_of_loop:
 	      }
 	      GOTO_TOP;
 
-	   case 67:		/* ENABLE-ALARMS */
-	     timer_increment = 1;
-	     PUSHVAL(e_nil);
-	     GOTO_TOP;
-
-	   case 68:		/* DISABLE-ALARMS */
-	     timer_increment = 0;
-	     PUSHVAL(e_nil);
-	     GOTO_TOP;
-
-	   case 69:		/* RESET-ALARM-COUNTER */
-	     timer_counter = 0;
-	     PUSHVAL(e_nil);
-	     GOTO_TOP;
-
-	  case 70:		/* HEAVYWEIGHT-THREAD */
-	      if (create_thread(PEEKVAL())) {
-		  PEEKVAL() = e_t;
-	      } else {
-		  PEEKVAL() = e_false;
-	      }
+	    case 67:		/* ENABLE-ALARMS */
+	      timer_increment = 1;
+	      PUSHVAL(e_nil);
 	      GOTO_TOP;
 
-	  case 71:		/* TEST-AND-SET-CAR */
+	    case 68:		/* DISABLE-ALARMS */
+	      timer_increment = 0;
+	      PUSHVAL(e_nil);
+	      GOTO_TOP;
+
+	    case 69:		/* RESET-ALARM-COUNTER */
+	      timer_counter = 0;
+	      PUSHVAL(e_nil);
+	      GOTO_TOP;
+
+	    case 70:		/* HEAVYWEIGHT-THREAD */
+	      PEEKVAL() = BOOL_TO_REF( create_thread(PEEKVAL()) );
+
+	    case 71:		/* TEST-AND-SET-CAR */
 	      CONSINSTR(1);
 	      y = car(x);
 	      if (y != e_false) { /* Fails test. */
@@ -1941,9 +1939,9 @@ top_of_loop:
 
 	      POLL_SIGNALS();
 
-/******************/
+	      /******************/
 	    super_tail:
-/******************/
+	      /******************/
 	      /* No cache, no LAMBDA hack, things are easy.
 	         Maybe not looking at the lambda hack is a bug?
 
@@ -2007,12 +2005,12 @@ top_of_loop:
 #ifndef _ICC
   /* The above loop is infinite.  We branch down to here when instructions
      fail, normally from tag traps, and then branch back. */
-/*************/
-intr_trap:
-/*************/
+  /*************/
+ intr_trap:
+  /*************/
 
   /* clear signal */
-/*signal_poll_flag = 0;*/
+  /*signal_poll_flag = 0;*/
   if (signal_poll_flag) {
     /* We notify Oaklisp of the user trap by telling it that a noop
        instruction failed.  The Oaklisp trap code must be careful to
@@ -2053,16 +2051,16 @@ intr_trap:
   trap_nargs = 1;
 #endif
 
-/**************/
-arg1_tt:
-/**************/
+  /**************/
+ arg1_tt:
+  /**************/
 
   CHECKVAL_PUSH(3);
   PUSHVAL_NOCHECK(x);
 
-/*************/
-arg0_tt:
-/*************/
+  /*************/
+ arg0_tt:
+  /*************/
 
 #ifndef FAST
   if (trace_traps)

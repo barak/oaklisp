@@ -1,3 +1,5 @@
+#define _REENTRANT
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -95,13 +97,12 @@ static void *init_thread (void *info_p)
 
    gc_examine_ptr = gc_examine_buffer;
 
-   *++value_stack.sp = info.start_operation;
- /*At this point, it should be OK if the garbage collector gets run.*/
+   /*At this point, it should be OK if the garbage collector gets run.*/
    e_pc = &tail_recurse_instruction;
    e_nargs = 0;
 
    /* Big virtual machine interpreter loop */
-   loop();
+   loop(info.start_operation);
 
 #endif
   

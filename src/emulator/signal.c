@@ -13,6 +13,8 @@
    BUG: This can delay interrupt handling when waiting for input.
  */
 
+#define _REENTRANT
+
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
