@@ -41,30 +41,33 @@ typedef u_int32_t ref_t;
 
 /* space type */
 
-typedef struct {
-  ref_t *start;
-  ref_t *end;
-  size_t size;		/* in size reference_t */
+typedef struct
+  {
+    ref_t *start;
+    ref_t *end;
+    size_t size;		/* in size reference_t */
 #ifdef UNALIGNED_MALLOC
-  size_t displacement;
+    size_t displacement;
 #endif
-} space_t;
+  }
+space_t;
 
 
 extern space_t new_space, old_space, spatic;
 extern ref_t *free_point;
 
 
-/* segment type */
-#define MAX_SEGMENT_SIZE 256
+extern int max_segment_size;
 
-typedef struct {
-  /* Do not rearange this structure or you'll be sorry! */
-  ref_t type_field;
-  ref_t length_field;
-  ref_t previous_segment;
-  ref_t data[1];
-} segment_t;
+typedef struct
+  {
+    /* Do not rearange this structure or you'll be sorry! */
+    ref_t type_field;
+    ref_t length_field;
+    ref_t previous_segment;
+    ref_t data[1];
+  }
+segment_t;
 
 #define SEGMENT_HEADER_LENGTH (sizeof(segment_t)/sizeof(ref_t)-1)
 
@@ -73,32 +76,23 @@ typedef struct {
 
 typedef struct
   {
-    ref_t *bp;
-    ref_t *sp;
-    ref_t segment;
-    int pushed_count;
+    int size;			/* size of stack buffer */
+    int filltarget;		/* how high to fill buffer ideally */
+    ref_t *bp;			/* pointer to this stack's "buffer" */
+    ref_t *sp;			/* pointer to top element in stack */
+    ref_t segment;		/* head of linked list of flushed segments */
+    int pushed_count;		/* number of ref's in flushed segment list */
   }
 stack_t;
 
-/* The stack base pointers must be allocated with xmalloc() */
-extern stack_t value_stack, context_stack;
+extern stack_t value_stack;
+extern stack_t context_stack;
 
-#ifndef STACKS_STATIC
-extern int value_stack_size, context_stack_size;
-extern int value_stack_hysteresis, context_stack_hysteresis;
 #define value_stack_bp		value_stack.bp
 #define context_stack_bp	context_stack.bp
-#else
 
-#define value_stack_size (8*1024-2)
-#define context_stack_size (2*1024-2)
-#define value_stack_hysteresis (256)
-#define context_stack_hysteresis (64)
-extern ref_t VAL_STACK[value_stack_size + 2];
-extern ref_t CON_STACK[context_stack_size + 2];
-#define value_stack_bp      (&VAL_STACK[1])
-#define context_stack_bp    (&CON_STACK[1])
-#endif
+/* Size of first newspace, in K */
+#define DEFAULT_NEWSPACE 128
 
 /* The following is for stack debugging */
 #define PATTERN 0x0a0b0c0d
@@ -135,25 +129,24 @@ extern register_set_t *reg_set;
 #ifdef THREADS
 extern ref_t
  *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type, e_env_type,
- *e_subtype_table, e_object_type, e_segment_type, e_boot_code, e_code_segment,
- *e_arged_tag_trap_table, *e_argless_tag_trap_table, e_current_method,
+ *e_subtype_table, e_object_type, e_segment_type, e_boot_code,
+ *e_arged_tag_trap_table, *e_argless_tag_trap_table,
   e_uninitialized, e_method_type, e_operation_type;
-
-extern size_t e_next_newspace_size, original_newspace_size;
 #else
-  
 extern ref_t
-* e_bp, *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type, e_env_type,
+ *e_bp, *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type, e_env_type,
  *e_subtype_table, e_object_type, e_segment_type, e_boot_code, e_code_segment,
  *e_arged_tag_trap_table, *e_argless_tag_trap_table, e_current_method,
   e_uninitialized, e_method_type, e_operation_type;
-
-extern size_t e_next_newspace_size, original_newspace_size;
 
 extern u_int16_t *e_pc;
 
 extern unsigned e_nargs;
 #endif
+
+#define e_false e_nil
+
+extern size_t e_next_newspace_size, original_newspace_size;
 
 extern char *world_file_name;
 extern char *dump_file_name;
@@ -164,10 +157,24 @@ extern bool gc_before_dump;
 
 extern int trace_gc;
 extern bool trace_traps;
+
 #ifndef FAST
+
+extern bool trace_insts;
 extern bool trace_segs;
+extern bool trace_valcon;
+extern bool trace_cxtcon;
+extern bool trace_stks;
+extern bool trace_meth;
+
+#ifdef OP_TYPE_METH_CACHE
+extern bool trace_mcache;
 #endif
+
+#endif
+
 extern bool trace_files;
+
 
 /* miscellanous */
 
@@ -207,9 +214,7 @@ extern bool trace_files;
 
 
 #define OR_TAG
-/*
-   #define REF_TO_INT(r)        ((long)ASHR2((long)(r)))
- */
+
 #define REF_TO_INT(r)   ((int32_t)r>>2)
 
 
@@ -236,6 +241,8 @@ extern bool trace_files;
 #define PTR_TO_REF(p)   ((ref_t)((ref_t)(p)|PTR_TAG))
 #endif
 
+/* Put q's tag onto p */
+#define PTR_TO_TAGGED(p,q) ((ref_t)((ref_t)(p)+((q)&TAG_MASK)))
 
 #define REF_TO_CHAR(r)	((char)((r)>>8))
 #ifndef OR_TAG
@@ -244,17 +251,19 @@ extern bool trace_files;
 #define CHAR_TO_REF(c)  (((ref_t)(c)<<8)|IMM_TAG)
 #endif
 
-/* MIN_REF is the most negative fixnum.  There is no corresponding
-   positive fixnum, an asymmetry inherent in a twos complement
-   representation. */
-
 #ifndef OR_TAG
 #define INT_TO_REF(i)	((ref_t)(((int32_t)(i)<<2)+INT_TAG))
 #else
 #define INT_TO_REF(i)   ((ref_t)(((int32_t)(i)<<2)|INT_TAG))
 #endif
 
+/* MIN_REF is the most negative fixnum.  There is no corresponding
+   positive fixnum, an asymmetry inherent in a twos complement
+   representation. */
+
 #define MIN_REF     ((ref_t)(1<<(WORDSIZE-1)))
+#define MAX_REF ((ref_t)-((int32_t)MIN_REF+1))
+
 /* Check if high three bits are equal. */
 /*
    #define OVERFLOWN_INT(i,code)                                        \
@@ -265,9 +274,6 @@ extern bool trace_files;
 #define OVERFLOWN_INT(i,code)	\
 { u_int32_t highcrap = i & 0xe0000000;	\
 if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
-
-
-#define MAX_REF ((ref_t)-((int32_t)MIN_REF+1))
 
 /*
  * Offsets for wired types.  Offset includes type and
@@ -312,9 +318,6 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 #define CONTINUATION_VAL_OFF	2
 #define CONTINUATION_CXT_SEGS	3
 #define CONTINUATION_CXT_OFF	4
-
-#define car(x)	(REF_SLOT((x),CONS_PAIR_CAR_OFF))
-#define cdr(x)	(REF_SLOT((x),CONS_PAIR_CDR_OFF))
 
 #define SPACE_PTR(s,p)	((s).start<=(p) && (p)<(s).end)
 #define NEW_PTR(r)      SPACE_PTR(new_space,(r))

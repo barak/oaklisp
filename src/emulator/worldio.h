@@ -8,7 +8,7 @@
 #ifndef _WORLDIO_H_INCLUDED
 #define _WORLDIO_H_INCLUDED
 
-extern void dump_world (bool justnew);
-extern void read_world (char *string);
+extern void dump_world(bool justnew);
+extern void read_world(char *string);
 
 #endif

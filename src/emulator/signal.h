@@ -10,9 +10,9 @@
 
 #ifndef _ICC
 
-void enable_signal_polling (void);
-void disable_signal_polling (void);
-void clear_signal (void);
+void enable_signal_polling(void);
+void disable_signal_polling(void);
+void clear_signal(void);
 extern int signal_poll_flag;
 
 #endif

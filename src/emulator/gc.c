@@ -81,37 +81,37 @@ ref_t *gc_examine_ptr = gc_examine_buffer;
 
 
 void
-printref (FILE *fd, ref_t refin)
+printref(FILE * fd, ref_t refin)
 {
   long i;
   char suffix = '?';
 
   if (refin & PTR_MASK)
     {
-      ref_t *p = ANY_TO_PTR (refin);
+      ref_t *p = ANY_TO_PTR(refin);
 
-      if (SPATIC_PTR (p))
+      if (SPATIC_PTR(p))
 	{
 	  i = p - spatic.start;
 	  suffix = 's';
 	}
-      else if (NEW_PTR (p))
+      else if (NEW_PTR(p))
 	{
 	  i = p - new_space.start + spatic.size;
 	  suffix = 'n';
 	}
-      else if (OLD_PTR (p))
+      else if (OLD_PTR(p))
 	{
 	  i = p - old_space.start + spatic.size;
 	  suffix = 'o';
 	}
       else
-	i = (long) p >> 2;
+	i = (long)p >> 2;
 
-      fprintf (fd, "[%ld;tag:%d;%c]", i, refin & TAG_MASK, suffix);
+      fprintf(fd, "[%ld;tag:%d;%c]", i, refin & TAG_MASK, suffix);
     }
   else
-    fprintf (fd, "[%ld;tag:%d]", (long)(refin >> 2), refin & TAG_MASK);
+    fprintf(fd, "[%ld;tag:%d]", (long)(refin >> 2), refin & TAG_MASK);
 }
 
 #define GC_NULL(r) ((r)==pre_gc_nil || (r)==e_nil)
@@ -122,54 +122,54 @@ printref (FILE *fd, ref_t refin)
    already have been transported. */
 
 static unsigned long
-gc_get_length (ref_t x)
+gc_get_length(ref_t x)
 {
   if TAG_IS
     (x, PTR_TAG)
     {
-      ref_t typ = REF_SLOT (x, 0);
-      ref_t vlen_p = REF_SLOT (typ, TYPE_VAR_LEN_P_OFF);
+      ref_t typ = REF_SLOT(x, 0);
+      ref_t vlen_p = REF_SLOT(typ, TYPE_VAR_LEN_P_OFF);
       ref_t len;
 
       /* Is vlen_p forwarded? */
-      if (TAG_IS (vlen_p, LOC_TAG))
-	vlen_p = *LOC_TO_PTR (vlen_p);
+      if (TAG_IS(vlen_p, LOC_TAG))
+	vlen_p = *LOC_TO_PTR(vlen_p);
 
       /* Is this object variable length? */
-      if (GC_NULL (vlen_p))
+      if (GC_NULL(vlen_p))
 	{
 	  /* Not variable length. */
-	  len = REF_SLOT (typ, TYPE_LEN_OFF);
+	  len = REF_SLOT(typ, TYPE_LEN_OFF);
 
 	  /* Is length forwarded? */
-	  if (TAG_IS (len, LOC_TAG))
-	    len = *LOC_TO_PTR (len);
+	  if (TAG_IS(len, LOC_TAG))
+	    len = *LOC_TO_PTR(len);
 
-	  return REF_TO_INT (len);
+	  return REF_TO_INT(len);
 	}
       else
-	return REF_TO_INT (REF_SLOT (x, 1));
+	return REF_TO_INT(REF_SLOT(x, 1));
     }
   else
     {
-      fprintf (stderr, "; WARNING!!!  gc_get_length(");
-      printref (stderr, x);
-      fprintf (stderr, ") called; only a tag of %d is allowed.\n", PTR_TAG);
+      fprintf(stderr, "; WARNING!!!  gc_get_length(");
+      printref(stderr, x);
+      fprintf(stderr, ") called; only a tag of %d is allowed.\n", PTR_TAG);
       return 0;
     }
 }
 
 
 static ref_t
-gc_touch0 (ref_t r)
+gc_touch0(ref_t r)
 {
-  ref_t *p = ANY_TO_PTR (r);
+  ref_t *p = ANY_TO_PTR(r);
 
-  if (OLD_PTR (p))
+  if (OLD_PTR(p))
     if (r & 1)
       {
 	ref_t type_slot = *p;
-	if (TAG_IS (type_slot, LOC_TAG))
+	if (TAG_IS(type_slot, LOC_TAG))
 	  /* Already been transported. */
 	  /* Tag magic transforms this:
 	     return(PTR_TO_REF(LOC_TO_PTR(type_slot)));
@@ -179,7 +179,7 @@ gc_touch0 (ref_t r)
 	  {
 	    /* Transport it */
 	    long i;
-	    long len = gc_get_length (r);
+	    long len = gc_get_length(r);
 	    ref_t *new_place = free_point;
 	    ref_t *p0 = p;
 	    ref_t *q0 = new_place;
@@ -197,19 +197,19 @@ gc_touch0 (ref_t r)
 #ifndef FAST
 	    if (free_point >= new_space.end)
 	      {
-		fprintf (stderr, "\n; New space exhausted while transporting ");
-		printref (stderr, r);
-		fprintf (stderr, ".\n; This indicates a bug in the garbage collector.\n");
-		exit (EXIT_FAILURE);
+		fprintf(stderr, "\n; New space exhausted while transporting ");
+		printref(stderr, r);
+		fprintf(stderr, ".\n; This indicates a bug in the garbage collector.\n");
+		exit(EXIT_FAILURE);
 	      }
 #endif
 	    for (i = 0; i < len; i++, p0++, q0++)
 	      {
 		*q0 = *p0;
-		*p0 = PTR_TO_LOC (q0);
+		*p0 = PTR_TO_LOC(q0);
 	      }
 
-	    return (PTR_TO_REF (new_place));
+	    return (PTR_TO_REF(new_place));
 	  }
       }
     else
@@ -219,14 +219,14 @@ gc_touch0 (ref_t r)
 	ref_t r0 = r, r1 = *p, *pp;
 	/* int chain_len = 1; */
 
-	while (TAG_IS (r1, LOC_TAG) && (pp = LOC_TO_PTR (r1), OLD_PTR (pp)))
+	while (TAG_IS(r1, LOC_TAG) && (pp = LOC_TO_PTR(r1), OLD_PTR(pp)))
 	  {
 	    if (r0 == r1)
 	      {
 		/* fprintf(stderr, "Circular locative chain.\n"); */
 		goto forwarded_loc;
 	      }
-	    r0 = *LOC_TO_PTR (r0);
+	    r0 = *LOC_TO_PTR(r0);
 	    r1 = *pp;
 	    /* chain_len += 1; */
 
@@ -235,7 +235,7 @@ gc_touch0 (ref_t r)
 		/* fprintf(stderr, "Circular locative chain.\n"); */
 		goto forwarded_loc;
 	      }
-	    if (!TAG_IS (r1, LOC_TAG) || (pp = LOC_TO_PTR (r1), !OLD_PTR (pp)))
+	    if (!TAG_IS(r1, LOC_TAG) || (pp = LOC_TO_PTR(r1), !OLD_PTR(pp)))
 	      break;
 
 	    r1 = *pp;
@@ -248,7 +248,7 @@ gc_touch0 (ref_t r)
 	   printref(r1);
 	   fprintf(stderr, " requiring %d dereferences.\n", chain_len);
 	 */
-	GC_TOUCH (r1);
+	GC_TOUCH(r1);
 	/* (void)gc_touch(r1); */
 
 	/* Now see if we're looking at a forwarding pointer. */
@@ -260,15 +260,15 @@ gc_touch0 (ref_t r)
 }
 
 static ref_t
-loc_touch0 (ref_t r, bool warn_if_unmoved)
+loc_touch0(ref_t r, bool warn_if_unmoved)
 {
-  ref_t *p = LOC_TO_PTR (r);
+  ref_t *p = LOC_TO_PTR(r);
 
-  if (OLD_PTR (p))
+  if (OLD_PTR(p))
     {
       /* A locative into old space.  See if it's been transported yet. */
       ref_t r1 = *p;
-      if (TAG_IS (r1, LOC_TAG) && NEW_PTR (LOC_TO_PTR (r1)))
+      if (TAG_IS(r1, LOC_TAG) && NEW_PTR(LOC_TO_PTR(r1)))
 	/* Already been transported. */
 	return (r1);
       else
@@ -276,15 +276,15 @@ loc_touch0 (ref_t r, bool warn_if_unmoved)
 	  /* Better transport this lonely cell. */
 
 	  ref_t *new_place = free_point++;	/* make a new cell. */
-	  ref_t new_r = PTR_TO_LOC (new_place);
+	  ref_t new_r = PTR_TO_LOC(new_place);
 
 #ifndef FAST
 	  if (free_point >= new_space.end)
 	    {
-	      fprintf (stderr, "\n; New space exhausted while transporting the cell ");
-	      printref (stderr, r);
-	      fprintf (stderr, ".\n; This indicates a bug in the garbage collector.\n");
-	      exit (EXIT_FAILURE);
+	      fprintf(stderr, "\n; New space exhausted while transporting the cell ");
+	      printref(stderr, r);
+	      fprintf(stderr, ".\n; This indicates a bug in the garbage collector.\n");
+	      exit(EXIT_FAILURE);
 	    }
 #endif
 	  *p = new_r;		/* Record the transportation. */
@@ -292,7 +292,7 @@ loc_touch0 (ref_t r, bool warn_if_unmoved)
 	  /* Put the right value in the new cell. */
 
 	  *new_place =
-	    TAG_IS (r1, PTR_TAG) && (p = REF_TO_PTR (r1), OLD_PTR (p))
+	    TAG_IS(r1, PTR_TAG) && (p = REF_TO_PTR(r1), OLD_PTR(p))
 	    ? *p | 1 : r1;
 	  /* ? PTR_TO_REF(REF_TO_PTR(*p)) : r1; */
 
@@ -300,9 +300,9 @@ loc_touch0 (ref_t r, bool warn_if_unmoved)
 
 	  if (warn_if_unmoved)
 	    {
-	      fprintf (stderr, "\nWarning: the locative ");
-	      printref (stderr, r);
-	      fprintf (stderr, " has just had its raw cell moved.\n");
+	      fprintf(stderr, "\nWarning: the locative ");
+	      printref(stderr, r);
+	      fprintf(stderr, " has just had its raw cell moved.\n");
 	    }
 	  return (new_r);
 	}
@@ -313,82 +313,83 @@ loc_touch0 (ref_t r, bool warn_if_unmoved)
 
 
 static void
-scavenge (void)
+scavenge(void)
 {
   ref_t *scavenge_p;
 
   for (scavenge_p = new_space.start; scavenge_p < free_point; scavenge_p += 1)
-    GC_TOUCH (*scavenge_p);
+    GC_TOUCH(*scavenge_p);
 }
 
 static void
-loc_scavenge (void)
+loc_scavenge(void)
 {
   ref_t *scavenge_p;
 
   for (scavenge_p = new_space.start; scavenge_p < free_point; scavenge_p += 1)
-    LOC_TOUCH (*scavenge_p);
+    LOC_TOUCH(*scavenge_p);
 }
 
+#ifndef FAST
+/* This set of routines are for consistency checks */
 
 #define GGC_CHECK(r) GC_CHECK(r,"r")
 
 /* True if r seems like a messed up reference. */
 static bool
-gc_check_ (ref_t r)
+gc_check_(ref_t r)
 {
-  return (r & PTR_MASK) && !NEW_PTR (ANY_TO_PTR (r))
-    && (full_gc || !SPATIC_PTR (ANY_TO_PTR (r)));
+  return (r & PTR_MASK) && !NEW_PTR(ANY_TO_PTR(r))
+    && (full_gc || !SPATIC_PTR(ANY_TO_PTR(r)));
 }
 
-
 static void
-GC_CHECK (ref_t x, char *st)
+GC_CHECK(ref_t x, char *st)
 {
-  if (gc_check_ (x))
+  if (gc_check_(x))
     {
-      fprintf (stderr, "%s = ", st);
-      printref (stderr, x);
-      if (OLD_PTR (ANY_TO_PTR (x)))
+      fprintf(stderr, "%s = ", st);
+      printref(stderr, x);
+      if (OLD_PTR(ANY_TO_PTR(x)))
 	{
-	  fprintf (stderr, ",  cell contains ");
-	  printref (stderr, *ANY_TO_PTR (x));
+	  fprintf(stderr, ",  cell contains ");
+	  printref(stderr, *ANY_TO_PTR(x));
 	}
-      fprintf (stderr, "\n");
+      fprintf(stderr, "\n");
     }
 }
 
 static void
-GC_CHECK1 (ref_t x, char *st, long i)
+GC_CHECK1(ref_t x, char *st, long i)
 {
-  if (gc_check_ ((x)))
+  if (gc_check_((x)))
     {
-      fprintf (stderr, (st), (i));
-      printref (stderr, x);
-      if (OLD_PTR (ANY_TO_PTR (x)))
+      fprintf(stderr, (st), (i));
+      printref(stderr, x);
+      if (OLD_PTR(ANY_TO_PTR(x)))
 	{
-	  fprintf (stderr, ",  cell contains ");
-	  printref (stderr, *ANY_TO_PTR (x));
+	  fprintf(stderr, ",  cell contains ");
+	  printref(stderr, *ANY_TO_PTR(x));
 	}
-      fprintf (stderr, "\n");
+      fprintf(stderr, "\n");
     }
 }
-
+#endif
 
 
 static u_int16_t *
-pc_touch (u_int16_t *o_pc)
+pc_touch(u_int16_t * o_pc)
 {
-  ref_t *pcell = (ref_t *) ((unsigned long) o_pc & ~TAG_MASKL);
+  ref_t *pcell = (ref_t *) ((unsigned long)o_pc & ~TAG_MASKL);
 
-  LOC_TOUCH_PTR (pcell);
+  LOC_TOUCH_PTR(pcell);
   return
-    (u_int16_t *) ((u_int32_t)pcell
-			| ((u_int32_t) o_pc & TAG_MASK));
+    (u_int16_t *) ((u_int32_t) pcell
+		   | ((u_int32_t) o_pc & TAG_MASK));
 }
 
 static void
-set_external_full_gc (bool full)
+set_external_full_gc(bool full)
 {
   full_gc = full;
 }
@@ -406,23 +407,23 @@ gc (bool pre_dump, bool full_gc, char *reason, size_t amount, register_set_t *re
   ref_t *p;
 
   /* The full_gc flag is also a global to avoid ugly parameter passing. */
-  set_external_full_gc (full_gc);
+  set_external_full_gc(full_gc);
 
 gc_top:
-  if (trace_gc==1)
+  if (trace_gc == 1)
     fprintf(stderr, "\n;GC");
-  if (trace_gc>1)
-    fprintf (stderr, "\n; %sGC due to %s.\n", full_gc ? "Full " : "", reason);
+  if (trace_gc > 1)
+    fprintf(stderr, "\n; %sGC due to %s.\n", full_gc ? "Full " : "", reason);
 
   if (trace_gc > 2 && !pre_dump)
     {
-      fprintf (stderr, "value ");
-      dump_stack (&value_stack);
-      fprintf (stderr, "context ");
-      dump_stack (&context_stack);
+      fprintf(stderr, "value ");
+      dump_stack(&value_stack);
+      fprintf(stderr, "context ");
+      dump_stack(&context_stack);
     }
   if (trace_gc > 1)
-    fprintf (stderr, "; Flipping...");
+    fprintf(stderr, "; Flipping...");
 
   old_taken = free_point - new_space.start;
   old_space = new_space;
@@ -432,31 +433,31 @@ gc_top:
   else
     new_space.size = e_next_newspace_size;
 
-  alloc_space (&new_space, new_space.size);
+  alloc_space(&new_space, new_space.size);
   free_point = new_space.start;
 
   transport_count = 0;
 
   if (trace_gc > 1)
-    fprintf (stderr, " rooting...");
+    fprintf(stderr, " rooting...");
 
   {
     /* Hit the registers: */
 
     pre_gc_nil = e_nil;
-    GC_TOUCH (e_nil);
-    GC_TOUCH (e_boot_code);
+    GC_TOUCH(e_nil);
+    GC_TOUCH(e_boot_code);
 
     if (!pre_dump)
       {
-	GC_TOUCH (e_t);
-	GC_TOUCH (e_fixnum_type);
-	GC_TOUCH (e_loc_type);
-	GC_TOUCH (e_cons_type);
-	GC_TOUCH_PTR (e_subtype_table, 2);
+	GC_TOUCH(e_t);
+	GC_TOUCH(e_fixnum_type);
+	GC_TOUCH(e_loc_type);
+	GC_TOUCH(e_cons_type);
+	GC_TOUCH_PTR(e_subtype_table, 2);
 	/* e_bp is a locative, but a pointer to the object should exist, so we
 	   need only touch it in the locative pass. */
-	GC_TOUCH_PTR (e_env, 0);
+	GC_TOUCH_PTR(e_env, 0);
 	/* e_nargs is a fixnum.  Nor is it global... */
 	GC_TOUCH (e_env_type);
 	GC_TOUCH_PTR (e_argless_tag_trap_table, 2);
@@ -470,41 +471,41 @@ gc_top:
 	GC_TOUCH (e_operation_type);
 
 	for (p = gc_examine_buffer; p < gc_examine_ptr; p++)
-	  GC_TOUCH (*p);
+	  GC_TOUCH(*p);
 
 
 
 
 	/* Scan the stacks. */
 	for (p = value_stack.bp; p <= value_stack.sp; p++)
-	  GC_TOUCH (*p);
+	  GC_TOUCH(*p);
 
 	for (p = context_stack.bp; p <= context_stack.sp; p++)
-	  GC_TOUCH (*p);
+	  GC_TOUCH(*p);
 
 	/* Scan the stack segments. */
-	GC_TOUCH (value_stack.segment);
-	GC_TOUCH (context_stack.segment);
+	GC_TOUCH(value_stack.segment);
+	GC_TOUCH(context_stack.segment);
 
 	/* Scan static space. */
 	if (!full_gc)
 	  for (p = spatic.start; p < spatic.end; p++)
-	    GC_TOUCH (*p);
+	    GC_TOUCH(*p);
       }
     /* Scavenge. */
     if (trace_gc > 1)
-      fprintf (stderr, " scavenging...");
-    scavenge ();
+      fprintf(stderr, " scavenging...");
+    scavenge();
 
     if (trace_gc > 1)
-      fprintf (stderr, " %ld object%s transported.\n",
-	       transport_count, transport_count != 1 ? "s" : "");
+      fprintf(stderr, " %ld object%s transported.\n",
+	      transport_count, transport_count != 1 ? "s" : "");
 
 
 
     /* Clean up the locatives. */
     if (trace_gc > 1)
-      fprintf (stderr, "; Scanning locatives...");
+      fprintf(stderr, "; Scanning locatives...");
     loc_transport_count = 0;
 
     if (!pre_dump)
@@ -512,40 +513,40 @@ gc_top:
 	LOC_TOUCH_PTR (E_BP);
         E_PC = pc_touch (E_PC);
 
-	LOC_TOUCH (e_uninitialized);
+	LOC_TOUCH(e_uninitialized);
 
 	for (p = gc_examine_buffer; p < gc_examine_ptr; p++)
-	  LOC_TOUCH (*p);
+	  LOC_TOUCH(*p);
 
 	for (p = value_stack.bp; p <= value_stack.sp; p++)
-	  LOC_TOUCH (*p);
+	  LOC_TOUCH(*p);
 
 	for (p = context_stack.bp; p <= context_stack.sp; p++)
-	  LOC_TOUCH (*p);
+	  LOC_TOUCH(*p);
 
 	/* Scan spatic space. */
 	if (!full_gc)
 	  for (p = spatic.start; p < spatic.end; p++)
-	    LOC_TOUCH (*p);
+	    LOC_TOUCH(*p);
       }
     if (trace_gc > 1)
-      fprintf (stderr, " scavenging...");
-    loc_scavenge ();
+      fprintf(stderr, " scavenging...");
+    loc_scavenge();
 
     if (trace_gc > 1)
-      fprintf (stderr, " %ld naked cell%s transported.\n",
-	       loc_transport_count, loc_transport_count != 1 ? "s" : "");
+      fprintf(stderr, " %ld naked cell%s transported.\n",
+	      loc_transport_count, loc_transport_count != 1 ? "s" : "");
 
 
     /* Discard weak pointers whose targets have not been transported. */
     if (trace_gc > 1)
-      fprintf (stderr, "; Scanning weak pointer table...");
+      fprintf(stderr, "; Scanning weak pointer table...");
     {
-      long count = post_gc_wp ();
+      long count = post_gc_wp();
 
       if (trace_gc > 1)
-	fprintf (stderr, " %ld entr%s discarded.\n",
-		 count, count != 1 ? "ies" : "y");
+	fprintf(stderr, " %ld entr%s discarded.\n",
+		count, count != 1 ? "ies" : "y");
     }
   }
 
@@ -554,10 +555,10 @@ gc_top:
     /* Check GC consistency. */
 
     if (trace_gc > 1)
-      fprintf (stderr, "; Checking consistency...\n");
+      fprintf(stderr, "; Checking consistency...\n");
 
-    GGC_CHECK (e_nil);
-    GGC_CHECK (e_boot_code);
+    GGC_CHECK(e_nil);
+    GGC_CHECK(e_boot_code);
 
     if (!pre_dump)
       {
@@ -582,15 +583,15 @@ gc_top:
 
 	/* Scan the stacks. */
 	for (p = value_stack.bp; p <= value_stack.sp; p++)
-	  GC_CHECK1 (*p, "value_stack.bp[%d] = ",
-		     (long) (p - value_stack.bp));
+	  GC_CHECK1(*p, "value_stack.bp[%d] = ",
+		    (long)(p - value_stack.bp));
 
 	for (p = context_stack.bp; p <= context_stack.sp; p++)
-	  GC_CHECK1 (*p, "context_stack.bp[%d] = ",
-		     (long) (p - context_stack.bp));
+	  GC_CHECK1(*p, "context_stack.bp[%d] = ",
+		    (long)(p - context_stack.bp));
 
-	GGC_CHECK (value_stack.segment);
-	GGC_CHECK (context_stack.segment);
+	GGC_CHECK(value_stack.segment);
+	GGC_CHECK(context_stack.segment);
 
 	/* Make sure the program counter is okay. */
 	GC_CHECK ((ref_t) ((ref_t) E_PC | LOC_TAG), "E_PC");
@@ -599,34 +600,34 @@ gc_top:
 
     if (!full_gc)
       for (p = spatic.start; p < spatic.end; p++)
-	GC_CHECK1 (*p, "static_space[%ld] = ", (long) (p - spatic.start));
+	GC_CHECK1(*p, "static_space[%ld] = ", (long)(p - spatic.start));
 
     for (p = new_space.start; p < free_point; p++)
-      GC_CHECK1 (*p, "new_space[%ld] = ", (long) (p - new_space.start));
+      GC_CHECK1(*p, "new_space[%ld] = ", (long)(p - new_space.start));
   }
 #endif /* not defined(FAST) */
 
   /* Hopefully there are no more references into old space. */
-  free_space (&old_space);
+  free_space(&old_space);
 
   if (full_gc)
-    free_space (&spatic);
+    free_space(&spatic);
 
 
 
 #ifdef USE_VADVISE
 #ifdef VA_FLUSH
   /* Tell the virtual memory system that recent statistics are useless. */
-  vadvise (VA_FLUSH);
+  vadvise(VA_FLUSH);
 #endif
 #endif
 
   if (trace_gc > 2 && !pre_dump)
     {
-      fprintf (stderr, "value_stack ");
-      dump_stack (&value_stack);
-      fprintf (stderr, "context_stack ");
-      dump_stack (&context_stack);
+      fprintf(stderr, "value_stack ");
+      dump_stack(&value_stack);
+      fprintf(stderr, "context_stack ");
+      dump_stack(&context_stack);
     }
   {
     long new_taken = free_point - new_space.start;
@@ -635,15 +636,15 @@ gc_top:
 
     if (trace_gc == 1)
       {
-	fprintf (stderr, ":%ld%%", (100 * reclaimed) / old_total);
+	fprintf(stderr, ":%ld%%", (100 * reclaimed) / old_total);
       }
     if (trace_gc > 1)
       {
-	fprintf (stderr, "; GC complete.  %ld ", old_total);
+	fprintf(stderr, "; GC complete.  %ld ", old_total);
 	if (full_gc)
-	  fprintf (stderr, "(%ld+%ld) ", (long) spatic.size, (long) old_taken);
-	fprintf (stderr, "compacted to %ld; %ld (%ld%%) garbage.\n",
-		 new_taken, reclaimed, (100 * reclaimed) / old_total);
+	  fprintf(stderr, "(%ld+%ld) ", (long)spatic.size, (long)old_taken);
+	fprintf(stderr, "compacted to %ld; %ld (%ld%%) garbage.\n",
+		new_taken, reclaimed, (100 * reclaimed) / old_total);
       }
 
     /* Make the next new space bigger if the current was too small. */
@@ -660,14 +661,14 @@ gc_top:
 	  case 0:
 	    break;
 	  case 1:
-	    fprintf (stderr, ",resize:%ld", (long) e_next_newspace_size);
+	    fprintf(stderr, ",resize:%ld", (long)e_next_newspace_size);
 	    break;
 
 	  default:
-	    fprintf (stderr, "; Expanding next new space from %ld to %ld (%ld%%).\n",
-		     (long) new_space.size, (long) e_next_newspace_size,
-		     (long) (100 * (e_next_newspace_size - new_space.size))
-		     / new_space.size);
+	    fprintf(stderr, "; Expanding next new space from %ld to %ld (%ld%%).\n",
+		    (long)new_space.size, (long)e_next_newspace_size,
+		    (long)(100 * (e_next_newspace_size - new_space.size))
+		    / new_space.size);
 	    break;
 	  }
 
@@ -676,8 +677,8 @@ gc_top:
 #ifdef MAX_NEW_SPACE_SIZE
 	    if (((new_space.end - free_point) + amount) < e_next_newspace_size)
 	      {
-		fprintf (stderr, "\nFatal GC error: Essential new space size exceeds maximum allowable.\n");
-		exit (EXIT_FAILURE);
+		fprintf(stderr, "\nFatal GC error: Essential new space size exceeds maximum allowable.\n");
+		exit(EXIT_FAILURE);
 	      }
 #endif
 	    reason = "immediate new space expansion necessity";
@@ -691,11 +692,11 @@ gc_top:
 	   free_space (&spatic);
 	 */
 	spatic = new_space;
-	realloc_space (&spatic, free_point - new_space.start);
+	realloc_space(&spatic, free_point - new_space.start);
 
 	if (trace_gc > 1 && e_next_newspace_size != original_newspace_size)
-	  fprintf (stderr, "; Setting new space size to %ld.\n",
-		   (long) original_newspace_size);
+	  fprintf(stderr, "; Setting new space size to %ld.\n",
+		  (long)original_newspace_size);
 	new_space.size = e_next_newspace_size = original_newspace_size;
 	if (e_next_newspace_size <= amount)
 	  {
@@ -705,22 +706,49 @@ gc_top:
 	      case 0:
 		break;
 	      case 1:
-		fprintf (stderr, ",resize:%ld", (long) e_next_newspace_size);
+		fprintf(stderr, ",resize:%ld", (long)e_next_newspace_size);
 		break;
 	      default:
-		fprintf (stderr, "; Expanding next new space from %ld to %ld (%ld%%).\n",
-			 (long) new_space.size, (long) e_next_newspace_size,
-			 (long) (100 * (e_next_newspace_size - new_space.size)) / new_space.size);
+		fprintf(stderr,
+			"; expanding next new space %ld to %ld (%ld%%).\n",
+			(long)new_space.size, (long)e_next_newspace_size,
+			(long)(100 * (e_next_newspace_size - new_space.size)) / new_space.size);
 		break;
 	      }
 	    new_space.size = e_next_newspace_size;
 	  }
-	alloc_space (&new_space, new_space.size);
+	alloc_space(&new_space, new_space.size);
 	free_point = new_space.start;
       }
     if (trace_gc == 1)
-      fprintf (stderr, "\n");
+      fprintf(stderr, "\n");
     if (trace_gc)
-      fflush (stdout);
+      fflush(stdout);
   }
+}
+
+
+
+/* This routine takes a block of memory and scans through it, updating
+   all pointers into the window starting at old_start to instead point
+   into the corresponding location in new_start.  Typically new_start
+   will be the same as start */
+
+void
+shift_targets(ref_t * start, size_t len,
+	      ref_t * old_start, size_t old_len,
+	      ref_t * new_start)
+{
+  size_t i;
+  for (i = 0; i < len; i++)
+    {
+      ref_t x = start[i];
+      if (PTR_MASK & x)		/* is it a pointer? */
+	{
+	  ref_t *y = ANY_TO_PTR(x);
+	  size_t offset = y - old_start;
+	  if (y >= 0 && offset < old_len)	/* into old window? */
+	    start[i] = PTR_TO_TAGGED(new_start + offset, x);
+	}
+    }
 }

@@ -39,8 +39,18 @@
 #define _CONFIG_H_INCLUDED
 
 
-/* The following can be removed while debugging */
-/* #define FAST */
+/* Speed parameters */
+
+/* Turn off most runtime debugging features that slow down the system. */
+// #define FAST
+
+/* Toggle specific optimizations. */
+
+/* Activate operation-method association list move-to-front. */
+#define OP_METH_ALIST_MTF
+
+/* Activate operation-type method cache. */
+#define OP_TYPE_METH_CACHE
 
 
 #if defined(linux) && defined (__GNUC__) && defined(i386)
@@ -58,7 +68,7 @@
 /*** Sun with GCC ***/
 
 #define WORDSIZE 32
-/*#define HAVE_LONG_LONG*/
+/*#define HAVE_LONG_LONG */
 #define ASHR2(x) ((x)>>2)
 #define BYTE_GENDER big_endian
 #define HAVE_GETRUSAGE
@@ -125,8 +135,6 @@
    * caution: you must compile with the /FS option! */
 #define BYTE_GENDER little_endian
 #define PATH_SEPARATOR_CHAR '\\'
-
-#define STACKS_STATIC
 
 #define ISATTY(stream) 1
 #define chdir(x) (-1)

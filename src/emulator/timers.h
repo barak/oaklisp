@@ -9,7 +9,7 @@
 
 /* the functions return milliseconds */
 
-extern unsigned long get_real_time (void);
-extern unsigned long get_user_time (void);
+extern unsigned long get_real_time(void);
+extern unsigned long get_user_time(void);
 
 #endif

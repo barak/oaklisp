@@ -27,7 +27,7 @@
 int signal_poll_flag = 0;
 
 static void
-intr_proc (int sig)
+intr_proc(int sig)
 {
   sig = sig;			/* Keep the compiler from complaining */
   signal_poll_flag++;
@@ -35,25 +35,25 @@ intr_proc (int sig)
 
 
 void
-enable_signal_polling (void)
+enable_signal_polling(void)
 {
   signal_poll_flag = 0;
-  if (signal (SIGINT, intr_proc) == SIG_ERR)
-    fprintf (stderr, "Cannot enable signal polling.\n");
+  if (signal(SIGINT, intr_proc) == SIG_ERR)
+    fprintf(stderr, "Cannot enable signal polling.\n");
 }
 
 #if 0				/* the following is not used and commented out */
 
 void
-disable_signal_polling (void)
+disable_signal_polling(void)
 {
   signal_poll_flag = 0;
-  if (signal (SIGINT, SIG_DFL) == SIG_ERR)
-    fprintf (stderr, "Cannot disable signal polling.\n");
+  if (signal(SIGINT, SIG_DFL) == SIG_ERR)
+    fprintf(stderr, "Cannot disable signal polling.\n");
 }
 
 void
-clear_signal (void)
+clear_signal(void)
 {
   signal_poll_flag = 0;
 }

@@ -7,7 +7,7 @@
 #ifndef _CMDLINE_H_INCLUDED
 #define _CMDLINE_H_INCLUDED
 
-extern void parse_cmd_line (int argc, char **argv);
+extern void parse_cmd_line(int argc, char **argv);
 extern int program_arg_char(int arg_index, int char_index);
 
 #endif

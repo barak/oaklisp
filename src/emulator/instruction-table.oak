@@ -1,0 +1,32 @@
+;;; Copyright (C) 1988 Kevin Lang & Barak Pearlmutter, CMU Oaklisp Project.
+
+;;; Dump a table of all the instructions in a format suitable for
+;;; compilation into the emulator.
+
+(let ((aux (lambda (s instr i)
+	     (format s "	\"~S\"," instr)
+	     (if (= (modulo i 10) 0)
+		 (format s "		/* ~D */~%" i)
+		 (format s "~%")))))
+
+  (define (dump-instruction-table f)
+
+    (let ((t0 (make simple-vector %argless-instructions))
+	  (t1 (make simple-vector %arged-instructions)))
+
+      (dolist (x (list-type opcode-descriptor-hash-table))
+	(destructure* (instr opcode argfield . #t) x
+	  (cond ((= opcode 0) (set! (nth t0 argfield) instr))
+		(else (set! (nth t1 opcode) instr)))))
+
+      (with-open-file (s f out)
+
+	(format s "char *argless_instr_name[] = {~%")
+	(dotimes (i %argless-instructions)
+	  (aux s (nth t0 i) i))
+	(format s "};~%~%")
+
+	(format s "char *instr_name[] = {~%")
+	(dotimes (i %arged-instructions)
+	  (aux s (nth t1 i) i))
+	(format s "};~%")))))

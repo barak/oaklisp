@@ -11,9 +11,9 @@
 #include "gc.h"
 #include "data.h"
 
-extern void init_stacks (void);
+extern void init_stacks(void);
 
-extern void stack_flush (stack_t * stack_p, int amount_to_leave);
+extern void stack_flush(stack_t * stack_p, int amount_to_leave);
 
 #ifdef THREADS
 #define VALUE_FLUSH(amount_to_leave)\
@@ -77,74 +77,76 @@ extern void dump_stack (stack_t * stack_p);
 {	value_stack.sp = local_value_sp;\
 	dump_stack(&value_stack);}
 
-#define DUMP_CONTEXT_STACK() \
-{	context_stack.sp = local_context_sp;\
+#define DUMP_CONTEXT_STACK() 			\
+{	context_stack.sp = local_context_sp;	\
 	dump_stack(&context_stack);}
 
-#define VALUE_STACK_HEIGHT() \
-	    (local_value_sp - value_stack_bp + 1 \
+#define VALUE_STACK_HEIGHT() 				\
+	    (local_value_sp - value_stack_bp + 1 	\
          + value_stack.pushed_count)
 
-#define CONTEXT_STACK_HEIGHT() \
-	    (local_context_sp - context_stack_bp + 1 \
+#define CONTEXT_STACK_HEIGHT() 				\
+	    (local_context_sp - context_stack_bp + 1 	\
          + context_stack.pushed_count)
 
 /* The top of stack is always visible, use this as lvalue, too. */
 #define PEEKVAL()	(*local_value_sp)
 
-/* When you are sure, that the buffer has enough elements in it,
+/* When you are sure that the buffer has enough elements in it,
    use this for looking deeper into the stack */
 #define PEEKVAL_UP(x)	(*(local_value_sp-(x)))
 
-/* Use these, if you are sure, that overflows and underflows cannot
-   occur. */
-#define PUSHVAL_NOCHECK(r)	{ *++local_value_sp =(r); }
+/* Use these when you are sure that overflows and underflows cannot occur. */
+#define PUSHVAL_NOCHECK(r)  { *++local_value_sp = (r); }
 #define POPVAL_NOCHECK()    (*local_value_sp--)
 
 
 #define PUSHVAL(r)					\
 {							\
-	if (&local_value_sp[1] < value_stack_end)       \
+  if (local_value_sp+1 < value_stack_end)		\
     { *++local_value_sp = (r); }			\
-    else {	\
+  else {						\
         GC_MEMORY(r);					\
-		VALUE_FLUSH(0);				\
-		GC_RECALL(*++local_value_sp);           \
-	}						\
+	VALUE_FLUSH(value_stack.filltarget);		\
+	GC_RECALL(*++local_value_sp);			\
+  }							\
 }
 
 #define PUSHVAL_IMM(r)					\
-{	CHECKVAL_PUSH(1);				\
+{							\
+	CHECKVAL_PUSH(1);				\
 	PUSHVAL_NOCHECK((r));				\
 }
 
 #define POPVAL(v)					\
-{	CHECKVAL_POP(1);				\
+{							\
+	CHECKVAL_POP(1);				\
 	(v) = *local_value_sp--;			\
 }
 
-/* The following routines check, that n elements can be pushed
+/* The following routines check that n elements can be pushed
    without overflow */
 
 #define CHECKVAL_PUSH(n)				\
-{	if (&local_value_sp[n] >= value_stack_end)      \
-		VALUE_FLUSH(value_stack_hysteresis);	\
+{	if (&local_value_sp[(n)] >= value_stack_end)	\
+	  VALUE_FLUSH(value_stack.filltarget);		\
 }
 
-#define CHECKCXT_PUSH(n)						\
-{	if (&local_context_sp[n] >= &context_stack_bp[context_stack_size])\
-		CONTEXT_FLUSH(context_stack_hysteresis);	\
+#define CHECKCXT_PUSH(n)				\
+{	if (&local_context_sp[(n)] >=			\
+	    &context_stack_bp[context_stack.size])	\
+	  CONTEXT_FLUSH(context_stack.filltarget);	\
 }
 
 /* The following routines check, that n elements can be popped
-   without underflow */
+   without underflow.  NASTY STACK BUG FIXED by adding parens around n */
 #define CHECKVAL_POP(n)						\
-{	if (&local_value_sp[-n] < value_stack_bp)		\
+{	if (&local_value_sp[-(n)] < value_stack_bp)		\
 		VALUE_UNFLUSH((n));				\
 }
 
 #define CHECKCXT_POP(n)						\
-{	if (&local_context_sp[-n] < context_stack_bp)		\
+{	if (&local_context_sp[-(n)] < context_stack_bp)		\
 		CONTEXT_UNFLUSH((n));				\
 }
 

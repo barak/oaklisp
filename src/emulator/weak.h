@@ -10,9 +10,9 @@
 
 #include "data.h"
 
-void init_weakpointer_tables (void);
-void rebuild_wp_hashtable (void);
-ref_t ref_to_wp (ref_t r);
-extern unsigned long post_gc_wp (void);
+void init_weakpointer_tables(void);
+void rebuild_wp_hashtable(void);
+ref_t ref_to_wp(ref_t r);
+extern unsigned long post_gc_wp(void);
 
 #endif

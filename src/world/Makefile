@@ -16,53 +16,55 @@ OAK=oakem
 # Flags for the emulator
 OAKFLAGS=-trace-gc=1
 
-# How to compile oaklisp source files to make object files:
+# How to compile oaklisp source files into oaklisp bytecode object files:
 .SUFFIXES: .oa .oak
 
-%.oa : %.oak ; $(OAK) $(OAKFLAGS) -- -compile $* -exit
+%.oa : %.oak ; $(OAK) $(OAKFLAGS) -- --compile $* --exit
 
 # How to build a new cold world using the world builder tool:
 new.cold: $(COLDFILES) $(TOOLFILES)
 	-rm -f new.cold new.sym
 	$(OAK) $(OAKFLAGS) \
 	   -- \
-	   -load tool \
-	   -eval "(tool-files '($(COLDFILESD:.oa=)) 'new)" \
-	   -exit
+	   --load tool \
+	   --eval "(tool-files '($(COLDFILESD:.oa=)) 'new)" \
+	   --exit
 
 # How to boot cold world into warm world:
 
 oakworld-1.bin: new.cold
-	 $(OAK) $(OAKFLAGS) -world new.cold -dump $@
+	 $(OAK) $(OAKFLAGS) --world new.cold --dump $@
 
 # load successive layers of functionality onto the world
 
 oakworld-2.bin: oakworld-1.bin $(MISCFILES)
-	$(OAK) $(OAKFLAGS) -world oakworld-1.bin -dump $@ \
+	$(OAK) $(OAKFLAGS) --world oakworld-1.bin --dump $@ \
 	   -- \
-	   $(foreach f, $(MISCFILES:.oa=), -load $(f)) \
-	   -exit
+	   $(foreach f, $(MISCFILES:.oa=), --load $(f)) \
+	   --exit
 
 oakworld-3.bin: oakworld-2.bin $(COMPFILES)
-	 $(OAK) $(OAKFLAGS) -world oakworld-2.bin -dump $@ \
+	 $(OAK) $(OAKFLAGS) --world oakworld-2.bin --dump $@ \
 	   -- \
-	   -locale compiler-locale $(foreach f, $(COMPFILES:.oa=), -load $(f)) \
-	   -locale system-locale -exit
+	   --locale compiler-locale \
+	   $(foreach f, $(COMPFILES:.oa=), --load $(f)) \
+	   --locale system-locale --exit
 
 oakworld.bin: oakworld-3.bin $(RNRSFILES)
-	$(OAK) $(OAKFLAGS) -world oakworld-3.bin -dump $@ \
+	$(OAK) $(OAKFLAGS) --world oakworld-3.bin --dump $@ \
 	-- \
-	-eval '(define-instance scheme-locale locale (list system-locale))' \
-	-locale scheme-locale $(foreach f, $(RNRSFILES:.oa=), -load $(f)) \
-	-locale system-locale -exit
+	-eval '(define-instance scheme-locale locale (list system-locale))'\
+	-locale scheme-locale \
+	$(foreach f, $(RNRSFILES:.oa=), --load $(f)) \
+	-locale system-locale --exit
 
 # How to rebuild variables included by this Makefile itself:
 
 Makefile-vars: $(MAKEFILES) $(FILESFILES)
 	$(OAK) $(OAKFLAGS) \
 	   -- \
-	   -load files -load make-makefile -eval '(make-makefile "$@")' \
-	   -exit
+	   --load files --load make-makefile --eval '(make-makefile "$@")' \
+	   --exit
 
 .PHONY: install
 install: oakworld.bin

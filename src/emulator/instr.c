@@ -1,123 +1,32 @@
-/**********************************************************************
- *     Copyright (c) by Barak Pearlmutter and Kevin Lang, 1987-99.    *
- *     Copyright (c) by Alex Stuebinger, 1998-99.                     *
- *     Distributed under the GNU General Public License v2 or later   *
- **********************************************************************/
-
-
-#include "config.h"
+#include "data.h"
 
 #ifndef FAST
-const char *ArglessInstrs[] =
-{
-  "NOOP",			/* 0 */
-  "PLUS",
-  "NEGATE",
-  "EQ?",
-  "NOT",
-  "TIMES",
-  "LOAD-IMM",
-  "DIV",
-  "=0?",
-  "GET-TAG",
-  "GET-DATA",			/* 10 */
-  "CRUNCH",
-  "GETC",
-  "PUTC",
-  "CONTENTS",
-  "SET-CONTENTS",
-  "LOAD-TYPE",
-  "CONS",
-  "<0?",
-  "MODULO",
-  "ASH",			/* 20 */
-  "ROT",
-  "STORE-BP-I",
-  "LOAD-BP-I",
-  "RETURN",
-  "ALLOCATE",
-  "ASSQ",
-  "LOAD-LENGTH",
-  "PEEK",
-  "POKE",
-  "MAKE-CELL",			/* 30 */
-  "SUBTRACT",
-  "=",
-  "<",
-  "BIT-NOT",
-  "LONG-BRANCH",
-  "LONG-BRANCH-NIL",
-  "LONG-BRANCH-T",
-  "LOCATE-BP-I",
-  "LOAD-IMM-CON",
-  "CAR",			/* 40 */
-  "CDR",
-  "SET-CAR",
-  "SET-CDR",
-  "LOCATE-CAR",
-  "LOCATE-CDR",
-  "PUSH-CXT-LONG",
-  "CALL-PRIMITIVE",
-  "THROW",
-  "OBJECT-HASH",
-  "OBJECT-UNHASH",		/* 50 */
-  "GC",
-  "BIG-ENDIAN?",
-  "VLEN-ALLOCATE",
-  "INC-LOC",
-  "FILL-CONTINUATION",
-  "CONTINUE",
-  "REVERSE-CONS",
-  "MOST-NEGATIVE-FIXNUM?",
-  "FX-PLUS",
-  "FX-TIMES",			/* 60 */
-  "GET-TIME",
-  "REMAINDER",
-  "QUOTIENTM",
-  "FULL-GC",
-  "MAKE-LAMBDA",
-  "GET-ARGLINE-CHAR",
-  "ENABLE-ALARMS",
-  "DISABLE-ALARMS",
-  "RESET-ALARM-COUNTER",
-};
 
-const char *Instrs[] =
+#include <stdio.h>
+
+#include "instr-data.c"
+
+void
+print_pc(u_int16_t *e_pc)
 {
-  "#<Undefined IVAR 1038>",	/* 0 */
-  "HALT",
-  "LOG-OP",
-  "BLT-STK",
-  "BRANCH-NIL",
-  "BRANCH-T",
-  "BRANCH",
-  "POP",
-  "SWAP",
-  "BLAST",
-  "LOAD-IMM-FIX",		/* 10 */
-  "STORE-STK",
-  "LOAD-BP",
-  "STORE-BP",
-  "LOAD-ENV",
-  "STORE-ENV",
-  "LOAD-STK",
-  "MAKE-BP-LOC",
-  "MAKE-ENV-LOC",
-  "STORE-REG",
-  "LOAD-REG",			/* 20 */
-  "FUNCALL-CXT",
-  "FUNCALL-TAIL",
-  "STORE-NARGS",
-  "CHECK-NARGS",
-  "CHECK-NARGS-GTE",
-  "STORE-SLOT",
-  "LOAD-SLOT",
-  "MAKE-CLOSED-ENVIRONMENT",
-  "PUSH-CXT",
-  "LOCATE-SLOT",		/* 30 */
-  "STREAM-PRIMITIVE",
-  "FILLTAG",
-  "^SUPER-CXT",
-  "^SUPER-TAIL",
-};
+  if (SPATIC_PTR((ref_t *) e_pc))
+    fprintf(stdout, "%7ld[spatic] ",
+	    (long)((char *)e_pc - (char *)spatic.start));
+  else
+    fprintf(stdout, "%7ld[new   ] ",
+	    (long)((char *)e_pc - (char *)new_space.start
+		   + 4 * spatic.size));
+}
+
+void 
+print_instr(int op_field, int arg_field, u_int16_t *e_pc)
+{
+  print_pc(e_pc);
+
+  if (op_field == 0)
+    fprintf(stdout, "%s\n", argless_instr_name[arg_field]);
+  else
+    fprintf(stdout, "%s %d\n", instr_name[op_field], arg_field);
+}
+
 #endif

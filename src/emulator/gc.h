@@ -12,7 +12,7 @@
 #include "data.h"
 
 extern bool full_gc;
-extern void printref (FILE *fd, ref_t refin);
+extern void printref(FILE * fd, ref_t refin);
 
 extern void gc (bool pre_dump, bool full_gc, char *reason,
 		size_t amount, register_set_t *reg_set);

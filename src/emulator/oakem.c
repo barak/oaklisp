@@ -50,11 +50,11 @@ int create_thread (ref_t start_function)
 }
 
 int
-get_byte_gender (void)
+get_byte_gender(void)
 {
   /* Byte Gender Detection Routine */
   unsigned long a = 0x04030201ul;
-  unsigned char *cp = (unsigned char *) &a;
+  unsigned char *cp = (unsigned char *)&a;
 
   if (cp[0] == 0x01)
     return little_endian;
@@ -63,21 +63,21 @@ get_byte_gender (void)
 }
 
 int
-main (int argc, char **argv)
+main(int argc, char **argv)
 {
- 
-  byte_gender = get_byte_gender ();
 
-  parse_cmd_line (argc, argv);
+  byte_gender = get_byte_gender();
 
-  init_weakpointer_tables ();
+  parse_cmd_line(argc, argv);
 
-  init_stacks ();
+  init_weakpointer_tables();
 
-  read_world (world_file_name);
+  init_stacks();
+
+  read_world(world_file_name);
 
   new_space.size = e_next_newspace_size = original_newspace_size;
-  alloc_space (&new_space, new_space.size);
+  alloc_space(&new_space, new_space.size);
   free_point = new_space.start;
 
 #ifdef THREADS
@@ -95,9 +95,9 @@ main (int argc, char **argv)
   /* Set the registers to the boot code */
 
   e_current_method = e_boot_code;
-  e_env = REF_TO_PTR (REF_SLOT (e_current_method, METHOD_ENV_OFF));
-  e_code_segment = REF_SLOT (e_current_method, METHOD_CODE_OFF);
-  e_pc = CODE_SEG_FIRST_INSTR (e_code_segment);
+  e_env = REF_TO_PTR(REF_SLOT(e_current_method, METHOD_ENV_OFF));
+  e_code_segment = REF_SLOT(e_current_method, METHOD_CODE_OFF);
+  e_pc = CODE_SEG_FIRST_INSTR(e_code_segment);
 
   /* Put a reasonable thing in e_bp to avoid confusing GC */
   e_bp = e_env;

@@ -17,15 +17,15 @@
 #if defined(HAVE_GETTICKCOUNT)
 
 unsigned long
-get_real_time (void)
+get_real_time(void)
 {
-  return (unsigned long) GetTickCount ();
+  return (unsigned long)GetTickCount();
 }
 
 unsigned long
-get_user_time (void)
+get_user_time(void)
 {
-  return get_real_time ();
+  return get_real_time();
 }
 
 #elif defined(HAVE_GETRUSAGE)
@@ -49,16 +49,16 @@ get_user_time (void)
 #endif
 
 unsigned long
-get_real_time (void)
+get_real_time(void)
 {
   unsigned long result;
   struct timeval tnow;
 
-  if (0 != gettimeofday (&tnow, 0))
+  if (0 != gettimeofday(&tnow, 0))
     {
-      fprintf (stderr, "ERROR (Time): Unable to obtain time of day; %s\n",
-	       strerror (errno));
-      exit (EXIT_FAILURE);
+      fprintf(stderr, "ERROR (Time): Unable to obtain time of day; %s\n",
+	      strerror(errno));
+      exit(EXIT_FAILURE);
     }
   else
     {
@@ -70,16 +70,16 @@ get_real_time (void)
 
 
 unsigned long
-get_user_time (void)
+get_user_time(void)
 {
   struct rusage rusage;
   unsigned long result;
 
-  if (0 != getrusage (RUSAGE_SELF, &rusage))
+  if (0 != getrusage(RUSAGE_SELF, &rusage))
     {
-      fprintf (stderr, "ERROR (Time): Unable to getrusage(); %s\n",
-	       strerror (errno));
-      exit (EXIT_FAILURE);
+      fprintf(stderr, "ERROR (Time): Unable to getrusage(); %s\n",
+	      strerror(errno));
+      exit(EXIT_FAILURE);
     }
   else
     {
@@ -92,28 +92,28 @@ get_user_time (void)
 #else /* plain ansi-libraries */
 
 unsigned long
-get_real_time (void)
+get_real_time(void)
 {
 #ifdef HAVE_LONG_LONG
   unsigned long long temp;
-  temp = (unsigned long long) clock ()
+  temp = (unsigned long long)clock()
     * (1000ull / CLOCKS_PER_SEC);
 #else
   long temp;
-  temp = (clock () * 1000) / (CLOCKS_PER_SEC);
+  temp = (clock() * 1000) / (CLOCKS_PER_SEC);
 #endif
   /* caution: the clock() function on some systems with a high
      frequency clock (e.g. transputers ) give values
      modulo a not too big time span, so a wrap around
      can occur between to calls, which leads to odd results
    */
-  return (unsigned long) temp;
+  return (unsigned long)temp;
 }
 
 unsigned long
-get_user_time (void)
+get_user_time(void)
 {
-  return get_real_time ();
+  return get_real_time();
 }
 
 #endif
