@@ -338,7 +338,7 @@ loop()
 #endif
 
 #if ENABLE_TIMER
-#define TIMEOUT	2000
+#define TIMEOUT	1000
 #define POLL_TIMER_SIGNALS()	if (timer_counter > TIMEOUT) {goto intr_trap;}
 #else
 #define POLL_TIMER_SIGNALS()
@@ -1243,8 +1243,11 @@ top_of_loop:
 	     GOTO_TOP;
 
 	  case 70:		/* HEAVYWEIGHT-THREAD */
-	      create_thread(PEEKVAL());
-	      PEEKVAL() = e_nil;
+	      if (create_thread(PEEKVAL())) {
+		  PEEKVAL() = e_t;
+	      } else {
+		  PEEKVAL() = e_nil;
+	      }
 	      GOTO_TOP;
 
 	     case 75:		/* TEST-INSTRUCTION */

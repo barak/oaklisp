@@ -50,10 +50,10 @@
 /* Toggle specific optimizations. */
 
 /* Activate operation-method association list move-to-front. */
-#define OP_METH_ALIST_MTF
+/* #define OP_METH_ALIST_MTF */
 
 /* Activate operation-type method cache. */
-#define OP_TYPE_METH_CACHE
+/* #define OP_TYPE_METH_CACHE */
 
 
 #if defined(linux) && defined (__GNUC__) && defined(i386)

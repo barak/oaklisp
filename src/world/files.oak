@@ -160,6 +160,7 @@
     ;; pretty-print
 
     alarm
+    multiproc
     ))
 
 (define compiler-files

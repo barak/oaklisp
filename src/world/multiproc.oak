@@ -1,0 +1,430 @@
+;;; queue.oak
+
+(define (make-queue)
+  (list '()))
+
+(define (enqueue obj q)
+  (if (null? (car q))
+      (block (set! (car q) (list obj))
+	     (set! (cdr q) (car q)))
+      (block (set! (cdr (cdr q)) (list obj))
+	     (set! (cdr q) (cdr (cdr q)))))
+  (car q))
+
+
+(define (dequeue q)
+  (pop (car q)))
+
+(define (qappend q1 q2)
+  (if (not (null? (car q2)))
+      (block (set! (car q1) (append (car q1) (car q2)))
+	     (set! (cdr q1) (cdr q2))))
+  (car q1))
+
+(define (qempty? q)
+  (not (null? (car q))))
+
+;;; potpourri.oak
+
+(set! (fluid fancy-references) #t)
+
+(define (make-vector n initial-element)
+  (let ((v (make simple-vector n)))
+    (dotimes (i n) (set! (nth v i) initial-element))
+    v))
+
+(define-syntax (until test . body)
+  `(labels ((fn (lambda ()
+	       ,@body
+	       (if ,test #t (fn)))))
+     (fn)))
+
+(define-syntax (without-interrupts . body)
+  `(wind-protect (%disable-alarms)
+		 (progn ,@body)
+		 (%enable-alarms)))
+
+(define (copy-list l)
+  (if (list? l)
+      (cons (copy-list (car l)) (copy-list (cdr l)))
+      l))
+
+;;; process.oak
+
+#|
+
+This is the initial process object class. The current-process object
+is stored in a register of the virtual machine for uniform access from
+the task code independant of which virtual machine (i.e. pthread) is
+running the task.
+
+The count of process id number is protected by a mutex, however, which
+requires that some process already be running. The first process is 
+created before mutexes are defined, therefore, and so initialization
+of this class is redefined after the first one is made. See process2.oak
+for more code.
+
+Note the rather primitive fluid binding of the maximum number of processes.
+This is inadequate in a futures system, but for now mutexes have an array
+of flags that is indexed by the process id number. It will be fixed after
+everything else is working, and we'll just have to not create new processes
+after the 64th for now.
+
+|#
+
+(define-instance process type '(pid fluid-binding-list) (list object))
+(define-instance process-id operation)
+
+(define (fluid *number-of-processes*) 64) ;; limited by the number of mutex flags
+
+;;--------------------------------------------------
+;; bootstrap initial process
+;;--------------------------------------------------
+(add-method (initialize (process pid) self)
+  (set! pid 0)
+  ;; (set! fluid-binding-list (copy-fluid-bindings))
+  self)
+(%store-process (make process))
+;;--------------------------------------------------
+
+(add-method (process-id (process pid) self)
+  pid)
+
+(define (current-process)
+  (%load-process))
+
+;;; mutex.oak
+
+#|
+A solution to the critical section problem for multiple asynchronous 
+processes, which must have shared access to a set of access flags and a 
+contended turn value.
+
+This is supposed to be used to build higher-level access control objects,
+so that the amount of time spent using the lock to achive something is small
+and so processes will not have to be in busy waiting for very long.
+
+In practice, if we get this system running across multiple processors and have
+a situation that we don't expect to tkae very long to resolve, this may be 
+adequate because the waiting process on another processor will not have to 
+context switch itself out and back in because of being put on some waiting 
+list.
+
+A process had better not release a mutex it has not acuired, for obvious
+reasons.
+
+This implementation requires a list of flags, one for each process that might
+acquire the mutex. Since this requires a predefined limit on the number of
+processes, we will probably move to a barbershop (take-a-number) mutex after
+the rest of the multithreading system has been tested.
+|#
+
+(define-instance mutex type '(flags turn) (list object))
+
+(define-instance acquire-mutex operation)
+(define-instance release-mutex operation)
+
+(add-method (initialize (mutex flags turn) self)
+  (set! turn 0)
+  (set! flags (make-vector *number-of-processes* 'idle))
+  self)
+
+; for debugging purposes only...
+(define-instance flag operation)
+(define-instance nturn operation)
+(add-method (flag (mutex flags turn) self) flags)
+(add-method (nturn (mutex flags turn) self) turn)
+
+(add-method (acquire-mutex (mutex flags turn) self)
+  (let ((j 0)
+	(i (process-id (current-process))))
+    (until (and (>= j *number-of-processes*)
+		(or (= turn i) (eq? (nth flags turn) 'idle)))
+	   (set! (nth flags i) 'want-in)
+	   (set! j turn)
+	   (while (not (= j i))
+		  (if (not (eq? (nth flags j) 'idle))
+		      (set! j turn)
+		      (set! j (modulo (+ j 1) *number-of-processes*))))
+	   (set! (nth flags i) 'in-cs)
+	   (set! j 0)
+	   (while (and (< j *number-of-processes*)
+		       (or (= j i)
+			   (not (eq? (nth flags j) 'in-cs))))
+		  (set! j (+ j 1))))
+    (set! turn i)))
+
+; this should make sure the current process owns the mutex, at the very least
+(add-method (release-mutex (mutex flags turn) self)
+  (let ((j (modulo (+ 1 turn) *number-of-processes*)))
+    (while (eq? (nth flags j) 'idle)
+	   (set! j (modulo (+ j 1) *number-of-processes*)))
+    (set! turn j)
+    (set! (nth flags j) 'idle)))
+
+;;; process2.oak
+
+;; see process.oak for an explaination
+
+(define *pid-counter* 1) ;; the 0th process is not created with this counter
+(define *pid-counter-mutex* (make mutex))
+
+(define (new-pid)
+  (let ((newp nil))
+    (acquire-mutex *pid-counter-mutex*)
+    (set! newp *pid-counter*)
+    (set! *pid-counter (+ *pid-counter* 1))
+    (release-mutex *pid-counter-mutex*)
+    newp))
+
+;; now redefine the initialization for processes after the first...
+(add-method (initialize (process pid) self)
+  (set! pid (new-pid))
+  ;; (set! fluid-binding-list (copy-fluid-bindings))
+  self)
+
+;;; testandset.oak
+
+#|
+
+test-and-set in terms of mutexes. when the test (a predicate on the
+test-and-settable object) is true, the new value is assigned and returned,
+otherwise #f is returned
+
+|#
+
+(define-instance test-and-settable type '(ts-value) (list mutex))
+(define-instance test-and-set operation)
+
+; for debugging purposes only...
+(define-instance tsval operation)
+
+(add-method (initialize (test-and-settable ts-value) self)
+  (set! ts-value '())
+  (^super mutex initialize self)
+  self)
+
+(add-method (test-and-set (test-and-settable ts-value) self test new-value)
+  (let ((set? #t))
+    (acquire-mutex self)
+    (if (test ts-value) (set! ts-value new-value) (set! set? #f))
+    (release-mutex self)
+    (if set? new-value #f)))
+
+(add-method (tsval (test-and-settable ts-value) self) ts-value)
+
+;;; schedule.oak
+
+#|
+
+in order to avoid deadlock, the interrupt that invokes context switching
+must be disabled during scheduler interaction on a per-virtual-machine
+basis (between virtual machines, a mutex is used to preserve the critical
+section)
+
+at context switch time, the process register is fixed:
+  when a process is switched out, lwp gets the current process and saves it
+  when a process is switched in, start gets the saved process and sets it
+  when process-run-fn is called, it creates a new process and task and
+       adds the block to the scheduler
+because the scheduler is acquired whenever these things are happening, it
+  should not be possible for two different pthreads to think they are running
+  the same process at any time (this would clearly be bad because then two
+  threads of computation could acquire the same mutex at the same time)
+
+|#
+
+(define (fluid *scheduleQ*) (make-queue))
+(define (fluid *scheduleQ-mutex*) (make mutex))
+
+(define (acquire-scheduler)
+  (%disable-alarms)
+  (acquire-mutex *scheduleQ-mutex*))
+(define (release-scheduler)
+  (release-mutex *scheduleQ-mutex*)
+  (%enable-alarms))
+
+(define (lwp thunk)
+  (acquire-scheduler)
+  (enqueue (cons (%load-process) thunk)
+	   *scheduleQ*)
+  (release-scheduler))
+(define (start)
+  (let ((next nil))
+    (acquire-scheduler)
+    (if (qempty? *scheduleQ*)
+	'()
+	(set! next (dequeue *scheduleQ*)))
+    (when next (%store-process (car next))) ;; fix process register and proceed
+    (%reset-alarm-counter)
+    (release-scheduler)
+    (when next ((cdr next)))))
+
+#|
+pause causes a context switch. here is an easier-to-read version,
+it's expanded in order to make it atomic instead of just depending
+on lwp and start being atomic
+
+(define (pause)
+  (call/cc
+   (lambda (k)
+     (lwp (lambda () (k #f)))
+     (start))))
+|#
+(define (pause)
+  (let ((next nil))
+    (acquire-scheduler)
+    (call/cc
+     (lambda (k)
+       ;; (lwp (lambda () (k #f)))
+       (enqueue (cons (%load-process)
+		      (lambda () (k #f)))
+		*scheduleQ*)
+       ;; (start)
+       (if (qempty? *scheduleQ*)
+	   '()
+	   (set! next (dequeue *scheduleQ*)))
+       (when next (%store-process (car next))) ;; fix process register and proceed
+       (%reset-alarm-counter)
+       (release-scheduler)
+       (when next ((cdr next)))))))
+
+;; no longer calls lwp because this must create a new process object
+(define (process-run-fn fn args)
+  (acquire-scheduler)
+  (enqueue (cons (make process)
+		 (lambda ()
+		   (apply fn args)
+		   (start)))
+	   *scheduleQ*)
+  (release-scheduler)
+  nil)
+
+#|
+when heavyweight threads have nothing else to do, they have to be given
+a job that keeps them monitoring the scheduler. probably a sleep should
+be added to this (as another opcode which makes the VM sleep) to make
+busy waiting take less machine time
+|#
+(define (busy-work)
+  (while #t (pause)))
+
+#|
+this is the function that bootstraps a new heavyweight process...
+start new hw threads as (%heavyweight-thread start-busy-work)
+THIS IS DONE AT WARM BOOT TIME AND SHOULD NOT BE DONE BY A USER
+|#
+(define (start-busy-work)
+  (process-run-fn busy-work nil)
+  (start))
+
+;;; semaphore.oak
+
+#|
+
+semaphores in terms of queues and mutexes.
+
+When processes wait on a semaphore, they are put in the queue as a pair
+of a process object and the closure representing it's continuing computation.
+This can then be moved directly to the scheduler when the semaphore is signaled.
+
+|#
+
+(define-instance semaphore type '(s-value s-Q) (list mutex))
+
+(define-instance wait operation)
+(define-instance signal operation)
+
+(add-method (initialize (semaphore s-value s-Q) self)
+  (set! s-value 0)
+  (set! s-Q (make-queue))
+  (^super mutex initialize self)
+  self)
+
+(add-method (wait (semaphore s-value s-Q) self)
+  (acquire-mutex self)
+  (set! s-value (- s-value 1))
+  (if (< s-value 0)
+      ;; add to s-Q and block until woken
+      (call/cc (lambda (c)
+		 ;; since context switching preserves current-process,
+		 ;; we should be able to just grab and go
+		 (enqueue (cons (current-process)
+				(lambda () (c nil)))
+			  s-Q)
+		 (release-mutex self)
+		 (start)))
+      (release-mutex self))
+  nil)
+
+;; WARNING: make sure that no other virtual process acquires a semaphore
+;; without first acquiring the scheduler! disabling alarms only prevents
+;; interrupts from occuring within the current pthread!
+;; (this should not be a problem since only these routines should acquire 
+;; the semaphore)
+(add-method (signal (semaphore s-value s-Q) self)
+  (acquire-scheduler)
+  (acquire-mutex self)
+
+  (set! s-value (+ s-value 1))
+  (when (<= s-value 0) ;; wake up the next blocked process
+	(enqueue (dequeue s-Q) *scheduleQ*))
+
+  (release-mutex self)
+  (release-scheduler)
+  nil)
+
+;;; future.oak
+
+#|
+futures: promises in a multitasking world
+|#
+
+(define-instance future type
+  '(flag val scheduled? dependantsQ sched-policy err-policy)
+  (list promise mutex))
+
+(add-method (initialize (future scheduled? dependantsQ sched-policy err-policy) self)
+  (set! scheduled? (make test-and-settable))
+  (set! dependantsQ (make-queue))
+  (set! sched-policy 'unused)
+  (set! err-policy 'unused)
+  ;; not doing this because flag and val have to be instance variables of futures
+  ;; (^super promise initialize self)
+  (set! flag nil)
+  (set! val nil)
+  (^super mutex initialize self)
+  self
+  )
+
+(add-method (force (future flag val scheduled? dependantsQ sched-policy err-policy) self)
+  (acquire-mutex self) ;; this mutex prevents dependants from enqueueing badly
+  (if flag
+      (block (release-mutex self)
+	     val)
+      (call/cc (lambda (c)
+		 ;; suspend the current task into the destination queue
+		 (enqueue (cons (current-process) ;; process calling force
+				(lambda ()
+				  (let ((result (force self)))
+				    (c result))))
+			  dependantsQ)
+		 (release-mutex self) ;; now that we're enqueued, we're safe
+		 ;; someone claim responsibility for and initiate future computation
+		 (let ((schedule? (test-and-set scheduled? null? #t)))
+		   (when schedule?
+			 (process-run-fn
+			  (lambda ()
+			    (let ((newval (val)))
+			      (acquire-mutex self)
+			      (set! flag #t)
+			      (set! val newval)
+			      (release-mutex self)
+			      ;; at this point no more people will
+			      ;; be trying to add themselves...
+			      (acquire-scheduler)
+			      (qappend *scheduleQ* dependantsQ)
+			      (release-scheduler)))
+			  nil)))
+		 (start)))))
+

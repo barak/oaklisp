@@ -5,8 +5,11 @@
 ;;
 
 (define (alarm n)
+  (%disable-alarms)
   (format t "*Bing*")
   (set! ((%register 'nargs)) n)
+  (%reset-alarm-counter)
+  (%enable-alarms)
   (%return))
 
 (set! (nth %argless-tag-trap-table 127) alarm)
