@@ -124,6 +124,7 @@ typedef struct {
   ref_t     e_code_segment;
   u_int16_t *e_pc;
   unsigned  e_nargs;
+  ref_t     e_process;
 } register_set_t;
 
 
@@ -138,7 +139,7 @@ extern ref_t
  *e_bp, *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type, e_env_type,
  *e_subtype_table, e_object_type, e_segment_type, e_boot_code, e_code_segment,
  *e_arged_tag_trap_table, *e_argless_tag_trap_table, e_current_method,
-  e_uninitialized, e_method_type, e_operation_type;
+  e_uninitialized, e_method_type, e_operation_type, e_process;
 
 extern u_int16_t *e_pc;
 
@@ -420,6 +421,8 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
   (  (reg_set->e_bp)  )
 #define e_nargs \
   (  (reg_set->e_nargs)  )
+#define e_process \
+  (  (reg_set->e_process)  )
 #else
 register_set_t* reg_set;
 #define value_stack_address &value_stack

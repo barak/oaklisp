@@ -14,3 +14,14 @@
   (add-method ((make-open-coded-operation '((heavyweight-thread)) 1 1)
 	       (object) target)
 	      (%heavyweight-thread target)))
+
+(define-constant %load-process
+  (add-method ((make-open-coded-operation '((load-reg process)) 0 1)
+	       (object))
+	      (%load-process)))
+
+(define-constant %store-process
+  (add-method ((make-open-coded-operation '((store-reg process)) 1 1)
+	       (object) value)
+	      (%store-process value)))
+

@@ -1509,6 +1509,9 @@ top_of_loop:
 		  /* wp_table[0] = e_false; */
 		  /* rebuild_wp_hashtable(); */
 		  GOTO_TOP;
+		case 22:
+		  e_process = x;
+		  GOTO_TOP;
 		default:
 		  printf("STORE-REG %d, unknown .\n", arg_field);
 		  GOTO_TOP;
@@ -1585,6 +1588,9 @@ top_of_loop:
 		  GOTO_TOP;
 		case 21:
 		  PUSHVAL(e_false);
+		  GOTO_TOP;
+		case 22:
+		  PUSHVAL(e_process);
 		  GOTO_TOP;
 		default:
 		  fprintf(stderr, "Error (vm interpreter): "
