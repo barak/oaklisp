@@ -4,12 +4,18 @@
 ;; emulator.
 ;;
 
+#|
 (define (alarm n)
   (%disable-alarms)
   (format t "*Bing*")
   (set! ((%register 'nargs)) n)
   (%reset-alarm-counter)
   (%enable-alarms)
+  (%return))
+|#
+(define (alarm n)
+  (pause)
+  (set! ((%register 'nargs)) n)
   (%return))
 
 (set! (nth %argless-tag-trap-table 127) alarm)
