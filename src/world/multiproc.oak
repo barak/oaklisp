@@ -164,35 +164,12 @@ when possible since the amount of busy waiting will be lessened.
     (set! process-fluid-binding-list 
 	  (copy-fluid-bindings (current-process)))
     self)
-#|
-  (add-method (%fluid (symbol) sym)
-    (iterate aux ()
-       (let ((x (%assq sym (get-fluid-bindings (current-process)))))
-	 (cond (x => cdr)
-	       (else (cerror
-		      (format #f "Try looking up (FLUID ~S) again." sym)
-		      "(FLUID ~S) not found." sym)
-		     (aux))))))
-  (add-method ((setter %fluid) (symbol) sym val)
-    (let ((x (%assq sym (get-fluid-bindings (current-process)))))
-     (cond (x (set! (cdr x) val))
-	   (else (set! (cdr top-level-fluid-binding-list)
-		       (cons (cons sym val)
-			     (cdr top-level-fluid-binding-list)))
-		 val))))
-  (add-method ((locater %fluid) (symbol) sym)
-    (iterate aux ()
-       (let ((x (%assq sym (get-fluid-bindings (current-process)))))
-	 (cond (x (make-locative (cdr x)))
-	       (else
-		(cerror
-		 (format #f "Try looking up (FLUID ~S) again." sym)
-		 "Locative to (FLUID ~S) not found." sym)
-		(aux))))))
-|# 
-  (%load-process))
+  (%load-process)
+  (spawn-heavyweight-threads))
 
-;;(add-warm-boot-action setup-initial-process-object)
+(add-warm-boot-action setup-initial-process-object)
+
+
 ;;--------------------------------------------------
 
 ;;; testandset.oak
@@ -335,6 +312,19 @@ THIS IS DONE AT WARM BOOT TIME AND SHOULD NOT BE DONE BY A USER
 (define (start-busy-work)
   (process-run-fn busy-work nil)
   (start))
+
+;;--------------------------------------------------
+;; Check to see if the user added a -pthreads option
+;; and launch some heavyweight threads accordingly.
+;;--------------------------------------------------
+(define heavyweight-thread-count 1)
+
+(define (spawn-heavyweight-threads)
+  (when (> heavyweight-thread-count 1)
+    (format t "Spawning ~s pthreads.~%" heavyweight-thread-count)
+    (dotimes (i (- heavyweight-thread-count 1))
+       (if (%heavyweight-thread start-busy-work) nil
+	   (format t "Could not start heavyweight thread ~s.~%" (+ i 1))))))
 
 ;;; semaphore.oak
 

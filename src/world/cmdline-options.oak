@@ -17,6 +17,11 @@
 		   (set! (fluid current-locale)
 			 (eval (read (make string-input-stream x))
 			       (fluid current-locale)))))
+    ("pthreads" 1 ,(lambda (x)
+		     (set! heavyweight-thread-count
+		       (read-token (make string-input-stream x)))
+		     (when (not (integer? heavyweight-thread-count))
+		       (exit 1 "-pthread option takes integer argument.~%"))))
     ("exit" 0 ,(lambda () (exit 0 "")))))
 
 (define (cmdline-eat)
