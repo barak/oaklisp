@@ -21,9 +21,9 @@
 \newcommand{\evto}[2]{{\tt#1}\ \ra\ {\tt#2}}
 
 \newcommand{\header}[2]{\par\noindent\hspace{\leftmargini
-}{#1}\hfill{\em#2}\hspace*{\leftmargini}\newline}
-\newcommand{\heady}[3]{\index{{\tt#1} ! #3}\header{{\tt#1 \em#2}}{#3}}
-\newcommand{\headyy}[3]{\index{{\tt#1} ! #3}\header{{\tt(#1 \em#2\tt)}}{#3}}
+}{#1}\hfill\emph{#2}\hspace*{\leftmargini}\newline}
+\newcommand{\heady}[3]{\index{{\tt#1} ! #3}\header{{\tt#1 \emph{#2}}}{#3}}
+\newcommand{\headyy}[3]{\index{{\tt#1} ! #3}\header{{\tt(#1 \emph{#2}\tt)}}{#3}}
 
 \newcommand{\sform}[2]{\headyy{#1}{#2}{Special Form}}
 \newcommand{\op}[2]{\headyy{#1}{#2}{Operation}}
@@ -43,11 +43,11 @@
 #1)}{Fluid Variable}}
 
 \newcommand{\makin}[2]{\index{{\tt#1} ! Making}\header{\tt (make #1
-\em#2\tt)}{Operation}}
+\emph{#2}\tt)}{Operation}}
 \newcommand{\setter}[3]{\index{{\tt#1} ! Setter}\header{\tt(set! (#1
-\em#2\tt) \em#3\tt)}{Operation}}
+\emph{#2}\tt) \emph{#3}\tt)}{Operation}}
 \newcommand{\coercer}[2]{\index{{\tt#1} ! Coercer}\header{\tt((coercer
-#1) \em#2\tt)}{Coarcable Type}}
+#1) \emph{#2}\tt)}{Coarcable Type}}
 \newcommand{\oop}[1]{\index{{\tt#1} ! Operation}\header{\tt(#1)}{Operation}}
 
 
