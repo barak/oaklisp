@@ -27,9 +27,9 @@ stack_t *cntxt_stack_array[MAX_THREAD_COUNT];
 static u_int16_t tail_recurse_instruction = (22 << 2);
 
 typedef struct {
-    ref_t start_operation;
-    int parent_index;
-    int my_index;
+  ref_t start_operation;
+  int parent_index;
+  int my_index;
 } start_info_t;
 
 static void *init_thread(void *info_p);
@@ -37,76 +37,76 @@ static void *init_thread(void *info_p);
 int create_thread(ref_t start_operation)
 {
 #ifdef THREADS
-    pthread_t new_thread;
-    int index;
-    start_info_t *info_p = (start_info_t *)malloc(sizeof(start_info_t));
-    index = get_next_index();
-    if (index == -1) {
-	fprintf (stderr, "Max thread count of %d has been exceeded.  No thread created\n", MAX_THREAD_COUNT);
-	return 0;
-    }
-    gc_ready[index] = 0;
-    info_p->start_operation = start_operation;
-    info_p->parent_index = *((int *)pthread_getspecific(index_key));
-    info_p->my_index = index;
-    /* TODO: Check if thread is actually created !!! */
-    pthread_create(&new_thread, NULL,
-		   (void *)init_thread, (void *)info_p);
-    return 1;
-#else
+  pthread_t new_thread;
+  int index;
+  start_info_t *info_p = (start_info_t *)malloc(sizeof(start_info_t));
+  index = get_next_index();
+  if (index == -1) {
+    fprintf (stderr, "Max thread count of %d has been exceeded.  No thread created\n", MAX_THREAD_COUNT);
     return 0;
+  }
+  gc_ready[index] = 0;
+  info_p->start_operation = start_operation;
+  info_p->parent_index = *((int *)pthread_getspecific(index_key));
+  info_p->my_index = index;
+  /* TODO: Check if thread is actually created !!! */
+  pthread_create(&new_thread, NULL,
+		 (void *)init_thread, (void *)info_p);
+  return 1;
+#else
+  return 0;
 #endif
 }
 
 static void *init_thread (void *info_p)
 {
 #ifdef THREADS
-   int my_index;
-   int *my_index_p;
-   start_info_t info;
-   my_index_p = (int *)malloc (sizeof (int));
-   info = *((start_info_t *)info_p);
-   free(info_p);
-   /*Retrieve the next index in the thread arrays and lock it so
-     another starting thread cannot get the same index*/
+  int my_index;
+  int *my_index_p;
+  start_info_t info;
+  my_index_p = (int *)malloc (sizeof (int));
+  info = *((start_info_t *)info_p);
+  free(info_p);
+  /*Retrieve the next index in the thread arrays and lock it so
+    another starting thread cannot get the same index*/
   
-   *my_index_p = info.my_index;
-   my_index = *my_index_p;
-   pthread_setspecific(index_key, (void *)my_index_p);  
-   /*Increment also releases the gc lock on next_index so another
-     starting thread can get the lock, or a thread that is gc'ing can
-     get the lock*/
+  *my_index_p = info.my_index;
+  my_index = *my_index_p;
+  pthread_setspecific(index_key, (void *)my_index_p);  
+  /*Increment also releases the gc lock on next_index so another
+    starting thread can get the lock, or a thread that is gc'ing can
+    get the lock*/
 
-   /* Shouldn't get interrupted for gc until after stacks are
-      created.  This is below here in the vm not checking intterupts
-      until after we get to the loop */
+  /* Shouldn't get interrupted for gc until after stacks are
+     created.  This is below here in the vm not checking intterupts
+     until after we get to the loop */
    
-   value_stack_array[my_index] = (stack_t*)malloc (sizeof (stack_t));
-   cntxt_stack_array[my_index] = (stack_t*)malloc(sizeof (stack_t));
+  value_stack_array[my_index] = (stack_t*)malloc (sizeof (stack_t));
+  cntxt_stack_array[my_index] = (stack_t*)malloc(sizeof (stack_t));
 
-   value_stack_array[my_index]->size = value_stack_array[0]->size;
-   value_stack_array[my_index]->filltarget = value_stack_array[0]->filltarget;
-   cntxt_stack_array[my_index]->size = cntxt_stack_array[0]->size;
-   cntxt_stack_array[my_index]->filltarget = cntxt_stack_array[0]->filltarget;
+  value_stack_array[my_index]->size = value_stack_array[0]->size;
+  value_stack_array[my_index]->filltarget = value_stack_array[0]->filltarget;
+  cntxt_stack_array[my_index]->size = cntxt_stack_array[0]->size;
+  cntxt_stack_array[my_index]->filltarget = cntxt_stack_array[0]->filltarget;
  
-   init_stacks ();
-   register_array[my_index] = (register_set_t*)malloc(sizeof (register_set_t));
+  init_stacks ();
+  register_array[my_index] = (register_set_t*)malloc(sizeof (register_set_t));
 
-   memcpy(register_array[my_index], register_array[info.parent_index],
-	  sizeof(register_set_t));
+  memcpy(register_array[my_index], register_array[info.parent_index],
+	 sizeof(register_set_t));
 
-   gc_examine_ptr = gc_examine_buffer;
+  gc_examine_ptr = gc_examine_buffer;
 
-   /*At this point, it should be OK if the garbage collector gets run.*/
-   e_pc = &tail_recurse_instruction;
-   e_nargs = 0;
+  /*At this point, it should be OK if the garbage collector gets run.*/
+  e_pc = &tail_recurse_instruction;
+  e_nargs = 0;
 
-   /* Big virtual machine interpreter loop */
-   loop(info.start_operation);
+  /* Big virtual machine interpreter loop */
+  loop(info.start_operation);
 
 #endif
   
-   return 0;
+  return 0;
 }
 
 void set_gc_flag (bool flag) 
@@ -141,10 +141,10 @@ int get_next_index ()
 #ifdef THREADS
   pthread_mutex_lock (&index_lock);
   if (next_index >= MAX_THREAD_COUNT) {
-      ret = -1;
+    ret = -1;
   } else {
-      ret = next_index;
-      next_index++;
+    ret = next_index;
+    next_index++;
   }
   pthread_mutex_unlock (&index_lock);
 #endif
