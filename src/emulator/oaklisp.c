@@ -7,7 +7,6 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <wait.h>
 #include "config.h"
 #include "data.h"
 #include "cmdline.h"
@@ -16,8 +15,8 @@
 #include "worldio.h"
 #include "loop.h"
 #include "xmalloc.h"
-#include "threads.h"
-#include <pthread.h>
+
+
 
 int
 get_byte_gender(void)
@@ -32,37 +31,17 @@ get_byte_gender(void)
     return big_endian;
 }
 
+
+
 int
 main(int argc, char **argv)
 {
-#ifdef THREADS
-  int my_index;
-  int *my_index_p;
-  pthread_key_create (&index_key, (void*)free_registers);
-#endif
- 
-  byte_gender = get_byte_gender ();
- 
-#ifdef THREADS
-  my_index_p = (int *)malloc (sizeof (int));
-  *my_index_p = get_next_index();
-  pthread_setspecific (index_key, (void*)my_index_p);
-  my_index_p = pthread_getspecific(index_key);
-  my_index = *my_index_p;
-  gc_ready[my_index] = 0;
-  /* inc_next_index();*/
-  value_stack_array[my_index] = (stack_t*)malloc (sizeof (stack_t));
-  cntxt_stack_array[my_index] = (stack_t*)malloc(sizeof (stack_t));
-  value_stack.size = 1024;
-  value_stack.filltarget = 1024/2;
-  context_stack.size = 512;
-  context_stack.filltarget = 512/2;
-  gc_examine_ptr = gc_examine_buffer;
-#endif
 
- parse_cmd_line (argc, argv);
+  byte_gender = get_byte_gender();
 
-  init_weakpointer_tables ();
+  parse_cmd_line(argc, argv);
+
+  init_weakpointer_tables();
 
   init_stacks();
 
@@ -72,12 +51,7 @@ main(int argc, char **argv)
   alloc_space(&new_space, new_space.size);
   free_point = new_space.start;
 
-#ifdef THREADS
-  register_array[my_index] = (register_set_t*)malloc(sizeof(register_set_t));
-#else
-  reg_set = (register_set_t*)malloc (sizeof(register_set_t));
-#endif
-   
+
   /* Set the registers to the boot code */
 
   e_current_method = e_boot_code;
@@ -96,26 +70,3 @@ main(int argc, char **argv)
 
   return 0;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
