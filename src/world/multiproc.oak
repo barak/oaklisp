@@ -51,12 +51,14 @@ action). See process2.oak for more code.
 
 |#
 
-(define-instance process type '(pid fluid-binding-list) (list object))
+(define-instance process type '(pid process-fluid-binding-list) (list object))
 (define-instance process-id operation)
 
-(add-method (initialize (process pid) self)
+(add-method (initialize (process pid process-fluid-binding-list) self)
   (set! pid 0)
-  ;; (set! fluid-binding-list (copy-fluid-bindings))
+  (set! process-fluid-binding-list 
+	(map (lambda (z)(cons (car z)(cdr z)))
+	     fluid-binding-list))
   self)
 
 (add-method (process-id (process pid) self)
@@ -131,13 +133,14 @@ when possible since the amount of busy waiting will be lessened.
 ;;--------------------------------------------------
 (define (setup-initial-process-object)
   (%store-process (make process))
-  (add-method (initialize (process pid) self)
+  (add-method (initialize (process pid process-fluid-binding-list) self)
     (set! pid (new-pid))
-    ;; (set! fluid-binding-list (copy-fluid-bindings))
+    (set! process-fluid-binding-list 
+	  (copy-fluid-bindings (current-process)))
     self)
   (%load-process))
 
-(add-warm-boot-action setup-initial-process-object)
+;;(add-warm-boot-action setup-initial-process-object)
 ;;--------------------------------------------------
 
 ;;; testandset.oak
