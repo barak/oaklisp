@@ -116,8 +116,8 @@ the rest of the multithreading system has been tested.
 
 (define-instance mutex type '(flags turn) (list object))
 
-(define-instance acquire-mutex operation)
-(define-instance release-mutex operation)
+(define-instance acquire-mutex-pid operation)
+(define-instance release-mutex-pid operation)
 
 (add-method (initialize (mutex flags turn) self)
   (set! turn 0)
@@ -130,9 +130,9 @@ the rest of the multithreading system has been tested.
 (add-method (flag (mutex flags turn) self) flags)
 (add-method (nturn (mutex flags turn) self) turn)
 
-(add-method (acquire-mutex (mutex flags turn) self)
+(add-method (acquire-mutex-pid (mutex flags turn) self pid)
   (let ((j 0)
-	(i (process-id (current-process))))
+	(i pid))
     (until (and (>= j (fluid *number-of-processes*))
 		(or (= turn i) (eq? (nth flags turn) 'idle)))
 	   (set! (nth flags i) 'want-in)
@@ -148,15 +148,19 @@ the rest of the multithreading system has been tested.
 			   (not (eq? (nth flags j) 'in-cs))))
 		  (set! j (+ j 1))))
     (set! turn i)))
+(define (acquire-mutex self)
+  (acquire-mutex-pid self (process-id (current-process))))
 
 ; this should make sure the current process owns the mutex, at the very least
-(add-method (release-mutex (mutex flags turn) self)
-  (let ((i (process-id (current-process)))
+(add-method (release-mutex-pid (mutex flags turn) self pid)
+  (let ((i pid)
 	(j (modulo (+ 1 turn) (fluid *number-of-processes*))))
     (while (eq? (nth flags j) 'idle)
 	   (set! j (modulo (+ j 1) (fluid *number-of-processes*))))
     (set! turn j)
     (set! (nth flags i) 'idle)))
+(define (release-mutex self)
+  (release-mutex-pid self (process-id (current-process))))
 
 ;;; process2.oak
 
@@ -242,6 +246,13 @@ because the scheduler is acquired whenever these things are happening, it
 (define (fluid *scheduleQ*) (make-queue))
 (define (fluid *scheduleQ-mutex*) (make mutex))
 
+(define (acquire-scheduler-pid pid)
+  (%disable-alarms)
+  (acquire-mutex-pid (fluid *scheduleQ-mutex*) pid))
+(define (release-scheduler-pid pid)
+  (release-mutex-pid (fluid *scheduleQ-mutex*) pid)
+  (%enable-alarms))
+
 (define (acquire-scheduler)
   (%disable-alarms)
   (acquire-mutex (fluid *scheduleQ-mutex*)))
@@ -255,14 +266,15 @@ because the scheduler is acquired whenever these things are happening, it
 	   (fluid *scheduleQ*))
   (release-scheduler))
 (define (start)
-  (let ((next nil))
-    (acquire-scheduler)
+  (let ((next nil)
+	(pid (process-id (current-process))))
+    (acquire-scheduler-pid pid)
     (if (qempty? (fluid *scheduleQ*))
 	'()
 	(set! next (dequeue (fluid *scheduleQ*))))
     (when next (%store-process (car next))) ;; fix process register and proceed
     (%reset-alarm-counter)
-    (release-scheduler)
+    (release-scheduler-pid pid) ;; using the process prior to the %store-process call
     (when next ((cdr next)))))
 
 #|
@@ -277,8 +289,9 @@ on lwp and start being atomic
      (start))))
 |#
 (define (pause)
-  (let ((next nil))
-    (acquire-scheduler)
+  (let ((next nil)
+	(pid (process-id (current-process))))
+    (acquire-scheduler-pid pid)
     (call/cc
      (lambda (k)
        ;; (lwp (lambda () (k #f)))
@@ -291,7 +304,7 @@ on lwp and start being atomic
 	   (set! next (dequeue (fluid *scheduleQ*))))
        (when next (%store-process (car next))) ;; fix process register and proceed
        (%reset-alarm-counter)
-       (release-scheduler)
+       (release-scheduler-pid pid) ;; using the process prior to the %store-process call
        (when next ((cdr next)))))))
 
 ;; no longer calls lwp because this must create a new process object
@@ -403,12 +416,9 @@ futures: promises in a multitasking world
   )
 
 (add-method (force (future-obj flag val scheduled? dependantsQ sched-policy err-policy) self)
-  (format t "Trying to acquire future in process ~S~%" (process-id (current-process)))
   (acquire-mutex self) ;; this mutex prevents dependants from enqueueing badly
-  (format t "Acquired future in process ~S~%" (process-id (current-process)))
   (if flag
-      (block (format t "Releasing future in process ~S~%" (process-id (current-process)))
-	     (release-mutex self)
+      (block (release-mutex self)
 	     val)
       (call/cc (lambda (c)
 		 ;; suspend the current task into the destination queue
@@ -417,21 +427,16 @@ futures: promises in a multitasking world
 				  (let ((result (force self)))
 				    (c result))))
 			  dependantsQ)
-		 (format t "Releasing future in process ~S~%" (process-id (current-process)))
 		 (release-mutex self) ;; now that we're enqueued, we're safe
 		 ;; someone claim responsibility for and initiate future computation
 		 (let ((schedule? (test-and-set scheduled? null? #t)))
 		   (when schedule?
-			 (format t "Scheduling future ~S in process ~S...~%" val (process-id (current-process)))
 			 (process-run-fn
 			  (lambda ()
 			    (let ((newval (val)))
-			      (format t "Trying to acquire future in process ~S~%" (process-id (current-process)))
 			      (acquire-mutex self)
-			      (format t "Acquired future in process ~S~%" (process-id (current-process)))
 			      (set! flag #t)
 			      (set! val newval)
-			      (format t "Releasing future in process ~S~%" (process-id (current-process)))
 			      (release-mutex self)
 			      ;; at this point no more people will
 			      ;; be trying to add themselves...
@@ -449,5 +454,5 @@ futures: promises in a multitasking world
   (lambda (form)
     `(let ((foosym (make future-obj (lambda () . ,(cdr form)))))
        (process-run-fn force (list foosym))
-       foosym))))
+       foosym)))
 
