@@ -4,10 +4,23 @@
 
 (define top-level-fluid-binding-list (list (cons nil nil)))
 
+
+;; The theory is, these are overwritten in multiproc.oak
+(define get-current-fluid-bindings (add-method ((make operation))
+   fluid-binding-list))
+(define set-current-fluid-bindings (add-method ((make operation)
+						new-binding-list)
+   (set! fluid-binding-list new-binding-list)))
+
+
 ;;; This is to be called at warm boot time:
 
+;(define (revert-fluid-binding-list)
+;  (set! fluid-binding-list top-level-fluid-binding-list))
+;(define (revert-fluid-binding-list)
+;  (set-current-fluid-bindings top-level-fluid-binding-list))
 (define (revert-fluid-binding-list)
-  (set! fluid-binding-list top-level-fluid-binding-list))
+  (set-current-fluid-bindings (cons (cons nil nil) nil)))
 
 ;;; And at cold boot time too, I suppose:
 
@@ -23,16 +36,20 @@
 
 (add-method (%fluid (symbol) sym)
   (iterate aux ()
-    (let ((x (%assq sym (get-current-fluid-bindings sym))))
+    (let ((x (%assq sym (get-current-fluid-bindings)))
+	  (y (%assq sym top-level-fluid-binding-list)))
       (cond (x => cdr)
+	    (y => cdr)
 	    (else (cerror
 		   (format #f "Try looking up (FLUID ~S) again." sym)
 		   "(FLUID ~S) not found." sym)
 		  (aux))))))
 
 (add-method ((setter %fluid) (symbol) sym val)
-  (let ((x (%assq sym (get-current-fluid-bindings sym)))
+  (let ((x (%assq sym (get-current-fluid-bindings)))
+	(y (%assq sym top-level-fluid-binding-list)))
     (cond (x (set! (cdr x) val))
+	  (y (set! (cdr y) val))
 	  (else (set! (cdr top-level-fluid-binding-list)
 		     (cons (cons sym val)
 			   (cdr top-level-fluid-binding-list)))
@@ -40,8 +57,10 @@
 
 (add-method ((locater %fluid) (symbol) sym)
   (iterate aux ()
-    (let ((x (%assq sym (get-current-fluid-bindings sym)))
+    (let ((x (%assq sym (get-current-fluid-bindings)))
+	  (y (%assq sym top-level-fluid-binding-list)))
       (cond (x (make-locative (cdr x)))
+	    (y (make-locative (cdr y)))
 	    (else
 	     (cerror
 	      (format #f "Try looking up (FLUID ~S) again." sym)

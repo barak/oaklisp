@@ -39,6 +39,9 @@
     eqv pl
     mapping pl
     fastmap pl
+    alarm pl
+    multi-em pl
+;    multiproc pl
     fluid pl
     vector-type pl
     vl-mixin pl
@@ -105,7 +108,7 @@
     catch da
     continuation da
     unwind-protect da
-    multi-em da
+;    multi-em da
     ))
 (define layer5
   '(
@@ -159,7 +162,7 @@
     time
     ;; pretty-print
 
-    alarm
+;    alarm
     multiproc
     ))
 

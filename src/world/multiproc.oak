@@ -54,7 +54,7 @@ action). See process2.oak for more code.
 (define-instance process type '(pid process-fluid-binding-list) (list object))
 (define-instance process-id operation)
 (define-instance get-fluid-bindings operation)
-(define-instance get-current-fluid-bindings operation)
+(define-instance set-fluid-bindings operation)
 (define-instance copy-fluid-bindings operation)
 
 (add-method (initialize (process pid process-fluid-binding-list) self)
@@ -73,10 +73,20 @@ action). See process2.oak for more code.
 (add-method (get-fluid-bindings (process process-fluid-binding-list) self)
    process-fluid-binding-list)
 
-(add-method (get-current-fluid-bindings (symbol) self)
-   (let ((z (current-process)))
-     (if (= z 0) fluid-binding-list
-	 (get-fluid-bindings z))))
+(add-method (set-fluid-bindings (process process-fluid-binding-list)
+				self new-fluid-binding-list)
+   (set! process-fluid-binding-list new-fluid-binding-list))
+
+(define get-current-fluid-bindings (add-method ((make operation))
+   (let ((z (%load-process)))
+     (if (eq? z 0) fluid-binding-list
+	 (get-fluid-bindings z)))))
+
+(define set-current-fluid-bindings (add-method ((make operation)
+						new-binding-list)
+   (let ((z (%load-process)))
+     (if (eq? z 0) (set! fluid-binding-list new-binding-list)
+	 (set-fluid-bindings z new-binding-list)))))
 
 (add-method (copy-fluid-bindings (process process-fluid-binding-list) self)
   (map (lambda (z)(cons (car z)(cdr z)))

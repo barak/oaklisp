@@ -13,12 +13,13 @@
   (%enable-alarms)
   (%return))
 |#
-(define (alarm n)
+(define alarm (add-method ((make operation) n)
   (pause)
   (set! ((%register 'nargs)) n)
-  (%return))
+  (%return)))
 
-(set! (nth %argless-tag-trap-table 127) alarm)
+;;;Do this in tag-trap.oak
+;(set! (nth %argless-tag-trap-table 127) alarm)
 
 ;;
 ;; Define atomic functions (op-codes) for turning alarms on and off.

@@ -203,20 +203,33 @@
 (define-syntax (fluid x)
   `(%fluid ',x))
 
+;(define-syntax (bind clauses . body)
+;  (let ((place1 (genvar)) (place2 (genvar)))
+;    `(let* ((,place1 (make-locative fluid-binding-list))
+;	    (,place2 (contents ,place1)))
+;       ,(if (null? clauses)
+;	    'nil
+;	    `(set! (contents ,place1)
+;		   (list* ,@(map (lambda (clause)
+;				   (destructure* (('fluid var) val) clause
+;				     `(cons ',var ,val)))
+;				 clauses)
+;			  ,place2)))
+;       (block0 (block ,@body)
+;	       (set! (contents ,place1) ,place2)))))
 (define-syntax (bind clauses . body)
-  (let ((place1 (genvar)) (place2 (genvar)))
-    `(let* ((,place1 (make-locative (get-current-fluid-bindings place1))
-	    (,place2 (contents ,place1)))
+  (let ((old-binding-list (genvar)))
+    `(let ((,old-binding-list (get-current-fluid-bindings)))
        ,(if (null? clauses)
 	    'nil
-	    `(set! (contents ,place1)
-		   (list* ,@(map (lambda (clause)
-				   (destructure* (('fluid var) val) clause
-				     `(cons ',var ,val)))
-				 clauses)
-			  ,place2)))
+	    `(set-current-fluid-bindings
+	        (list* ,@(map (lambda (clause)
+				(destructure* (('fluid var) val) clause
+					      `(cons ',var ,val)))
+			      clauses)
+			  ,old-binding-list)))
        (block0 (block ,@body)
-	       (set! (contents ,place1) ,place2)))))
+	       (set-current-fluid-bindings ,old-binding-list)))))
 
 
 
