@@ -59,7 +59,6 @@ static void *init_thread (void *info_p)
 #ifdef THREADS
    int my_index;
    int *my_index_p;
-   ref_t *p;
    start_info_t info;
    my_index_p = (int *)malloc (sizeof (int));
    info = *((start_info_t *)info_p);
@@ -91,17 +90,10 @@ static void *init_thread (void *info_p)
 
    memcpy(register_array[my_index], register_array[info.parent_index],
 	  sizeof(register_set_t));
-   e_pc = &tail_recurse_instruction;
    *++value_stack.sp = info.start_operation;
  /*At this point, it should be OK if the garbage collector gets run.*/
+   e_pc = &tail_recurse_instruction;
    e_nargs = 0;
- /*ALLOCATE(e_pc, 1, "creating initial jump instruction");*/
- /*
-   ALLOCATE(p, 4, "creating initial jump instruction");
-   e_code_segment = PTR_TO_REF(p);
-   e_pc = (u_int16_t *)(&p[3]);
-   *e_pc = (22 << 2);
-   */
 
    /* Big virtual machine interpreter loop */
    loop();

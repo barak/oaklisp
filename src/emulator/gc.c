@@ -375,7 +375,7 @@ GC_CHECK1(ref_t x, char *st, long i)
 static u_int16_t *
 pc_touch(u_int16_t * o_pc)
 {
-  ref_t *pcell = (ref_t *) ((unsigned long)(o_pc) & ~TAG_MASKL);
+  ref_t *pcell = (ref_t *) ((unsigned long)o_pc & ~TAG_MASKL);
 
   /*
     It is possible that the gc was called while a vm was executing the las
@@ -384,11 +384,12 @@ pc_touch(u_int16_t * o_pc)
     it.  However, this means the gc general should not be called until the
     loop has read at least one instruction in the code block.
   */
-  pcell--;
+/*pcell--;  Changed my mind.  Moved POLL_GC_SIGNALS to top of loop. */
   LOC_TOUCH_PTR(pcell);
-  pcell++;
-  return (u_int16_t *)( (u_int32_t) pcell
-		       |((u_int32_t) o_pc & TAG_MASK));
+/*pcell++;*/
+  return
+    (u_int16_t *) ((u_int32_t) pcell
+		   | ((u_int32_t) o_pc & TAG_MASK));
 }
 
 static void

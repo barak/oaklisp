@@ -361,7 +361,7 @@ loop()
 
 #define POLL_SIGNALS()		POLL_USER_SIGNALS() ;		\
 				POLL_TIMER_SIGNALS() ;		\
-				POLL_GC_SIGNALS()
+			      /*POLL_GC_SIGNALS() Do this once at top of loop.*/
 
   /* This is the big instruction fetch/execute loop. */
 
@@ -412,6 +412,8 @@ top_of_loop:
 	}
       }
 #endif
+
+      POLL_GC_SIGNALS();
 
 #if ENABLE_TIMER
      timer_counter += timer_increment;
