@@ -2,8 +2,8 @@ Source: oaklisp
 Section: interpreters
 Priority: optional
 Maintainer: Barak Pearlmutter <bap@cs.unm.edu>
-Standards-Version: 3.0.1
-Build-depends: oaklisp
+Standards-Version: 3.5.2
+Build-depends: oaklisp, debhelper
 
 Package: oaklisp
 Architecture: i386
