@@ -49,7 +49,7 @@ static void *init_thread (void *info_p)
    int my_index;
    int *my_index_p;
    start_info_t info;
-   my_index_p = (int *)xmalloc (sizeof (int));
+   my_index_p = (int *)malloc (sizeof (int));
    /*Retrieve the next index in the thread arrays and lock it so
      another starting thread cannot get the same index*/
    *my_index_p = lock_next_index();
@@ -59,15 +59,14 @@ static void *init_thread (void *info_p)
    /*Increment also releases the gc lock on next_index so another
      starting thread can get the lock, or a thread that is gc'ing can
      get the lock*/
-   inc_next_index();
 
    /* Shouldn't get interrupted for gc until after stacks are
       created.  This is below here in the vm not checking intterupts
       until after we get to the loop */
    info = *((start_info_t *)info_p);
    free(info_p);
-   value_stack_array[my_index] = (stack_t*)xmalloc (sizeof (stack_t));
-   cntxt_stack_array[my_index] = (stack_t*)xmalloc(sizeof (stack_t));
+   value_stack_array[my_index] = (stack_t*)malloc (sizeof (stack_t));
+   cntxt_stack_array[my_index] = (stack_t*)malloc(sizeof (stack_t));
 
    value_stack_array[my_index]->size = value_stack_array[0]->size;
    value_stack_array[my_index]->filltarget = value_stack_array[0]->filltarget;
@@ -75,7 +74,7 @@ static void *init_thread (void *info_p)
    cntxt_stack_array[my_index]->filltarget = cntxt_stack_array[0]->filltarget;
  
    init_stacks ();
-   register_array[my_index] = (register_set_t*)xmalloc(sizeof (register_set_t));
+   register_array[my_index] = (register_set_t*)malloc(sizeof (register_set_t));
 
  /*
    e_current_method = (ref_t)start_method;
@@ -90,17 +89,24 @@ static void *init_thread (void *info_p)
    e_pc = &tail_recurse_instruction;
    *++value_stack.sp = info.start_operation;
    e_nargs = 0;
+   inc_next_index();
 
    /* Big virtual machine interpreter loop */
    loop();
 
 #endif
+  
    return 0;
 }
 
 void set_gc_flag (bool flag) 
 {
 #ifdef THREADS
+  int *my_index_p;
+  int  my_index;
+  my_index_p = pthread_getspecific (index_key);
+  my_index = *(my_index_p);
+  
   if (flag == true) {
     pthread_mutex_lock (&gc_lock);
     gc_pending = flag;
@@ -153,3 +159,17 @@ void wait_for_gc()
   set_gc_flag(false);
 #endif
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+

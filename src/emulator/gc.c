@@ -41,10 +41,6 @@ unsigned long loc_transport_count;
 ref_t gc_examine_buffer[GC_EXAMINE_BUFFER_SIZE];
 ref_t *gc_examine_ptr = gc_examine_buffer;
 
-
-
-
-
 #define GC_TOUCH(x)			\
 {					\
   if ((x)&PTR_MASK)			\
@@ -78,7 +74,6 @@ ref_t *gc_examine_ptr = gc_examine_buffer;
 {							\
   (x) = LOC_TO_PTR(loc_touch0(PTR_TO_LOC(x),1));	\
 }
-
 
 void
 printref(FILE * fd, ref_t refin)
@@ -416,13 +411,14 @@ gc (bool pre_dump, bool full_gc, char *reason, size_t amount)
   set_gc_flag (true);
 #endif
 
+
   /* The full_gc flag is also a global to avoid ugly parameter passing. */
   set_external_full_gc(full_gc);
 
 #ifdef THREADS
   /*Problem here is next_index could change if someone creates a thread
     while someone else is gc'ing*/
-  while (ready == false) {
+   while (ready == false) {
     ready = true;
     for (i = 0; i < next_index; i++) {
       if (gc_ready[i] == 0) {
@@ -433,6 +429,7 @@ gc (bool pre_dump, bool full_gc, char *reason, size_t amount)
     }
   }
 #endif
+
 gc_top:
   if (trace_gc == 1)
     fprintf(stderr, "\n;GC");
@@ -459,6 +456,7 @@ gc_top:
   old_taken = free_point - new_space.start;
   old_space = new_space;
 
+
   if (full_gc)
     new_space.size += spatic.size;
   else
@@ -466,6 +464,7 @@ gc_top:
 
   alloc_space(&new_space, new_space.size);
   free_point = new_space.start;
+
 
   transport_count = 0;
 
@@ -622,12 +621,12 @@ gc_top:
         for (my_index = 0; my_index < next_index; my_index++) {
 #endif
 	GC_CHECK (PTR_TO_LOC (e_bp), "PTR_TO_LOC(E_BP)");
+#ifdef THREADS
+        }
+#endif
 	GC_CHECK (PTR_TO_REF (e_env), "e_env");
 	/* e_nargs is a fixnum.  Nor is it global... */
 	GGC_CHECK (e_env_type);
-#ifdef THREADS
-	}
-#endif
 	GC_CHECK (PTR_TO_REF (e_argless_tag_trap_table - 2), "e_argless_tag_trap_table");
 	GC_CHECK (PTR_TO_REF (e_arged_tag_trap_table - 2), "e_arged_tag_trap_table");
 	GGC_CHECK (e_object_type);

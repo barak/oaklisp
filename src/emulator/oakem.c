@@ -42,18 +42,17 @@ main(int argc, char **argv)
 #endif
  
   byte_gender = get_byte_gender ();
-
  
 #ifdef THREADS
-  my_index_p = (int *)xmalloc (sizeof (int));
+  my_index_p = (int *)malloc (sizeof (int));
   *my_index_p = lock_next_index();
   pthread_setspecific (index_key, (void*)my_index_p);
   my_index_p = pthread_getspecific(index_key);
   my_index = *my_index_p;
   gc_ready[my_index] = 0;
-  inc_next_index();
-  value_stack_array[my_index] = (stack_t*)xmalloc (sizeof (stack_t));
-  cntxt_stack_array[my_index] = (stack_t*)xmalloc(sizeof (stack_t));
+  /* inc_next_index();*/
+  value_stack_array[my_index] = (stack_t*)malloc (sizeof (stack_t));
+  cntxt_stack_array[my_index] = (stack_t*)malloc(sizeof (stack_t));
   value_stack.size = 1024;
   value_stack.filltarget = 1024/2;
   context_stack.size = 512;
@@ -73,9 +72,9 @@ main(int argc, char **argv)
   free_point = new_space.start;
 
 #ifdef THREADS
-  register_array[my_index] = (register_set_t*)xmalloc(sizeof(register_set_t));
+  register_array[my_index] = (register_set_t*)malloc(sizeof(register_set_t));
 #else
-  reg_set = (register_set_t*)xmalloc (sizeof(register_set_t));
+  reg_set = (register_set_t*)malloc (sizeof(register_set_t));
 #endif
    
   /* Set the registers to the boot code */
@@ -91,6 +90,7 @@ main(int argc, char **argv)
   /* Tell the boot function the truth */
   e_nargs = 0;
 
+  inc_next_index();
   /* Big virtual machine interpreter loop */
   loop();
 

@@ -345,7 +345,11 @@ loop()
 #endif
 
 #ifdef THREADS
-#define POLL_GC_SIGNALS()	if (gc_pending) wait_for_gc()
+#define POLL_GC_SIGNALS()	if (gc_pending) {			     \
+                                    value_stack.sp = local_value_sp;	     \
+                                    context_stack.sp = local_context_sp;     \
+                                    wait_for_gc();			     \
+                                }
 #else
 #define POLL_GC_SIGNALS()
 #endif
