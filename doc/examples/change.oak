@@ -1,0 +1,50 @@
+;;; Number of ways of giving change, Barak Pearlmutter, Fall 1989.
+;;; This technique is covered in Concrete Mathamatics by Graham, Knuth
+;;; and Patashnik, page 331.
+
+;;; Helper functions:
+
+;;; This computes the number of ways to choose m object from a pool of
+;;; n.  The arguments are in the usual mathematical order.
+
+(define (choose n m)
+  (let aux ((n n)(m1 m)(total 1))
+    (if (= m1 0)
+	(let aux ((m m)(total2 1))
+	  (if (= m 0)
+	      (/ total total2)
+	      (aux (- m 1) (* m total2))))
+	(aux (- n 1) (- m1 1) (* n total)))))
+
+;;; These are the coefficients of the polynomial a(z) = (1-z^{10})^5 /
+;;; (1-z)^2(1-z^2)(1-z^5)(1-z^{10}).  The end should be zero padded to
+;;; infinity, but the arguments given are always between 0 and 39
+;;; inclusive.
+
+(define (a i)
+  (nth '(01 02 04 06 09 13 18 24 31 39 45 52 57 63 67 69
+	    69 67 63 57 52 45 39 31 24 18 13 09 06 04 02 01
+	    0 0 0 0 0 0 0 0)
+       i))
+
+;;; This returns the number of ways to make change on c cents using
+;;; coins of denomination 1,5,10,25,50.  The math behind this is too
+;;; hairy for a comment, as it requires lots of superscripts and sums
+;;; and stuff.  In effect, we end up casing on (c mod 50) with each
+;;; case determining the coefficients of a fourth order polynomial of
+;;; floor(c/50).
+
+(define (change c)
+  (let* ((c5 (quotient c 5))
+	 (q (quotient c5 10))
+	 (r (modulo c5 10)))
+    (+ (* (a r)        (choose (+ q 4) 4))
+       (* (a (+ r 10)) (choose (+ q 3) 4))
+       (* (a (+ r 20)) (choose (+ q 2) 4))
+       (* (a (+ r 30)) (choose (+ q 1) 4)))))
+
+
+;;; Test case, the number of ways of giving change for $1,000,000.00
+;;; (change 100000000) = 66666793333412666685000001.
+
+;;; eof
