@@ -280,9 +280,8 @@ loop(ref_t initial_tos)
   u_int8_t arg_field;
 
   /* trap_nargs is used by instructions when they trap, to tell the
-     trap code about a property of the instruction.  It might be
-     better to instead give the trap code a table that it could look
-     it up instead. */
+     trap code about a property of the instruction.  (It might be
+     better to instead the trap code look in a table.) */
   unsigned trap_nargs;
 
 #ifdef THREADS
@@ -726,9 +725,9 @@ loop(ref_t initial_tos)
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
-	      /* Rotations can not overflow, but are kind of meaningless in
-	         the infinite precision model we have.  This instr is used
-	         only for computing string hashes and stuff like that. */
+	      /* Rotations cannot overflow, but are not meaningful
+		 with an infinite-precision integer language model.
+		 This instr is used for computing string hashes. */
 	      {
 		unsigned long a = (unsigned long)x;
 		long b = REF_TO_INT(y);
@@ -851,9 +850,7 @@ loop(ref_t initial_tos)
 	      x = PEEKVAL();
 	      CHECKTAG0(x, INT_TAG, 1);
 	      /* Tag trickery: */
-
 	      PEEKVAL() = ~x - (TAG_MASK - INT_TAG);
-
 	      GOTO_TOP;
 
 	    case 35:		/* LONG-BRANCH distance (signed) */
@@ -895,7 +892,7 @@ loop(ref_t initial_tos)
 	      if ((unsigned long)local_epc & 2)
 		local_epc++;
 
-	      /*NOSTRICT */
+	      /* NOSTRICT */
 	      x = *(ref_t *) local_epc;
 	      local_epc += 2;
 
