@@ -20,5 +20,7 @@ extern stack_t *cntxt_stack_array[];
 int create_thread(ref_t start_method);
 void set_gc_flag (bool flag);
 void inc_next_index();
+int lock_next_index();
+void free_registers();
 
 #endif /*_THREADS_H_INCLUDED*/

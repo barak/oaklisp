@@ -65,6 +65,7 @@
 #define BYTE_GENDER little_endian
 #define HAVE_GETRUSAGE
 #define THREADS
+#define MAX_THREAD_COUNT 200
 
 #include <unistd.h>		/* for the chdir() and isatty() functions */
 

@@ -13,10 +13,10 @@ pthread_key_t index_key;
 pthread_mutex_t gc_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t alloc_lock = PTHREAD_MUTEX_INITIALIZER;
 bool gc_pending = false;
-int gc_ready[200];
-register_set_t* register_array[200];
-stack_t *value_stack_array[200];
-stack_t *cntxt_stack_array[200];
+int gc_ready[MAX_THREAD_COUNT];
+register_set_t* register_array[MAX_THREAD_COUNT];
+stack_t *value_stack_array[MAX_THREAD_COUNT];
+stack_t *cntxt_stack_array[MAX_THREAD_COUNT];
 #endif
 
 static u_int16_t tail_recurse_instruction = (22 << 2);
@@ -50,14 +50,20 @@ static void *init_thread (void *info_p)
    int *my_index_p;
    start_info_t info;
    my_index_p = (int *)xmalloc (sizeof (int));
-   *my_index_p = next_index;
+   /*Retrieve the next index in the thread arrays and lock it so
+     another starting thread cannot get the same index*/
+   *my_index_p = lock_next_index();
    my_index = *my_index_p;
-   pthread_setspecific(index_key, (void *)my_index_p);
+   pthread_setspecific(index_key, (void *)my_index_p);  
+   gc_ready[my_index] = 0;
+   /*Increment also releases the gc lock on next_index so another
+     starting thread can get the lock, or a thread that is gc'ing can
+     get the lock*/
+   inc_next_index();
+
    /* Shouldn't get interrupted for gc until after stacks are
       created.  This is below here in the vm not checking intterupts
-      until after we get to the loop*/
-   gc_ready[my_index] = 0;
-   inc_next_index();
+      until after we get to the loop */
    info = *((start_info_t *)info_p);
    free(info_p);
    value_stack_array[my_index] = (stack_t*)xmalloc (sizeof (stack_t));
@@ -106,11 +112,30 @@ void set_gc_flag (bool flag)
 #endif
 }
 
+/*Increment uses the gc lock
+  since we must be sure that a new thread does not
+  get started and begin processing while the gc is
+  already running.  The get_next_index additionally
+  ensures that no two threads get the same index when
+  starting*/
 void inc_next_index ()
 {
 #ifdef THREADS
-  pthread_mutex_lock (&gc_lock);
   next_index++;
   pthread_mutex_unlock (&gc_lock);
 #endif
+}
+
+int lock_next_index ()
+{
+  int ret = -1;
+#ifdef THREADS
+  pthread_mutex_lock (&gc_lock);
+  ret = next_index;
+#endif
+  return (ret);
+}
+
+void free_registers ()
+{
 }

@@ -32,9 +32,6 @@ get_byte_gender(void)
     return big_endian;
 }
 
-void free_registers ()
-{
-}
 int
 main(int argc, char **argv)
 {
@@ -49,12 +46,12 @@ main(int argc, char **argv)
  
 #ifdef THREADS
   my_index_p = (int *)xmalloc (sizeof (int));
-  *my_index_p = next_index;
+  *my_index_p = lock_next_index();
   pthread_setspecific (index_key, (void*)my_index_p);
   my_index_p = pthread_getspecific(index_key);
   my_index = *my_index_p;
-  inc_next_index();
   gc_ready[my_index] = 0;
+  inc_next_index();
   value_stack_array[my_index] = (stack_t*)xmalloc (sizeof (stack_t));
   cntxt_stack_array[my_index] = (stack_t*)xmalloc(sizeof (stack_t));
   value_stack.size = 1024;
@@ -80,16 +77,7 @@ main(int argc, char **argv)
 #else
   reg_set = (register_set_t*)xmalloc (sizeof(register_set_t));
 #endif
-
-#ifdef THREADS
-  e_current_method = e_boot_code;
-  e_env = REF_TO_PTR (REF_SLOT (e_current_method, METHOD_ENV_OFF));
-  e_code_segment = REF_SLOT (e_current_method, METHOD_CODE_OFF);
-  e_pc = CODE_SEG_FIRST_INSTR (e_code_segment);
-  e_bp = e_env;
-  e_nargs = 0;
-
-#else
+   
   /* Set the registers to the boot code */
 
   e_current_method = e_boot_code;
@@ -102,13 +90,25 @@ main(int argc, char **argv)
 
   /* Tell the boot function the truth */
   e_nargs = 0;
-#endif
 
   /* Big virtual machine interpreter loop */
   loop();
 
   return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
