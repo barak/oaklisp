@@ -107,23 +107,20 @@ parse_cmd_line(int argc, char **argv)
   int retval, option_index = 0;
 
 #ifdef THREADS
-  /* This is so value_stack.size and value_stack.filltarget can be set.
-     Something is wrong because these should apply to all threads even the first, so they
-     shouldn't need to know anything about threads ... ?
-   */
+  /* This is so value_stack.size and value_stack.filltarget can be
+     set.  Something is wrong because these should apply to all
+     threads even the first, so they shouldn't need to know anything
+     about threads ... ? */
   int my_index;
   int *my_index_p;
   my_index_p = pthread_getspecific (index_key);
   my_index = *my_index_p;
 #endif
-
-  /* check for correct endianity settings */
-  /* main() routine sets byte_gender */
-  if (BYTE_GENDER != byte_gender)
-    {
-      fprintf(stderr, "error: configured for incorrect endianity.\n");
-      exit(EXIT_FAILURE);
-    }
+  
+ {
+   char *w = getenv("OAKWORLD");
+   if (w) world_file_name = w;
+ }
 
   /* parse command line arguments */
   while (1)

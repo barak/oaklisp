@@ -125,9 +125,14 @@ leave the user in a read-eval-print loop in the scheme locale.
 
 .B oaklisp -- -locale scheme-locale -compile myfile
 
+.SH ENVIRONMENT
+The environment variable OAKWORLD will override the default compiled
+into the executable, but itself can be overridden on the command line.
+
 .SH FILES
-/usr/lib/oaklisp/oakworld.bin holds the world image.  This is
-portable between machines of the same endianity.
+/usr/lib/oaklisp/oakworld.bin holds the world image.  It is portable
+between machines of the same endianity.  The location can vary
+depending upon installation-time decisions.
 
 .SH BUGS
 Floating point numbers are not implemented.  Rationals can be used to
