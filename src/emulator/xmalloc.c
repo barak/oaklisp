@@ -193,25 +193,3 @@ oak_c_string(ref_t * oakstr, int len)
   oak_c_string_fill(oakstr, cstring, len);
   return cstring;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
