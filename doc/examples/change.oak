@@ -21,8 +21,8 @@
 
 ;;; Helper functions:
 
-;;; This computes the number of ways to choose m object from a pool of
-;;; n.  The arguments are in the usual mathematical order.
+;;; This computes the number of ways to choose m objects from a pool
+;;; of n.  The arguments are in the usual mathematical order.
 
 (define (choose n m)
   (let aux ((n n)(m1 m)(total 1))
@@ -63,5 +63,9 @@
 
 ;;; Test case, the number of ways of giving change for $1,000,000.00
 ;;; (change 100000000) = 66666793333412666685000001.
+
+;;; For $1,000,000,000,000,000,000.00,
+;;; (change 100000000000000000000)
+;;; 66666666666666666793333333333333333412666666666666666685000000000000000001
 
 ;;; eof
