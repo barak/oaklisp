@@ -22,7 +22,7 @@
   (car q1))
 
 (define (qempty? q)
-  (not (null? (car q))))
+  (null? (car q)))
 
 ;;; potpourri.oak
 
@@ -168,7 +168,7 @@ the rest of the multithreading system has been tested.
   (let ((newp nil))
     (acquire-mutex *pid-counter-mutex*)
     (set! newp *pid-counter*)
-    (set! *pid-counter (+ *pid-counter* 1))
+    (set! *pid-counter* (+ *pid-counter* 1))
     (release-mutex *pid-counter-mutex*)
     newp))
 
