@@ -19,9 +19,9 @@
 	     (loc (make-locative (%vref s 0))))
 	(dotimes (i word-count s)
 	  (set! (contents (%increment-locative loc i))
-		(bit-or (number #\NULL)
-			(bit-or (ash-left (number #\NULL) 8)
-				(ash-left (number #\NULL) 16))))))))
+		(bit-or (#^number #\NULL)
+			(bit-or (ash-left (#^number #\NULL) 8)
+				(ash-left (#^number #\NULL) 16))))))))
 
 (add-method (initialize (string char-count) self word-count len)
   (set! char-count len)
@@ -101,7 +101,7 @@
 (define-instance downcase operation)
 
 (add-method (print (string) self stream)
-  (cond (print-escape
+  (cond (#*print-escape
 	 (write-char stream #\")
 	 (write-string-with-slashes self #\" stream)
 	 (write-char stream #\"))
@@ -115,7 +115,7 @@
 
 ;;; Coerce any kind of sequence to a string.
 
-(add-method (string (sequence) seq)
+(add-method (#^string (sequence) seq)
   (let* ((len (length seq))
 	 (s (make-string len)))
     (iterate aux ((i 0))
@@ -154,7 +154,7 @@
 	       (aux (+ i 1) (cdr l2) (- to-do %chars-per-word)))))))
 
 
-  (add-method ((coercer string) (list-type) l)
+  (add-method (#^string (list-type) l)
     (if (null? l)
 	""
 	(let* ((len (length l))
@@ -219,7 +219,7 @@
 	      (loop next-triple (- down-counter 1)))))))
 
 
-  (add-method ((coercer list-type) (string char-count) instring)
+  (add-method (#^list-type (string char-count) instring)
     (quick-vref-helper instring char-count)))
   
 
@@ -228,7 +228,7 @@
 
 
 #|
-(add-method ((coercer string) (list-type) l)
+(add-method (#^string (list-type) l)
   (if (null? l) ""
       (let* ((len (length l))
 	     ;;(s (make-string len))
@@ -258,8 +258,8 @@
 |#
 
 
-(add-method ((coercer string) (character) s)
-  ((coercer string) (list s)))
+(add-method (#^string (character) s)
+  (#^string (list s)))
 
 
 (define-instance write-string operation)
@@ -329,24 +329,24 @@
 (add-method (upcase (character) c)
   (let ((c (%character->fixnum c)))
     (%fixnum->character
-     (cond ((and (<= (number #\a) c)
-		 (<= c (number #\z)))
-	    (- c (- (number #\a) (number #\A))))
+     (cond ((and (<= (#^number #\a) c)
+		 (<= c (#^number #\z)))
+	    (- c (- (#^number #\a) (#^number #\A))))
 	   (else c)))))
 
 (add-method (downcase (character) c)
   (let ((c (%character->fixnum c)))
     (%fixnum->character
-     (cond ((and (<= (number #\A) c)
-		 (<= c (number #\Z)))
-	    (- c (- (number #\A) (number #\a))))
+     (cond ((and (<= (#^number #\A) c)
+		 (<= c (#^number #\Z)))
+	    (- c (- (#^number #\A) (#^number #\a))))
 	   (else c)))))
 
 (add-method (upcase (string) self)
-  (string (map upcase (list-type self))))
+  (#^string (map upcase (#^list-type self))))
 
 (add-method (downcase (string) self)
-  (string (map downcase (list-type self))))
+  (#^string (map downcase (#^list-type self))))
 
 
 (define (write-string-with-slashes s delimiter-to-avoid stream)
@@ -376,13 +376,13 @@
 (add-method (append (string) . rest)
   (listify-args
    (lambda (args)
-     ((coercer string)
+     (#^string
       (apply append
 	     (map (lambda (x)
 		    (let ((x (if (is-a? x forcible) (force x) x)))
 		      (if (not (string? x))
 			  (append-type-error "string" x)
-			  ((coercer list-type) x))))
+			  (#^list-type x))))
 		  args))))
    . rest))
 
@@ -391,7 +391,7 @@
 
 #|
 (add-method (append (string char-count) x y)
-  (let* ((y (string y))
+  (let* ((y (#^string y))
 	 (l1 (length y))
 	 (l2 (+ char-count l1))
 	 (s (make-string l2)))

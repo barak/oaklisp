@@ -13,7 +13,7 @@
 #include "data.h"
 #include "cmdline.h"
 #include "xmalloc.h"
-#include "threads.h"
+#include "stacks.h"
 
 enum
   {
@@ -43,7 +43,6 @@ usage(char *prog)
 	  "\n"
 	  "\t--help               print this message and terminate\n"
 	  "\n"
-	  /* "\t--audit [file]\n" */
 	  "\t--world file         file is world to load\n"
 	  "\t--dump file          dump world to file upon exit\n"
 	  "\t--d file             synonym for --dump\n"
@@ -73,10 +72,12 @@ usage(char *prog)
 	  "\n"
 	  "    oaklisp options:\n"
 	  "\n"
-	  "\tsee users manual, or type (MAP CAR COMMANDLINE-OPTIONS)\n"
-	  "\tto a running oaklisp\n"
+	  "\tTry \"man oaklisp\" or run \"%s -- --help\"\n"
 	  "\n",
-	  prog, DEFAULT_NEWSPACE);
+
+	  /* "\type (MAP CAR COMMANDLINE-OPTIONS) to a running oaklisp\n" */
+
+	  prog, DEFAULT_NEWSPACE, prog);
 }
 
 
@@ -103,13 +104,6 @@ void
 parse_cmd_line(int argc, char **argv)
 {
   int retval, option_index = 0;
-
-#ifdef THREADS
-  int my_index;
-  int *my_index_p;
-  my_index_p = pthread_getspecific (index_key);
-  my_index = *my_index_p;
-#endif
 
   /* check for correct endianity settings */
   /* main() routine sets byte_gender */
@@ -245,6 +239,7 @@ parse_cmd_line(int argc, char **argv)
     fprintf(stderr, "warning: using value stack of size %d.\n",
 	    value_stack.size);
   }
+
 
   /* put remainder of command line in variables accessed by Oaklisp-level
      argline instructions */

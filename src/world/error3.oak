@@ -11,8 +11,9 @@
 ;;; of errors that shouldn't be so handled in a limited dynamic context.
 
 (define-syntax (bind-error-handler (error-type handler) . body)
-  `(bind ((error-handlers (cons (cons ,error-type ,handler)
-				  error-handlers)))
+  `(bind ((#*error-handlers
+	   (cons (cons ,error-type ,handler)
+		 #*error-handlers)))
      ,@body))
 
 

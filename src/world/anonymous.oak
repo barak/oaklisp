@@ -1,7 +1,7 @@
 ;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. 1987
 
 
-(set! (fluid fancy-references) nil)
+(set! #*fancy-references #f)
 
 (define expression-table (make-eq-hash-table))
 
@@ -120,7 +120,7 @@
 (define reference-table (make-eq-hash-table))
 
 (define (reasonable-expression a-locale obj)
-  (if (eq? (fluid fancy-references) 'really-fancy)
+  (if (eq? #*fancy-references 'really-fancy)
       (accessor-expression a-locale obj)
       (let ((ref (present? reference-table obj)))
 	(cond ((and ref

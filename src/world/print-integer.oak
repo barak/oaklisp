@@ -6,8 +6,8 @@
 (define (digit->char x)
   (%fixnum->character
    (+ x (if (< x 10)
-	    (number #\0)
-	    (- (number #\A) 10)))))
+	    (#^number #\0)
+	    (- (#^number #\A) 10)))))
 
 
 (define (print-place x place stream)
@@ -23,7 +23,7 @@
 	((zero? self)
 	 (write-char stream #\0) self)
 	(else
-	 (let ((base (fluid print-radix)))
+	 (let ((base #*print-radix))
 	   ;; Successive division; push onto list
 	   (iterate aux ((digits '()) (rem self))
 	     (cond ((zero? rem)
@@ -41,7 +41,7 @@
 	((zero? self)
 	 (write-char stream #\0) self)
 
-	((= (fluid print-radix) 10)
+	((= #*print-radix 10)
 
 	 ;; Special case base 10.
 	 ;;  Have to add another digit here is FIXNUMS get bigger, and take one

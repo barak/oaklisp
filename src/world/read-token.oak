@@ -5,7 +5,7 @@
 
 ;;; This seems as nice a place as any:
 
-(set! input-base 10)
+(set! #*input-base 10)
 
 ;;; Read tokens: NFA.  Recognizes number with either the format
 ;;; ['-']<digit>+['/'<digit>+] or ['-']<digit>+'.'<digit>* or
@@ -14,7 +14,7 @@
 ;;; ['-']{ <digit>*.<digit>+ | <digit>+['.'<digit>*] }[{'e'|'d'|'s'}<digit>*]
 
 (define (read-token stream)
-  (let ((base input-base))
+  (let ((base #*input-base))
     (labels (( (intern-it c r-charlist escaped?)
 	       ;; We're finished with this token, and it is a symbol.
 	       (unread-char stream c)
@@ -44,7 +44,7 @@
 				 )
 			(cerror "Treat the '...' as if it were escaped."
 				"The token '...' can not be read unescaped."))
-		      (intern (string (reverse r-charlist))))) )
+		      (intern (#^string (reverse r-charlist))))) )
 
 	     ( (digits1 c r-charlist n neg? first?)
 	       ;; We are in the first block of digits following the start of
@@ -123,7 +123,7 @@
 	       ;; We just read an escape character, so the next one is
 	       ;; accepted literally.
 	       (when (eq? c the-eof-token)
-		 (signal eof-after-slash (string (reverse r-charlist))))
+		 (signal eof-after-slash (#^string (reverse r-charlist))))
 	       (simple-symbol (read-char stream) (cons c r-charlist) #t) )
 
 	     ( (digits2 c r-charlist n numerator)
@@ -212,22 +212,22 @@
 			    c c-syntax)))))))
 
 (define (digit? c base)
-  (let ((cn (number c)))
+  (let ((cn (#^number c)))
     (cond ((<= base 10)
-	   (and (<= (number #\0) cn)
-		(< cn (+ (number #\0) base))))
+	   (and (<= (#^number #\0) cn)
+		(< cn (+ (#^number #\0) base))))
 	  (else
-	   (or (and (<= (number #\0) cn)
-		    (<= cn (number #\9)))
-	       (and (<= (number #\A) cn)
-		    (< cn (+ (number #\A) (- base 10))))
-	       (and (<= (number #\a) cn)
-		    (< cn (+ (number #\a) (- base 10)))))))))
+	   (or (and (<= (#^number #\0) cn)
+		    (<= cn (#^number #\9)))
+	       (and (<= (#^number #\A) cn)
+		    (< cn (+ (#^number #\A) (- base 10))))
+	       (and (<= (#^number #\a) cn)
+		    (< cn (+ (#^number #\a) (- base 10)))))))))
 
 (define (digit-value c)
-  (let ((c (number c)))
-    (cond ((<= c (number #\9)) (- c (number #\0)))
-	  ((<= c (number  #\Z)) (- c (- (number #\A) 10)))
-	  (else (- c (- (number #\a) 10))))))
+  (let ((c (#^number c)))
+    (cond ((<= c (#^number #\9)) (- c (#^number #\0)))
+	  ((<= c (#^number  #\Z)) (- c (- (#^number #\A) 10)))
+	  (else (- c (- (#^number #\a) 10))))))
 
 ;;; eof

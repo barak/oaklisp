@@ -33,9 +33,9 @@
 	       (aux (cdr vars) (%increment-locative fp 1)))))))
 
   (define (deep-describe x)
-    (bind ((forcible-print-magic #f))
+    (bind ((#*forcible-print-magic #f))
       (let ((ty (get-type x)))
-	(bind ((fancy-references #t))
+	(bind ((#*fancy-references #t))
 	  (format #t "~&~S is of type ~S.~%" x ty))
 	(when (= (%tag x) %pointer-tag)
 	  (let ((loc-x (%set-tag x %locative-tag)))

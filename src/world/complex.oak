@@ -24,10 +24,10 @@
 ;;; which will cause 3+4i to print as #C(3 4), 3+4i, and (some day)
 ;;; 5@0.92729521.
 
-(set! complex-display-style 'structure)
+(set! #*complex-display-style 'structure)
 
 (add-method (print (complex the-real-part the-imag-part) self stream)
-  (case complex-display-style
+  (case #*complex-display-style
 
     ((structure)
      (format stream "#C(~A ~A)" the-real-part the-imag-part))
@@ -51,7 +51,8 @@
     ; (format stream "~A@~A" (abs self) (phase self)))
 
     (else
-     (error "Unknown complex printing style ~S." complex-display-style))))
+     (error "Unknown complex printing style ~S."
+	    #*complex-display-style))))
 
 (add-method (exact? (complex the-real-part the-imag-part) self)
   (and (exact? the-real-part) (exact? the-imag-part)))
@@ -161,7 +162,7 @@
 	   (* p2 (^r (- (- y y2) y2) x))))))
 
 (add-method (^r (fraction) y x)
-  (^r (float y) x))
+  (^r (#^float y) x))
 
 (add-method (^r (complex the-real-part the-imag-part) y x)
   (* (^ x the-real-part)
@@ -173,7 +174,7 @@
 ;  (z:exp x))
 
 ;(add-method (exp (real) x)
-;  (z:exp (float x)))
+;  (z:exp (#^float x)))
 
 (add-method (exp (complex the-real-part the-imag-part) x)
   (* (exp the-real-part) (cis the-imag-part)))
@@ -194,7 +195,7 @@
 
 (add-method (atan2 (real) y x)
   (efselect-type x
-    ((real) (cl:atan (float y) (float x)))
+    ((real) (cl:atan (#^float y) (#^float x)))
     ((complex) (error "Arc Tangent in Complex case unimplemented"))))
 
 (define-instance ln operation)

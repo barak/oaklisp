@@ -2,7 +2,7 @@
 
 
 (define (make-oa-list oaf-list)
-  (let ((sym-vec ((coercer simple-vector) (car oaf-list))))
+  (let ((sym-vec (#^simple-vector (car oaf-list))))
     (labels (((rewrite-syms clause)
 	      (let ((car-clause (car clause)))
 		(if (> car-clause (- 5 1))
@@ -41,7 +41,7 @@
 	   oa-list)))
     (list
      (map! car
-	   (sort ((coercer list-type) sym-hash)
+	   (sort (#^list-type sym-hash)
 		 (lambda (a b) (< (cdr a)(cdr b)))))
      new-list)))
 
@@ -81,7 +81,7 @@
 		   1)))
     (iterate next ((worknum 0))
       (let* ((the-char (read-char stream))
-	     (num-val (- (%character->fixnum the-char) (number #\0))))
+	     (num-val (- (%character->fixnum the-char) (#^number #\0))))
 	(cond ((and (>= num-val 0) (<= num-val 10))
 	       (next (+ (* worknum 10) num-val)))
 	      ((eq? the-char #\))

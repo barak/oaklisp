@@ -218,7 +218,7 @@
   (add-method (length (typ count) self)
     count)
 
-  (add-method (list-type (typ table size) self)
+  (add-method (#^list-type (typ table size) self)
     (iterate aux ((i 0)(l '()))
       (if (= i size) l
 	  (aux (+ i 1) (append (nth table i) l)))))

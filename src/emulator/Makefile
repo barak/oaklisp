@@ -1,11 +1,14 @@
 # Copyright (c) 1999 Barak Pearlmutter
 # Distributed under the GNU General Public License v2 or later
 
-psrc=oakem.c
+# This value of prefix will usually be overridden
+prefix=/usr/local
+
+psrc=oaklisp.c
 osrc=cmdline.c data.c gc.c loop.c signal.c stacks.c timers.c \
-	weak.c worldio.c xmalloc.c instr.c threads.c
-hsrc=cmdline.h config.h data.h gc.h loop.h signal.h stacks.h timers.h \
-	weak.h worldio.h xmalloc.h instr.h threads.h
+	weak.c worldio.c xmalloc.c instr.c
+hsrc=cmdline.h config.h data.h gc.h loop.h signal.h stacks.h stacks-loop.h \
+	timers.h weak.h worldio.h xmalloc.h instr.h
 
 progs=$(psrc:.c=)
 pobj=$(psrc:.c=.o)
@@ -19,15 +22,11 @@ dfiles = $(psrc:.c=.d) $(osrc:.c=.d)
 override CPPFLAGS+=-MMD
 
 CFLAGS=-O2 -g -Wall
-LDFLAGS=-lpthread
 
-OAK=oakem
+OAK=oaklisp
 
-#We have a small "bootstrapping" problem here.  In order to compile oakem,
-#we need oakem to make instr-data.c.  So let's save the last one.  If we
-#fail to update, oh well.  Just finish and try again.
-instr-data.c: instruction-table.oak ../world/assembler.oak ../lib/oakworld.bin
-	-$(OAK) $(OAKFLAGS) -- \
+instr-data.c: instruction-table.oak
+	$(OAK) $(OAKFLAGS) -- \
 		-locale compiler-locale -load instruction-table \
 		-eval '(dump-instruction-table "$@")' \
 		-exit
@@ -38,21 +37,17 @@ instr-data.c: instruction-table.oak ../world/assembler.oak ../lib/oakworld.bin
 # CPPFLAGS+=-DDEFAULT_WORLD=\"/usr/share/lib/oaklisp/oakworld.bin\"
 # CPPFLAGS+=-DFAST
 
-CFLAGS+=-DDEFAULT_WORLD=\"${OAKDIR}/lib/oakworld.bin\"
+CPPFLAGS+=-DDEFAULT_WORLD=\"$(prefix)/lib/oaklisp/oakworld.bin\"
 
 $(progs): $(pobj) $(oobj)
 
 TAGS: $(psrc) $(osrc) $(hsrc)
 	etags $^ > $@
 
-.PHONY: install-nostrip
-install-nostrip: $(progs)
-	-rm -f ../bin/oakem
-	cp -a $(progs) ../bin/
-
 .PHONY: install
-install: install-nostrip
-	cd ../bin; strip $(progs)
+install: $(progs)
+	cp -a $(progs) $(DESTDIR)$(prefix)/bin/
+	cd $(DESTDIR)$(prefix)/bin; strip $(progs)
 
 .PHONY: clean
 clean:

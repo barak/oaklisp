@@ -12,7 +12,6 @@
 #include "config.h"
 #include "data.h"
 #include "xmalloc.h"
-#include "threads.h"
 
 
 
@@ -51,7 +50,6 @@ xmalloc(size_t size)
 void
 alloc_space(space_t * pspace, size_t size_requested)
 {
-   void *ptr;
   /* size_requested measures references */
 
 #ifdef UNALIGNED_MALLOC
@@ -70,7 +68,7 @@ alloc_space(space_t * pspace, size_t size_requested)
  */
 
 #else /* UNALIGNED_MALLOC */
-  ptr = xmalloc(sizeof(ref_t) * size_requested);
+  void *ptr = xmalloc(sizeof(ref_t) * size_requested);
   pspace->start = (ref_t *) ptr;
 #endif
 
@@ -105,9 +103,6 @@ free_space(space_t * pspace)
 #endif
 }
 
-
-/*This is called by gc.  Can't acquire alloc lock from gc
-  since inversion occurs with macro ALLOC_SS but no need*/
 void
 realloc_space(space_t * pspace, size_t size_requested)
 {
@@ -194,25 +189,3 @@ oak_c_string(ref_t * oakstr, int len)
   oak_c_string_fill(oakstr, cstring, len);
   return cstring;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

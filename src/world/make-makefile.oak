@@ -4,7 +4,7 @@
   (with-open-file (outfile name out)
 
     (let* ((aller (lambda (x)
-		    (format outfile " ~A.oa" (downcase (string x)))))
+		    (format outfile " ~A.oa" (downcase (#^string x)))))
 	   (aller1 (lambda (x) (if (not (memq x between-files)) (aller x)))))
 
       (format outfile "# NOTE: This included makefile data is automatically~%")
@@ -48,7 +48,7 @@
       (format outfile "~%")
 
       (for-each (lambda (f)
-		  (let ((f (downcase (string f))))
+		  (let ((f (downcase (#^string f))))
 		    (format outfile
 			    "~a.oa:~a.oak;$(OAK) $(OAKFLAGS) -- -locale compiler-locale -compile $* -exit~%"
 			    f f)))

@@ -22,7 +22,7 @@
   (set! digits digs)
   self)
 
-(add-method (bignum (fixnum) x)
+(add-method (#^bignum (fixnum) x)
   (make bignum (bignum-sign x) (bignum-digits x)))
 
 ;;; Make a bignum unless the thing will fit in a fixnum.
@@ -49,15 +49,15 @@
 
 (define-constant bignum-base (expt 10 decimal-digits-per-bignum-chunk))
 
-(set! (fluid bignum-debug) #f)
+(set! #*bignum-debug #f)
 
 (add-method (print (bignum sign digits) self stream)
-  (cond ((fluid bignum-debug)
+  (cond (#*bignum-debug
 	 (format stream "#<BIGNUM ~A~S>" sign digits)
 	 self)
 
 	;; Special case base 10:
-	((= 10 (fluid print-radix))
+	((= 10 #*print-radix)
 	 (when (= sign -1)
 	   (write-char stream #\-))
 	 (let ((rdigs (reverse digits)))
@@ -599,17 +599,17 @@
 
   (define (quorem-digitlists-to-get-digit inlist divisor)
 
-					;   (when (fluid bignum-debug) (%write-char #\|))
+    ;; (when #*bignum-debug (%write-char #\|))
 
     (let ((lenin (length inlist))
 	  (lendiv (length divisor)))
 
-      (cond ((if (= lenin lendiv)	;special case when answer is 0
+      (cond ((if (= lenin lendiv)	; special case when answer is 0
 		 (samelen-digitlist-< inlist divisor)
 		 (< lenin lendiv))
 	     (cons 0 inlist))
 
-	    ((< (+ lenin lendiv) 5)	;   special cases for short digitlists
+	    ((< (+ lenin lendiv) 5)	; special cases for short digitlists
 
 	     (when (not (eq? last-short-divisor divisor))
 	       (set! last-short-divisor divisor)
@@ -633,7 +633,8 @@
 			    (bignum-digits (remainder fix-dividend fix-divisor)))))))
 
 
-	    (else			;general case: 3+ digits in inlist, and 2+ or 3+ digits in divisor
+	    (else
+	     ;; general case: 3+ digits in inlist, and 2+ or 3+ digits in divisor
 
 	     (when (not (eq? last-long-divisor divisor))
 	       (set! last-long-divisor divisor)
@@ -699,7 +700,8 @@
 	       (iterate next ((dig guessdig)(prod guessprod)(first-try #t)) ;iterate to fix guess
 
 		 (cond ((digitlist-< inlist prod)
-					; (when (fluid bignum-debug) (%write-char #\-))
+			;; (when #*bignum-debug (%write-char #\-))
+
 			(if first-try
 
 			    (next (- dig 1) (diff-digitlists prod divisor) #f)
@@ -716,7 +718,8 @@
 			(cons dig (diff-digitlists inlist prod)))
 
 		       (else
-			(%write-char #\+) ;this case never happens
+			;; this case never happens
+			(%write-char #\+)
 			(next (1+ dig) (sum-digitlists prod divisor) #f))))
 	       ))))))
 

@@ -15,8 +15,8 @@
   (set! accumulated (cons char accumulated))
   char)
 
-(add-method (string (string-output-stream accumulated) self)
-  (string (reverse accumulated)))
+(add-method (#^string (string-output-stream accumulated) self)
+  (#^string (reverse accumulated)))
 
 ;;; Calling this a STRING-INPUT-STREAM is a misnomer; actually, it can get
 ;;; its input from any sequence.

@@ -223,7 +223,7 @@
 
 
 (define (count-symbol v)
-  (set! dat-count (+ (string-size ((coercer string) v)) dat-count))
+  (set! dat-count (+ (string-size (#^string v)) dat-count))
   (toble-probe v sym-table))
 
 
@@ -297,7 +297,7 @@
 (define (patch-symbols)
   (toble-walk (lambda (name addr)
 		(store-world-ptr where-nil-lives addr)
-		(store-world-word (string-alloc ((coercer string) name))
+		(store-world-word (string-alloc (#^string name))
 				  (+ 1 addr)))
 	      sym-table))
 
@@ -437,7 +437,7 @@
 	((number? c)
 	 (tagize-int c))
 	((char? c)
-	 (tagize-imm (ash-left ((coercer number) c) 6)))
+	 (tagize-imm (ash-left (#^number c) 6)))
 	((pair? c)
 	 (if cache-pairs?
 	     (caching-pair-alloc c)
@@ -482,7 +482,7 @@
 (define (real-string-alloc c strlen)
   (let* ((strwordlen (+ 3 (quotient (+ strlen (- 3 1)) 3)))
 	 (newstring (alloc-dat  strwordlen))
-	 (strlist (map (coercer number) ((coercer list-type) c))))
+	 (strlist (map #^number (#^list-type c))))
     (store-world-ptr where-string-lives newstring)
     (store-world-int strwordlen  (+ 1 newstring))
     (store-world-int strlen  (+ 2 newstring))
@@ -588,7 +588,7 @@
 
 
 (define (extensionize base ext)
-  (append (downcase ((coercer string) base)) ext))
+  (append (downcase (#^string base)) ext))
 
 
 (define (read-oa-file file)		;file already has an extension
@@ -601,7 +601,7 @@
 	  (else (make-oa-list (car red))))))
 
 (define (make-oa-list oaf-list)
-  (let ((sym-vec ((coercer simple-vector) (first oaf-list))))
+  (let ((sym-vec (#^simple-vector (first oaf-list))))
     (labels (((rewrite-syms clause)
 	      (let ((car-clause (car clause)))
 		(if (> car-clause (- 5 1))
@@ -737,7 +737,7 @@
 	(world world))
     (with-open-file (outfile filename out)
       (write-world-header outfile)
-      (bind (((fluid print-radix) 16))
+      (bind ((#*print-radix 16))
 	(dotimes (i actual-size)
 	  (when (zero? (modulo i 8))
 	    (format outfile "~%"))
@@ -756,7 +756,7 @@
 
 
 (define	(write-world-header outfile)
-  (bind (((fluid print-radix) 16))
+  (bind ((#*print-radix 16))
     (print-hex value-stack-size #f outfile)
     (format outfile " ")
     (print-hex context-stack-size #f outfile)
@@ -807,12 +807,12 @@
 
 (define (toble-walk lamder toble)
   ;; LAMDER is to be applied to each key,value pair.
-  (dolist (a ((coercer list-type) toble))
+  (dolist (a (#^list-type toble))
     (lamder (car a) (contents (cdr a)))))
 
 (define (toble->alist toble)
   (map (lambda (x) `(,(car x) ,(contents (cdr x))))
-       ((coercer list-type) toble)))
+       (#^list-type toble)))
 
 (define (ordered-toble->alist toble keylist)
   (map (lambda (key)

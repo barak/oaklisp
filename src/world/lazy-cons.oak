@@ -65,7 +65,7 @@
 
 (add-method (print (lazy-cons car-thunk cdr-thunk car-flag cdr-flag) self s)
 
-  (let ((f (fluid forcible-print-magic)))
+  (let ((f #*forcible-print-magic))
 
     (cond ((eq? f 'transparent)
 	   (^super pair print self s))

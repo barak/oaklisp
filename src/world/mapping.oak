@@ -559,7 +559,7 @@
  	'()
  	(listify-args
  	 (lambda (args)
- 	   (bind (((fluid fancy-references) #t))
+ 	   (bind ((#*fancy-references #t))
 	     (failed-funcall (cons x args))))
  	 . rest))))
 
@@ -567,11 +567,11 @@
 
 
 
-; we may remove this type checking later.
+;;; Consider removing this type checking later.
 
 (define (append-type-error type-name offending-value)
-  (bind (((fluid fancy-references) #t))
-    (error "the append method for ~as got an incorrectly typed argument ~a"
+  (bind ((#*fancy-references #t))
+    (error "the append method for ~A cannot handle its second argument ~A"
 	   type-name offending-value)))
 
 

@@ -25,9 +25,9 @@
 (define list-tail tail)
 (define list-ref nth)
 
-(define symbol->string string)
+(define symbol->string #^string)
 
-(define string->symbol symbol)
+(define string->symbol #^symbol)
 
 (define-constant char=?  =)
 (define-constant char<?  <)
@@ -45,8 +45,8 @@
   (eq? 'whitespace (nth standard-read-table c)))
 
 
-(define char->integer number)
-(define integer->char character)
+(define char->integer #^number)
+(define integer->char #^character)
 
 (define char-upcase upcase)
 (define char-downcase downcase)
@@ -79,8 +79,8 @@
       "" (append . args)))
 
 
-(define string->list list-type)
-(define list->string string)
+(define string->list #^list-type)
+(define list->string #^string)
 
 (define string-copy copy)
 (define string-fill! fill!)
@@ -91,8 +91,8 @@
 (define vector-length length)
 (define vector-ref nth)
 (define vector-set! (setter nth))
-(define vector->list list-type)
-(define list->vector simple-vector)
+(define vector->list #^list-type)
+(define list->vector #^simple-vector)
 (define vector-fill! fill!)
 
 
@@ -119,7 +119,7 @@
 
 (define write
   (let ((write0 (lambda (obj port)
-		  (bind ((print-escape #t))
+		  (bind ((#*print-escape #t))
 		    (print obj port)))))
 
     (lambda (obj . rest)
@@ -129,7 +129,7 @@
 
 (define display
   (let ((display0 (lambda (obj port)
-		  (bind ((print-escape #f))
+		  (bind ((#*print-escape #f))
 		    (print obj port)))))
 
     (lambda (obj . rest)

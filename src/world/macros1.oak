@@ -20,7 +20,7 @@
 (define-syntax define
   (lambda (form)
     (destructure** form
-      ;; This clause is for when you go (DEFINE FOO 'BAR).
+      ;; This clause is for when you go (DEFINE (fluid FOO) 'BAR).
       ((#t ('fluid var) val) `(set! ,@(cdr form)))
       ((#t ('fluid var) . #t) (error "Malformed expression ~S." form))
       ((#t (var . arglist) . rhstuff) `(set! ,var (lambda ,arglist ,@rhstuff)))
@@ -45,7 +45,7 @@
 		  ,def)))))
 	(else
 	 ;; Load time:
-	 `(set! (macro-here? current-locale ',sym) ,def))))
+	 `(set! (macro-here? #*current-locale ',sym) ,def))))
 
 (define-syntax (local-syntax sym def)
   (cond ((pair? sym)
@@ -56,8 +56,8 @@
 			      ,def)))))
 	(else
 	 ;; Compile time:
-	 (set! (macro-here? current-locale sym)
-	       (eval def current-locale))
+	 (set! (macro-here? #*current-locale sym)
+	       (eval def #*current-locale))
 	 ''local-syntax)))
 
 (define-syntax (define-local-syntax sym def)
@@ -69,10 +69,10 @@
 		  ,def)))))
 	(else
 	 ;; Compile time:
-	 (set! (macro-here? current-locale sym)
-	       (eval def current-locale))
+	 (set! (macro-here? #*current-locale sym)
+	       (eval def #*current-locale))
 	 ;; Load time:
-	 `(set! (macro-here? current-locale ',sym) ,def))))
+	 `(set! (macro-here? #*current-locale ',sym) ,def))))
 
 
 ;;;

@@ -11,9 +11,9 @@
 (define-syntax (create-accessors typ prefix . vars)
   `(block
      ,@(map (lambda (x)
-	      (let ((pre-x ((coercer symbol)
-			    (append ((coercer string) prefix)
-				    ((coercer string) x)))))
+	      (let ((pre-x (#^symbol
+			    (append (#^string prefix)
+				    (#^string x)))))
 		`(block
 		   (set! ,pre-x (make operation))
 		   (add-method (,pre-x (,typ ,x) self)
@@ -24,9 +24,9 @@
 (define-syntax (create-setters typ prefix . vars)
   `(block
     ,@(map (lambda (x)
-	     (let ((pre-x ((coercer symbol)
-			   (append ((coercer string) prefix)
-				   ((coercer string) x)))))
+	     (let ((pre-x (#^symbol
+			   (append (#^string prefix)
+				   (#^string x)))))
 	       `(block (set! ,pre-x (make settable-operation))
 		       (add-method (,pre-x (,typ ,x) self)
 			 ,x)
@@ -38,9 +38,9 @@
   (let ((the-type (genvar)))
     `(let ((,the-type ,typ))
        ,@(map (lambda (x)
-		(let ((pre-x ((coercer symbol)
-			      (append ((coercer string) prefix)
-				      ((coercer string) x)))))
+		(let ((pre-x (#^symbol
+			      (append (#^string prefix)
+				      (#^string x)))))
 		  `(block (set! ,pre-x (make locatable-operation))
 			  (add-method (,pre-x (,the-type ,x) self)
 			    ,x)
@@ -125,7 +125,7 @@
 
     (if (symbol? place)
 	(normal place)
-	(let ((place (expand-groveling current-locale place)))
+	(let ((place (expand-groveling #*current-locale place)))
 	  (if (symbol? place)
 	      (normal place)
 

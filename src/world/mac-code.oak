@@ -79,7 +79,7 @@
 (define-instance pop-args operation)
 (define-instance pop-args-before-labels-jump operation)
 
-(set! barrier-node nil)
+(set! #*barrier-node #f)
 
 (with-operations (number-of-args-to-pop)
 
@@ -89,13 +89,13 @@
   (add-method (number-of-args-to-pop (ast-method-node arglist) self)
     (+ (length arglist)
        (if (and (contn-transparent? self)
-	        (not (eq? self barrier-node)))
+	        (not (eq? self #*barrier-node)))
 	   (number-of-args-to-pop (node-enclosing-contour self))
 	   0)))
   
   (add-method (number-of-args-to-pop (ast-labels-node) self)
     (if (and (contn-transparent? self)
-	     (not (eq? self barrier-node)))
+	     (not (eq? self #*barrier-node)))
 	(number-of-args-to-pop (node-enclosing-contour self))
 	0))
   
@@ -107,7 +107,7 @@
 
   (add-method (pop-args-before-labels-jump (ast-node enclosing-contour)
 					   self n-to-blt stop-contour)
-    (bind ((barrier-node stop-contour))
+    (bind ((#*barrier-node stop-contour))
       (blt-stack n-to-blt (number-of-args-to-pop enclosing-contour)))))
 
 
@@ -232,7 +232,7 @@
 	      `(load-imm ,value))))
 
   (add-method (gen-code (ast-constant-node value name origin) self cont)
-    (cond ((or (not (fluid compiling-a-file?))
+    (cond ((or (not #*compiling-a-file?)
 	       (eq? value #t)
 	       (null? value)
 	       (number? value)
@@ -313,7 +313,8 @@
 
 (add-method (gen-code (ast-labels-node gensymlist lambdalist body) self cont)
   (let ((end-cont (if (eq? cont 'next) (gensym "ENDLABELS") cont)))
-    (bind ((barrier-node (if (eq? cont 'tail) barrier-node self)))
+    (bind ((#*barrier-node
+	    (if (eq? cont 'tail) #*barrier-node self)))
       (splice
        (list (if (eq? end-cont 'tail) '() (list `(push-cxt ,end-cont)))
 	     (gen-code body 'tail)
@@ -332,12 +333,14 @@
 (add-method (gen-code (ast-catch-node expression) self cont)
   (let ((end-cont (if (eq? cont 'next) (gensym "ENDCATCH") cont)))
     (let* ((body-code
-	    (bind ((barrier-node (if (eq? cont 'tail)
-				       barrier-node
-				       (combn-op expression))) ;the LET lambda
-		   (filltag-offset (1+ (if (eq? cont 'tail)
-					     (nguys-to-pop self)
-					     0))))
+	    (bind ((#*barrier-node
+		    (if (eq? cont 'tail)
+			#*barrier-node
+			(combn-op expression))) ;the LET lambda
+		   (#*filltag-offset
+		    (1+ (if (eq? cont 'tail)
+			    (nguys-to-pop self)
+			    0))))
 	      (gen-code expression 'tail))))
       (splice
        (list (if (eq? end-cont 'tail) '() (list `(push-cxt ,end-cont)))

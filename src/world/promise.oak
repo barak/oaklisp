@@ -14,7 +14,7 @@
   self)
 
 (add-method (force (forcible) self)
-  (bind ((forcible-print-magic #f))
+  (bind ((#*forcible-print-magic #f))
     (error "Attempt to force ~S, which has no FORCE method." self)))
 
 
@@ -33,10 +33,10 @@
 ;;;    INDICATE       #[DELAY FOO 3462]
 ;;;    TRANSPARENT    FOO
 
-(set! (fluid forcible-print-magic) 'transparent)
+(set! #*forcible-print-magic 'transparent)
 
 (add-method (print (forcible) self s)
-  (let ((f forcible-print-magic))
+  (let ((f #*forcible-print-magic))
     (cond ((eq? f 'transparent) (print (force self) s))
 	  ((eq? f '#f) (format s "#<DELAY ~!>" self))
 	  ((eq? f 'indicate) (format s "#[DELAY ~S ~!]" (force self) self))
@@ -44,7 +44,7 @@
 	  
 
 (add-method (print-list-end (forcible) self . args)
-  (if forcible-print-magic
+  (if #*forcible-print-magic
       (print-list-end (force self) . args)
       (^super object print-list-end self . args)))
 

@@ -106,7 +106,7 @@
 					  clause)))))))))))))))))))))
 
 (define (load-code-segment locale segment)
-  (bind (((fluid current-locale) locale))
+  (bind ((#*current-locale locale))
      ((%install-method-with-env object
 				(make operation)
 				(link-code-segment locale segment)

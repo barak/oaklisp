@@ -11,12 +11,12 @@
 
 ;; System-locale gets filled in from the boot world by patch-locales.oak.
 
-(set! current-locale system-locale)
+(set! #*current-locale system-locale)
 
 (let ((remember-to-freeze (freeze-in-current-locale #f)))
 
   (define (freeze-in-current-locale variable)
-    (set! (frozen-here? current-locale variable) #t))
+    (set! (frozen-here? #*current-locale variable) #t))
 
   (dolist (variable remember-to-freeze)
     (freeze-in-current-locale variable)))

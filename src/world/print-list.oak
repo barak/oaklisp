@@ -13,10 +13,10 @@
 ;;; just printed, a third which is the number of elements printed so fat,
 ;;; and a fourth which is a string to close the list with, normally ")".
 
-(set! print-level #f)
-(set! print-length #f)
-(set! print-escape #t)
-(set! print-radix 10)
+(set! #*print-level #f)
+(set! #*print-length #f)
+(set! #*print-escape #t)
+(set! #*print-radix 10)
 
 (define-instance print-list-end operation)
 
@@ -25,10 +25,13 @@
 ;;; the hacks should be copied over.
 
 (add-method (print (pair) self stream)
-  (if (and print-level (<= print-level 0))
+  (if (and #*print-level
+	   (<= #*print-level 0))
       (write-char stream #\#)
       (let ((the-car (car self)))
-	(bind ((print-level (and print-level (- print-level 1))))
+	(bind ((#*print-level
+		(and #*print-level
+		     (- #*print-level 1))))
 	  (cond ((and (quotelike-prefix? the-car)
 		      (pair? (cdr self))
 		      (null? (cddr self)))
@@ -46,7 +49,7 @@
 		 (print (cadr self) stream))
 		(else
 		 (write-char stream #\()
-		 (print-list-end self #t print-length ")" stream)))))))
+		 (print-list-end self #t #*print-length ")" stream)))))))
 
 (add-method (print-list-end (object) self delimiter? len ending stream)
   (write-string " . " stream)

@@ -73,19 +73,23 @@
 	    (else
 	     (iterate aux ((i 0))
 	       (cond ((<= limit i) new-code-vector)
-		     (t (let ((x (nth new-code-vector i)))
-			  (cond ((= x #x600)
-				 ;; LOAD-IMM, op=0 and arg=6.
-				 (aux (+ i (if (odd? i) 3 4))))
-				(t (let ((op (bit-and #x3F (ash-right x 2))))
-				     (if (or (= op 12) ;load-bp
-					     (= op 13) ;store-bp
-					     (= op 17))	;make-bp-loc
-					 (let* ((arg (ash-right x 8))
-						(xlate (assq arg remap-alist)))
-					   (if xlate
-					       (set! (nth new-code-vector i)
-						    (bit-or (ash-left op 2) (ash-left (cdr xlate) 8)))))))
+		     (else
+		      (let ((x (nth new-code-vector i)))
+			(cond ((= x #x600)
+			       ;; LOAD-IMM, op=0 and arg=6.
+			       (aux (+ i (if (odd? i) 3 4))))
+			      (else
+			       (let ((op (bit-and #x3F (ash-right x 2))))
+				 (if (or (= op 12) ;load-bp
+					 (= op 13) ;store-bp
+					 (= op 17)) ;make-bp-loc
+				     (let* ((arg (ash-right x 8))
+					    (xlate (assq arg remap-alist)))
+				       (if xlate
+					   (set! (nth new-code-vector i)
+						 (bit-or (ash-left op 2)
+							 (ash-left (cdr xlate)
+								   8)))))))
 				   (aux (+ i 1)))))))))))))
 
 ;;; Redefine %INSTALL-METHOD-WITH-ENV so it creates new code bodies when
@@ -103,14 +107,15 @@
 	       (cond ((or (null? x) (eq? x (car real-ivar-map)))
 		      (aux (cdr real-ivar-map) (cdr check-ivar-map)
 			   (+ 1 i) remap-alist))
-		     (t (let ((p (position-in-list x ivar-list)))
+		     (else (let ((p (position-in-list x ivar-list)))
 			  (cond ((null? p)
 				 (error "Variable ~A declared in ADD-METHOD isn't in ~A, the ivars of ~A."
 					x ivar-list self))
-				(t (aux (cdr real-ivar-map)
-					(cdr check-ivar-map)
-					(+ i 1)
-					(cons (cons i p) remap-alist)))))))))
+				(else
+				 (aux (cdr real-ivar-map)
+				      (cdr check-ivar-map)
+				      (+ i 1)
+				      (cons (cons i p) remap-alist)))))))))
 	    (else
 	     (let ((the-method (%allocate %method 3))
 		   (the-code-body (if (null? remap-alist)

@@ -8,14 +8,14 @@
 (define-instance read-table type '() (list simple-vector))
 
 ;;; The nth method for read tables is pretty inner loopy, so the call
-;;; to number has been removed in favor of open code.
+;;; to #^number has been removed in favor of open code.
 
 (add-method (nth (read-table) self char)
-  (%vref-nocheck self (ash-left (%data char) -6) ; (number char)
+  (%vref-nocheck self (ash-left (%data char) -6) ; (#^number char)
 	 ))
 
 (add-method ((setter nth) (read-table) self char val)
-  (set! (%vref self (number char)) val))
+  (set! (%vref self (#^number char)) val))
 
 
 ; this name is short for "vref with character index"
@@ -43,15 +43,15 @@
 
 (dotimes (c 256)
   (set! (nth standard-read-table c)
-       (cond ((= c (number #\\)) 'single-escape)
-	     ((<= c (number #\space)) 'whitespace)
-	     ((<= c (number #\~)) 'constituent)
+       (cond ((= c (#^number #\\)) 'single-escape)
+	     ((<= c (#^number #\space)) 'whitespace)
+	     ((<= c (#^number #\~)) 'constituent)
 	     (else 'illegal))))
 
 
 ;;; A switch for turning off most computation while in a #- thing:
 
-(set! read-suppress nil)
+(set! #*read-suppress #f)
 
 
 ;;; The canonical unread object, for being returned by things that

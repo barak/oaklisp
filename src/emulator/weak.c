@@ -23,15 +23,17 @@
  * for the different areas, so that objects in spatic space need not
  * be rehashed.
 
- * Plus another one for immediates and fixnums, which don't live in
- * any space at all.
+ * Plus another one for unboxed values like fixnums.
 
  */
 
 
-ref_t *wp_table;
+const int wp_table_size = 3000;
+const int wp_hashtable_size = 3017;
 
-int wp_index = 0;
+
+ref_t *wp_table;		/* wp -> ref */
+int wp_index = 0;		/* number of entries in wp_table */
 
 
 /* A hash table from references to their weak pointers.  This hash
@@ -78,7 +80,7 @@ enter_wp(ref_t r, ref_t wp)
   long i = wp_key(r) % wp_hashtable_size;
 
   while (1)			/* forever */
-    if (wp_hashtable[i].obj == e_nil)
+    if (wp_hashtable[i].obj == e_false)
       {
 	wp_hashtable[i].obj = r;
 	wp_hashtable[i].wp = wp;
@@ -97,10 +99,10 @@ rebuild_wp_hashtable(void)
   long i;
 
   for (i = 0; i < wp_hashtable_size; i++)
-    wp_hashtable[i].obj = e_nil;
+    wp_hashtable[i].obj = e_false;
 
   for (i = 0; i < wp_index; i++)
-    if (wp_table[1 + i] != e_nil)
+    if (wp_table[1 + i] != e_false)
       enter_wp(wp_table[1 + i], INT_TO_REF(i));
 }
 
@@ -113,7 +115,7 @@ ref_to_wp(ref_t r)
   long i;
   ref_t temp;
 
-  if (r == e_nil)
+  if (r == e_false)
     return INT_TO_REF(-1);
   i = wp_key(r) % wp_hashtable_size;
 
@@ -121,8 +123,10 @@ ref_to_wp(ref_t r)
     {
       temp = wp_hashtable[i].obj;
       if (temp == r)
-	return wp_hashtable[i].wp;
-      else if (temp == e_nil)
+	{
+	  return wp_hashtable[i].wp;
+	}
+      else if (temp == e_false)
 	{
 	  /* Make a new weak pointer, installing it in both tables: */
 	  wp_hashtable[i].obj = wp_table[1 + wp_index] = r;
@@ -147,7 +151,7 @@ wp_hashtable_distribution(void)
     {
       ref r = wp_hashtable[i].obj;
 
-      if (r == e_nil)
+      if (r == e_false)
 	(void)putchar('.');
       else
 	{
@@ -195,7 +199,7 @@ post_gc_wp(void)
 	    }
 	  else
 	    {
-	      wp_table[1 + i] = e_nil;
+	      wp_table[1 + i] = e_false;
 	      discard_count += 1;
 	    }
 	}

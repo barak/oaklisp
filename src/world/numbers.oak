@@ -22,10 +22,10 @@
 (define-constant-instance number
   coercable-type '() (list self-evaluatory-mixin))
 
-(set! (coercer number)
-     (make (mix-types oc-mixer (list foldable-mixin operation))))
+(set! #^number
+      (make (mix-types oc-mixer (list foldable-mixin operation))))
 
-(add-method (number (number) x) x)
+(add-method (#^number (number) x) x)
 
 (define-constant-instance real type '() (list number))
 (define-constant-instance rational type '() (list real))
@@ -87,13 +87,13 @@
 
 (add-method (plus/2 (fixnum) x y)
   (cond ((eq? (get-type y) fixnum)
-	 (plus/2 (bignum x) y))
+	 (plus/2 (#^bignum x) y))
 	(else
 	 (plus/2 y x))))
 
 (add-method (times/2 (fixnum) x y)
   (cond ((eq? (get-type y) fixnum)
-	 (times/2 (bignum x) y))
+	 (times/2 (#^bignum x) y))
 	(else
 	 (times/2 y x))))
 
@@ -175,7 +175,7 @@
 	  ((eq? (get-type y) fixnum)
 	   (remainder x y))
 	  ((eq? (get-type y) bignum)
-	   (remainder (bignum x) y))
+	   (remainder (#^bignum x) y))
 	  (else
 	   ;;(error "Illegal second arg: (REMAINDER ~D ~D).~%" x y)
 	   (^super integer remainder x y)
@@ -191,7 +191,7 @@
 	  ((eq? (get-type y) fixnum)
 	   (modulo x y))
 	  ((eq? (get-type y) bignum)
-	   (modulo (bignum x) y))
+	   (modulo (#^bignum x) y))
 	  (else (^super integer modulo x y)))))
 
 
@@ -288,7 +288,7 @@
       ((rational) (< (* x (denominator y)) (numerator y)))
       ((float) (if (zero? x)
 		   (< x (float-sign y))
-		   (< ((coercer float) x) y)))
+		   (< (#^float x) y)))
       (otherwise  (error "Illegal second arg (< ~D ~D).~%" x y)))))
 
 ;;;

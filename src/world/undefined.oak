@@ -31,7 +31,7 @@
 ;;;
 
 (define (make-undefined-variable-value sym)
-  (make undefined (append "variable " ((coercer string) sym))))
+  (make undefined (append "variable " (#^string sym))))
 
 ;;; 
 

@@ -43,8 +43,9 @@
   (or (eq? self potential-super)
       (iterate aux ((l supertype-list))
 	(cond ((null? l) nil)
-	      (t (let ((cdrl (cdr l)))
-		   (cond ((null? cdrl) (subtype? (car l) potential-super))
-			 ((subtype? (car l) potential-super) t)
-			 (t (aux cdrl)))))))))
+	      (else
+	       (let ((cdrl (cdr l)))
+		 (cond ((null? cdrl) (subtype? (car l) potential-super))
+		       ((subtype? (car l) potential-super) t)
+		       (else (aux cdrl)))))))))
 |#

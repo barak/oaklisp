@@ -29,7 +29,7 @@
 
 (define (assemble codelist)
   ;; Input is of the form (code ivar-list instruction-list).
-  (when (> (fluid compiler-noisiness) 1)
+  (when (> #*compiler-noisiness 1)
     (format #t "assembling...")
     (flush standard-output))
   (let ((scheduled-segments (list codelist))
@@ -220,7 +220,7 @@
 							     (append
 							      (cdr new-instructions)
 							      (cdr input))))
-						     (when (> (fluid compiler-noisiness) 1)
+						     (when (> #*compiler-noisiness 1)
 						       (format #t "~&Reassembling code segment.~%"))
 						     (throw reassemble nil))))))
 					      patch-alist))
@@ -300,7 +300,7 @@
       subtype-table bp env nargs env-type
       argless-tag-trap-table arged-tag-trap-table object-type boot-code
       free-ptr cons-limit segment-type uninitialized next-newspace-size
-      method-type operation-type false process))
+      method-type operation-type))
 
 ;;; Try and longify an instruction.  Return a list of opcodes to replace the old one.
 
@@ -316,12 +316,12 @@
 	   =>
 	   (lambda (found)
 	     (let ((new-op (cdr found)))
-	       (when (> (fluid compiler-noisiness) 1)
+	       (when (> #*compiler-noisiness 1)
 		 (format #t "~&Longifying instruction ~A to ~A.~%" x new-op))
 	       (list (cons new-op stuff)))))
 	  ;; Put instructions that longify in some odd way in a clause here:
 	  ((eq? op 'funcall-cxt-br)
-	   (when (> (fluid compiler-noisiness) 1)
+	   (when (> #*compiler-noisiness 1)
 	     (format #t "~&Longifying instruction ~A by expanding it.~%" x))
 	   `((funcall-cxt)(long-branch ,@stuff)))
 	  (else (error "Can't longify the ~A opcode in ~A." op x)))))
@@ -497,11 +497,6 @@
 (define-opcode full-gc			(0 64) in0 out1 ns)
 (define-opcode make-lambda		(0 65) in2 out1 notnil nosides ns)
 (define-opcode get-argline-char		(0 66) in2 out1 nosides ns)
-(define-opcode enable-alarms		(0 67) in0 out1 ns)
-(define-opcode disable-alarms		(0 68) in0 out1 ns)
-(define-opcode reset-alarm-counter	(0 69) in0 out1 ns)
-(define-opcode heavyweight-thread	(0 70) in1 out0 nosides ns)
-(define-opcode test-and-set-car		(0 71) in1 out1 ns)
 
 
 
@@ -531,7 +526,7 @@
 ;;; List all the instructions with certain attributes.
 
 (define (instructions-with attributes)
-  (iterate aux ((l (list-type opcode-notation-hash-table))
+  (iterate aux ((l (#^list-type opcode-notation-hash-table))
 		(yes '()))
     (cond ((null? l) yes)
 	  ((subset? attributes (cdr (car l)))

@@ -19,11 +19,12 @@
   (let ((code-ivar-map ((%slot 2) code-body)))
     (iterate aux ((real-ivar-map ivar-list) (check-ivar-map code-ivar-map))
       (cond ((null? check-ivar-map) nil)
-	    (t (let ((x (car check-ivar-map)))
-		 (cond ((or (null? x) (eq? x (car real-ivar-map)))
-			(aux (cdr real-ivar-map) (cdr check-ivar-map)))
-		       (t (error "Too early to remap ivars in code"
-				 x (car real-ivar-map)))))))))
+	    (else
+	     (let ((x (car check-ivar-map)))
+	       (cond ((or (null? x) (eq? x (car real-ivar-map)))
+		      (aux (cdr real-ivar-map) (cdr check-ivar-map)))
+		     (else (error "Too early to remap ivars in code"
+				  x (car real-ivar-map)))))))))
   ;; flush the method cache
   (set! ((%slot 2) op) 0)
   ;; create and install the method

@@ -25,16 +25,16 @@
 	  (set! quotelike-prefixes
 	       (cons (cons prefix char) quotelike-prefixes))))))
 
-(define (define-quotelike-macro-char char prefix)
-  (register-quotelike-prefix char prefix)
+(define (define-quotelike-macro-char char prefix print-form)
+  (if print-form (register-quotelike-prefix char prefix))
   (define-macro-char char (lambda (stream char) (list prefix (read stream)))))
 
 ;;; Use the above facilities to define some useful stuff.
 
-(define-quotelike-macro-char #\' 'quote)
-(define-quotelike-macro-char #\` 'quasiquote)
-(define-quotelike-macro-char #\ 'fluid)       ; ascii 22, blob.
-(define-quotelike-macro-char #\ 'coercer)	; ascii 25, ->.
+(define-quotelike-macro-char #\' 'quote #t)
+(define-quotelike-macro-char #\` 'quasiquote #t)
+(define-quotelike-macro-char #\ 'fluid #f)		; ascii 22, blob.
+(define-quotelike-macro-char #\ 'coercer #f)		; ascii 25, rightarrow.
 
 ;;;
 
@@ -68,11 +68,11 @@
 
 (define-macro-char #\"
   (lambda (stream char)
-    (string (read-charlist-until stream char))))
+    (#^string (read-charlist-until stream char))))
 
 (define-macro-char #\|
   (lambda (stream char)
-    (symbol (string (read-charlist-until stream char)))))
+    (#^symbol (#^string (read-charlist-until stream char)))))
 
 
 (define-macro-char #\;
@@ -122,7 +122,7 @@
       (cond
        ((eq? c char) list-top)
        ((eq? c the-eof-token)
-	(signal eof-reading-chars-until (string list-top) char))
+	(signal eof-reading-chars-until (#^string list-top) char))
        (else
 	(let* ((c
 		(if (not (eq? (nth standard-read-table c)
@@ -130,7 +130,7 @@
 		    c
 		    (let ((c (read-char stream)))
 		      (when (eq? c the-eof-token)
-			(signal eof-after-slash (string list-top)))
+			(signal eof-after-slash (#^string list-top)))
 		      c)))
 	       (nl (cons c nil)))
 	  (cond ((null? list-top)
@@ -154,7 +154,7 @@
       (cond
        ((func c) list-top)
        ((eq? c the-eof-token)
-	(signal eof-reading-chars-until (string list-top)))
+	(signal eof-reading-chars-until (#^string list-top)))
        (else
 	(let* ((c
 		(if (not (eq? (nth standard-read-table c)
@@ -162,7 +162,7 @@
 		    c
 		    (let ((c (read-char stream)))
 		      (when (eq? c the-eof-token)
-			(signal eof-after-slash (string list-top)))
+			(signal eof-after-slash (#^string list-top)))
 		      c)))
 	       (nl (cons c nil)))
 	  (cond ((null? list-top)

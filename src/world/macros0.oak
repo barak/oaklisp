@@ -6,7 +6,7 @@
 (define-syntax (make-locative place)
   (cond ((symbol? place) `(%make-locative ,place))
 	(else
-	 (let ((place (expand-groveling current-locale place)))
+	 (let ((place (expand-groveling #*current-locale place)))
 	   (cond ((symbol? place) `(%make-locative ,place))
 		 (else `((locater ,(car place)) ,@(cdr place))))))))
 
@@ -23,7 +23,7 @@
 
 	  (if (symbol? place)
 	      (normal place)
-	      (let ((place (expand-groveling current-locale place)))
+	      (let ((place (expand-groveling #*current-locale place)))
 		(if (symbol? place)
 		    (normal place)
 		    `((setter ,(car place)) ,@(cdr place) ,value)))))))))
@@ -140,7 +140,7 @@
 		    (value-list (map second canonical-clauses))
 		    (expanded-value-list
 		     (map (lambda (form)
-			    (expand-groveling current-locale form))
+			    (expand-groveling #*current-locale form))
 			  value-list)))
 
 	       (if (any? (lambda (x)
@@ -203,33 +203,20 @@
 (define-syntax (fluid x)
   `(%fluid ',x))
 
-;(define-syntax (bind clauses . body)
-;  (let ((place1 (genvar)) (place2 (genvar)))
-;    `(let* ((,place1 (make-locative fluid-binding-list))
-;	    (,place2 (contents ,place1)))
-;       ,(if (null? clauses)
-;	    'nil
-;	    `(set! (contents ,place1)
-;		   (list* ,@(map (lambda (clause)
-;				   (destructure* (('fluid var) val) clause
-;				     `(cons ',var ,val)))
-;				 clauses)
-;			  ,place2)))
-;       (block0 (block ,@body)
-;	       (set! (contents ,place1) ,place2)))))
 (define-syntax (bind clauses . body)
-  (let ((old-binding-list (genvar)))
-    `(let ((,old-binding-list (get-current-fluid-bindings)))
+  (let ((place1 (genvar)) (place2 (genvar)))
+    `(let* ((,place1 (make-locative fluid-binding-list))
+	    (,place2 (contents ,place1)))
        ,(if (null? clauses)
 	    'nil
-	    `(set-current-fluid-bindings
-	        (list* ,@(map (lambda (clause)
-				(destructure* (('fluid var) val) clause
-					      `(cons ',var ,val)))
-			      clauses)
-			  ,old-binding-list)))
+	    `(set! (contents ,place1)
+		   (list* ,@(map (lambda (clause)
+				   (destructure* (('fluid var) val) clause
+				     `(cons ',var ,val)))
+				 clauses)
+			  ,place2)))
        (block0 (block ,@body)
-	       (set-current-fluid-bindings ,old-binding-list)))))
+	       (set! (contents ,place1) ,place2)))))
 
 
 

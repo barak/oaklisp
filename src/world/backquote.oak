@@ -48,9 +48,9 @@
 (DEFINE (EXPAND-BACKQUOTE X)
   (COND ((NULL? X) ''())
 	((vector? x)
-	 (let ((l ((coercer list-type) x)))
+	 (let ((l (#^list-type x)))
 	   (cond ((any? comma-atsignation? l)
-		  (list '(coercer simple-vector) (expand-backquote l)))
+		  (list '#^simple-vector (expand-backquote l)))
 		 (else
 		  (let ((l1 (map expand-backquote l)))
 		    (if (every? quotation? l1)
