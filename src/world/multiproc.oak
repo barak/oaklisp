@@ -121,7 +121,7 @@ the rest of the multithreading system has been tested.
 
 (add-method (initialize (mutex flags turn) self)
   (set! turn 0)
-  (set! flags (make-initialized-vector *number-of-processes* 'idle))
+  (set! flags (make-initialized-vector (fluid *number-of-processes*) 'idle))
   self)
 
 ; for debugging purposes only...
@@ -133,17 +133,17 @@ the rest of the multithreading system has been tested.
 (add-method (acquire-mutex (mutex flags turn) self)
   (let ((j 0)
 	(i (process-id (current-process))))
-    (until (and (>= j *number-of-processes*)
+    (until (and (>= j (fluid *number-of-processes*))
 		(or (= turn i) (eq? (nth flags turn) 'idle)))
 	   (set! (nth flags i) 'want-in)
 	   (set! j turn)
 	   (while (not (= j i))
 		  (if (not (eq? (nth flags j) 'idle))
 		      (set! j turn)
-		      (set! j (modulo (+ j 1) *number-of-processes*))))
+		      (set! j (modulo (+ j 1) (fluid *number-of-processes*)))))
 	   (set! (nth flags i) 'in-cs)
 	   (set! j 0)
-	   (while (and (< j *number-of-processes*)
+	   (while (and (< j (fluid *number-of-processes*))
 		       (or (= j i)
 			   (not (eq? (nth flags j) 'in-cs))))
 		  (set! j (+ j 1))))
@@ -151,9 +151,9 @@ the rest of the multithreading system has been tested.
 
 ; this should make sure the current process owns the mutex, at the very least
 (add-method (release-mutex (mutex flags turn) self)
-  (let ((j (modulo (+ 1 turn) *number-of-processes*)))
+  (let ((j (modulo (+ 1 turn) (fluid *number-of-processes*))))
     (while (eq? (nth flags j) 'idle)
-	   (set! j (modulo (+ j 1) *number-of-processes*)))
+	   (set! j (modulo (+ j 1) (fluid *number-of-processes*))))
     (set! turn j)
     (set! (nth flags j) 'idle)))
 
@@ -243,22 +243,22 @@ because the scheduler is acquired whenever these things are happening, it
 
 (define (acquire-scheduler)
   (%disable-alarms)
-  (acquire-mutex *scheduleQ-mutex*))
+  (acquire-mutex (fluid *scheduleQ-mutex*)))
 (define (release-scheduler)
-  (release-mutex *scheduleQ-mutex*)
+  (release-mutex (fluid *scheduleQ-mutex*))
   (%enable-alarms))
 
 (define (lwp thunk)
   (acquire-scheduler)
   (enqueue (cons (%load-process) thunk)
-	   *scheduleQ*)
+	   (fluid *scheduleQ*))
   (release-scheduler))
 (define (start)
   (let ((next nil))
     (acquire-scheduler)
-    (if (qempty? *scheduleQ*)
+    (if (qempty? (fluid *scheduleQ*))
 	'()
-	(set! next (dequeue *scheduleQ*)))
+	(set! next (dequeue (fluid *scheduleQ*))))
     (when next (%store-process (car next))) ;; fix process register and proceed
     (%reset-alarm-counter)
     (release-scheduler)
@@ -283,11 +283,11 @@ on lwp and start being atomic
        ;; (lwp (lambda () (k #f)))
        (enqueue (cons (%load-process)
 		      (lambda () (k #f)))
-		*scheduleQ*)
+		(fluid *scheduleQ*))
        ;; (start)
-       (if (qempty? *scheduleQ*)
+       (if (qempty? (fluid *scheduleQ*))
 	   '()
-	   (set! next (dequeue *scheduleQ*)))
+	   (set! next (dequeue (fluid *scheduleQ*))))
        (when next (%store-process (car next))) ;; fix process register and proceed
        (%reset-alarm-counter)
        (release-scheduler)
@@ -300,7 +300,7 @@ on lwp and start being atomic
 		 (lambda ()
 		   (apply fn args)
 		   (start)))
-	   *scheduleQ*)
+	   (fluid *scheduleQ*))
   (release-scheduler)
   nil)
 
@@ -372,7 +372,7 @@ This can then be moved directly to the scheduler when the semaphore is signaled.
 
   (set! s-value (+ s-value 1))
   (when (<= s-value 0) ;; wake up the next blocked process
-	(enqueue (dequeue s-Q) *scheduleQ*))
+	(enqueue (dequeue s-Q) (fluid *scheduleQ*)))
 
   (release-mutex self)
   (release-scheduler)
@@ -388,14 +388,14 @@ futures: promises in a multitasking world
   '(flag val scheduled? dependantsQ sched-policy err-policy)
   (list promise mutex))
 
-(add-method (initialize (future scheduled? dependantsQ sched-policy err-policy) self oper)
+(add-method (initialize (future flag val scheduled? dependantsQ sched-policy err-policy) self oper)
   (set! scheduled? (make test-and-settable))
   (set! dependantsQ (make-queue))
   (set! sched-policy 'unused)
   (set! err-policy 'unused)
   ;; not doing this because flag and val have to be instance variables of futures
   ;; (^super promise initialize self)
-  (set! flag nil)
+  (set! flag #f)
   (set! val oper)
   (^super mutex initialize self)
   self
@@ -427,7 +427,7 @@ futures: promises in a multitasking world
 			      ;; at this point no more people will
 			      ;; be trying to add themselves...
 			      (acquire-scheduler)
-			      (qappend *scheduleQ* dependantsQ)
+			      (qappend (fluid *scheduleQ*) dependantsQ)
 			      (release-scheduler)))
 			  nil)))
 		 (start)))))
