@@ -3,7 +3,7 @@ Section: interpreters
 Priority: optional
 Maintainer: Barak Pearlmutter <bap@cs.unm.edu>
 Standards-Version: 3.5.2
-Build-depends: oaklisp, debhelper
+Build-depends: oaklisp, debhelper, tetex-extra
 
 Package: oaklisp
 Architecture: i386
