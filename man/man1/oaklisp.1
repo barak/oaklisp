@@ -1,0 +1,195 @@
+.TH OAKLISP 1
+
+.SH NAME
+oaklisp \- An implementation of the Oaklisp language
+
+.SH SYNOPSIS
+.B oaklisp
+[ emulator-switches ... [ -- oaklisp-switches ... ]]
+
+.SH DESCRIPTION
+.I Oaklisp
+is an object-oriented dialect of Scheme.  This implementation is quite
+portable, compiling to a virtual machine which is emulated by a C
+program.  Nevertheless, reasonable speed is achieved through a variety
+of sophisticated techniques.
+
+.SH OPTIONS
+Options are all long, and it makes no difference if you start them
+with one or two dashes (`-').  All options can be abbreviated to a
+unique prefix.  The options listed below are for the 
+
+.SS EMULATOR OPTIONS
+
+.TP
+.B \-help
+Show summary of emulator options
+.TP
+.B \-world file
+file is world to load
+.TP
+.B \-dump file
+dump world to file upon exit
+.TP
+.B \-d file
+synonym for --dump
+.TP
+.B \-dump-base b
+0=ascii, 2=binary; default=2
+.TP
+.B \-predump-gc b
+0=no, 1=yes; default=1
+.BR
+.TP
+.B \-size-heap n
+n is in kilo-refs, default 128
+.TP
+.B \-size-val-stk n
+value stack buffer, n is in refs
+.TP
+.B \-size-cxt-stk n
+context stack buffer, n is in refs
+.TP
+.B \-size-seg-max n
+maximum flushed segment len, n is in refs
+.BR
+.TP
+.B \-trace-gc v
+0=quiet, 3=very detailed; default=0
+.TP
+.B \-verbose-gc v
+synonym for --trace-gc
+.TP
+.B \-trace-traps
+.TP
+.B \-trace-files
+trace filesystem operations
+
+.SS UNOPTIMIZED EMULATOR OPTIONS
+
+.TP
+.B \-trace-segs
+trace stack segment writes/reads
+.TP
+.B \-trace-valcon
+print entire value stack at each instr
+.TP
+.B \-trace-cxtcon
+print entire context stack at each instr
+.TP
+.B \-trace-stks
+print the size of the stacks at each instr
+.TP
+.B \-trace-instructions
+trace each bytecode executed
+.TP
+.B \-trace-methods
+trace each method lookup
+.TP
+.B \-trace-mcache
+trace method cache
+
+.SS OAKLISP OPTIONS
+
+.TP
+.B \-help
+Show summary of Oaklisp options
+
+.TP
+.B \-eval expr
+Evaluate Oaklisp expression, which is one arg so
+be sure to quote for shell.
+
+.TP
+.B \-load file
+Load a file.
+
+.TP
+.B \-compile file
+Compile file.oak yielding file.oa
+
+.TP
+.B \-locale x
+Switch to locale x, eg system-locale (default),
+compiler-locale, scheme-locale (for RnRS
+compatibility).
+
+.TP
+.B \-exit
+Exit upon processing this option.
+
+.SH EXAMPLES
+
+This will compile the file myfile.oak in the scheme locale and then
+leave the user in a read-eval-print loop in the scheme locale.
+
+.B oaklisp -- -locale scheme-locale -compile myfile
+
+.SH FILES
+/usr/lib/oaklisp/oakworld.bin holds the world image.  This is
+portable between machines of the same endianity.
+
+.SH BUGS
+Floating point numbers are not implemented.  Rationals can be used to
+make up for this lack because rationals can be told to print in
+floating point format and floating point format input can be made to
+read as rational numbers.  (There are a couple floating point
+implementations, but they are not merged into the distributed
+release.)
+
+In contrast to the error handling system, which is Industrial
+Strength, the debugger is virtually nonexistent.
+
+There is no foreign function interface for loading and calling C
+routines from a running Oaklisp.  (Again, there are a couple
+implementations of foreign function interfaces which are not merged
+in.)
+
+Bug reports and enhancements should be sent to bap@cs.unm.edu.
+
+.SH REFERENCES
+
+The programs are documented more fully in the language and
+implementation manuals included with the distribution.  In binary
+packages these are probably in /usr/doc/oaklisp/lang.ps and lim.ps.
+
+The Oaklisp home page is http://www.cs.unm.edu/~bap/oaklisp/
+
+.I The Implementation of Oaklisp
+is a chapter in
+.I Topics in Advanced Language Implementation
+edited by Peter Lee, MIT Press, 1991.
+
+.I Oaklisp: an Object-Oriented Dialect of Scheme
+appears in the journal
+.I Lisp and Symbolic Computation
+volume 1 number 1, published by Klewer Associates, May 1988.
+
+.I Oaklisp: an Object-Oriented Scheme
+.I with First Class Types
+appeared in the ACM conference OOPSLA-86, whose proceedings were
+published as a special issue of
+.I SIGPLAN Notices.
+
+An article on the Oaklisp garbage collector appeared in the special
+1996 online edition of
+.I Communications of the ACM.
+
+.I The Revised^n Report on Scheme
+is also a useful piece of documentation, and is widely available,
+both online, as an MIT technical report, and in SIGPLAN Notices.
+
+.SH DISTRIBUTION
+The
+.I Oaklisp
+copyright belongs to its authors.  It is distributed under the
+.I GNU General Public License version 2,
+a copy of which is included in the source distribution in the file
+.I COPYING.
+For further information or to make alternate arrangements please
+contact the authors, who are surprisingly reasonable people.
+
+
+.SH AUTHOR
+Oaklisp was originally written and documented by Barak Pearlmutter and
+Kevin Lang.

@@ -17,3 +17,7 @@ lim.ps: lim.dvi
 .PHONY: release
 release: Makefile $(SRC)
 	cp -a $^ $(RTARGET)/
+
+.PHONY: clean
+clean:
+	-rm -f lim.{bbl,blg,dvi,ps,idx,ilg,ind,log,toc} *.aux
