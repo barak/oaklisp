@@ -400,7 +400,7 @@ top_of_loop:
 		  val_buffer_count);
 	  exit(EXIT_FAILURE);
 	}
-	if (cxt_buffer_count < 1 || cxt_buffer_count > context_stack.size) {
+	if (cxt_buffer_count < 0 || cxt_buffer_count > context_stack.size) {
 	  fprintf(stderr, "vm error: cxt_buffer_count = %d\n",
 		  cxt_buffer_count);
 	  exit(1);
@@ -1232,7 +1232,7 @@ top_of_loop:
 	      GOTO_TOP;
 
 	   case 67:		/* ENABLE-ALARMS */
-	     timer_increment = 1;
+	     //timer_increment = 1;
 	     PUSHVAL(e_nil);
 	     GOTO_TOP;
 
