@@ -20,6 +20,7 @@
 	  (set! ((%register 'operation-type)) (the-runtime operation))
 
 	  (warm-boot)
+	  (format t "warm boot actions ~S~%" warm-boot-actions)
 	  (top-level)))
 
        (reboot-method (%get-an-ivar operation reboot-lambda 'lambda?)))

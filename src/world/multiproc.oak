@@ -183,6 +183,8 @@ the rest of the multithreading system has been tested.
     ;; (set! fluid-binding-list (copy-fluid-bindings))
     self)
   (%load-process))
+
+(add-warm-boot-action setup-initial-process-object)
 ;;--------------------------------------------------
 
 ;;; testandset.oak

@@ -41,7 +41,4 @@
 ;;; from FLUID:
 (add-warm-boot-action revert-fluid-binding-list)
 
-;;; from MULTIPROC:
-;;(add-warm-boot-action setup-initial-process-object)
-
 ;;; eof
