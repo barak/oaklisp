@@ -25,6 +25,8 @@ CFLAGS=-O2 -g -Wall
 # CPPFLAGS+=-DDEFAULT_WORLD=\"/usr/share/lib/oaklisp/oakworld.bin\"
 # CPPFLAGS+=-DFAST
 
+CFLAGS+=-DDEFAULT_WORLD=\"${OAKDIR}/lib/oakworld.bin\"
+
 $(progs): $(pobj) $(oobj)
 
 TAGS: $(psrc) $(osrc) $(hsrc)
