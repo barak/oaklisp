@@ -13,15 +13,16 @@ ALLOAFILES = $(TOOLFILES) $(MAKEFILES) $(FILESFILES) $(COLDFILES) \
 
 SOURCE = $(ALLOAFILES:.oa=.oak) Makefile
 
-# The Oaklisp emulator executable.  Use "OAK=oaklisp" if not developing emulator.
+# The Oaklisp emulator executable.
+# Use "OAK=oaklisp" unless compiling new emulator.
 OAK=../emulator/oaklisp
 
-# Flags for the emulator.  Add "--world .../oakworld.bin" for bootstrapping.
+# Flags for the emulator.
+# When bootstrapping add "OAKFLAGS+=--world ...../oakworld.bin"
 OAKFLAGS=--trace-gc=1
 
 # How to compile oaklisp source files into oaklisp bytecode object files:
 .SUFFIXES: .oa .oak
-
 %.oa : %.oak ; $(OAK) $(OAKFLAGS) -- --compile $* --exit
 
 # How to build a new cold world using the world builder tool:
@@ -34,7 +35,6 @@ new.cold: $(COLDFILES) $(TOOLFILES)
 	   --exit
 
 # How to boot cold world into warm world:
-
 oakworld-1.bin: new.cold
 	 $(OAK) $(OAKFLAGS) --world new.cold --dump $@
 
@@ -57,9 +57,9 @@ oakworld.bin: oakworld-3.bin $(RNRSFILES)
 	$(OAK) $(OAKFLAGS) --world oakworld-3.bin --dump $@ \
 	-- \
 	-eval '(define-instance scheme-locale locale (list system-locale))'\
-	-locale scheme-locale \
+	--locale scheme-locale \
 	$(foreach f, $(RNRSFILES:.oa=), --load $(f)) \
-	-locale system-locale --exit
+	--locale system-locale --exit
 
 # How to rebuild variables included by this Makefile itself:
 
