@@ -45,7 +45,7 @@ main(int argc, char **argv)
  
 #ifdef THREADS
   my_index_p = (int *)malloc (sizeof (int));
-  *my_index_p = lock_next_index();
+  *my_index_p = get_next_index();
   pthread_setspecific (index_key, (void*)my_index_p);
   my_index_p = pthread_getspecific(index_key);
   my_index = *my_index_p;
@@ -90,7 +90,6 @@ main(int argc, char **argv)
   /* Tell the boot function the truth */
   e_nargs = 0;
 
-  inc_next_index();
   /* Big virtual machine interpreter loop */
   loop();
 

@@ -411,7 +411,6 @@ gc (bool pre_dump, bool full_gc, char *reason, size_t amount)
   set_gc_flag (true);
 #endif
 
-
   /* The full_gc flag is also a global to avoid ugly parameter passing. */
   set_external_full_gc(full_gc);
 
@@ -423,13 +422,11 @@ gc (bool pre_dump, bool full_gc, char *reason, size_t amount)
     for (i = 0; i < next_index; i++) {
       if (gc_ready[i] == 0) {
           ready = false;
-          i = next_index;
-          sleep (0);
+          break;
       }
     }
   }
 #endif
-
 gc_top:
   if (trace_gc == 1)
     fprintf(stderr, "\n;GC");

@@ -9,6 +9,7 @@
 extern int next_index;
 extern pthread_key_t index_key;
 extern pthread_mutex_t gc_lock;
+extern pthread_mutex_t index_lock;
 extern pthread_mutex_t alloc_lock;
 extern int gc_ready[];
 extern bool gc_pending;
@@ -19,8 +20,7 @@ extern stack_t *cntxt_stack_array[];
 
 int create_thread(ref_t start_method);
 void set_gc_flag (bool flag);
-void inc_next_index();
-int lock_next_index();
+int get_next_index();
 void free_registers();
 void wait_for_gc();
 

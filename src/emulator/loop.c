@@ -291,7 +291,7 @@ loop()
   my_index = *(my_index_p);
 #endif
 
-  
+  fprintf (stderr, "%d in loop\n", my_index);
   local_value_sp = value_stack.sp;
   local_context_sp = context_stack.sp;
   value_stack_end
@@ -348,7 +348,11 @@ loop()
 #define POLL_GC_SIGNALS()	if (gc_pending) {			     \
                                     value_stack.sp = local_value_sp;	     \
                                     context_stack.sp = local_context_sp;     \
+                                    e_pc = local_epc;                     \
                                     wait_for_gc();			     \
+                                    local_value_sp = value_stack.sp;        \
+                                    local_context_sp = context_stack.sp;      \
+                                    local_epc = e_pc;                       \
                                 }
 #else
 #define POLL_GC_SIGNALS()

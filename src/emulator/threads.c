@@ -12,6 +12,7 @@ int next_index = 0;
 pthread_key_t index_key;
 pthread_mutex_t gc_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t alloc_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t index_lock = PTHREAD_MUTEX_INITIALIZER;
 bool gc_pending = false;
 int gc_ready[MAX_THREAD_COUNT];
 register_set_t* register_array[MAX_THREAD_COUNT];
@@ -24,6 +25,7 @@ static u_int16_t tail_recurse_instruction = (22 << 2);
 typedef struct {
     ref_t start_operation;
     int parent_index;
+    int my_index;
 } start_info_t;
 
 static void *init_thread(void *info_p);
@@ -32,9 +34,12 @@ int create_thread(ref_t start_operation)
 {
 #ifdef THREADS
     pthread_t new_thread;
+    int index;
     start_info_t *info_p = (start_info_t *)malloc(sizeof(start_info_t));
+    index = get_next_index();
     info_p->start_operation = start_operation;
     info_p->parent_index = *((int *)pthread_getspecific(index_key));
+    info_p->my_index = index;
     pthread_create(&new_thread, NULL,
 		   (void *)init_thread, (void *)info_p);
     return 1;
@@ -50,12 +55,14 @@ static void *init_thread (void *info_p)
    int *my_index_p;
    start_info_t info;
    my_index_p = (int *)malloc (sizeof (int));
+   info = *((start_info_t *)info_p);
+   free(info_p);
    /*Retrieve the next index in the thread arrays and lock it so
      another starting thread cannot get the same index*/
-   *my_index_p = lock_next_index();
+  
+   *my_index_p = info.my_index;
    my_index = *my_index_p;
    pthread_setspecific(index_key, (void *)my_index_p);  
-   gc_ready[my_index] = 0;
    /*Increment also releases the gc lock on next_index so another
      starting thread can get the lock, or a thread that is gc'ing can
      get the lock*/
@@ -63,8 +70,7 @@ static void *init_thread (void *info_p)
    /* Shouldn't get interrupted for gc until after stacks are
       created.  This is below here in the vm not checking intterupts
       until after we get to the loop */
-   info = *((start_info_t *)info_p);
-   free(info_p);
+   
    value_stack_array[my_index] = (stack_t*)malloc (sizeof (stack_t));
    cntxt_stack_array[my_index] = (stack_t*)malloc(sizeof (stack_t));
 
@@ -89,7 +95,6 @@ static void *init_thread (void *info_p)
    e_pc = &tail_recurse_instruction;
    *++value_stack.sp = info.start_operation;
    e_nargs = 0;
-   inc_next_index();
 
    /* Big virtual machine interpreter loop */
    loop();
@@ -115,6 +120,7 @@ void set_gc_flag (bool flag)
     gc_pending = flag;
     pthread_mutex_unlock (&gc_lock);
   }
+  
 #endif
 }
 
@@ -124,23 +130,18 @@ void set_gc_flag (bool flag)
   already running.  The get_next_index additionally
   ensures that no two threads get the same index when
   starting*/
-void inc_next_index ()
-{
-#ifdef THREADS
-  next_index++;
-  pthread_mutex_unlock (&gc_lock);
-#endif
-}
-
-int lock_next_index ()
+int get_next_index ()
 {
   int ret = -1;
 #ifdef THREADS
-  pthread_mutex_lock (&gc_lock);
+  pthread_mutex_lock (&index_lock);
   ret = next_index;
+  next_index++;
+  pthread_mutex_unlock (&index_lock);
 #endif
   return (ret);
 }
+
 
 void free_registers ()
 {
