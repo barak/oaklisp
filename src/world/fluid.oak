@@ -5,15 +5,6 @@
 (define top-level-fluid-binding-list (list (cons nil nil)))
 
 
-;; The theory is, these are overwritten in multiproc.oak
-;(define get-current-fluid-bindings (add-method ((make operation))
-;   fluid-binding-list))
-;(define set-current-fluid-bindings (add-method ((make operation)
-;						new-binding-list)
-;   (set! fluid-binding-list new-binding-list)))
-;(define add-to-current-fluid-bindings (add-method ((make operation) c-cell)
-;   (set! (cdr top-level-fluid-binding-list)
-;	 (cons c-cell (cdr top-level-fluid-binding-list)))))
 (define get-current-fluid-bindings (add-method ((make operation))
    (let ((z (%load-process)))
      (if (eq? z 0) fluid-binding-list
