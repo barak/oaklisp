@@ -17,8 +17,6 @@ extern void printref(FILE * fd, ref_t refin);
 extern void gc (bool pre_dump, bool full_gc, char *reason,
 		size_t amount);
 
-extern ref_t *gc_examine_ptr;
-
 #define GC_MEMORY(v) \
 {*gc_examine_ptr++ = (v);}
 		/*

@@ -57,6 +57,7 @@ main(int argc, char **argv)
   value_stack.filltarget = 1024/2;
   context_stack.size = 512;
   context_stack.filltarget = 512/2;
+  gc_examine_ptr = gc_examine_buffer;
 #endif
 
  parse_cmd_line (argc, argv);

@@ -38,8 +38,13 @@ unsigned long loc_transport_count;
 #define GC_EXAMINE_BUFFER_SIZE 16
 #endif
 
+#ifdef THREADS
+ref_t gc_examine_buffer_array[MAX_THREAD_COUNT][GC_EXAMINE_BUFFER_SIZE];
+ref_t *gc_examine_ptr_array[MAX_THREAD_COUNT];
+#else
 ref_t gc_examine_buffer[GC_EXAMINE_BUFFER_SIZE];
 ref_t *gc_examine_ptr = gc_examine_buffer;
+#endif
 
 #define GC_TOUCH(x)			\
 {					\
@@ -514,8 +519,14 @@ gc_top:
 	GC_TOUCH (e_method_type);
 	GC_TOUCH (e_operation_type);
 
+#ifdef THREADS
+        for (my_index = 0; my_index < next_index; my_index++) {
+#endif
 	for (p = gc_examine_buffer; p < gc_examine_ptr; p++)
 	  GC_TOUCH(*p);
+#ifdef THREADS
+	}
+#endif
 
 
 

@@ -90,6 +90,9 @@ static void *init_thread (void *info_p)
 
    memcpy(register_array[my_index], register_array[info.parent_index],
 	  sizeof(register_set_t));
+
+   gc_examine_ptr = gc_examine_buffer;
+
    *++value_stack.sp = info.start_operation;
  /*At this point, it should be OK if the garbage collector gets run.*/
    e_pc = &tail_recurse_instruction;

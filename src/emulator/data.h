@@ -113,8 +113,15 @@ extern int wp_index;
 /* Garbage collection */
 
 #define GC_EXAMINE_BUFFER_SIZE 16
+#ifdef THREADS
+extern ref_t gc_examine_buffer_array[MAX_THREAD_COUNT][GC_EXAMINE_BUFFER_SIZE];
+extern ref_t *gc_examine_ptr_array[MAX_THREAD_COUNT];
+#define gc_examine_buffer	gc_examine_buffer_array[my_index]
+#define gc_examine_ptr		gc_examine_ptr_array[my_index]
+#else
 extern ref_t gc_examine_buffer[GC_EXAMINE_BUFFER_SIZE];
 extern ref_t *gc_examine_ptr;
+#endif
 
 /* Virtual Machine registers */
 
