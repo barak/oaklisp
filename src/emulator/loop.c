@@ -1477,7 +1477,13 @@ top_of_loop:
 		  GOTO_TOP;
 		case 14:
 		  CHECKTAG1(x, LOC_TAG, 1);
+#ifdef THREADS
+                  pthread_mutex_lock (&alloc_lock);
+#endif
 		  free_point = LOC_TO_PTR(x);
+#ifdef THREADS
+                  pthread_mutex_unlock (&alloc_lock);
+#endif
 		  GOTO_TOP;
 		case 15:
 		  CHECKTAG1(x, LOC_TAG, 1);

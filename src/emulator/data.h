@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include "config.h"
+
 /* Version and greeting */
 extern const char *version, *compilation_date, *compilation_time;
 
@@ -364,11 +365,20 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 		  GC_RECALL(v); })
 
 
-/* The gc here is called with a register_set of NULL.
-   We probably want gc to get the register set pointers once
-   it's made sure all the threads are stopped.  This is just
-   a flaky fix for now.  IT DOES BREAK GARBAGE COLLECTION if 
-   THREADS is set to true*/
+#ifdef THREADS
+#define ALLOCATE_PROT(p, words, reason, before, after)	\
+{							                            \
+  if (free_point + (words) >= new_space.end)            \
+    {													\
+      before;											\
+      gc(false, false, (reason), (words));				\
+      after;											\
+    }													\
+  pthread_mutex_lock (&alloc_lock);                                           \
+  (p) = free_point;										\
+  free_point += (words);							 pthread_mutex_unlock (&alloc_lock);	\
+}
+#else
 #define ALLOCATE_PROT(p, words, reason, before, after)	\
 {							                            \
   if (free_point + (words) >= new_space.end)            \
@@ -378,8 +388,9 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
       after;											\
     }													\
   (p) = free_point;										\
-  free_point += (words);								\
-}
+  free_point += (words);						       }
+
+#endif
 
 /* These get slots out of Oaklisp objects, and may be used as lvalues. */
 
@@ -392,11 +403,6 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 #define CODE_SEG_FIRST_INSTR(seg) \
   ( (u_int16_t *)(REF_TO_PTR((seg)) + CODE_CODE_START_OFF) )
 
-#ifdef THREADS
-extern register_set_t* register_array[];
-extern stack_t *value_stack_array[];
-extern stack_t *cntxt_stack_array[];
-#endif
 
 #ifdef THREADS
 #define reg_set register_array[my_index]

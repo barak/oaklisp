@@ -53,7 +53,8 @@ main(int argc, char **argv)
   pthread_setspecific (index_key, (void*)my_index_p);
   my_index_p = pthread_getspecific(index_key);
   my_index = *my_index_p;
-  next_index++;
+  inc_next_index();
+  gc_ready[my_index] = 0;
   value_stack_array[my_index] = (stack_t*)xmalloc (sizeof (stack_t));
   cntxt_stack_array[my_index] = (stack_t*)xmalloc(sizeof (stack_t));
   value_stack.size = 1024;
@@ -87,7 +88,7 @@ main(int argc, char **argv)
   e_pc = CODE_SEG_FIRST_INSTR (e_code_segment);
   e_bp = e_env;
   e_nargs = 0;
-  /* create_thread (NULL);*/
+  create_thread (NULL);
 
 #else
   /* Set the registers to the boot code */

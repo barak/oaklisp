@@ -9,6 +9,13 @@
 #ifdef THREADS
 int next_index = 0;
 pthread_key_t index_key;
+pthread_mutex_t gc_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t alloc_lock = PTHREAD_MUTEX_INITIALIZER;
+bool gc_pending = false;
+int gc_ready[200];
+register_set_t* register_array[200];
+stack_t *value_stack_array[200];
+stack_t *cntxt_stack_array[200];
 #endif
 
 static void *init_thread (void *start_method)
@@ -18,9 +25,13 @@ static void *init_thread (void *start_method)
    int *my_index_p;
    my_index_p = (int *)xmalloc (sizeof (int));
    *my_index_p = next_index;
-   my_index = next_index;
+   my_index = *my_index_p;
    pthread_setspecific(index_key, (void *)my_index_p);
-   next_index++;
+   /* Shouldn't get interrupted for gc until after stacks are
+      created.  This is below here in the vm not checking intterupts
+      until after we get to the loop*/
+   gc_ready[my_index] = 0;
+   inc_next_index();
    value_stack_array[my_index] = (stack_t*)xmalloc (sizeof (stack_t));
    cntxt_stack_array[my_index] = (stack_t*)xmalloc(sizeof (stack_t));
 
@@ -40,7 +51,7 @@ static void *init_thread (void *start_method)
    e_nargs = 0;
 
    /* Big virtual machine interpreter loop */
-   loop();
+   /* loop();*/
 
 #endif
    return 0;
@@ -48,9 +59,32 @@ static void *init_thread (void *start_method)
 
 int create_thread(ref_t start_method)
 {
+#ifdef THREADS
     pthread_t new_thread;
     pthread_create(&new_thread, NULL,
 		   (void *)init_thread, (void *)&start_method);
+#endif
     return 1;
+}
+void set_gc_flag (bool flag) 
+{
+#ifdef THREADS
+  if (flag == true) {
+    pthread_mutex_lock (&gc_lock);
+    gc_pending = flag;
+  }
+  else {
+    gc_pending = flag;
+    pthread_mutex_unlock (&gc_lock);
+  }
+#endif
+}
+void inc_next_index ()
+{
+#ifdef THREADS
+  pthread_mutex_lock (&gc_lock);
+  next_index++;
+  pthread_mutex_unlock (&gc_lock);
+#endif
 }
 

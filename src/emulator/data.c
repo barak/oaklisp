@@ -12,11 +12,7 @@
 
 /* Version and greeting */
 const char *version = "1.00", *compilation_date = __DATE__, *compilation_time = __TIME__;
-#ifdef THREADS
-register_set_t* register_array[200];
-stack_t *value_stack_array[200];
-stack_t *cntxt_stack_array[200];
-#endif
+
 /* byte gender */
 int byte_gender = little_endian;
 

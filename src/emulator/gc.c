@@ -11,8 +11,8 @@
 #include "weak.h"
 #include "xmalloc.h"
 #include "stacks.h"
-#include "threads.h"
 #include "gc.h"
+#include "threads.h"
 
 
 #ifdef USE_VADVISE
@@ -405,16 +405,32 @@ gc (bool pre_dump, bool full_gc, char *reason, size_t amount)
 {
   long old_taken;
   ref_t *p;
+  bool ready=false;
 #ifdef THREADS
-  int* my_index_p;
   int my_index;
+  int *my_index_p;
   my_index_p = pthread_getspecific (index_key);
-  my_index = *(my_index_p);
+  my_index = *my_index_p;
+  gc_ready[my_index] = 1;
+  set_gc_flag (true);
 #endif
 
   /* The full_gc flag is also a global to avoid ugly parameter passing. */
   set_external_full_gc(full_gc);
 
+#ifdef THREADS
+  /*Problem here is next_index could change if someone creates a thread
+    while someone else is gc'ing*/
+  while (ready == false) {
+    ready = true;
+    for (my_index = 0; my_index< next_index; my_index++) {
+      if (gc_ready[my_index] == 0) {
+          ready = false;
+          my_index = next_index;
+      }
+    }
+  }
+#endif
 gc_top:
   if (trace_gc == 1)
     fprintf(stderr, "\n;GC");
@@ -423,10 +439,17 @@ gc_top:
 
   if (trace_gc > 2 && !pre_dump)
     {
+#ifdef THREADS
+      for (my_index = 0; my_index < next_index; my_index++) {
+        fprintf (stderr, "Thread %d\n", my_index);
+#endif
       fprintf (stderr, "value ");
       dump_stack (value_stack_address);
       fprintf (stderr, "context ");
       dump_stack (context_stack_address);
+#ifdef THREADS
+      }
+#endif
     }
   if (trace_gc > 1)
     fprintf(stderr, "; Flipping...");
@@ -456,6 +479,7 @@ gc_top:
 
     if (!pre_dump)
       {
+
 	GC_TOUCH(e_t);
 	GC_TOUCH(e_fixnum_type);
 	GC_TOUCH(e_loc_type);
@@ -470,8 +494,14 @@ gc_top:
 	GC_TOUCH_PTR (e_arged_tag_trap_table, 2);
 	GC_TOUCH (e_object_type);
 	GC_TOUCH (e_segment_type);
+#ifdef THREADS
+        for (my_index = 0; my_index < next_index; my_index++) {
+#endif
 	GC_TOUCH (e_code_segment);
 	GC_TOUCH (e_current_method);
+#ifdef THREADS
+	}
+#endif
 	GC_TOUCH (e_uninitialized);
 	GC_TOUCH (e_method_type);
 	GC_TOUCH (e_operation_type);
@@ -483,6 +513,9 @@ gc_top:
 
 
 	/* Scan the stacks. */
+#ifdef THREADS
+        for (my_index=0; my_index<next_index; my_index++) {
+#endif
 	for (p = value_stack.bp; p <= value_stack.sp; p++)
 	  GC_TOUCH(*p);
 
@@ -492,6 +525,9 @@ gc_top:
 	/* Scan the stack segments. */
 	GC_TOUCH(value_stack.segment);
 	GC_TOUCH(context_stack.segment);
+#ifdef THREADS
+	}
+#endif
 
 	/* Scan static space. */
 	if (!full_gc)
@@ -516,6 +552,9 @@ gc_top:
 
     if (!pre_dump)
       {
+#ifdef THREADS
+        for (my_index=0; my_index<next_index; my_index++) {
+#endif
 	LOC_TOUCH_PTR (e_bp);
         e_pc = pc_touch (e_pc);
 
@@ -529,6 +568,9 @@ gc_top:
 
 	for (p = context_stack.bp; p <= context_stack.sp; p++)
 	  LOC_TOUCH(*p);
+#ifdef THREADS
+	}
+#endif
 
 	/* Scan spatic space. */
 	if (!full_gc)
@@ -573,21 +615,36 @@ gc_top:
 	GGC_CHECK (e_loc_type);
 	GGC_CHECK (e_cons_type);
 	GC_CHECK (PTR_TO_REF (e_subtype_table - 2), "e_subtype_table");
+#ifdef THREADS
+        for (my_index = 0; my_index < next_index; my_index++) {
+#endif
 	GC_CHECK (PTR_TO_LOC (e_bp), "PTR_TO_LOC(E_BP)");
 	GC_CHECK (PTR_TO_REF (e_env), "e_env");
 	/* e_nargs is a fixnum.  Nor is it global... */
 	GGC_CHECK (e_env_type);
+#ifdef THREADS
+	}
+#endif
 	GC_CHECK (PTR_TO_REF (e_argless_tag_trap_table - 2), "e_argless_tag_trap_table");
 	GC_CHECK (PTR_TO_REF (e_arged_tag_trap_table - 2), "e_arged_tag_trap_table");
 	GGC_CHECK (e_object_type);
 	GGC_CHECK (e_segment_type);
+#ifdef THREADS
+        for (my_index = 0; my_index < next_index; my_index++) {
+#endif
 	GGC_CHECK (e_code_segment);
 	GGC_CHECK (e_current_method);
+#ifdef THREADS
+	}
+#endif
 	GGC_CHECK (e_uninitialized);
 	GGC_CHECK (e_method_type);
 	GGC_CHECK (e_operation_type);
 
 	/* Scan the stacks. */
+#ifdef THREADS
+        for (my_index = 0; my_index < next_index; my_index++) {
+#endif
 	for (p = value_stack.bp; p <= value_stack.sp; p++)
 	  GC_CHECK1(*p, "value_stack.bp[%d] = ",
 		    (long)(p - value_stack.bp));
@@ -601,6 +658,9 @@ gc_top:
 
 	/* Make sure the program counter is okay. */
 	GC_CHECK ((ref_t) ((ref_t) e_pc | LOC_TAG), "e_pc");
+#ifdef THREADS
+	}
+#endif
       }
     /* Scan the heap. */
 
@@ -630,10 +690,17 @@ gc_top:
 
   if (trace_gc > 2 && !pre_dump)
     {
+#ifdef THREADS
+      for (my_index = 0; my_index < next_index; my_index++) {
+        fprintf (stderr, "Thread %d\n", my_index);
+#endif
       fprintf (stderr, "value_stack ");
       dump_stack (value_stack_address);
       fprintf (stderr, "context_stack ");
       dump_stack (context_stack_address);
+#ifdef THREADS
+      }
+#endif
     }
   {
     long new_taken = free_point - new_space.start;
@@ -731,6 +798,7 @@ gc_top:
     if (trace_gc)
       fflush(stdout);
   }
+    set_gc_flag (false);
 }
 
 
