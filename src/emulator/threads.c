@@ -13,6 +13,7 @@ pthread_key_t index_key;
 pthread_mutex_t gc_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t alloc_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t index_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t testandsetcar_lock = PTHREAD_MUTEX_INITIALIZER;
 bool gc_pending = false;
 int gc_ready[MAX_THREAD_COUNT];
 register_set_t* register_array[MAX_THREAD_COUNT];

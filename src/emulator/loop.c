@@ -1259,6 +1259,28 @@ top_of_loop:
 	      }
 	      GOTO_TOP;
 
+	  case 71:		/* TEST-AND-SET-CAR */
+	      CONSINSTR(1);
+	      y = car(x);
+	      if (y != e_nil) {		/* Fails test. */
+		  PEEKVAL() = e_nil;
+		  GOTO_TOP;
+	      }
+	      if (pthread_mutex_trylock(&testandsetcar_lock) != 0) {
+		  PEEKVAL() = e_nil;	/* Can't aquire lock. */
+		  GOTO_TOP;
+	      }
+	    /* In Critical Section.  Don't GOTO_TOP. */
+	      if (y == e_nil) {
+		  *(pcar(x)) = e_t;
+		  PEEKVAL() = e_t;
+	      } else {
+		  PEEKVAL() = e_nil;
+	      }
+	      pthread_mutex_unlock(&testandsetcar_lock);
+	    /* Out of Critical Section. */
+	      GOTO_TOP;
+
 	     case 75:		/* TEST-INSTRUCTION */
 		 printf("This is my stupid test instruction\n");
 	       /*

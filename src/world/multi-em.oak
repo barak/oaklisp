@@ -1,27 +1,51 @@
+;;
+;; The functions in this souce file assist in the creation and management
+;; of heavyweight threads.
+;;
 
 
-;(define-constant %test-instruction
-;  (add-method ((make-open-coded-operation '((test-instruction)) 1 1)
-;	       (object) target)
-;	      (%test-instruction target)))
-
-;
-; This is an opcode instruction that launches a new virtual machine
-; on a separte OS thread.
-; Pass in a function to call.
-;
+;;
+;; Creates a new heavyweight thread
+;; This method takes one argument, the function to be run in the
+;; virtual machine running on the new heavyweight thread.
+;; The given function should loop forever.  If it returns, a seg-fault
+;; will occur (it's not a bug, it's a feature).
+;; This function returns t if the thread is created, nil if it could
+;; not be created.
+;;
 (define-constant %heavyweight-thread
   (add-method ((make-open-coded-operation '((heavyweight-thread)) 1 1)
 	       (object) target)
 	      (%heavyweight-thread target)))
 
+;;
+;; Returns the variable stored in the "process" register.  Each virtual
+;; machine has its own process register.  It is used with the process
+;; scheduler (see multiproc.oak) to keep track of what process is currently
+;; being executed on this heavyweight thread.
+;;
 (define-constant %load-process
   (add-method ((make-open-coded-operation '((load-reg process)) 0 1)
 	       (object))
 	      (%load-process)))
 
+;;
+;; Stores the variable in the "process" register.  The compliment of
+;; %load-process.
+;;
 (define-constant %store-process
   (add-method ((make-open-coded-operation '((store-reg process)) 1 1)
 	       (object) value)
 	      (%store-process value)))
 
+;;
+;; An atomic operation that test the car of a cons cell and sets it to
+;; t if the value is currently nil.  Only one heavyweight thread may
+;; run this method at once.  If the previous car was nil and was set to
+;; t, then t is returned.  Otherwise nil is returned.  Note that a
+;; return value of nil does not guarantee that the car is not nil.
+;;
+(define-constant %test-and-set-car
+  (add-method ((make-open-coded-operation '((test-and-set-car)) 1 1)
+	       (object) cons-cell)
+	      (%test-and-set-car cons-cell)))

@@ -85,13 +85,13 @@ list.
 A process had better not release a mutex it has not acuired, for obvious
 reasons.
 
-This implementation uses a low-level testandsetcar opcode which is atomic
+This implementation uses a low-level %test-and-set-car opcode which is atomic
 even between heavyweight threads. The mutex has a cons cell that controls
 access to the critical section between an arbitrary number of asynchronous
 tasks, which is important in a future system with no reasonable bounds on
 the number of processes.
 
-testandsetcar is a spin-lock, so mutexes are too. Semaphores should be used
+%test-and-set-car is a spin-lock, so mutexes are too. Semaphores should be used
 when possible since the amount of busy waiting will be lessened.
 |#
 
@@ -105,10 +105,10 @@ when possible since the amount of busy waiting will be lessened.
   self)
 
 (add-method (acquire-mutex (mutex access-cons) self)
-  (until (testandsetcar access-cons)))
+  (until (%test-and-set-car access-cons)))
 
 (add-method (release-mutex (mutex access-cons) self)
-  (set-car access-cons nil))
+  (set! (car access-cons) nil))
 
 ;;; process2.oak
 
@@ -148,7 +148,7 @@ test-and-set in terms of mutexes. when the test (a predicate on the
 test-and-settable object) is true, the new value is assigned and returned,
 otherwise #f is returned.
 
-This is NOT the same as testandsetcar behavior, where the only predicate
+This is NOT the same as %test-and-set-car behavior, where the only predicate
 is (essentially) null? and the only non-null value is #t; here the predicate
 can be any function and the set value can be any non-nil value (so that
 success/failure can be distinguished when the set value is returned).

@@ -11,6 +11,7 @@ extern pthread_key_t index_key;
 extern pthread_mutex_t gc_lock;
 extern pthread_mutex_t index_lock;
 extern pthread_mutex_t alloc_lock;
+extern pthread_mutex_t testandsetcar_lock;
 extern int gc_ready[];
 extern bool gc_pending;
 extern register_set_t* register_array[];
