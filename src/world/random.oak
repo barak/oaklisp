@@ -1,0 +1,18 @@
+;;; Copyright (C) 2002, Barak A. Pearlmutter
+;;; Modified from code by Troy Ross <a3ot@unm.edu>
+
+(define random-device "/dev/urandom")
+
+(define random-device-stream #f)
+
+(define random256
+  (lambda ()
+    (unless random-device-stream
+      (set! random-device-stream (open-input-file random-device)))
+    (#^number (read-char random-device-stream))))
+
+;;; (define random259200
+;;;   (let ((rand-seed 444))
+;;;     (lambda ()
+;;;       (set! rand-seed (modulo (+ 54773 (* 7141 rand-seed)) 259200))
+;;;       rand-seed)))
