@@ -1236,7 +1236,7 @@ top_of_loop:
 	      GOTO_TOP;
 
 	   case 67:		/* ENABLE-ALARMS */
-	     //timer_increment = 1;
+	     timer_increment = 1;
 	     PUSHVAL(e_nil);
 	     GOTO_TOP;
 
