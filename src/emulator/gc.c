@@ -419,6 +419,7 @@ gc(bool pre_dump, bool full_gc, char *reason, size_t amount)
  */
 {
   long old_taken;
+  long old_spatic_taken;
   ref_t *p;
 #ifdef THREADS
   bool ready=false;
@@ -467,8 +468,11 @@ gc_top:
     fprintf(stderr, "; Flipping...");
 
   old_taken = free_point - new_space.start;
+  old_spatic_taken = spatic.size;
   old_space = new_space;
 
+  if (trace_gc > 2)
+    fprintf(stderr, "old taken: %ld", old_taken);
 
   if (full_gc)
     new_space.size += spatic.size;
@@ -665,9 +669,10 @@ gc_top:
 #endif /* not defined(FAST) */
 
   /* Hopefully there are no more references into old space. */
-  free_space(&old_space);
+  if (!pre_dump)
+    free_space(&old_space);
 
-  if (full_gc)
+  if (!pre_dump && full_gc)
     free_space(&spatic);
 
 
@@ -693,7 +698,7 @@ gc_top:
     }
   {
     long new_taken = free_point - new_space.start;
-    long old_total = old_taken + (full_gc ? spatic.size : 0);
+    long old_total = old_taken + (full_gc ? old_spatic_taken : 0);
     long reclaimed = old_total - new_taken;
 
     if (trace_gc == 1)
@@ -704,7 +709,7 @@ gc_top:
       {
 	fprintf(stderr, "; GC complete.  %ld ", old_total);
 	if (full_gc)
-	  fprintf(stderr, "(%ld+%ld) ", (long)spatic.size, (long)old_taken);
+	  fprintf(stderr, "(%ld+%ld) ", old_spatic_taken, old_taken);
 	fprintf(stderr, "compacted to %ld; %ld (%ld%%) garbage.\n",
 		new_taken, reclaimed, (100 * reclaimed) / old_total);
       }
@@ -750,15 +755,10 @@ gc_top:
 	  }
       }
 
-    if (full_gc)
-      free_space(&spatic);
-
     if (full_gc && !pre_dump)
       {
-	/* Ditch old spatic, move _new to spatic, and reallocate new. */
-	/* This is a bug
-	   free_space (&spatic);
-	*/
+	/* move _new to spatic, and reallocate new. */
+
 	spatic = new_space;
 	realloc_space(&spatic, free_point - new_space.start);
 
