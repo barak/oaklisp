@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <wait.h>
 #include "config.h"
 #include "data.h"
 #include "cmdline.h"
@@ -18,34 +19,51 @@
 #include <pthread.h>
 
 void *
+test ()
+{
+  printf ("Hello\n");
+  while (1) {
+    sleep (100);
+  }
+}
+void *
 init_thread (void *start_function)
 {
-  init_weakpointer_tables ();
+#ifdef THREADS
+   int my_index;
+   int *my_index_p;
+   my_index_p = (int *)xmalloc (sizeof (int));
+   *my_index_p = next_index;
+   my_index = next_index;
+   pthread_setspecific (index_key, (void *)my_index_p);
+   next_index++;
+   value_stack_array[my_index] = (stack_t*)xmalloc (sizeof (stack_t));
+   cntxt_stack_array[my_index] = (stack_t*)xmalloc(sizeof (stack_t));
+    
+   init_stacks ();
+   register_array[my_index] = (register_set_t*)xmalloc (sizeof (register_set_t));
+   /*What is the current method ?*/
+   e_current_method = (ref_t)test;
+   e_env = REF_TO_PTR (REF_SLOT (e_current_method, METHOD_ENV_OFF));
+   e_code_segment = REF_SLOT (e_current_method, METHOD_CODE_OFF);
+   e_pc = CODE_SEG_FIRST_INSTR (e_code_segment);
+   e_bp = e_env;
+   e_nargs = 0;
 
-  init_stacks ();
+   /* Big virtual machine interpreter loop */
 
-  read_world (world_file_name);
+   while (1) {
+      sleep(100);
+      }
 
-  reg_set = (register_set_t*)malloc (sizeof (register_set_t));
-  
-  /*What is the current method ?*/
-  reg_set->e_current_method = (ref_t)start_function;
-  e_env = REF_TO_PTR (REF_SLOT (reg_set->e_current_method, METHOD_ENV_OFF));
-  reg_set->e_code_segment = REF_SLOT (reg_set->e_current_method, METHOD_CODE_OFF);
-  reg_set->e_pc = CODE_SEG_FIRST_INSTR (reg_set->e_code_segment);
-  reg_set->e_bp = e_env;
-  reg_set->e_nargs = 0;
-
-  /* Big virtual machine interpreter loop */
-  loop(reg_set);
-
-  return 0;
+#endif
+   return 0;
 }
 
 int create_thread (ref_t start_function)
 {
   pthread_t new_thread;
-  /*  pthread_create (&new_thread, NULL, (void *)init_thread, (void *)&start_function);*/
+  pthread_create (&new_thread, NULL, (void *)init_thread, (void *)&start_function);
   return 1;
 }
 
@@ -62,15 +80,39 @@ get_byte_gender(void)
     return big_endian;
 }
 
+void free_registers ()
+{
+}
 int
 main(int argc, char **argv)
 {
+#ifdef THREADS
+  int my_index;
+  int *my_index_p;
+  pthread_key_create (&index_key, (void*)free_registers);
+#endif
+ 
+  byte_gender = get_byte_gender ();
 
-  byte_gender = get_byte_gender();
+ 
+#ifdef THREADS
+  my_index_p = (int *)xmalloc (sizeof (int));
+  *my_index_p = next_index;
+  pthread_setspecific (index_key, (void*)my_index_p);
+  my_index_p = pthread_getspecific(index_key);
+  my_index = *my_index_p;
+  next_index++;
+  value_stack_array[my_index] = (stack_t*)xmalloc (sizeof (stack_t));
+  cntxt_stack_array[my_index] = (stack_t*)xmalloc(sizeof (stack_t));
+  value_stack.size = 1024;
+  value_stack.filltarget = 1024/2;
+  context_stack.size = 512;
+  context_stack.filltarget = 512/2;
+#endif
 
-  parse_cmd_line(argc, argv);
+ parse_cmd_line (argc, argv);
 
-  init_weakpointer_tables();
+  init_weakpointer_tables ();
 
   init_stacks();
 
@@ -81,17 +123,21 @@ main(int argc, char **argv)
   free_point = new_space.start;
 
 #ifdef THREADS
-  reg_set = (register_set_t*)malloc (sizeof (register_set_t));
-  
-  reg_set->e_current_method = e_boot_code;
-  e_env = REF_TO_PTR (REF_SLOT (reg_set->e_current_method, METHOD_ENV_OFF));
-  reg_set->e_code_segment = REF_SLOT (reg_set->e_current_method, METHOD_CODE_OFF);
-  reg_set->e_pc = CODE_SEG_FIRST_INSTR (reg_set->e_code_segment);
-  reg_set->e_bp = e_env;
-  reg_set->e_nargs = 0;
+  register_array[my_index] = (register_set_t*)xmalloc(sizeof(register_set_t));
 #else
+  reg_set = (register_set_t*)xmalloc (sizeof(register_set_t));
+#endif
 
-  reg_set = NULL;
+#ifdef THREADS
+  e_current_method = e_boot_code;
+  e_env = REF_TO_PTR (REF_SLOT (e_current_method, METHOD_ENV_OFF));
+  e_code_segment = REF_SLOT (e_current_method, METHOD_CODE_OFF);
+  e_pc = CODE_SEG_FIRST_INSTR (e_code_segment);
+  e_bp = e_env;
+  e_nargs = 0;
+  /* create_thread (NULL);*/
+
+#else
   /* Set the registers to the boot code */
 
   e_current_method = e_boot_code;
@@ -107,7 +153,7 @@ main(int argc, char **argv)
 #endif
 
   /* Big virtual machine interpreter loop */
-  loop(reg_set);
+  loop();
 
   return 0;
 }

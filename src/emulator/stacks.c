@@ -167,6 +167,11 @@ dump_stack(stack_t * stack_p)
 void
 init_stacks(void)
 {
+#ifdef THREADS
+  int *my_index_p;
+  int my_index;
+#endif
+ 
   ref_t *ptr;
 
   /* For debugging we allocate two ref_t more
@@ -175,6 +180,11 @@ init_stacks(void)
    */
 
   /* Initialise value stack */
+#ifdef THREADS
+  my_index_p = pthread_getspecific (index_key);
+  my_index = *my_index_p;
+#endif
+ 
   ptr = (ref_t *) xmalloc((value_stack.size + 2)
 			  * sizeof(ref_t));
   *ptr = PATTERN;
@@ -182,16 +192,20 @@ init_stacks(void)
   value_stack.bp = ptr + 1;
   value_stack.sp = value_stack.bp;
   *value_stack.bp = INT_TO_REF(1234);
+
   /* This becomes e_nil when segment_type is loaded. */
   value_stack.segment = INT_TO_REF(0);
   value_stack.pushed_count = 0;
 
   /* Initialise context stack */
 
+
+ 
   ptr = (ref_t *) xmalloc((context_stack.size + 2)
 			  * sizeof(ref_t));
   *ptr = PATTERN;
   ptr[context_stack.size + 1] = PATTERN;
+
   context_stack.bp = ptr + 1;
   context_stack.sp = context_stack.bp;
   *context_stack.bp = INT_TO_REF(1234);
@@ -199,3 +213,5 @@ init_stacks(void)
   context_stack.segment = INT_TO_REF(0);
   context_stack.pushed_count = 0;
 }
+
+

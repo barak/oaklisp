@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include </usr/include/pthread.h>
 #include "config.h"
-#define THREADS
+/*#define THREADS*/
 /* Version and greeting */
 extern const char *version, *compilation_date, *compilation_time;
 
@@ -85,8 +85,10 @@ typedef struct
   }
 stack_t;
 
+#ifndef THREADS
 extern stack_t value_stack;
 extern stack_t context_stack;
+#endif
 
 #define value_stack_bp		value_stack.bp
 #define context_stack_bp	context_stack.bp
@@ -125,7 +127,6 @@ typedef struct {
 } register_set_t;
 
 
-extern register_set_t *reg_set;
 #ifdef THREADS
 extern ref_t
  *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type, e_env_type,
@@ -339,48 +340,7 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
   ALLOCATE_PROT(p, words, reason,; ,; )
 
 /* This is used to allocate some storage */
-#ifdef THREADS
-#define ALLOCATE_SS(p, words, reason)			\
-  ALLOCATE_PROT(p, words, reason,				\
-		{ value_stack.sp = local_value_sp;			\
-          context_stack.sp = local_context_sp;		\
-		  reg_set->e_pc = local_epc; },					\
-		{ local_epc = reg_set->e_pc;						\
-          local_context_sp = context_stack.sp;		\
-		  local_value_sp = value_stack.sp; })
 
-
-/* This allocates some storage, assuming that v must be protected from gc. */
-
-#define ALLOCATE1(p, words, reason, v)			\
-  ALLOCATE_PROT(p, words, reason,				\
-		{ GC_MEMORY(v);							\
-		  value_stack.sp = local_value_sp;			\
-          context_stack.sp = local_context_sp;		\
-		  reg_set->e_pc = local_epc; },					\
-		{ local_epc = reg_set->e_pc;						\
-          local_context_sp = context_stack.sp;		\
-		  local_value_sp = value_stack.sp;			\
-		  GC_RECALL(v); })
-
-
-/* The gc here is called with a register_set of NULL.
-   We probably want gc to get the register set pointers once
-   it's made sure all the threads are stopped.  This is just
-   a flaky fix for now.  IT DOES BREAK GARBAGE COLLECTION if 
-   THREADS is set to true*/
-#define ALLOCATE_PROT(p, words, reason, before, after)	\
-{							                            \
-  if (free_point + (words) >= new_space.end)            \
-    {													\
-      before;											\
-      gc(false, false, (reason), (words), reg_set);				\
-      after;											\
-    }													\
-  (p) = free_point;										\
-  free_point += (words);								\
-}
-#else
 #define ALLOCATE_SS(p, words, reason)			\
   ALLOCATE_PROT(p, words, reason,				\
 		{ value_stack.sp = local_value_sp;			\
@@ -415,13 +375,12 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
   if (free_point + (words) >= new_space.end)            \
     {													\
       before;											\
-      gc(false, false, (reason), (words), NULL);				\
+      gc(false, false, (reason), (words));				\
       after;											\
     }													\
   (p) = free_point;										\
   free_point += (words);								\
 }
-#endif THREADS
 
 /* These get slots out of Oaklisp objects, and may be used as lvalues. */
 
@@ -435,27 +394,35 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
   ( (u_int16_t *)(REF_TO_PTR((seg)) + CODE_CODE_START_OFF) )
 
 #ifdef THREADS
-#define E_CODE_SEGMENT \
-  (  (reg_set->e_code_segment)  )
-#define E_CURRENT_METHOD \
-  (  (reg_set->e_current_method) )
-#define E_PC \
+extern register_set_t* register_array[];
+extern stack_t *value_stack_array[];
+extern stack_t *cntxt_stack_array[];
+extern int next_index;
+extern pthread_key_t index_key;
+#endif
+
+#ifdef THREADS
+#define reg_set register_array[my_index]
+#define value_stack (*value_stack_array[my_index])
+#define context_stack (*cntxt_stack_array[my_index])
+#define value_stack_address value_stack_array[my_index]
+#define context_stack_address cntxt_stack_array[my_index]
+#define e_code_segment \
+  (  (reg_set->e_code_segment) )
+#define e_current_method \
+  (  (reg_set->e_current_method)  )
+#define e_pc \
   (  (reg_set->e_pc)  )
-#define E_BP \
+#define e_bp \
   (  (reg_set->e_bp)  )
-#define E_NARGS \
+#define e_nargs \
   (  (reg_set->e_nargs)  )
 #else
-#define E_CODE_SEGMENT \
-  (  (e_code_segment)  )
-#define E_CURRENT_METHOD \
-  (  (e_current_method)  )
-#define E_PC \
-  (  (e_pc)  )
-#define E_BP \
-  (  (e_bp)  )
-#define E_NARGS \
-  (  (e_nargs)  )
+register_set_t* reg_set;
+#define value_stack_address &value_stack
+#define context_stack_address &context_stack
 #endif
 
 #endif
+
+

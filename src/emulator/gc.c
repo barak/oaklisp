@@ -14,7 +14,6 @@
 #include "gc.h"
 
 
-
 #ifdef USE_VADVISE
 #include <sys/vadvise.h>
 #endif
@@ -395,7 +394,7 @@ set_external_full_gc(bool full)
 }
 
 void
-gc (bool pre_dump, bool full_gc, char *reason, size_t amount, register_set_t *reg_set)
+gc (bool pre_dump, bool full_gc, char *reason, size_t amount)
 /*
  *     pre_dump        About to dump world?  (discards stacks)
  *     full_gc         Reclaim garbage from spatic space too?
@@ -405,6 +404,12 @@ gc (bool pre_dump, bool full_gc, char *reason, size_t amount, register_set_t *re
 {
   long old_taken;
   ref_t *p;
+#ifdef THREADS
+  int* my_index_p;
+  int my_index;
+  my_index_p = pthread_getspecific (index_key);
+  my_index = *(my_index_p);
+#endif
 
   /* The full_gc flag is also a global to avoid ugly parameter passing. */
   set_external_full_gc(full_gc);
@@ -417,10 +422,10 @@ gc_top:
 
   if (trace_gc > 2 && !pre_dump)
     {
-      fprintf(stderr, "value ");
-      dump_stack(&value_stack);
-      fprintf(stderr, "context ");
-      dump_stack(&context_stack);
+      fprintf (stderr, "value ");
+      dump_stack (value_stack_address);
+      fprintf (stderr, "context ");
+      dump_stack (context_stack_address);
     }
   if (trace_gc > 1)
     fprintf(stderr, "; Flipping...");
@@ -464,8 +469,8 @@ gc_top:
 	GC_TOUCH_PTR (e_arged_tag_trap_table, 2);
 	GC_TOUCH (e_object_type);
 	GC_TOUCH (e_segment_type);
-	GC_TOUCH (E_CODE_SEGMENT);
-	GC_TOUCH (E_CURRENT_METHOD);
+	GC_TOUCH (e_code_segment);
+	GC_TOUCH (e_current_method);
 	GC_TOUCH (e_uninitialized);
 	GC_TOUCH (e_method_type);
 	GC_TOUCH (e_operation_type);
@@ -510,8 +515,8 @@ gc_top:
 
     if (!pre_dump)
       {
-	LOC_TOUCH_PTR (E_BP);
-        E_PC = pc_touch (E_PC);
+	LOC_TOUCH_PTR (e_bp);
+        e_pc = pc_touch (e_pc);
 
 	LOC_TOUCH(e_uninitialized);
 
@@ -567,7 +572,7 @@ gc_top:
 	GGC_CHECK (e_loc_type);
 	GGC_CHECK (e_cons_type);
 	GC_CHECK (PTR_TO_REF (e_subtype_table - 2), "e_subtype_table");
-	GC_CHECK (PTR_TO_LOC (E_BP), "PTR_TO_LOC(E_BP)");
+	GC_CHECK (PTR_TO_LOC (e_bp), "PTR_TO_LOC(E_BP)");
 	GC_CHECK (PTR_TO_REF (e_env), "e_env");
 	/* e_nargs is a fixnum.  Nor is it global... */
 	GGC_CHECK (e_env_type);
@@ -575,8 +580,8 @@ gc_top:
 	GC_CHECK (PTR_TO_REF (e_arged_tag_trap_table - 2), "e_arged_tag_trap_table");
 	GGC_CHECK (e_object_type);
 	GGC_CHECK (e_segment_type);
-	GGC_CHECK (E_CODE_SEGMENT);
-	GGC_CHECK (E_CURRENT_METHOD);
+	GGC_CHECK (e_code_segment);
+	GGC_CHECK (e_current_method);
 	GGC_CHECK (e_uninitialized);
 	GGC_CHECK (e_method_type);
 	GGC_CHECK (e_operation_type);
@@ -594,7 +599,7 @@ gc_top:
 	GGC_CHECK(context_stack.segment);
 
 	/* Make sure the program counter is okay. */
-	GC_CHECK ((ref_t) ((ref_t) E_PC | LOC_TAG), "E_PC");
+	GC_CHECK ((ref_t) ((ref_t) e_pc | LOC_TAG), "e_pc");
       }
     /* Scan the heap. */
 
@@ -624,10 +629,10 @@ gc_top:
 
   if (trace_gc > 2 && !pre_dump)
     {
-      fprintf(stderr, "value_stack ");
-      dump_stack(&value_stack);
-      fprintf(stderr, "context_stack ");
-      dump_stack(&context_stack);
+      fprintf (stderr, "value_stack ");
+      dump_stack (value_stack_address);
+      fprintf (stderr, "context_stack ");
+      dump_stack (context_stack_address);
     }
   {
     long new_taken = free_point - new_space.start;

@@ -103,6 +103,13 @@ parse_cmd_line(int argc, char **argv)
 {
   int retval, option_index = 0;
 
+#ifdef THREADS
+  int my_index;
+  int *my_index_p;
+  my_index_p = pthread_getspecific (index_key);
+  my_index = *my_index_p;
+#endif
+
   /* check for correct endianity settings */
   /* main() routine sets byte_gender */
   if (BYTE_GENDER != byte_gender)
@@ -237,7 +244,6 @@ parse_cmd_line(int argc, char **argv)
     fprintf(stderr, "warning: using value stack of size %d.\n",
 	    value_stack.size);
   }
-
 
   /* put remainder of command line in variables accessed by Oaklisp-level
      argline instructions */

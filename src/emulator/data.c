@@ -11,7 +11,13 @@
 
 /* Version and greeting */
 const char *version = "1.00", *compilation_date = __DATE__, *compilation_time = __TIME__;
-
+#ifdef THREADS
+register_set_t* register_array[200];
+stack_t *value_stack_array[200];
+stack_t *cntxt_stack_array[200];
+int next_index = 0;
+pthread_key_t index_key;
+#endif
 /* byte gender */
 int byte_gender = little_endian;
 
@@ -21,12 +27,11 @@ int byte_gender = little_endian;
 space_t new_space, old_space, spatic;
 ref_t *free_point = 0;
 
-
+#ifndef THREADS
 /* stacks, including default buffer size & fill target */
-
 stack_t value_stack = {1024, 1024/2};
 stack_t context_stack = {512, 512/2};
-
+#endif
 
 /* Weak pointer table and weak pointer hashtable */
 
@@ -35,8 +40,6 @@ const int wp_hashtable_size = 3017;
 
 
 /* Virtual Machine registers */
-
-register_set_t *reg_set;
 #ifdef THREADS
 ref_t *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type,
   e_env_type, *e_subtype_table, e_object_type, e_segment_type, e_boot_code,
@@ -69,5 +72,19 @@ int dump_base = 2;		/* 2=binary, other=ascii */
 bool dump_flag = false;
 
 int trace_gc = 0;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
