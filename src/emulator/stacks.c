@@ -195,7 +195,8 @@ init_stacks(void)
   *value_stack.bp = INT_TO_REF(1234);
 
   /* This becomes e_nil when segment_type is loaded. */
-  value_stack.segment = INT_TO_REF(0);
+/*value_stack.segment = INT_TO_REF(0);*/
+  value_stack.segment = e_nil;
   value_stack.pushed_count = 0;
 
   /* Initialise context stack */
@@ -211,7 +212,8 @@ init_stacks(void)
   context_stack.sp = context_stack.bp;
   *context_stack.bp = INT_TO_REF(1234);
   /* This becomes e_nil when segment_type is loaded. */
-  context_stack.segment = INT_TO_REF(0);
+/*context_stack.segment = INT_TO_REF(0);*/
+  context_stack.segment = e_nil;
   context_stack.pushed_count = 0;
 }
 

@@ -375,12 +375,20 @@ GC_CHECK1(ref_t x, char *st, long i)
 static u_int16_t *
 pc_touch(u_int16_t * o_pc)
 {
-  ref_t *pcell = (ref_t *) ((unsigned long)o_pc & ~TAG_MASKL);
+  ref_t *pcell = (ref_t *) ((unsigned long)(o_pc) & ~TAG_MASKL);
 
+  /*
+    It is possible that the gc was called while a vm was executing the las
+    instruction in a code block (hopefully a branch or funcall) in
+    a multithreaded enviornment.  So let's back up the pc one before gc'ing
+    it.  However, this means the gc general should not be called until the
+    loop has read at least one instruction in the code block.
+  */
+  pcell--;
   LOC_TOUCH_PTR(pcell);
-  return
-    (u_int16_t *) ((u_int32_t) pcell
-		   | ((u_int32_t) o_pc & TAG_MASK));
+  pcell++;
+  return (u_int16_t *)( (u_int32_t) pcell
+		       |((u_int32_t) o_pc & TAG_MASK));
 }
 
 static void
@@ -411,9 +419,6 @@ gc (bool pre_dump, bool full_gc, char *reason, size_t amount)
   set_gc_flag (true);
 #endif
 
-  /* The full_gc flag is also a global to avoid ugly parameter passing. */
-  set_external_full_gc(full_gc);
-
 #ifdef THREADS
   /*Problem here is next_index could change if someone creates a thread
     while someone else is gc'ing*/
@@ -427,6 +432,10 @@ gc (bool pre_dump, bool full_gc, char *reason, size_t amount)
     }
   }
 #endif
+
+  /* The full_gc flag is also a global to avoid ugly parameter passing. */
+  set_external_full_gc(full_gc);
+
 gc_top:
   if (trace_gc == 1)
     fprintf(stderr, "\n;GC");
@@ -437,7 +446,6 @@ gc_top:
     {
 #ifdef THREADS
       for (my_index = 0; my_index < next_index; my_index++) {
-        fprintf (stderr, "Thread %d\n", my_index);
 #endif
       fprintf (stderr, "value ");
       dump_stack (value_stack_address);
@@ -483,9 +491,6 @@ gc_top:
 	GC_TOUCH(e_loc_type);
 	GC_TOUCH(e_cons_type);
 	GC_TOUCH_PTR(e_subtype_table, 2);
-	/* e_bp is a locative, but a pointer to the object should exist, so we
-	   need only touch it in the locative pass. */
-	GC_TOUCH_PTR(e_env, 0);
 	/* e_nargs is a fixnum.  Nor is it global... */
 	GC_TOUCH (e_env_type);
 	GC_TOUCH_PTR (e_argless_tag_trap_table, 2);
@@ -495,6 +500,9 @@ gc_top:
 #ifdef THREADS
         for (my_index = 0; my_index < next_index; my_index++) {
 #endif
+	/* e_bp is a locative, but a pointer to the object should exist, so we
+	   need only touch it in the locative pass. */
+	GC_TOUCH_PTR(e_env, 0);
 	GC_TOUCH (e_code_segment);
 	GC_TOUCH (e_current_method);
 	GC_TOUCH (e_process);
@@ -618,10 +626,10 @@ gc_top:
         for (my_index = 0; my_index < next_index; my_index++) {
 #endif
 	GC_CHECK (PTR_TO_LOC (e_bp), "PTR_TO_LOC(E_BP)");
+	GC_CHECK (PTR_TO_REF (e_env), "e_env");
 #ifdef THREADS
         }
 #endif
-	GC_CHECK (PTR_TO_REF (e_env), "e_env");
 	/* e_nargs is a fixnum.  Nor is it global... */
 	GGC_CHECK (e_env_type);
 	GC_CHECK (PTR_TO_REF (e_argless_tag_trap_table - 2), "e_argless_tag_trap_table");

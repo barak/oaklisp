@@ -120,6 +120,7 @@ extern ref_t *gc_examine_ptr;
 
 typedef struct {
   ref_t     *e_bp;
+  ref_t     *e_env;
   ref_t     e_current_method;
   ref_t     e_code_segment;
   u_int16_t *e_pc;
@@ -130,7 +131,7 @@ typedef struct {
 
 #ifdef THREADS
 extern ref_t
- *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type, e_env_type,
+  e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type, e_env_type,
  *e_subtype_table, e_object_type, e_segment_type, e_boot_code,
  *e_arged_tag_trap_table, *e_argless_tag_trap_table,
   e_uninitialized, e_method_type, e_operation_type;
@@ -369,15 +370,20 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 #ifdef THREADS
 #define ALLOCATE_PROT(p, words, reason, before, after)	\
 {							                            \
+  while (pthread_mutex_trylock(&alloc_lock) != 0) {		\
+	  if (gc_pending) {									\
+		  before; wait_for_gc(); after;					\
+	  }													\
+  }														\
   if (free_point + (words) >= new_space.end)            \
     {													\
       before;											\
       gc(false, false, (reason), (words));				\
       after;											\
     }													\
-  pthread_mutex_lock (&alloc_lock);                                           \
   (p) = free_point;										\
-  free_point += (words);							 pthread_mutex_unlock (&alloc_lock);	\
+  free_point += (words);								\
+  pthread_mutex_unlock (&alloc_lock);					\
 }
 #else
 #define ALLOCATE_PROT(p, words, reason, before, after)	\
@@ -419,6 +425,8 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
   (  (reg_set->e_pc)  )
 #define e_bp \
   (  (reg_set->e_bp)  )
+#define e_env \
+  (  (reg_set->e_env)  )
 #define e_nargs \
   (  (reg_set->e_nargs)  )
 #define e_process \

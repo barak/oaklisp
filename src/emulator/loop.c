@@ -291,7 +291,6 @@ loop()
   my_index = *(my_index_p);
 #endif
 
-  fprintf (stderr, "%d in loop\n", my_index);
   local_value_sp = value_stack.sp;
   local_context_sp = context_stack.sp;
   value_stack_end
@@ -332,27 +331,29 @@ loop()
 
 
 #ifndef _ICC
-#define POLL_USER_SIGNALS()	if (signal_poll_flag) {goto intr_trap;}
-#else
-#define POLL_USER_SIGNALS()
-#endif
-
+#define POLL_USER_SIGNALS()	if ((signal_poll_flag) && (my_index == 0))   \
+					{goto intr_trap;}
 #if ENABLE_TIMER
 #define TIMEOUT	1000
 #define POLL_TIMER_SIGNALS()	if (timer_counter > TIMEOUT) {goto intr_trap;}
-#else
+#else /* not ENABLE_TIMER */
 #define POLL_TIMER_SIGNALS()
 #endif
+#else /* _ICC */
+#define POLL_USER_SIGNALS()
+#define POLL_TIMER_SIGNALS()
+#endif
+
 
 #ifdef THREADS
 #define POLL_GC_SIGNALS()	if (gc_pending) {			     \
                                     value_stack.sp = local_value_sp;	     \
                                     context_stack.sp = local_context_sp;     \
-                                    e_pc = local_epc;                     \
+                                    e_pc = local_epc;			     \
                                     wait_for_gc();			     \
-                                    local_value_sp = value_stack.sp;        \
-                                    local_context_sp = context_stack.sp;      \
-                                    local_epc = e_pc;                       \
+                                    local_epc = e_pc;			     \
+                                    local_context_sp = context_stack.sp;     \
+                                    local_value_sp = value_stack.sp;	     \
                                 }
 #else
 #define POLL_GC_SIGNALS()

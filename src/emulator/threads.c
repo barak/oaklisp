@@ -37,6 +37,7 @@ int create_thread(ref_t start_operation)
     int index;
     start_info_t *info_p = (start_info_t *)malloc(sizeof(start_info_t));
     index = get_next_index();
+    gc_ready[index] = 0;
     info_p->start_operation = start_operation;
     info_p->parent_index = *((int *)pthread_getspecific(index_key));
     info_p->my_index = index;
@@ -53,6 +54,7 @@ static void *init_thread (void *info_p)
 #ifdef THREADS
    int my_index;
    int *my_index_p;
+   ref_t *p;
    start_info_t info;
    my_index_p = (int *)malloc (sizeof (int));
    info = *((start_info_t *)info_p);
@@ -82,19 +84,19 @@ static void *init_thread (void *info_p)
    init_stacks ();
    register_array[my_index] = (register_set_t*)malloc(sizeof (register_set_t));
 
- /*
-   e_current_method = (ref_t)start_method;
-   e_env = REF_TO_PTR (REF_SLOT (e_current_method, METHOD_ENV_OFF));
-   e_code_segment = REF_SLOT (e_current_method, METHOD_CODE_OFF);
-   e_pc = CODE_SEG_FIRST_INSTR (e_code_segment);
-   e_bp = e_env;
-   e_nargs = 0;
- */
    memcpy(register_array[my_index], register_array[info.parent_index],
 	  sizeof(register_set_t));
    e_pc = &tail_recurse_instruction;
    *++value_stack.sp = info.start_operation;
+ /*At this point, it should be OK if the garbage collector gets run.*/
    e_nargs = 0;
+ /*ALLOCATE(e_pc, 1, "creating initial jump instruction");*/
+ /*
+   ALLOCATE(p, 4, "creating initial jump instruction");
+   e_code_segment = PTR_TO_REF(p);
+   e_pc = (u_int16_t *)(&p[3]);
+   *e_pc = (22 << 2);
+   */
 
    /* Big virtual machine interpreter loop */
    loop();
@@ -155,22 +157,8 @@ void wait_for_gc()
   my_index_p = pthread_getspecific (index_key);
   my_index = *(my_index_p);
   gc_ready[my_index] = 1;
-  set_gc_flag(true);
+  pthread_mutex_lock (&gc_lock);
   gc_ready[my_index] = 0;
-  set_gc_flag(false);
+  pthread_mutex_unlock (&gc_lock);
 #endif
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
