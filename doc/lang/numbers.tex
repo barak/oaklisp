@@ -1,8 +1,8 @@
 \chapter{Numbers} \label{numbers}
 
-\index{{\tt number}} \index{{\tt real}} \index{{\tt complex}}
-\index{{\tt rational}} \index{{\tt float}} \index{{\tt integer}}
-\index{{\tt fraction}} \index{{\tt fixnum}} \index{{\tt bignum}}
+\index{\texttt{number}} \index{\texttt{real}} \index{\texttt{complex}}
+\index{\texttt{rational}} \index{\texttt{float}} \index{\texttt{integer}}
+\index{\texttt{fraction}} \index{\texttt{fixnum}} \index{\texttt{bignum}}
 
 \begin{figure}[h]
 \[ \myepsfbox{numhier.ips} \]
@@ -52,16 +52,16 @@ implemented.} \label{fig:numhier}
 These operations should work on any subtype of \df{real}.
 
 \op{floor}{x}
-\doc{Returns the largest integer less than or equal to {\em x}.}
+\doc{Returns the largest integer less than or equal to \emph{x}.}
 
 \op{ceiling}{x}
-\doc{Returns the smallest integer greater than or equal to {\em x}.}
+\doc{Returns the smallest integer greater than or equal to \emph{x}.}
 
 \op{truncate}{x}
-\doc{Could be defined {\tt (if (negative? x) (ceiling x) (floor x))}.}
+\doc{Could be defined \texttt{(if (negative? x) (ceiling x) (floor x))}.}
 
 \op{round}{x}
-\doc{Returns nearest integer to {\em x}.  Ties are broken by rounding
+\doc{Returns nearest integer to \emph{x}.  Ties are broken by rounding
 to an even number.}
 
 \section{Bitwise Logical Operations}

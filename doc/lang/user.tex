@@ -28,12 +28,12 @@ and to their form after macro expansion.
 
 The switch \dffl{fancy-references} controls the printing of anonymous
 objects.  When this switch is turned off, an object usually prints out
-something like this: {\tt\#<op 806>}.  This format indicates the type
+something like this: \texttt{\#<op 806>}.  This format indicates the type
 of the object, and provides a weak pointer that can be derefenced with
 \df{object-unhash} to get the object.  When the
 \dffl{fancy-references} switch is turned on, the printer attempts to
 generate an expression that will evaluate to the object in the current
-locale.  For example, the above operation might print out as {\tt\#<op
+locale.  For example, the above operation might print out as \texttt{\#<op
 (setter car) 806>}.  The default value for this switch is
 \df{\#f}, but it is briefly switched on by \df{describe}.
 
@@ -64,9 +64,9 @@ There are some other very useful functions that are part of the user
 interface.
 
 \op{apropos}{word [place]}
-\doc{Returns either variables or symbols containing {\em word},
-depending on {\em place}, which can be a locale or \df{symbol-table}.
-{\em place} defaults to \dffl{current-locale}.}
+\doc{Returns either variables or symbols containing \emph{word},
+depending on \emph{place}, which can be a locale or \df{symbol-table}.
+\emph{place} defaults to \dffl{current-locale}.}
 
 \oop{\%gc}
 \doc{Collect garbage.  This does not collect garbage in ``static
@@ -86,32 +86,37 @@ The following special forms can be used to trace the
 execution of an operation.
 
 \sform{trace-variable-in}{global-var}
-\doc{Puts a trace on the operation stored in {\em global-var}, causing
+\doc{Puts a trace on the operation stored in \emph{global-var}, causing
 a message to be printed every time the operation is called.}
 
 \sform{trace-variable-out}{global-var}
-\doc{Puts a trace on the operation stored in {\em global-var}, causing
+\doc{Puts a trace on the operation stored in \emph{global-var}, causing
 a message to be printed every time a call to the operation returns.}
 
 \sform{trace-variable-in-out}{global-var}
 \sform{untrace-variable}{global-var}
 
 
-Objects can be examined in detail with \df{describe}
+Objects can be examined in detail with the \df{describe}
 function, which prints the object and its type with
-\dffl{fancy-references} turned on, and then prints the object's
-internal state, organized as instance-variable blocks from the
-object's various component types.  An object's internal state usually
-contains anonymous objects whose printed representation includes weak
-pointers which can be dereferenced using \df{object-unhash}.
-Together, \df{describe} and \df{object-unhash} constitute a simple but
-effective inspector.
+\dffl{fancy-references} turned on, followed by the object's
+internal state.  The internal state is organized as instance-variable
+blocks from the object's various component types.  An object's
+internal state usually contains anonymous objects whose printed
+representation includes weak pointers which can be dereferenced using
+\df{object-unhash}.  Together, \df{describe} and \df{object-unhash}
+constitute a simple but effective inspector.
+
+To simplify this process \texttt{describe} applied to an integer which is
+the \texttt{object-hash} of some object will describe that object.  In
+other words, \texttt{describe} can be applied to the numeric ID in an
+object's printed representation.
 
 \op{describe}{object}
-\doc{Prints out lots of stuff about {\em object}.}
+\doc{Prints out lots of stuff about \emph{object}.}
 
 \op{object-unhash}{i}
-\doc{Dereferences the weak pointer {\em i}.}
+\doc{Dereferences the weak pointer \emph{i}.}
 
 
 When an error occurs in our implementation of Oaklisp, the
@@ -124,8 +129,8 @@ be useful to restart the computation at a later time.
 
 
 \op{ret}{n \dt args}
-\doc{Invokes restart handler {\em n}, as specified by the list of
-handlers printed out by a subordinate evaluation loop.  {\tt(ret 0)},
+\doc{Invokes restart handler \emph{n}, as specified by the list of
+handlers printed out by a subordinate evaluation loop.  \texttt{(ret 0)},
 which returns control to the top level evaluation loop, is always in
 effect.}
 

@@ -18,12 +18,12 @@ methods for the \df{really-read-char} operation.}
 the last character in the stream.}
 
 \op{unread-char}{input-stream character}
-\doc{Puts {\em character} back into {\em input-stream}.  One can only
+\doc{Puts \emph{character} back into \emph{input-stream}.  One can only
 put one character back, and it must be the last character read.}
 
 \op{peek-char}{input-stream}
-\doc{Equivalent to {\tt (let ((c (read-char {\em input-stream})))
-(unread-char {\em input-stream} c) c)}.}
+\doc{Equivalent to \texttt{(let ((c (read-char \emph{input-stream})))
+(unread-char \emph{input-stream} c) c)}.}
 
 \ob{the-eof-token}
 \doc{This distinguished object is returned to indicate that one has
@@ -37,30 +37,30 @@ methods for the \df{write-char} operation.}
 \op{write-char}{output-stream character}
 
 \op{newline}{output-stream}
-\doc{Outputs a carriage return to {\em output-stream}.}
+\doc{Outputs a carriage return to \emph{output-stream}.}
 \op{freshline}{output-stream}
-\doc{Ensures that {\em output-stream} is at the beginning of a line.}
+\doc{Ensures that \emph{output-stream} is at the beginning of a line.}
 
 \op{flush}{output-stream}
 \doc{Flushes any buffered output.}
 
 \op{interactive?}{stream}
-\doc{Returns true if and only if {\em stream} is connected to the
+\doc{Returns true if and only if \emph{stream} is connected to the
 user.  This is used to check if an end of file condition on the
 control stream is really an end of file or if the user just typed
 control-D.}
 
 \so{position}{stream}
-\doc{Returns the position we are at within {\em stream}.  By setting
+\doc{Returns the position we are at within \emph{stream}.  By setting
 this, one can get back to a previous position.}
 
 \op{write-string}{string output-stream}
-\doc{Writes the characters of {\em string} to {\em stream}.}
+\doc{Writes the characters of \emph{string} to \emph{stream}.}
 
 \mc{with-open-file}{\lpar variable filename \dt options\rpar \dt body}
-\doc{Binds {\em variable} to a stream which is connected to the file
-with the name {\em filename}.  {\em Options} is not evaluated, and
-describes how {\em filename} should be opened.  Possible symbols
+\doc{Binds \emph{variable} to a stream which is connected to the file
+with the name \emph{filename}.  \emph{Options} is not evaluated, and
+describes how \emph{filename} should be opened.  Possible symbols
 include \df{in} for input, \df{out} for output, and \df{append} for
 output with position set to the end of the file.  The \df{ugly} option
 can be added to either \df{out} or \df{append} if the user doesn't
@@ -71,8 +71,8 @@ the stream is not reopened upon abnormal entry, but this may be
 changed in future versions of the system.}
 
 \mc{with-input-from-string}{\lpar variable sequence\rpar \dt body}
-\doc{Binds {\em variable} to an input stream whose contents are the
-characters of {\em sequence}.  Although {\em sequence} is usually a
+\doc{Binds \emph{variable} to an input stream whose contents are the
+characters of \emph{sequence}.  Although \emph{sequence} is usually a
 string, this will work correctly for any sequence type.}
 
 \makin{string-output-stream}{}
@@ -90,92 +90,92 @@ after the Common Lisp reader, so we emphasize differences with the
 Common Lisp reader below.
 
 \op{read}{input-stream}
-\doc{Returns a lisp object read from {\em stream}.  This is sensitive
+\doc{Returns a lisp object read from \emph{stream}.  This is sensitive
 to a large number of factors detailed below.}
 
 \ob{standard-read-table}
 \doc{This holds the read table for usual lisp syntax.  The \df{nth}
 operation can be used to get and set elements of read tables, which
 are indexed by characters.  Potential entries are \df{whitespace},
-\df{constituent}, \df{single-escape}, \df{illegal}, {\em
-\lpar\df{terminating-macro} \dt operation\rpar}, and {\em
-\lpar\df{nonterminating-macro} \dt operation\rpar}.}
+\df{constituent}, \df{single-escape}, \df{illegal}, 
+\emph{\lpar\df{terminating-macro} \dt operation\rpar}, and 
+\emph{\lpar\df{nonterminating-macro} \dt operation\rpar}.}
 
 \op{skip-whitespace}{input-stream}
-\doc{Reads characters from {\em input-stream} until the next character
+\doc{Reads characters from \emph{input-stream} until the next character
 is not whitespace.}
 
 The reader is not sensitive to the case of macro characters.
 
 \op{define-macro-char}{character operation}
-\doc{Defines {\em character} to be a reader macro in
-\df{standard-read-table}.  When {\em character} is encountered by the
-reader, {\em operation} is called with two arguments, the stream and
+\doc{Defines \emph{character} to be a reader macro in
+\df{standard-read-table}.  When \emph{character} is encountered by the
+reader, \emph{operation} is called with two arguments, the stream and
 the character that was read.}
 
 \op{define-nonterminating-macro-char}{character operation}
 \doc{Just like \df{define-macro-char} except that the macro is not
-triggered if {\em character} is read inside a token.}
+triggered if \emph{character} is read inside a token.}
 
 There are a number of ``quotelike'' macro characters present for the
 convenience of the user.
 
 \begin{center}
 \begin{tabular}{cl}
-{\em macro character} & {\em symbol} \\\hline
-\tt ' & \df{quote} \\
-\tt ` & \df{quasiquote} \\
-\tt control-v & \df{fluid} \\
-\tt control-y & \df{coercer} \\
-\verb|,@| & \df{unquote-splicing} \\
-\tt , & \df{unquote}
+\emph{macro character} & \emph{symbol} \\\hline
+\texttt{'} & \df{quote} \\
+\texttt{`} & \df{quasiquote} \\
+\texttt{control-v} & \df{fluid} \\
+\texttt{control-y} & \df{coercer} \\
+\texttt{,@} & \df{unquote-splicing} \\
+\texttt{,} & \df{unquote}
 \end{tabular}
 \end{center}
 
 \op{define-quotelike-macro-char}{character object}
 \begin{docenv}
-Makes {\em character} a terminating macro which returns a list of {\em
-object} and the next thing read.  This also arranges for the printer
+Makes \emph{character} a terminating macro which returns a list of 
+\emph{object} and the next thing read.  This also arranges for the printer
 to print using analogous syntax.  For instance, the quote syntax is
-defined with the line {\tt (define-quotelike-macro-char
-\verb|#\'| 'quote)} in the system internals.
+defined with the line \texttt{(define-quotelike-macro-char
+\texttt{\#'} 'quote)} in the system internals.
 \end{docenv}
 
 \ob{the-unread-object}
 \doc{When a reader macro returns this, the reader takes it to mean
 that nothing at all was read.  For instance, the reader macro for
-\verb|;| reads the remainder of the line and returns this.}
+\texttt{;} reads the remainder of the line and returns this.}
 
-The character \verb|[| is used to read lists in the same way that
-\verb|(| is, except that \verb|[| must be matched by a \verb|]|.  This
-is mostly for compatiblity with code written at the University of
+The character \texttt{[} is used to read lists in the same way that
+\texttt{(} is, except that \texttt{[} must be matched by a \texttt{]}.
+This is mostly for compatiblity with code written at the University of
 Indiana.
 
-Since there are no packages in Oaklisp, the \verb|:| character is
+Since there are no packages in Oaklisp, the \texttt{:} character is
 treated like any other constituent.
 
 Most of the Common Lisp hash reader macros are supported.  For
-instance, the character object representing \verb|a| is read
-\verb|#\a|.  Many special characters have long names, such as
-\verb|#\space|.
+instance, the character object representing \texttt{a} is read
+\texttt{\#$\backslash$a}.  Many special characters have long names, such as
+\texttt{\#$\backslash$space}.
 
 \op{define-hash-macro-char}{character operation}
-\doc{Defines {\em character} to be a hash reader macro character.
-{\em Operation} should take three arguments: a stream, the character,
+\doc{Defines \emph{character} to be a hash reader macro character.
+\emph{Operation} should take three arguments: a stream, the character,
 and the numeric argument that was between the hash and the character,
 \df{\#f} if none was passed.}
 
 There are many hash reader macro characters, including \df{\#o},
 \df{\#x}, \df{\#d}, \df{\#b} and \df{\#c} for octal, hexidecimal,
 decimal, binary and complex numbers, respectively.  The syntax
-{\tt\#{\em n}r{\em xxx}} is used to read {\em xxx} in base {\em n}.
-{\tt\#(\ldots)} is used for reading vectors.  The {\tt\#|} macro
-comments out text until a matching {\tt|\#}, with proper nesting.  As
+\texttt{\#\emph{n}r\emph{xxx}} is used to read \emph{xxx} in base \emph{n}.
+\texttt{\#(\ldots)} is used for reading vectors.  The \texttt{\#|} macro
+comments out text until a matching \texttt{|\#}, with proper nesting.  As
 described in section \ref{sec:truths}, \df{\#t} and \df{\#f} are read
 as the canonical true and false values, respectively.
 
-The {\tt \#[symbol "\ldots"]} syntax can be used to read arbitrary
-characters, although the {\tt|$\ldots$|} construction is prefered.
+The \texttt{\#[symbol "\ldots"]} syntax can be used to read arbitrary
+characters, although the \texttt{|$\ldots$|} construction is prefered.
 Analogous constructors can be added with the settable operation
 \df{hash-bracket-option}.
 
@@ -208,45 +208,46 @@ circular objects.
 \doc{This is very similar to the Common Lisp \df{format} function, and
 is the usual way for users to print things.
 
-{\em Stream} is permitted to be \df{\#t} to indicate that output
+\emph{Stream} is permitted to be \df{\#t} to indicate that output
 should be sent to the standard output, and \df{\#f} to indicate that
 the output should be bundled up into a string and returned.
 
 Characters in {control-string} are printed directly, except for the
-\verb|~| character which indicates that some action should be taken.
-The \verb|~| may be followed by a number or by a \verb|:| or \verb|@|,
-which vary the action that would normally be taken in some way.
+\texttt{\~} character which indicates that some action should be taken.
+The \texttt{\~} may be followed by a number or by a \texttt{:} or
+\texttt{@}, which vary the action that would normally be taken in some
+way.
 
-Currently defined \verb|~| characters and their associated actions
+Currently defined \texttt{\~} characters and their associated actions
 are:
 
 \begin{itemize}
-\item[A|] Print and argument with \dffl{print-escape} bound to
-\df{\#f}.
+\item[\texttt{A}] Print and argument with \dffl{print-escape} bound to
+	\df{\#f}.
 
-\item[\tt ~] Print a \verb|~|.
+\item[\texttt{\~}] Print a \texttt{\~}.
 
-\item[\tt \%] Do a \df{newline}.
+\item[\texttt{\%}] Do a \df{newline}.
 
-\item[\tt \&] Do a \df{freshline}.
+\item[\texttt{\&}] Do a \df{freshline}.
 
-\item[\tt S] Print an argument with \dffl{print-escape} bount to \df{\#t}.
+\item[\texttt{S}] Print an argument with \dffl{print-escape} bount to \df{\#t}.
 
-\item[\tt B] Print an argument in binary.
+\item[\texttt{B}] Print an argument in binary.
 
-\item[\tt D] Print an argument in decimal.
+\item[\texttt{D}] Print an argument in decimal.
 
-\item[\tt O] Print an argument in octal.
+\item[\texttt{O}] Print an argument in octal.
 
-\item[\tt X] Print an argument in hex.
+\item[\texttt{X}] Print an argument in hex.
 
-\item[\tt {\em n}R] Print an argument in base {\em n}.
+\item[\texttt{\emph{n}R}] Print an argument in base \emph{n}.
 
-\item[\tt C] Print an argument which is a character.
+\item[\texttt{C}] Print an argument which is a character.
 
-\item[\tt P] Print an {\tt s} if the argument is not 1.
+\item[\texttt{P}] Print an \texttt{s} if the argument is not 1.
 
-\item[\tt !] Print a weak pointer to the argument, preceded by an
+\item[\texttt{!}] Print a weak pointer to the argument, preceded by an
 expression which evaluates to the argument if \dffl{fancy-references}
 is on.  This is used to print unique id's for objects without nice
 printed representations, like operations.
@@ -254,22 +255,22 @@ printed representations, like operations.
 \end{itemize}
 
 A tilde followed by a newline is ignored; this construct is used for
-making {\em control-string} more readable by breaking it across lines.}
+making \emph{control-string} more readable by breaking it across lines.}
 
 
 \op{print}{object stream}
-\doc{Writes a representation of {\em object} to {\em stream}.  Users
+\doc{Writes a representation of \emph{object} to \emph{stream}.  Users
 are encouraged to add informative print methods for types they define.}
 
 \op{define-simple-print-method}{type string}
-\doc{Instructs the printer to include {\em string} in the printed
-representation of instances of {\em type}.}
+\doc{Instructs the printer to include \emph{string} in the printed
+representation of instances of \emph{type}.}
 
 \fv{print-radix}
 \doc{The radix in which numbers will be printed.  The default is ten.}
 
 \fv{print-level}
-\doc{The number of level of list structure to be printed before the
+\doc{The number of levels of list structure to be printed before the
 printer abbreviates.  The default is \df{\#f}, meaning never abbreviate.}
 
 \fv{print-length}
@@ -288,6 +289,5 @@ escaped.  See the implementation manual for details.}
 
 \fv{fraction-display-style}
 \doc{This can be either \df{normal}, \df{fancy} or \df{float}.  In
-these cases, {\tt (/ -5 3)} would print as either {\tt
--5/3}, {\tt -1$\cdot$2/3} or {\tt -1.6666666666}, respectively.}
-
+these cases, \texttt{(/ -5 3)} would print as either \texttt{-5/3},
+\texttt{-1$\cdot$2/3} or \texttt{-1.6666666666}, respectively.}

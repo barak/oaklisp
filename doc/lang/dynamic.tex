@@ -1,6 +1,6 @@
 \chapter{Dynamic State} \label{dynamic}
 
-As Steele and Sussman pointed out in {\em The Art of the Interpreter},
+As Steele and Sussman pointed out in \emph{The Art of the Interpreter},
 dynamic scoping provides the most natural decomposition of state in
 certain situations.  This chapter describes the Oaklisp facilities for
 creating and manipulating state that has dynamic extent.
@@ -16,17 +16,17 @@ be referenced using the \df{fluid} special form.  The mechanism for
 creating fluid variables is \df{bind}, which syntactically resembles
 \df{let}.}
 
-\sform{bind}{\lpar\lpar{\tt fluid} var$_1$\rpar
-val$_1$\rpar\ldots\lpar\lpar{\tt fluid} var$_n$ val$_n$\rpar\dt body}
-\doc{Evaluates {\em body} in a dynamic environment where the $n$ symbols
+\sform{bind}{\lpar\lpar\texttt{fluid} var$_1$\rpar
+val$_1$\rpar\ldots\lpar\lpar\texttt{fluid} var$_n$ val$_n$\rpar\dt body}
+\doc{Evaluates \emph{body} in a dynamic environment where the $n$ symbols
 are bound to the $n$ values.}
 
 \sform{fluid}{symbol}
-\doc{Returns the value of the fluid variable {\em symbol}.  Even
-though \df{fluid} is a special form, it is settable, so {\tt (set!
-(fluid {\em symbol}) {\em value})} changes the value of the fluid
-variable {\em symbol} to {\em value}.  The reader will read {\tt foo}
-preceded by a control-v character as {\tt (fluid foo)}; this was
+\doc{Returns the value of the fluid variable \emph{symbol}.  Even
+though \df{fluid} is a special form, it is settable, so \texttt{(set!
+(fluid \emph{symbol}) \emph{value})} changes the value of the fluid
+variable \emph{symbol} to \emph{value}.  The reader will read \texttt{foo}
+preceded by a control-v character as \texttt{(fluid foo)}; this was
 motivated by the fact that control-v prints as $\bullet$ on both
 Macintosh$^{\mbox{tm}}$ and Symbolics computers.}
 
@@ -38,62 +38,62 @@ for performing non-local exits.  Oaklisp provides two facilities at
 varying points on the generality vs.\ cost spectrum.}
 
 \op{call-with-current-continuation}{operation}
-\doc{Calls {\em operation} with one argument, the current
+\doc{Calls \emph{operation} with one argument, the current
 continuation.  The synonym \df{call/cc} is provided for those who feel
 that \df{call-with-current-continuation} is excessively verbose.}
 
-\index{{\tt call/cc}|see {\tt call-with-current-continuation}}
+\index{\texttt{call/cc}|see \texttt{call-with-current-continuation}}
 
 \sform{catch}{variable \dt body}
-\doc{{\em variable} is lexically bound to an escape operation that
-may be called from anywhere within {\em body}'s dynamic extent. If
-{\em variable} is not called, \df{catch} yields the value of {\em
-body}.  This is implemented in such a way that {\em body} is called
+\doc{\emph{variable} is lexically bound to an escape operation that
+may be called from anywhere within \emph{body}'s dynamic extent. If
+\emph{variable} is not called, \df{catch} yields the value of 
+\emph{body}.  This is implemented in such a way that \emph{body} is called
 tail recursively.}
 
 \sform{native-catch}{variable \dt body}
-\doc{{\em variable} is lexically bound to an escape tag that
-may be thrown from anywhere within {\em body}'s dynamic extent. If
-{\em variable} is not thrown to, \df{native-catch} yields the value of
-{\em body}.  This is implemented in such a way that {\em body} is
+\doc{\emph{variable} is lexically bound to an escape tag that
+may be thrown from anywhere within \emph{body}'s dynamic extent. If
+\emph{variable} is not thrown to, \df{native-catch} yields the value of
+\emph{body}.  This is implemented in such a way that \emph{body} is
 called tail recursively.}
 
 \op{throw}{tag value}
-\doc{Causes execution to resume at the point specified by {\em tag}.
+\doc{Causes execution to resume at the point specified by \emph{tag}.
 This point is always a \df{native-catch} expression, which immediately
-yields {\em value}.  Cleanup actions specified with \df{wind-protect}
+yields \emph{value}.  Cleanup actions specified with \df{wind-protect}
 are performed while the stack is being unwound.}
 
 \sform{wind-protect}{before form after}
-\doc{\macdef{} {(dynamic-wind (lambda () {\em before}) (lambda ()
-{\em form}) (lambda () {\em after}))}}
+\doc{\macdef{} {(dynamic-wind (lambda () \emph{before}) (lambda ()
+\emph{form}) (lambda () \emph{after}))}}
 
 \sform{funny-wind-protect}{before abnormal-before form after abnormal-after}
-\doc{A \df{wind-protect} evaluates {\em before}, {\em form}, and {\em after},
-returning the value of {\em form}.  If {\em form} is entered or exited
-abnormally (due to \df{call/cc} or \df{catch}) the {\em before} and
-{\em after} forms, respectively, are automatically executed.
+\doc{A \df{wind-protect} evaluates \emph{before}, \emph{form}, and \emph{after},
+returning the value of \emph{form}.  If \emph{form} is entered or exited
+abnormally (due to \df{call/cc} or \df{catch}) the \emph{before} and
+\emph{after} forms, respectively, are automatically executed.
 \df{funny-wind-protect} is the same except that different guard forms
 are evaluated depending on whether the dynamic context is entered or
 exited normally or abnormally.}
 
 \op{dynamic-wind}{before-op main-op after-op}
-\doc{Calls the operation {\em before-op}, calls the operation {\em
-main-op}, calls the operation {\em after-op}, and returns the value
-returned by {\em main-op}.  If {\em main-op} is exited abnormally,
-{\em after-op} is called automatically on the way out.  Similarly, if
-{\em main-op} is entered abnormally, {\em before-op} is called
+\doc{Calls the operation \emph{before-op}, calls the operation 
+\emph{main-op}, calls the operation \emph{after-op}, and returns the value
+returned by \emph{main-op}.  If \emph{main-op} is exited abnormally,
+\emph{after-op} is called automatically on the way out.  Similarly, if
+\emph{main-op} is entered abnormally, \emph{before-op} is called
 automatically on the way in.}
 
 % \sform{unwind-protect}{form \dt unwind-forms}
-% \doc{Acts like \df{block}, except that the {\em unwind-forms} are
-% guaranteed to execute even if a throw occurs out of {\em form}.  This
+% \doc{Acts like \df{block}, except that the \emph{unwind-forms} are
+% guaranteed to execute even if a throw occurs out of \emph{form}.  This
 % construct is implemented tail-recursively, and there is no restriction on
-% throws from the {\em unwind-forms}.}
+% throws from the \emph{unwind-forms}.}
 % 
 % \sform{unwind-protect0}{form \dt unwind-forms}
 % \doc{Acts like \df{unwind-protect}, except that it yields
-% the value of {\em form}, and does not permit a tail-recursive
+% the value of \emph{form}, and does not permit a tail-recursive
 % implementation.}
 
 
@@ -116,22 +116,22 @@ handlers to be invoked when various types of errors occur.
 Errors are signalled using the following operations.
 
 \op{warning}{format-string \dt format-args}
-\doc{Prints out the message specified by {\em format-string} and {\em
-format-args} and continues execution.}
+\doc{Prints out the message specified by \emph{format-string} and 
+\emph{format-args} and continues execution.}
 
 \op{error}{format-string \dt format-args}
 \doc{This signals \df{generic-fatal-error}, which normally has the
-effect of printing out the error message specified by {\em
-format-string} and {\em format-args} and dumping the user into a
+effect of printing out the error message specified by 
+\emph{format-string} and \emph{format-args} and dumping the user into a
 subordinate read-eval-print loop.}
 
 \op{cerror}{continue-string format-string \dt format-args}
 \doc{This signals \df{generic-proceedable-error}, which normally has
-the effect of printing the error message specified by {\em
-format-string} and {\em format-args} and dumping the user into a
+the effect of printing the error message specified by 
+\emph{format-string} and \emph{format-args} and dumping the user into a
 subordinate read-eval-print loop in which there is a restart handler
 that continues the computation by returning a user specified value
-from \df{cerror}.  {\em Continue-string} is the text associated with
+from \df{cerror}.  \emph{Continue-string} is the text associated with
 this handler when it is listed as an option by the subordinate
 evaluator.}
 
@@ -146,29 +146,30 @@ before its body has been fully evaluated.  This form is used in the
 definition of \df{cerror}.
 
 \mc{error-return}{string \dt body}
-\doc{Evaluates {\em body} in a dynamic context in which a restart
+\doc{Evaluates \emph{body} in a dynamic context in which a restart
 handler is available that can force the form to return.  The handler
-is identified by {\em string} in the list of choices the debugger
+is identified by \emph{string} in the list of choices the debugger
 presents to the user.  If the handler is invoked by calling \df{ret}
 with an argument in addition to the handler number, the
 \df{error-return} form returns this value; otherwise it
 returns \df{\#f}.  If no error occurs, \df{error-return} yields
-the value of {\em body}.}
+the value of \emph{body}.}
 
 The second special form acts just like a \df{let} unless an error
 occurs, in which case an error handler is available that re-executes
 the body of the form after (possibly) rebinding the lexical variables
 specified at the top of the form.
 
-\mc{error-restart}{string {\tt((}var$_0$ val$_0${\tt)}\ldots{\tt)} \dt body}
-\doc{Evaluates {\em body} in a dynamic context in which a restart handler
+\mc{error-restart}{string \texttt{((}var$_0$
+val$_0$\texttt{)}\ldots\texttt{)} \dt body}
+\doc{Evaluates \emph{body} in a dynamic context in which a restart handler
 is available that can force the re-evaluation of the body with new
-values for {\em var$_0$ \ldots}.  These new values are specified as
+values for \emph{var$_0$ \ldots}.  These new values are specified as
 additional arguments to \df{ret}.  If there are not enough arguments
 to \df{ret}, the remaining variables are left at their previous
-values.  The handler is identified by {\em string} in the list of
+values.  The handler is identified by \emph{string} in the list of
 choices printed by the debugger.  If no error occurs,
-\df{error-restart} yields the value of {\em body}.}
+\df{error-restart} yields the value of \emph{body}.}
 
 
 \subsection{Error Handlers}
@@ -191,7 +192,7 @@ the following special form.
 
 \mc{bind-error-handler}
 {\lpar\lpar err$_1$ op$_1$\rpar\ldots\lpar err$_n$ op$_n$\rpar\rpar\dt body}
-\doc{Evaluates {\em body} in a dynamic environment where the $n$
+\doc{Evaluates \emph{body} in a dynamic environment where the $n$
 error types have been associated with the $n$ error resolution
 operations.  When an error occurs, the current list of condition
 bindings is searched to find an operation to perform.  An operation
@@ -206,8 +207,8 @@ There are a number of operations that can be invoked on error objects
 in error handlers.
 
 \op{report}{error stream}
-\doc{Instructs {\em error} to print a descriptive message to {\em
-stream}.}
+\doc{Instructs \emph{error} to print a descriptive message to 
+\emph{stream}.}
 
 \op{invoke-debugger}{error}
 \doc{This is the default error resolution operation. It is performed
@@ -215,17 +216,17 @@ on all errors unless it is explicitly overridden.}
 
 \op{proceed}{error \dt values}
 \doc{Attempts to continue from the error, eg.\ a file system error
-would retry the failed operation.  The {\em values} have semantics
+would retry the failed operation.  The \emph{values} have semantics
 determined by the precise type of error.  For instance, continuing a
 failed attempt to open a file with a value might instruct the system
 to try a new filename.}
 
 \op{remember-context}{error after-operation}
-\doc{Instructs {\em error} to salt away the current continuation and
-then call {\em after-operation}, which should never return.}
+\doc{Instructs \emph{error} to salt away the current continuation and
+then call \emph{after-operation}, which should never return.}
 
 \op{invoke-in-error-context}{error operation}
-\doc{Invokes {\em operation} on {\em error} after moving back to the
+\doc{Invokes \emph{operation} on \emph{error} after moving back to the
 context of the error if its been salted away.}
 
 
@@ -241,7 +242,7 @@ defined for \df{general-error} can be used to resolve any error.}
 \doc{Signaled by \df{error}.}
 
 \makin{proceedable-error}{message}
-\doc{Uses {\em message} in composing its
+\doc{Uses \emph{message} in composing its
 report.}
 
 \ty{generic-proceedable-error}

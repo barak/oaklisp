@@ -14,18 +14,18 @@ method tables is the following side-effecting special form.
 
 \sform{add-method}{\lpar operation $[$\lpar type \dt
 ivar-list\rpar$]$ \dt arg-list\rpar \dt body}
-\doc{Adds a method for {\em operation} to the method table of {\em type}.
-If a method for {\em operation} already exists, it is replaced.  The
-value returned by \df{add-method} is {\em operation}.}
+\doc{Adds a method for \emph{operation} to the method table of \emph{type}.
+If a method for \emph{operation} already exists, it is replaced.  The
+value returned by \df{add-method} is \emph{operation}.}
 
 The body of the form is surrounded by an implicit \df{block}.  The
-arguments to the method are specified by {\em arg-list}.  Since the
+arguments to the method are specified by \emph{arg-list}.  Since the
 first argument is always the object handling the message, a useful
-convention is to call it \df{self}.  Instance variables of {\em type}
-can be referenced in the body if they are declared in {\em ivar-list}.
+convention is to call it \df{self}.  Instance variables of \emph{type}
+can be referenced in the body if they are declared in \emph{ivar-list}.
 Instance variables of supertypes may not be referenced in any case.
 Naming conflicts between instance variables and arguments are resolved
-by the rule that the variables in {\em arg-list} shadow instance
+by the rule that the variables in \emph{arg-list} shadow instance
 variables that have the same names.  Oaklisp closes methods over free
 variable references at compile-time, thereby solving the upward funarg
 problem and allowing procedures to share state in a controlled manner.
@@ -46,9 +46,9 @@ which can be used to define local variables and procedures.
 
 \sform{let}
 {\lpar\lpar var$_1$ val$_1$\rpar\ldots var$_n$ val$_n$\rpar \dt body}
-\doc{Evaluates {\em body} in an environment where the $n$ variables
-are bound to the $n$ values. The value returned is that of {\em
-body}.}
+\doc{Evaluates \emph{body} in an environment where the $n$ variables
+are bound to the $n$ values. The value returned is that of 
+\emph{body}.}
 
 \sform{let*}
 {\lpar\lpar var$_1$ val$_1$\rpar\ldots var$_n$ val$_n$\rpar \dt body}
@@ -77,30 +77,30 @@ Oaklisp readily accommodates the functional programming style, since
 methods can be defined for the type \df{object}, which is the
 supertype of all other types.  In fact, if the type specifier is
 omitted in an \df{add-method} form, the type \df{object} is assumed.
-Thus, {\tt (add-method (\mbox{cons-1} x) (cons x 1))} defines a method that
+Thus, \texttt{(add-method (\mbox{cons-1} x) (cons x 1))} defines a method that
 is valid for any type.  To give the language a more familiar
 appearance when this programming style is used, the following macros
 are also provided.
 
 \mc{lambda}{arg-list \dt body}
-\doc{\macdef{}{(add-method ((make operation) . {\em arg-list}) . {\em body})}}
+\doc{\macdef{}{(add-method ((make operation) . \emph{arg-list}) . \emph{body})}}
 
 \mc{define}{\lpar variable \dt arg-list\rpar \dt body}
-\doc{\macdef{}{(define {\em variable} (lambda {\em arg-list} . {\em body}))}}
+\doc{\macdef{}{(define \emph{variable} (lambda \emph{arg-list} . \emph{body}))}}
 
 
 \section{Dispatching to Supertypes}
 
 Sometimes a method doesn't want to override the inherited method
-completely, but rather wishes to only to modify or extent its
-behaviour.  For instance, imagine that the type {\tt dog} has a method
-so that the {\tt notice-stranger} operation causes it to run around,
+completely, but rather wishes to only to modify or extend its
+behaviour.  For instance, imagine that the type \texttt{dog} has a method
+so that the \texttt{notice-stranger} operation causes it to run around,
 jump up and down, bark, and return the amount of time wasted.  Say
-that {\tt stupid-dog} is a subtype of {\tt dog} defined by {\tt
-(define-instance stupid-dog type '() (list dog))}, and that we want
-stupid dogs to behave just like regular dogs in response to a {\tt
-see-stranger} message, except that they do it twice.  This could be
-accomplished without the duplication of code by dispatching to the
+that \texttt{stupid-dog} is a subtype of \texttt{dog} defined by
+\texttt{(define-instance stupid-dog type '() (list dog))}, and that we
+want stupid dogs to behave just like regular dogs in response to a
+\texttt{see-stranger} message, except that they do it twice.  This could
+be accomplished without the duplication of code by dispatching to the
 supertype twice, as in the following code fragment.
 \begin{flushleft}\tt
 (add-method (see-stranger (stupid-dog) self stranger)\\
@@ -110,9 +110,9 @@ supertype twice, as in the following code fragment.
 
 
 \op{{\protect\upar}super}{type operation self \dt args}
-\doc{This is just like {\tt (\em operation self \dt args\tt)} except
-that the method search begins at {\em type} rather than at the type of
-{\em self}.  It is required that {\em type} be an immediate supertype
+\doc{This is just like \texttt{(\emph{operation self \dt args})} except
+that the method search begins at \emph{type} rather than at the type of
+\emph{self}.  It is required that \emph{type} be an immediate supertype
 of the type that the method this call appears in is added to, although
 our current implementation does not yet enforce this restriction.
 \df{{\protect\upar}super} is analogous to the Smalltalk-80
@@ -150,14 +150,14 @@ The following functions have been provided to make it easier to write a
 function definition that satisfies all of the rules for rest args.
 
 \op{consume-args}{val \dt args}
-\doc{Returns {\em val} after consuming {\em args}.}
+\doc{Returns \emph{val} after consuming \emph{args}.}
 
 \op{listify-args}{op \dt args}
-\doc{Calls {\em op} on a list consisting of the values of {\em args}.}
+\doc{Calls \emph{op} on a list consisting of the values of \emph{args}.}
 
 A call to \df{listify-args} can be used as the body of a
 method definition as a means of trivially satisfying the rest arg
-rules.  When using this technique, {\em op} is a lambda that performs
+rules.  When using this technique, \emph{op} is a lambda that performs
 all of the computation for the method.  The rest args of the method
 are wrapped up in a list that is passed in as the lambda's one
 parameter, and the regular parameters and instance variables of the

@@ -4,15 +4,15 @@ Sequences are manipulated using the \df{nth} operation, which is
 settable (and locatable).  The sequence heirarchy is shown in
 figure~\ref{fig:seqhier}.
 
-\index{{\tt sequence}}
-\index{{\tt vector-type}}
-\index{{\tt simple-vector}}
-\index{{\tt list-type}}
-\index{{\tt string}}
-\index{{\tt pair}}
-\index{{\tt null-type}}
-\index{{\tt cons-pair}}
-\index{{\tt lazy-cons-pair}}
+\index{\texttt{sequence}}
+\index{\texttt{vector-type}}
+\index{\texttt{simple-vector}}
+\index{\texttt{list-type}}
+\index{\texttt{string}}
+\index{\texttt{pair}}
+\index{\texttt{null-type}}
+\index{\texttt{cons-pair}}
+\index{\texttt{lazy-cons-pair}}
 
 \begin{figure}[h]
 \[ \myepsfbox{seqhier.ips} \]
@@ -42,7 +42,7 @@ These operations work on all sequences.
 \op{copy}{sequence}
 
 \op{append}{sequence1 sequence2}
-\doc{Returns a sequence of the type of {\em sequence1}.  One slight
+\doc{Returns a sequence of the type of \emph{sequence1}.  One slight
 bug is that one may not pass \df{append} a first argument that's a
 list and a second that's not.  This may be fixed in the future.  All
 other combinations should work correctly.}
@@ -60,7 +60,7 @@ documented in section \ref{sec:controlmap}.
 \section{Vector Constructors}
 
 \op{vector}{\dt objects}
-\doc{Returns a \df{simple-vector} containings {\em objects}.}
+\doc{Returns a \df{simple-vector} containings \emph{objects}.}
 \makin{simple-vector}{length}
 \coercer{simple-vector}{sequence}
 
@@ -73,8 +73,8 @@ documented in section \ref{sec:controlmap}.
 \op{cons}{object1 object2}
 \makin{lazy-cons-pair}{car-thunk cdr-thunk}
 \mc{lcons}{car-form cdr-form}
-\doc{\macdef{}{(make lazy-cons-pair (lambda () {\em car-form}) (lambda
-() {\em cdr-form}))}}
+\doc{\macdef{}{(make lazy-cons-pair (lambda () \emph{car-form}) (lambda
+() \emph{cdr-form}))}}
 
 
 \section{List Accessors}
@@ -82,44 +82,44 @@ documented in section \ref{sec:controlmap}.
 \lo{car}{pair}
 \lo{cdr}{pair}
 \lo{c$[$ad$]^{*}$r}{pair}
-\doc{Actually these are only provided for up to four {\tt a}'s and
-{\tt d}'s.  If you think you need more, you should probably be
+\doc{Actually these are only provided for up to four \texttt{a}'s and
+\texttt{d}'s.  If you think you need more, you should probably be
 defining accessor functions or using \df{nth} or perhaps
 \df{destructure}.}
 \lo{last-pair}{pair}
-\doc{Takes successive \df{cdr}'s of {\em pair} until it finds a pair
+\doc{Takes successive \df{cdr}'s of \emph{pair} until it finds a pair
 whose \df{cdr} is not a pair, which it returns.  \evto{(last-pair '(a
 b c))}{(c)}.  \evto{(last-pair '(a b c . d))}{(c . d)}.}
 
 \mc{destructure}{template structure \dt body}
 \doc{This is for destructuring lists, and is sort of the inverse of
-backquote.  {\em Template} is a possibly nested list of variables.
-These variables are bound to the corresponding values of {\em
-structure} while {\em body} is evaluated.  For instance,
+backquote.  \emph{Template} is a possibly nested list of variables.
+These variables are bound to the corresponding values of 
+\emph{structure} while \emph{body} is evaluated.  For instance,
 \macdef{(destructure (a (b) . c) x (foo a b c))}{(let ((a (car x))(b
-(caadr x))(c (cddr x))) (foo a b c))}.  It is guaranteed that {\em
-structure} will be evaluated only once.  We note that \df{destructure}
+(caadr x))(c (cddr x))) (foo a b c))}.  It is guaranteed that 
+\emph{structure} will be evaluated only once.  We note that \df{destructure}
 typically generates more efficient code than the corresponding code
 one might typically write.
 
-If there is a position in {\em template} that should be ignored, one
+If there is a position in \emph{template} that should be ignored, one
 can place a \df{\#t} there.  For convenience and compatiblity with
-\df{destructure*}, positions in {\em template} containing \df{()},
-\df{\#f} and {\tt (quote {\em x})} are also ignored.}
+\df{destructure*}, positions in \emph{template} containing \df{()},
+\df{\#f} and \texttt{(quote \emph{x})} are also ignored.}
 
 \mc{destructure*}{template structure \dt body}
 \doc{This is just like \df{destructure} except that an error is
-signaled if {\em structure} doesn't precisely match {\em template}.
+signaled if \emph{structure} doesn't precisely match \emph{template}.
 Positions containing \df{\#f} and \df{()} are required to match
-literally.  Positions containing {\tt (quote {\em x})} are required to
-match {\em x} literally, where {\em x} is not evaluated.  As with
+literally.  Positions containing \texttt{(quote \emph{x})} are required to
+match \emph{x} literally, where \emph{x} is not evaluated.  As with
 \df{destructure}, positions containing \df{\#t} are ignored.
 
 \df{destructure*} is particularly useful in macro expanders where it
 can do much of the syntax checking automatically.}
 
 \mc{destructure**}{structure \lpar{}template \dt body\rpar ...
-[\lpar{}{\tt otherwise} \dt nomatch-body\rpar]}
+[\lpar{}\texttt{otherwise} \dt nomatch-body\rpar]}
 \doc{This is just like \df{destructure*} except that, when one
 template does not match, the next in line is considered.  If none
 match than the OTHERWISE one does; if no otherwise clause is present,
@@ -129,8 +129,8 @@ an error is signaled.}
 \section{Lists as Sets}
 
 \op{mem}{predicate object list}
-\doc{Returns the first tail of {\em list} whose \df{car} equals {\em
-object} according to {\em predicate}.}
+\doc{Returns the first tail of \emph{list} whose \df{car} equals 
+\emph{object} according to \emph{predicate}.}
 
 \op{memq}{object list}
 \op{del}{predicate object list}

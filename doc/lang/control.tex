@@ -14,14 +14,14 @@ These forms are compatible with both T \cite[chapter 5]{T-MAN} and the
 Scheme standard \cite{R3RS}.
 
 \sform{cond}{\dt clauses}
-\doc{The {\em clauses} are run through sequentially until one is
-selected.  Each clause can be of four possible forms.  {\em\lpar test
-\dt body\rpar} evaluates {\em body} if {\em test} is true.
-{\em\lpar\df{else} \dt body\rpar} always evaluates {\em body},
-and if present must be the last clause.  {\em\lpar test {\tt =>}
-operation\rpar} calls {\em operation} on the result of {\em test} if
-the result of evaluating {\em test} was not {\em false}.  {\em\lpar
-test\rpar} is equivalent to {\em\lpar test {\tt => identity}\rpar}.}
+\doc{The \emph{clauses} are run through sequentially until one is
+selected.  Each clause can be of four possible forms.  \emph{\lpar test
+\dt body\rpar} evaluates \emph{body} if \emph{test} is true.
+\emph{\lpar\df{else} \dt body\rpar} always evaluates \emph{body},
+and if present must be the last clause.  \emph{\lpar test \texttt{=>}
+operation\rpar} calls \emph{operation} on the result of \emph{test} if
+the result of evaluating \emph{test} was not \emph{false}.  \emph{\lpar
+test\rpar} is equivalent to \emph{\lpar test \texttt{=> identity}\rpar}.}
 
 \sform{if}{test consequent $[$alternate$]$}
 \pr{not}{object}
@@ -29,30 +29,30 @@ test\rpar} is equivalent to {\em\lpar test {\tt => identity}\rpar}.}
 \sform{or}{\dt tests}
 \sform{iterate}{variable specs \dt body}
 \sform{block}{\dt body}
-\doc{Evaluates the forms of {\em body} sequentially, returning (tail
+\doc{Evaluates the forms of \emph{body} sequentially, returning (tail
 recursively) the value of the last one.}
 \sform{block0}{form \dt body}
-\doc{\meq{}{(let ((x {\em form})) (block \dt {\em body}) x)}}
+\doc{\meq{}{(let ((x \emph{form})) (block \dt \emph{body}) x)}}
 
 \sform{dotimes}{\lpar variable number $[$rform$]$\rpar \dt body}
-\doc{\meq{}{(let ((x (lambda ({\em variable}) \dt {\em body}))) (map x
-(iota {\em number})) {\em rform})}}
+\doc{\meq{}{(let ((x (lambda (\emph{variable}) \dt \emph{body}))) (map x
+(iota \emph{number})) \emph{rform})}}
 \sform{dolist}{\lpar variable list $[$rform$]$\rpar \dt body}
-\doc{\meq{}{(let ((x (lambda ({\em variable}) \dt {\em body}))) (map x
-{\em list}) {\em rform})}}
+\doc{\meq{}{(let ((x (lambda (\emph{variable}) \dt \emph{body}))) (map x
+\emph{list}) \emph{rform})}}
 \sform{dolist-count}{\lpar variable list count-var\rpar \dt body}
-\doc{Just like {\tt dolist} except that {\em count-var} gives the
+\doc{Just like \texttt{dolist} except that \emph{count-var} gives the
 count of the current element in the list, starting at zero.}
 \sform{while}{condition \dt body}
-\doc{\meq{}{(let ((q (lambda () {\em test}))(x (lambda () \dt {\em
-body}))) (iterate aux () (cond (({\em q}) ({\em x}) (aux)))))}}
+\doc{\meq{}{(let ((q (lambda () \emph{test}))(x (lambda () \dt 
+\emph{body}))) (iterate aux () (cond ((\emph{q}) (\emph{x}) (aux)))))}}
 \sform{unless}{test \dt body}
-\doc{\meq{}{(cond ((not {\em test}) \dt {\em body}))}}
+\doc{\meq{}{(cond ((not \emph{test}) \dt \emph{body}))}}
 \sform{do}{\lpar \lpar var initial step \rpar \ldots \rpar
  \lpar termination-test \dt termination-body \rpar \dt body}
-\doc{\meq{}{(iterate aux (({\em var initial}) \ldots)
-(cond ({\em termination-test} \dt {\em termination-body})
-      (else (block \dt {\em body}) (aux {\em step} \ldots))))}} 
+\doc{\meq{}{(iterate aux ((\emph{var initial}) \ldots)
+(cond (\emph{termination-test} \dt \emph{termination-body})
+      (else (block \dt \emph{body}) (aux \emph{step} \ldots))))}} 
 
 \section{Mapping Constructs} \label{sec:controlmap}
 
@@ -66,11 +66,11 @@ various elements of the sequence in any order it desires.
 
 \op{map}{operation \dt sequences}
 \op{mapcdr}{operation \dt lists}
-\doc{Applies {\em operation} to successive ``cdrs'' rather than to
+\doc{Applies \emph{operation} to successive ``cdrs'' rather than to
 elements, and returns a list of the returned values.}
 \op{for-each}{operation \dt sequences}
 \op{for-each-cdr}{operation \dt lists}
 \doc{Like \df{mapcdr} but for effect only.}
 \op{map\protect\bang}{operation \dt sequences}
 \doc{Like \df{map}, except that the retuned values are destructively
-placed into the successive storage locations of the first {\em sequence}.}
+placed into the successive storage locations of the first \emph{sequence}.}

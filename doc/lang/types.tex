@@ -114,12 +114,12 @@ predicates such as \df{null?} and \df{number?}.  A few of these have
 been retained to make the environment more familiar.
 
 \pr{is-a?}{object type}
-\doc{Determines whether \df{object} is an instance of {\em type} or
-one of its subtypes. {\tt (is-a? {\em object} object)} is always
+\doc{Determines whether \df{object} is an instance of \emph{type} or
+one of its subtypes. \texttt{(is-a? \emph{object} object)} is always
 true.}
 
 \pr{subtype?}{type1 type2}
-\doc{Determines whether {\em type1} is a subtype of {\em type2}.
+\doc{Determines whether \emph{type1} is a subtype of \emph{type2}.
 As you would expect, \df{subtype?} is transitive.  Since each type is
 a subtype of itself, \df{subtype?} defines a partial ordering of all
 the types in the system.}
@@ -131,7 +131,7 @@ self-evaluating expressions.  \df{quote} allows the inclusion of such
 objects as constants in code.
 
 \sform{quote}{object}
-\doc{Returns {\em object} without evaluating it.}
+\doc{Returns \emph{object} without evaluating it.}
 
 \section{Standard Truth Values} \label{sec:truths}
 
@@ -147,11 +147,11 @@ well for the purpose of logical tests.}
 as denoting falsehood.}
 
 \gv{nil}
-\doc{The value of this is the empty list, written {\tt ()}.
-Notice that \df{nil} itself is just a variable, so {\tt (eq? nil
+\doc{The value of this is the empty list, written \texttt{()}.
+Notice that \df{nil} itself is just a variable, so \texttt{(eq? nil
 'nil)} is false.}
 
-\discuss{{\bf Note:} currently {\tt ()} is the same as {\tt \#f}, the
+\discuss{{\bf Note:} currently \texttt{()} is the same as \texttt{\#f}, the
 object used to represent falsehood.  In the future it is possible that
 these two notions, emptiness and falsehood, will be disconfabulated.
 Programs should be written in such a way that if \df{\#f} and \df{()}
@@ -160,26 +160,28 @@ were not the same object, they would still work.}
 
 \section{Coercion}
 
-Some types are {\em coercable}, meaning that there is an operations
-associated with that type that allows objects to be coerced to it.  To
-create a coercable type, one instantiates \df{coercable-type} rather
-than \df{type}.
+Some types are \emph{coercable}, meaning that there is an operation
+associated with that type that allows objects to be coerced to that
+type.  To create a coercable type, one instantiates
+\df{coercable-type} rather than \df{type}.
 
 \lo{coercer}{coercable-type}
 \doc{This returns the coercer of a type.  For example, to coerce a
 list into a string one uses \dfcoer{string}, as in \evto{((coercer
-string) '(\#\char`\\f \#\char`\\o \#\char`\\o))}{"foo"}.  The reader
-will read {\tt frog} preceded by a control-y character as {\tt
-(coercer frog)}; this was motivated by the fact that control-y prints
-as $\rightarrow$ on both Macintosh$^{\mbox{tm}}$ and Symbolics
-computers, giving coercion a pleasant syntax, \evto{($\rightarrow$
-string '(\#\char`\\f \#\char`\\o \#\char`\\o))}{"foo"}.}
+string) '(\#$\backslash$f \#$\backslash$o \#$\backslash$o))}{"foo"}.  The reader
+will read \texttt{frog} preceded by a control-y character as
+\texttt{(coercer frog)}; this was motivated by the fact that control-y
+prints as $\rightarrow$ on both Macintosh$^{\mbox{tm}}$ and Symbolics
+computers, giving coercion a pleasant syntax,
+\evto{($\rightarrow$string '(\#$\backslash$f \#$\backslash$o
+\#$\backslash$o))}{"foo"}.}
 
 \ty{coercable-type}
 \doc{This is a subtype of \df{type} with has the added functionality
 of responding to the \df{coercer} message by returning its coercion
-operation.  By default, {\tt(is-a?\ {\em foo} {\em bar})} implies that
-\evto{((coercer {\em bar}) {\em foo})}{\em foo}}
+operation.  By default, \texttt{(is-a?\ \emph{foo} \emph{bar})}
+implies that
+\evto{((coercer \emph{bar}) \emph{foo})}{\emph{foo}}}
 
 
 \section{Mixing Types}
@@ -190,13 +192,13 @@ The combinatorial explosion of the number of possible concocted types
 seems intrinsic to the style of programming involving multiple
 functionally orthogonal mixins.  Above a certain level of complexity,
 finding a type with certain known characteristics can become
-difficult.  Programmers are left wondering ``Has a type based on {\em
-foo} with {\em bar, baz} and {\em zonk} mixed in been created, if so
+difficult.  Programmers are left wondering ``Has a type based on 
+\emph{foo} with \emph{bar, baz} and \emph{zonk} mixed in been created, if so
 what's its name, and if not what should I name it and where should I
 define it?''
 
-Oaklisp's {\em mixin managers} take care of this problem.  When one
-needs ``the type based on {\em foo} with {\em bar, baz} and {\em zonk}
+Oaklisp's \emph{mixin managers} take care of this problem.  When one
+needs ``the type based on \emph{foo} with \emph{bar, baz} and \emph{zonk}
 mixed in,'' one asks a mixin manager for it.  If such a type has
 already been created, it is returned; if not, the mixin manager
 creates an appropriate new type, caches it, and returns it.  This
@@ -204,10 +206,10 @@ eliminates the burden of remembering which types have been concocted
 and what they are named.
 
 \op{mix-types}{mixin-manager type-list}
-\doc{This returns a composite type whose supertypes are {\em
-type-list}.  {\em Mixin-manager} checks its cache, and if the
-requested type is not found it creates a type with {\tt (make type '()
-{\em type-list})}, caches it, and returns it.}
+\doc{This returns a composite type whose supertypes are 
+\emph{type-list}.  \emph{Mixin-manager} checks its cache, and if the
+requested type is not found it creates a type with \texttt{(make type '()
+\emph{type-list})}, caches it, and returns it.}
 
 \ty{mixin-manager}
 \doc{Instances of this cache composite types, acting as a sort of

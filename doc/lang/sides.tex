@@ -12,16 +12,16 @@ Side effects on variables and objects are performed with the
 \df{setq} and \df{setf} forms found in other Lisps.
 
 \sform{set\protect\bang}{location new-value}
-\doc{Changes the value of {\em location} to {\em new-value}, which is then
+\doc{Changes the value of \emph{location} to \emph{new-value}, which is then
 returned as the value of the expression.
 
-If {\em location} is a symbol, then it is interpreted as a variable
+If \emph{location} is a symbol, then it is interpreted as a variable
 name.  The variable must have been previously defined in some lexical binding
 contour or locale.
 
-If {\em location} is a list, then it is interpreted as a reference to
-a settable access operation.  For example, {\tt (set! (car foo) 'bar)}
-means the same thing as {\tt (rplaca foo 'bar)} in Common Lisp.}
+If \emph{location} is a list, then it is interpreted as a reference to
+a settable access operation.  For example, \texttt{(set! (car foo) 'bar)}
+means the same thing as \texttt{(rplaca foo 'bar)} in Common Lisp.}
 
 \lo{setter}{operation}
 \doc{Takes a settable access operation and returns the corresponding
@@ -34,7 +34,7 @@ found in procedural languages such as C or Pascal.  Locatives are
 created and dereferenced by the following constructs.
 
 \sform{make-locative}{location}
-\doc{Returns a locative that points to {\em location}, which must be
+\doc{Returns a locative that points to \emph{location}, which must be
 a variable or a list with the form of a call on a locatable access
 operation.}
 
@@ -43,11 +43,12 @@ operation.}
 locative-making operation.}
 
 \lo{contents}{locative}
-\doc{Returns the contents of the location which is referenced by {\em
-locative}.  Since \df{contents} is a settable operation, side effects
-can be performed on locations through locatives.  For example, {\tt
-(set! (contents (make-locative (car {\em foo}))) '{\em bar})} has the
-same effect as {\tt (set! (car {\em foo}) '{\em bar})}.}
+\doc{Returns the contents of the location which is referenced by 
+\emph{locative}.  Since \df{contents} is a settable operation, side effects
+can be performed on locations through locatives.  For example,
+\texttt{(set! (contents (make-locative (car \emph{foo})))
+'\emph{bar})} has the
+same effect as \texttt{(set! (car \emph{foo}) '\emph{bar})}.}
 
 
 \section{Operation Types}
