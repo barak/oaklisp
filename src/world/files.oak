@@ -53,7 +53,6 @@
     undefined da
     subprimitive da
     gc da
-    multi-em da
     tag-trap da
     code-vector da
     hash-table da
@@ -106,6 +105,7 @@
     catch da
     continuation da
     unwind-protect da
+    multi-em da
     ))
 (define layer5
   '(

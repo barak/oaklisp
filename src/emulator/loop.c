@@ -1212,6 +1212,19 @@ top_of_loop:
 	     PUSHVAL(e_nil);
 	     GOTO_TOP;
 
+	  case 70:		/* HEAVYWEIGHT-THREAD */
+	      printf("This will eventually launch a heavyweight OS thread.\n");
+	      printf("Let's pretend this is a new thread:\n");
+	      instr = (22 << 2);
+	      op_field = 22;
+	      arg_field = 0;
+	      printf("\tWe set instruction to 0x%x\n", instr);
+	      E_NARGS = E_NARGS - 1;
+	      printf("\tWe set e_nargs to %d\n", E_NARGS);
+	      printf("\tWe pushd 0x%x on the stack\n", PEEKVAL());
+	      printf("\tAnd now we jump to the funcall command.\n");
+	      goto funcall_tail;
+
 	     case 75:		/* TEST-INSTRUCTION */
 		 printf("This is my stupid test instruction\n");
 	       /*

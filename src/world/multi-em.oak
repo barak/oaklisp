@@ -4,3 +4,13 @@
 ;  (add-method ((make-open-coded-operation '((test-instruction)) 1 1)
 ;	       (object) target)
 ;	      (%test-instruction target)))
+
+;
+; This is an opcode instruction that launches a new virtual machine
+; on a separte OS thread.
+; Pass in a function to call.
+;
+(define-constant %heavyweight-thread
+  (add-method ((make-open-coded-operation '((heavyweight-thread)) 1 1)
+	       (object) target)
+	      (%heavyweight-thread target)))

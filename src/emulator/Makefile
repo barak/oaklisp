@@ -27,7 +27,7 @@ OAK=oakem
 #we need oakem to make instr-data.c.  So let's save the last one.  If we
 #fail to update, oh well.  Just finish and try again.
 instr.o: instr-data.c
-instr-data.c: instruction-table.oak ../world/assembler.oak
+instr-data.c: instruction-table.oak ../world/assembler.oak ../lib/oakworld.bin
 	-$(OAK) $(OAKFLAGS) -- \
 		-locale compiler-locale -load instruction-table \
 		-eval '(dump-instruction-table "$@")' \

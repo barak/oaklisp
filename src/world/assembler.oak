@@ -500,6 +500,7 @@
 (define-opcode enable-alarms		(0 67) in0 out1 ns)
 (define-opcode disable-alarms		(0 68) in0 out1 ns)
 (define-opcode reset-alarm-counter	(0 69) in0 out1 ns)
+(define-opcode heavyweight-thread	(0 70) in1 out0 nosides ns)
 
 
 
