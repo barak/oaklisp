@@ -384,11 +384,11 @@ This can then be moved directly to the scheduler when the semaphore is signaled.
 futures: promises in a multitasking world
 |#
 
-(define-instance future type
+(define-instance future-obj type
   '(flag val scheduled? dependantsQ sched-policy err-policy)
   (list promise mutex))
 
-(add-method (initialize (future flag val scheduled? dependantsQ sched-policy err-policy) self oper)
+(add-method (initialize (future-obj flag val scheduled? dependantsQ sched-policy err-policy) self oper)
   (set! scheduled? (make test-and-settable))
   (set! dependantsQ (make-queue))
   (set! sched-policy 'unused)
@@ -401,7 +401,7 @@ futures: promises in a multitasking world
   self
   )
 
-(add-method (force (future flag val scheduled? dependantsQ sched-policy err-policy) self)
+(add-method (force (future-obj flag val scheduled? dependantsQ sched-policy err-policy) self)
   (acquire-mutex self) ;; this mutex prevents dependants from enqueueing badly
   (if flag
       (block (release-mutex self)
@@ -434,9 +434,9 @@ futures: promises in a multitasking world
 
 (define-syntax delay
   (lambda (form)
-    `(make future (lambda () . ,(cdr form)))))
+    `(make future-obj (lambda () . ,(cdr form)))))
 
-(define-syntax in-future
+(define-syntax future
   (lambda (form)
     (let ((foosym (genvar)))
       `(let ((,foosym (delay ,form)))
