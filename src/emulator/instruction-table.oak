@@ -31,7 +31,7 @@
     (let ((t0 (make simple-vector %argless-instructions))
 	  (t1 (make simple-vector %arged-instructions)))
 
-      (dolist (x (list-type opcode-descriptor-hash-table))
+      (dolist (x (#^list-type opcode-descriptor-hash-table))
 	(destructure* (instr opcode argfield . #t) x
 	  (cond ((= opcode 0) (set! (nth t0 argfield) instr))
 		(else (set! (nth t1 opcode) instr)))))
