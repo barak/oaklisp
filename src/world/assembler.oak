@@ -497,7 +497,9 @@
 (define-opcode full-gc			(0 64) in0 out1 ns)
 (define-opcode make-lambda		(0 65) in2 out1 notnil nosides ns)
 (define-opcode get-argline-char		(0 66) in2 out1 nosides ns)
-(define-opcode test-instruction		(0 67) in1 out1)
+(define-opcode enable-alarms		(0 67) in0 out1 ns)
+(define-opcode disable-alarms		(0 68) in0 out1 ns)
+(define-opcode reset-alarm-counter	(0 69) in0 out1 ns)
 
 
 

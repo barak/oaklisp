@@ -29,7 +29,7 @@
 #pragma IMS_linkage ("section%loop")
 #endif
 
-#define ENABLE_TIMER	0
+#define ENABLE_TIMER	1
 
 
 #ifdef FAST
@@ -196,6 +196,7 @@ loop(register_set_t *reg_set)
 
 #if ENABLE_TIMER
   unsigned timer_counter = 0;
+  unsigned timer_increment = 0;
 #endif
 
 
@@ -237,7 +238,7 @@ loop(register_set_t *reg_set)
 #endif
 
 #if ENABLE_TIMER
-#define TIMEOUT	200000
+#define TIMEOUT	2000
 #define POLL_TIMER_SIGNALS()	if (timer_counter > TIMEOUT) {goto intr_trap;}
 #else
 #define POLL_TIMER_SIGNALS()
@@ -279,13 +280,7 @@ loop(register_set_t *reg_set)
 #endif
 
 #if ENABLE_TIMER
-   /*
-     if (++timer_counter > 200000) {
-	 timer_counter = 0;
-	 printf("*Bing*");
-     }
-   */
-     timer_counter++;
+     timer_counter += timer_increment;
 #endif
 
      instr = *local_epc++;
@@ -1193,7 +1188,22 @@ loop(register_set_t *reg_set)
 	     }
 	     GOTO_TOP;
 
-	     case 67:		/* TEST-INSTRUCTION */
+	   case 67:		/* ENABLE-ALARMS */
+	     timer_increment = 1;
+	     PUSHVAL(e_nil);
+	     GOTO_TOP;
+
+	   case 68:		/* DISABLE-ALARMS */
+	     timer_increment = 0;
+	     PUSHVAL(e_nil);
+	     GOTO_TOP;
+
+	   case 69:		/* RESET-ALARM-COUNTER */
+	     timer_counter = 0;
+	     PUSHVAL(e_nil);
+	     GOTO_TOP;
+
+	     case 75:		/* TEST-INSTRUCTION */
 		 printf("This is my stupid test instruction\n");
 	       /*
 		 PUSHVAL(e_nil);

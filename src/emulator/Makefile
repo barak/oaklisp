@@ -19,6 +19,7 @@ dfiles = $(psrc:.c=.d) $(msrc:.c=.d) $(osrc:.c=.d)
 override CPPFLAGS+=-MMD
 
 CFLAGS=-O2 -g -Wall
+LDFLAGS=-lpthread
 
 # Things you might want to modify and uncomment:
 # CPPFLAGS+=-DMAX_NEW_SPACE_SIZE=16000000

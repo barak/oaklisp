@@ -10,3 +10,19 @@
   (%return))
 
 (set! (nth %argless-tag-trap-table 127) alarm)
+
+;;
+;; Define atomic functions (op-codes) for turning alarms on and off.
+;;
+(define-constant %enable-alarms
+  (add-method ((make-open-coded-operation '((enable-alarms)) 0 1)
+	       (object))
+	      (%enable-alarms)))
+(define-constant %disable-alarms
+  (add-method ((make-open-coded-operation '((disable-alarms)) 0 1)
+	       (object))
+	      (%disable-alarms)))
+(define-constant %reset-alarm-counter
+  (add-method ((make-open-coded-operation '((reset-alarm-counter)) 0 1)
+	       (object))
+	      (%reset-alarm-counter)))

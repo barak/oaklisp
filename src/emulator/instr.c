@@ -76,7 +76,10 @@ const char *ArglessInstrs[] =
   "QUOTIENTM",
   "FULL-GC",
   "MAKE-LAMBDA",
-  "TEST-INSTRUCTION",
+  "GET-ARGLINE-CHAR",
+  "ENABLE-ALARMS",
+  "DISABLE-ALARMS",
+  "RESET-ALARM-COUNTER",
 };
 
 const char *Instrs[] =
