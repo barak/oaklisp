@@ -1,0 +1,115 @@
+;; FILE		"test-bank-example.oak"
+;; IMPLEMENTS	Test code for "bank-example.oak"
+;; AUTHOR	Ken Dickey
+;; DATE		5 August 2004
+
+
+;; (require 'init-testing)
+;; (require 'bank-example)
+
+(define-constant test-name 'bank-example)
+
+(define-constant name-1   "Joe Tester")
+(define-constant SSN-1    "534-39-4834")
+(define-constant passwd-1 'joe-passwd)
+(define-constant age-1    23)
+(define-constant new-age-1 (+ 1 age-1))
+(define-constant new-passwd-1 'new-joe-passwd)
+(define-constant new-passwd-2 'changed-joe-passwd)
+(define-constant bank-passwd  'secret-bank-password)
+(define-constant initial-balance 200)
+
+(define-constant (setup-thunk)
+  (define person-1
+    (make <person> name-1 age-1 SSN-1 passwd-1))
+  (define history-1 (make  <bank-account-transaction-history> 37))
+  (define bank-account-1 (make <bank-account> bank-passwd initial-balance name-1 age-1 SSN-1 passwd-1))
+  
+ )
+
+(define-constant (teardown-thunk)
+  #f  ;; no action
+)
+
+(setup-thunk) ;; define the records
+
+(create-test-suite unit-tests test-name setup-thunk teardown-thunk)
+
+(add-equal-test test-name name-1 (name person-1)          "person name")
+(add-equal-test test-name SSN-1  (SSN  person-1 passwd-1) "person SSN")
+(add-equal-test test-name age-1  (age  person-1)          "person age")
+
+(add-equal-test test-name
+                new-age-1
+                (block
+                 (set! (age person-1) new-age-1)
+                 (age person-1))
+                "age setter")
+
+(add-equal-test test-name "bad password \"BOGUS\"" (SSN person-1 'bogus) "bad person password")
+
+(add-eq-test test-name
+             new-passwd-1
+             (block
+              (change-password person-1 passwd-1 new-passwd-1)
+              new-passwd-1)
+             "password update (always succeeds)")
+
+
+(add-equal-test test-name SSN-1 (SSN person-1 new-passwd-1) "SSN for password update")
+
+(add-eq-test test-name #t (person? person-1) "(person? <person>)")
+(add-eq-test test-name #f (person? 3)        "(person? 3)")
+
+(add-equal-test test-name '(37) (history history-1) "37")
+
+(add-equal-test test-name
+                '(37 45)
+                (block
+                 (add history-1 45)
+                 (history history-1))
+                "37 45")
+
+(add-equal-test test-name initial-balance (current-balance bank-account-1 passwd-1)    "initial balance 1")
+(add-equal-test test-name initial-balance (current-balance bank-account-1 bank-passwd) "initial balance 2")
+
+(add-equal-test test-name SSN-1 (SSN bank-account-1 passwd-1) "bank SSN")
+
+(ensure-exception-raised test-name generic-fatal-error (SSN bank-account-1 'bogus) "bogus password")
+
+(add-equal-test test-name passwd-1 (PIN bank-account-1 bank-passwd) "PIN")
+
+(add-equal-test test-name 250
+                (block
+                 (add bank-account-1 50)
+                 (current-balance bank-account-1 bank-passwd))
+                "add to balance")
+
+(add-equal-test test-name
+                225
+                (block
+                 (withdraw bank-account-1 25 (pin bank-account-1 bank-passwd))
+                 (current-balance
+                  bank-account-1
+                  (PIN bank-account-1 bank-passwd)))
+                "withdraw from balance")
+
+(add-eq-test test-name
+             'new-joe-pin
+             (block
+              ((setter PIN) bank-account-1 bank-passwd 'new-joe-pin)
+              (PIN bank-account-1 bank-passwd))
+             "new PIN")
+
+(add-equal-test test-name
+                new-passwd-2
+                (block
+                 (change-password bank-account-1
+                                  (PIN bank-account-1 bank-passwd)
+                                  new-passwd-2)
+                 (PIN bank-account-1 bank-passwd))
+                "PIN after password change")
+
+;; (run-all-tests unit-tests test-name)
+
+;;  ---  E O F  ---  ;;

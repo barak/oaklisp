@@ -1,0 +1,187 @@
+;; FILE		"bank-example.oak"
+;; IMPLEMNETS	Bank account example from YASOS article
+;; AUTHOR	Ken Dickey
+;; DATE		5 aUGUST 2004
+
+
+;; (define-predicate foo?)
+;;-> (define-instance foo? operation)
+;;   (add-method (foo? (object) self) #f)
+
+(define-local-syntax (define-predicate name)
+  `(block
+    (define-instance ,name operation)
+    (add-method (,name (object) self) #f)))
+
+;; (add-predicate-true foo? type)
+;;-> (add-method (foo? (type) self) #t)
+
+(define-local-syntax (add-predicate-true name type)
+  `(add-method (,name (,type) self) #t))
+
+;; (define-type name slots supers)
+;; -> (define-instance name TYPE slots (list super...))
+
+(define-local-syntax (define-object-type name slots . supers)
+  `(define-instance ,name type ',slots (list ,@supers)))
+
+(define-local-syntax (define-operation name)
+  `(define-instance ,name operation))
+
+(define-local-syntax (define-settable-operation name)
+  `(define-instance ,name settable-operation))
+
+;; @@DEBUG
+;; (define trace-expansion #t) 
+
+;; Test 'em out
+
+;; <PERSON>
+
+(define-predicate person?)
+
+(define-object-type <person> (name age SSN password) object)
+
+(add-predicate-true person? <person>)
+
+(add-method (initialize (<person> name age SSN password)
+                        self the-name the-age the-ssn the-password)
+            (set! name the-name)
+            (set! age  the-age)
+            (set! SSN  the-ssn)
+            (set! password the-password)
+            self)
+
+
+(define-operation name)
+(define-settable-operation age)
+(define-operation SSN)
+(define-operation bad-password)
+(define-operation change-password)
+
+(add-method (name (<person> name) self) name)
+(add-method (age  (<person> age)  self) age)
+(add-method ((setter age) (<person> age)  self new-age)
+            (set! age new-age))
+(add-method (SSN (<person> SSN password) self a-password)
+            (if (equal? password a-password)
+                SSN
+                (bad-password self a-password)))
+
+(add-method (bad-password (<person>) self bogus-password)
+            (let ( (message
+                    (format #f
+                            "bad password \"~a\""
+                            bogus-password))
+                 )
+              (format #t "~%~a" message)
+              message))
+
+(add-method (change-password (<person> password) self old-passwd new-passwd)
+            (if (equal? old-passwd password)
+                (block (set! password new-passwd) self)
+                (bad-password self old-passwd)))
+
+
+;; <BANK-ACCOUNT-TRANSACTION-HISTORY>
+;; Just a reverse list of balances (i.e. newest 1st, oldest last)
+
+(define-object-type <bank-account-transaction-history> (reverse-history) object)
+
+(add-method (initialize (<bank-account-transaction-history> reverse-history)
+                        self initial-balance)
+            (set! reverse-history (list initial-balance))
+            self)
+
+(define-instance history operation)
+(define-instance add     operation)
+(add-method (history (<bank-account-transaction-history> reverse-history) self)
+            (reverse reverse-history))
+
+(add-method (add (<bank-account-transaction-history> reverse-history) self new-balance)
+            (set! reverse-history (cons new-balance reverse-history))
+            new-balance)
+
+
+;; <BANK-ACCOUNT>
+
+(define-predicate bank-account?)
+
+(define-object-type <bank-account> (master-password p-i-n balance)
+                                 <person> <bank-account-transaction-history>)
+
+(add-predicate-true bank-account? <bank-account>)
+
+(add-method (initialize (<bank-account> master-password p-i-n balance)
+                        self master-passwd initial-balance name age SSN PIN)
+            (set! master-password master-passwd)
+            (set! p-i-n           PIN)
+            (set! balance         initial-balance)
+            (^super <bank-account-transaction-history> initialize self initial-balance)
+            (^super <person> initialize self name age SSN p-i-n)
+            self)
+
+
+(define-operation current-balance)
+;;(define-operation add      operation)  @@@ defined above
+(define-operation withdraw)
+(define-settable-operation PIN)
+
+(add-method (current-balance (<bank-account> balance  p-i-n master-password) self passwd)
+            (if (or (equal? passwd p-i-n)
+                    (equal? passwd master-password))
+                balance
+                (bad-password self passwd)))
+
+(add-method (pin (<bank-account> master-password p-i-n) self passwd)
+            (if (equal? passwd master-password)
+                p-i-n
+                (bad-password self passwd)))
+
+(add-method ((setter pin) (<bank-account> master-password p-i-n) self passwd new-pin)
+            (if (equal? passwd master-password)
+                (block
+                 (^super <person> change-password self p-i-n new-pin)
+                 (set! p-i-n new-pin)
+                 self)
+                (bad-password self passwd)))
+
+(add-method (change-password (<bank-account> master-password p-i-n)
+                             self old-passwd new-passwd)
+            (if (equal? old-passwd p-i-n)
+                ((setter pin) self master-password new-passwd)
+                (bad-password self old-passwd)))
+
+(add-method (bad-password (<bank-account>) self bogus-pssword)
+            (format #t "~%!!! CALL THE POLICE !!!")
+            (error "!!! CALL THE POLICE !!!"))
+
+(add-method (history (<bank-account> master-password p-i-n) self passwd)
+            (if (or (equal? passwd p-i-n)
+                    (equal? passwd master-password))
+                (^super <bank-account-transaction-history> self history)
+                (bad-password self passwd)))
+
+(add-method (add (<bank-account> balance) self amount)
+            ;; dumb checks elided (e.g. amount > 0)
+            (set! balance (+ balance amount))
+            (^super <bank-account-transaction-history> add self balance)
+            (format #t "~%new balance is ~a" balance)
+            self)
+
+(add-method (withdraw (<bank-account> balance p-i-n) self amount passwd)
+            (cond
+             ((not (equal? passwd p-i-n))
+              (bad-password self passwd))
+             ((> amount balance)
+              (format #t "~%Error: can't withdraw more than you have!"))
+             (else
+              (set! balance (- balance amount))
+              (^super <bank-account-transaction-history> add self balance)
+              (format #t "~%new balance is ~a" balance))))
+
+(add-method (SSN (<bank-account>) self passwd)
+            (^super <person> SSN self passwd))
+                                     
+
+;; --- E O F --- ;;
