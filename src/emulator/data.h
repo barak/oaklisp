@@ -11,8 +11,9 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include </usr/include/pthread.h>
 #include "config.h"
-
+#define THREADS
 /* Version and greeting */
 extern const char *version, *compilation_date, *compilation_time;
 
@@ -121,6 +122,26 @@ extern ref_t *gc_examine_ptr;
 
 /* Virtual Machine registers */
 
+typedef struct {
+  ref_t     *e_bp;
+  ref_t     e_current_method;
+  ref_t     e_code_segment;
+  u_int16_t *e_pc;
+  unsigned  e_nargs;
+} register_set_t;
+
+
+extern register_set_t *reg_set;
+#ifdef THREADS
+extern ref_t
+ *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type, e_env_type,
+ *e_subtype_table, e_object_type, e_segment_type, e_boot_code, e_code_segment,
+ *e_arged_tag_trap_table, *e_argless_tag_trap_table, e_current_method,
+  e_uninitialized, e_method_type, e_operation_type;
+
+extern size_t e_next_newspace_size, original_newspace_size;
+#else
+  
 extern ref_t
 * e_bp, *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type, e_env_type,
  *e_subtype_table, e_object_type, e_segment_type, e_boot_code, e_code_segment,
@@ -132,6 +153,7 @@ extern size_t e_next_newspace_size, original_newspace_size;
 extern u_int16_t *e_pc;
 
 extern unsigned e_nargs;
+#endif
 
 extern char *world_file_name;
 extern char *dump_file_name;
@@ -314,7 +336,48 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
   ALLOCATE_PROT(p, words, reason,; ,; )
 
 /* This is used to allocate some storage */
+#ifdef THREADS
+#define ALLOCATE_SS(p, words, reason)			\
+  ALLOCATE_PROT(p, words, reason,				\
+		{ value_stack.sp = local_value_sp;			\
+          context_stack.sp = local_context_sp;		\
+		  reg_set->e_pc = local_epc; },					\
+		{ local_epc = reg_set->e_pc;						\
+          local_context_sp = context_stack.sp;		\
+		  local_value_sp = value_stack.sp; })
 
+
+/* This allocates some storage, assuming that v must be protected from gc. */
+
+#define ALLOCATE1(p, words, reason, v)			\
+  ALLOCATE_PROT(p, words, reason,				\
+		{ GC_MEMORY(v);							\
+		  value_stack.sp = local_value_sp;			\
+          context_stack.sp = local_context_sp;		\
+		  reg_set->e_pc = local_epc; },					\
+		{ local_epc = reg_set->e_pc;						\
+          local_context_sp = context_stack.sp;		\
+		  local_value_sp = value_stack.sp;			\
+		  GC_RECALL(v); })
+
+
+/* The gc here is called with a register_set of NULL.
+   We probably want gc to get the register set pointers once
+   it's made sure all the threads are stopped.  This is just
+   a flaky fix for now.  IT DOES BREAK GARBAGE COLLECTION if 
+   THREADS is set to true*/
+#define ALLOCATE_PROT(p, words, reason, before, after)	\
+{							                            \
+  if (free_point + (words) >= new_space.end)            \
+    {													\
+      before;											\
+      gc(false, false, (reason), (words), reg_set);				\
+      after;											\
+    }													\
+  (p) = free_point;										\
+  free_point += (words);								\
+}
+#else
 #define ALLOCATE_SS(p, words, reason)			\
   ALLOCATE_PROT(p, words, reason,				\
 		{ value_stack.sp = local_value_sp;			\
@@ -339,19 +402,23 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 		  GC_RECALL(v); })
 
 
-
+/* The gc here is called with a register_set of NULL.
+   We probably want gc to get the register set pointers once
+   it's made sure all the threads are stopped.  This is just
+   a flaky fix for now.  IT DOES BREAK GARBAGE COLLECTION if 
+   THREADS is set to true*/
 #define ALLOCATE_PROT(p, words, reason, before, after)	\
 {							                            \
   if (free_point + (words) >= new_space.end)            \
     {													\
       before;											\
-      gc(false, false, (reason), (words));				\
+      gc(false, false, (reason), (words), NULL);				\
       after;											\
     }													\
   (p) = free_point;										\
   free_point += (words);								\
 }
-
+#endif THREADS
 
 /* These get slots out of Oaklisp objects, and may be used as lvalues. */
 
@@ -363,5 +430,29 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 
 #define CODE_SEG_FIRST_INSTR(seg) \
   ( (u_int16_t *)(REF_TO_PTR((seg)) + CODE_CODE_START_OFF) )
+
+#ifdef THREADS
+#define E_CODE_SEGMENT \
+  (  (reg_set->e_code_segment)  )
+#define E_CURRENT_METHOD \
+  (  (reg_set->e_current_method) )
+#define E_PC \
+  (  (reg_set->e_pc)  )
+#define E_BP \
+  (  (reg_set->e_bp)  )
+#define E_NARGS \
+  (  (reg_set->e_nargs)  )
+#else
+#define E_CODE_SEGMENT \
+  (  (e_code_segment)  )
+#define E_CURRENT_METHOD \
+  (  (e_current_method)  )
+#define E_PC \
+  (  (e_pc)  )
+#define E_BP \
+  (  (e_bp)  )
+#define E_NARGS \
+  (  (e_nargs)  )
+#endif
 
 #endif

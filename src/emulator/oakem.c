@@ -15,8 +15,39 @@
 #include "worldio.h"
 #include "loop.h"
 #include "xmalloc.h"
+#include <pthread.h>
 
+void *
+init_thread (void *start_function)
+{
+  init_weakpointer_tables ();
 
+  init_stacks ();
+
+  read_world (world_file_name);
+
+  reg_set = (register_set_t*)malloc (sizeof (register_set_t));
+  
+  /*What is the current method ?*/
+  reg_set->e_current_method = (ref_t)start_function;
+  e_env = REF_TO_PTR (REF_SLOT (reg_set->e_current_method, METHOD_ENV_OFF));
+  reg_set->e_code_segment = REF_SLOT (reg_set->e_current_method, METHOD_CODE_OFF);
+  reg_set->e_pc = CODE_SEG_FIRST_INSTR (reg_set->e_code_segment);
+  reg_set->e_bp = e_env;
+  reg_set->e_nargs = 0;
+
+  /* Big virtual machine interpreter loop */
+  loop(reg_set);
+
+  return 0;
+}
+
+int create_thread (ref_t start_function)
+{
+  pthread_t new_thread;
+  /*  pthread_create (&new_thread, NULL, (void *)init_thread, (void *)&start_function);*/
+  return 1;
+}
 
 int
 get_byte_gender (void)
@@ -31,12 +62,10 @@ get_byte_gender (void)
     return big_endian;
 }
 
-
-
 int
 main (int argc, char **argv)
 {
-
+ 
   byte_gender = get_byte_gender ();
 
   parse_cmd_line (argc, argv);
@@ -51,7 +80,18 @@ main (int argc, char **argv)
   alloc_space (&new_space, new_space.size);
   free_point = new_space.start;
 
+#ifdef THREADS
+  reg_set = (register_set_t*)malloc (sizeof (register_set_t));
+  
+  reg_set->e_current_method = e_boot_code;
+  e_env = REF_TO_PTR (REF_SLOT (reg_set->e_current_method, METHOD_ENV_OFF));
+  reg_set->e_code_segment = REF_SLOT (reg_set->e_current_method, METHOD_CODE_OFF);
+  reg_set->e_pc = CODE_SEG_FIRST_INSTR (reg_set->e_code_segment);
+  reg_set->e_bp = e_env;
+  reg_set->e_nargs = 0;
+#else
 
+  reg_set = NULL;
   /* Set the registers to the boot code */
 
   e_current_method = e_boot_code;
@@ -64,9 +104,20 @@ main (int argc, char **argv)
 
   /* Tell the boot function the truth */
   e_nargs = 0;
+#endif
 
   /* Big virtual machine interpreter loop */
-  loop();
+  loop(reg_set);
 
   return 0;
 }
+
+
+
+
+
+
+
+
+
+

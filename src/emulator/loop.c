@@ -71,7 +71,7 @@ bool gc_before_dump = true;	/* do a GC before dumping the world */
 #define NEW_STORAGE e_uninitialized
 
 static void
-maybe_dump_world (int dumpstackp)
+maybe_dump_world (int dumpstackp, register_set_t *reg_set)
 {
   if (dumpstackp > 2)
     {				/* 0,1,2 are normal exits. */
@@ -85,7 +85,7 @@ maybe_dump_world (int dumpstackp)
     {
       if (gc_before_dump && dumpstackp == 0)
 	{
-	  gc (true, true, "impending world dump", 0);
+	  gc (true, true, "impending world dump", 0, reg_set);
 	  dump_world (true);
 	}
       else
@@ -131,6 +131,7 @@ find_method_type_pair (ref_t op,
   ref_t thelist;
   ref_t *loclist;
   ref_t *llp = &later_lists[-1];
+ 
 
   while (1)			/* forever */
     {
@@ -177,7 +178,7 @@ find_method_type_pair (ref_t op,
 
 
 void
-loop(void)
+loop(register_set_t *reg_set)
 {
   /* This is used for instructions to communicate with 
      the trap code, when a fault is encountered. */
@@ -191,7 +192,7 @@ loop(void)
   ref_t *local_context_sp = context_stack.sp;
   ref_t *const value_stack_end
   = &value_stack.bp[value_stack_size];
-  u_int16_t *local_epc = e_pc;
+  u_int16_t *local_epc = E_PC;
 
 #if ENABLE_TIMER
   unsigned timer_counter = 0;
@@ -672,13 +673,13 @@ loop(void)
 	   case 22:		/* STORE-BP-I */
 	     POPVAL(x);
 	     CHECKTAG1 (x, INT_TAG, 2);
-	     *(e_bp + REF_TO_INT (x)) = PEEKVAL();
+	     *(E_BP + REF_TO_INT (x)) = PEEKVAL();
 	     GOTO_TOP;
 
 	   case 23:		/* LOAD-BP-I */
 	     x = PEEKVAL();
 	     CHECKTAG0 (x, INT_TAG, 1);
-	     PEEKVAL() = *(e_bp + REF_TO_INT (x));
+	     PEEKVAL() = *(E_BP + REF_TO_INT (x));
 	     GOTO_TOP;
 
 	   case 24:		/* RETURN */
@@ -854,7 +855,7 @@ loop(void)
 	   case 38:		/* LOCATE-BP-I */
 	     x = PEEKVAL();
 	     CHECKTAG0 (x, INT_TAG, 1);
-	     PEEKVAL() = PTR_TO_LOC (e_bp + REF_TO_INT (x));
+	     PEEKVAL() = PTR_TO_LOC (E_BP + REF_TO_INT (x));
 	     GOTO_TOP;
 
 	   case 39:		/* LOAD-IMM-CON ; INLINE-REF */
@@ -950,11 +951,11 @@ loop(void)
 	   case 51:		/* GC */
 	     value_stack.sp = local_value_sp;
 	     context_stack.sp = local_context_sp;
-	     e_pc = local_epc;
-	     gc (false, false, "explicit call", 0);
+	     E_PC = local_epc;
+	     gc (false, false, "explicit call", 0, reg_set);
 	     local_value_sp = value_stack.sp;
 	     local_context_sp = context_stack.sp;
-	     local_epc = e_pc;
+	     local_epc = E_PC;
 	     PUSHVAL(e_nil);
 	     GOTO_TOP;
 
@@ -1148,13 +1149,13 @@ loop(void)
 	   case 64:		/* FULL-GC */
 	     value_stack.sp = local_value_sp;
 	     context_stack.sp = local_context_sp;
-	     e_pc = local_epc;
+	     E_PC = local_epc;
 
-	     gc (false, true, "explicit call", 0);
+	     gc (false, true, "explicit call", 0, reg_set);
 
 	     local_value_sp = value_stack.sp;
 	     local_context_sp = context_stack.sp;
-	     local_epc = e_pc;
+	     local_epc = E_PC;
 	     PUSHVAL(e_nil);
 	     GOTO_TOP;
 
@@ -1201,7 +1202,7 @@ loop(void)
 		 instr = (22 << 2);
 		 op_field = 22;
 		 arg_field = 0;
-		 e_nargs--;
+		 E_NARGS = E_NARGS - 1;
 		 goto funcall_tail;
 
 #ifndef FAST
@@ -1210,8 +1211,8 @@ loop(void)
 		     "Illegal parameterless instruction %d.\n", arg_field);
 	     value_stack.sp = local_value_sp;
 	     context_stack.sp = local_context_sp;
-	     e_pc = local_epc;
-	     maybe_dump_world (333);
+	     E_PC = local_epc;
+	     maybe_dump_world (333, reg_set);
 	     exit (EXIT_FAILURE);
 #endif
 	   }
@@ -1235,8 +1236,8 @@ loop(void)
 
 	       value_stack.sp = local_value_sp;
 	       context_stack.sp = local_context_sp;
-	       e_pc = local_epc;
-	       maybe_dump_world (halt_code);
+	       E_PC = local_epc;
+	       maybe_dump_world (halt_code, reg_set);
 	       exit (halt_code);
 	     }
 
@@ -1346,11 +1347,11 @@ loop(void)
 
 
 	   case (12):		/* LOAD-BP n */
-	     PUSHVAL(*(e_bp + arg_field));
+	     PUSHVAL(*(E_BP + arg_field));
 	     GOTO_TOP;
 
 	   case (13):		/* STORE-BP n */
-	     *(e_bp + arg_field) = PEEKVAL();
+	     *(E_BP + arg_field) = PEEKVAL();
 	     GOTO_TOP;
 
 	   case (14):		/* LOAD-ENV n */
@@ -1374,7 +1375,7 @@ loop(void)
 
 
 	   case (17):		/* MAKE-BP-LOC n */
-	     PUSHVAL(PTR_TO_LOC (e_bp + arg_field));
+	     PUSHVAL(PTR_TO_LOC (E_BP + arg_field));
 	     GOTO_TOP;
 
 	   case (18):		/* MAKE-ENV-LOC n */
@@ -1408,7 +1409,7 @@ loop(void)
 		 GOTO_TOP;
 	       case 6:
 		 CHECKTAG1 (x, LOC_TAG, 1);
-		 e_bp = LOC_TO_PTR (x);
+		 E_BP = LOC_TO_PTR (x);
 		 GOTO_TOP;
 	       case 7:
 		 CHECKTAG1 (x, PTR_TAG, 1);
@@ -1416,7 +1417,7 @@ loop(void)
 		 GOTO_TOP;
 	       case 8:
 		 CHECKTAG1 (x, INT_TAG, 1);
-		 e_nargs = REF_TO_INT (x);
+                 E_NARGS = REF_TO_INT (x);
 		 GOTO_TOP;
 	       case 9:
 		 e_env_type = x;
@@ -1494,13 +1495,13 @@ loop(void)
 		 PUSHVAL(PTR_TO_REF (e_subtype_table - 2));
 		 GOTO_TOP;
 	       case 6:
-		 PUSHVAL(PTR_TO_LOC (e_bp))
+		 PUSHVAL(PTR_TO_LOC (E_BP));
 		   GOTO_TOP;
 	       case 7:
 		 PUSHVAL(PTR_TO_REF (e_env));
 		 GOTO_TOP;
 	       case 8:
-		 PUSHVAL(INT_TO_REF ((long) e_nargs));
+		 PUSHVAL(INT_TO_REF ((long) E_NARGS));
 		 GOTO_TOP;
 	       case 9:
 		 PUSHVAL(e_env_type);
@@ -1577,23 +1578,23 @@ loop(void)
 	     /***********/
 
 	     x = PEEKVAL();
-	     CHECKTAG0 (x, PTR_TAG, e_nargs + 1);
+	     CHECKTAG0 (x, PTR_TAG, E_NARGS + 1);
 	     CHECKVAL_POP (1);
 	     y = PEEKVAL_UP (1);
 
-	     e_current_method = REF_SLOT (x, OPERATION_LAMBDA_OFF);
+	     E_CURRENT_METHOD = REF_SLOT (x, OPERATION_LAMBDA_OFF);
 
-	     if (e_current_method == e_nil)
+	     if (E_CURRENT_METHOD == e_nil)
 	       {		/* SEARCH */
-		 ref_t y_type = (e_nargs == 0) ? e_object_type : get_type (y);
+		 ref_t y_type = (E_NARGS == 0) ? e_object_type : get_type (y);
 
 #ifndef NO_METH_CACHE
 		 /* Check for cache hit: */
 		 if (y_type == REF_SLOT (x, OPERATION_CACHE_TYPE_OFF))
 		   {
 		     MAYBE_PUT (trace_mcache, "H");
-		     e_current_method = REF_SLOT (x, OPERATION_CACHE_METH_OFF);
-		     e_bp =
+		     E_CURRENT_METHOD = REF_SLOT (x, OPERATION_CACHE_METH_OFF);
+		     E_BP =
 		       REF_TO_PTR (y) +
 		       REF_TO_INT (REF_SLOT (x, OPERATION_CACHE_TYPE_OFF_OFF));
 		   }
@@ -1605,7 +1606,7 @@ loop(void)
 
 		     /******************************************************
 									    find_method_type_pair(x, y_type,
-									    &e_current_method, &meth_type);
+									    &E_CURRENT_METHOD, &meth_type);
 		     */
 
 		     {
@@ -1633,7 +1634,7 @@ loop(void)
 				       *loclist = alist;
 				       cdr (alist) = thelist;
 				     }
-				   e_current_method = cdr (car (alist));
+				   E_CURRENT_METHOD = cdr (car (alist));
 				   meth_type = obj_type;
 				   goto found_it;
 				 }
@@ -1651,7 +1652,7 @@ loop(void)
 				 {
 				   if (trace_traps)
 				     (void) printf ("No handler for operation!\n");
-				   TRAP0(e_nargs + 1);
+				   TRAP0(E_NARGS + 1);
 				 }
 			       llp -= 1;
 			     }
@@ -1668,11 +1669,11 @@ loop(void)
 		     /******************************************************/
 
 		     /*
-		       if (e_current_method == e_nil)
+		       if (E_CURRENT_METHOD == e_nil)
 		       {
 		       if (trace_traps)
 		       (void)printf("No handler for operation!\n");
-		       TRAP1(e_nargs+1);
+		       TRAP1(E_NARGS+1);
 		       }
 		     */
 
@@ -1692,40 +1693,40 @@ loop(void)
 			   alist = cdr (alist);
 			 }
 		     }
-		     e_bp = REF_TO_PTR (y) + REF_TO_INT (offset);
+		     E_BP = REF_TO_PTR (y) + REF_TO_INT (offset);
 
 #ifndef NO_METH_CACHE
 		     MAYBE_PUT (trace_mcache, "M");
 		     /* Cache the results of this search. */
 		     REF_SLOT (x, OPERATION_CACHE_TYPE_OFF) = y_type;
-		     REF_SLOT (x, OPERATION_CACHE_METH_OFF) = e_current_method;
+		     REF_SLOT (x, OPERATION_CACHE_METH_OFF) = E_CURRENT_METHOD;
 		     REF_SLOT (x, OPERATION_CACHE_TYPE_OFF_OFF) = offset;
 #endif
 		   }
 	       }
-	     else if (!TAG_IS (e_current_method, PTR_TAG)
-		      || REF_SLOT (e_current_method, 0) != e_method_type)
+	     else if (!TAG_IS (E_CURRENT_METHOD, PTR_TAG)
+		      || REF_SLOT (E_CURRENT_METHOD, 0) != e_method_type)
 	       {
 		 /* TAG TRAP */
 		 if (trace_traps)
 		   printf ("Bogus or never defined operation.\n");
-		 TRAP0(e_nargs + 1);
+		 TRAP0(E_NARGS + 1);
 	       }
 	     /* else it's a LAMBDA. */
 
-	     x = e_current_method;
+	     x = E_CURRENT_METHOD;
 
 	     e_env = REF_TO_PTR (REF_SLOT (x, METHOD_ENV_OFF));
-	     local_epc = CODE_SEG_FIRST_INSTR (e_code_segment =
+	     local_epc = CODE_SEG_FIRST_INSTR (E_CODE_SEGMENT =
 					       REF_SLOT (x, METHOD_CODE_OFF));
 	     GOTO_TOP;
 
 	   case (23):		/* STORE-NARGS n */
-	     e_nargs = arg_field;
+	     E_NARGS = arg_field;
 	     GOTO_TOP;
 
 	   case (24):		/* CHECK-NARGS n */
-	     if (e_nargs == arg_field)
+	     if (E_NARGS == arg_field)
 	       {
 		 POPVALS (1);
 		 GOTO_TOP;
@@ -1734,12 +1735,12 @@ loop(void)
 	       {
 		 if (trace_traps)
 		   printf ("\n%d args passed; %d expected.\n",
-			   e_nargs, arg_field);
-		 TRAP0(e_nargs + 1);
+			   E_NARGS, arg_field);
+		 TRAP0(E_NARGS + 1);
 	       }
 
 	   case (25):		/* CHECK-NARGS-GTE n */
-	     if (e_nargs >= arg_field)
+	     if (E_NARGS >= arg_field)
 	       {
 		 POPVALS (1);
 		 GOTO_TOP;
@@ -1747,8 +1748,8 @@ loop(void)
 	     else
 	       {
 		 if (trace_traps)
-		   printf ("\n%d args passed; %d or more expected.\n", e_nargs, arg_field);
-		 TRAP0(e_nargs + 1);
+		   printf ("\n%d args passed; %d or more expected.\n", E_NARGS, arg_field);
+		 TRAP0(E_NARGS + 1);
 	       }
 
 	   case (26):		/* STORE-SLOT n */
@@ -1918,8 +1919,8 @@ loop(void)
 			 arg_field);
 		 value_stack.sp = local_value_sp;
 		 context_stack.sp = local_context_sp;
-		 e_pc = local_epc;
-		 maybe_dump_world (333);
+		 E_PC = local_epc;
+		 maybe_dump_world (333, reg_set);
 		 exit (EXIT_FAILURE);
 		 GOTO_TOP;
 	       }
@@ -1968,10 +1969,10 @@ loop(void)
 	       ref_t meth_type;
 
 	       POPVAL(the_type);
-	       CHECKTAG1 (the_type, PTR_TAG, e_nargs + 2);
+	       CHECKTAG1 (the_type, PTR_TAG, E_NARGS + 2);
 
 	       x = PEEKVAL();	/* The operation. */
-	       CHECKTAG1 (x, PTR_TAG, e_nargs + 2);
+	       CHECKTAG1 (x, PTR_TAG, E_NARGS + 2);
 
 	       CHECKVAL_POP (1);
 
@@ -1979,17 +1980,17 @@ loop(void)
 
 	       y_type = get_type (y);
 
-	       e_current_method = e_nil;
+	       E_CURRENT_METHOD = e_nil;
 
 	       find_method_type_pair (x, the_type,
-				      &e_current_method, &meth_type);
+				      &E_CURRENT_METHOD, &meth_type);
 
-	       if (e_current_method == e_nil)
+	       if (E_CURRENT_METHOD == e_nil)
 		 {
 		   if (trace_traps)
 		     printf ("No handler for ^super operation.\n");
 		   PUSHVAL(the_type);
-		   TRAP0(e_nargs + 2);
+		   TRAP0(E_NARGS + 2);
 		 }
 	       /* This could be dispensed with if meth_type has no
 		  ivars and isn't variable-length-mixin. */
@@ -2006,14 +2007,14 @@ loop(void)
 		       }
 		     alist = cdr (alist);
 		   }
-		 e_bp = REF_TO_PTR (y) + REF_TO_INT (offset);
+		 E_BP = REF_TO_PTR (y) + REF_TO_INT (offset);
 	       }
 	     }
 
-	     x = e_current_method;
+	     x = E_CURRENT_METHOD;
 
 	     e_env = REF_TO_PTR (REF_SLOT (x, METHOD_ENV_OFF));
-	     local_epc = CODE_SEG_FIRST_INSTR (e_code_segment =
+	     local_epc = CODE_SEG_FIRST_INSTR (E_CODE_SEGMENT =
 					       REF_SLOT (x, METHOD_CODE_OFF));
 	     GOTO_TOP;
 
@@ -2023,8 +2024,8 @@ loop(void)
 		     "Illegal parametric instruction % d \n", op_field);
 	     value_stack.sp = local_value_sp;
 	     context_stack.sp = local_context_sp;
-	     e_pc = local_epc;
-	     maybe_dump_world (333);
+	     E_PC = local_epc;
+	     maybe_dump_world (333, reg_set);
 	     exit (EXIT_FAILURE);
 #endif
 	   }
@@ -2077,7 +2078,7 @@ intr_trap:
   local_epc--;
 
   /* Pass the trap code the current NARGS. */
-  x = INT_TO_REF (e_nargs);
+  x = INT_TO_REF (E_NARGS);
   trap_nargs = 1;
 
 #endif
@@ -2124,11 +2125,11 @@ arg0_tt:
     {
       /* argless instruction. */
       PUSHVAL_NOCHECK (*(e_argless_tag_trap_table + arg_field));
-      e_nargs = trap_nargs;
+      E_NARGS = trap_nargs;
       /* Set the instruction dispatch  in case the FUNCALL fails. */
       instr = (22 << 2);
       op_field = 22;
-      arg_field = e_nargs;
+      arg_field = E_NARGS;
       goto funcall_tail;
     }
   else
@@ -2137,11 +2138,11 @@ arg0_tt:
 
       PUSHVAL_NOCHECK (INT_TO_REF (arg_field));
       PUSHVAL_NOCHECK (*(e_arged_tag_trap_table + op_field));
-      e_nargs = trap_nargs + 1;
+      E_NARGS = trap_nargs + 1;
       /* Set the instruction dispatch  in case the FUNCALL fails. */
       instr = (22 << 2);
       op_field = 22;
-      arg_field = e_nargs;
+      arg_field = E_NARGS;
       goto funcall_tail;
     }
 }

@@ -15,6 +15,27 @@ extern void init_stacks (void);
 
 extern void stack_flush (stack_t * stack_p, int amount_to_leave);
 
+#ifdef THREADS
+#define VALUE_FLUSH(amount_to_leave)\
+{	value_stack.sp = local_value_sp;\
+	context_stack.sp = local_context_sp;\
+        reg_set->e_pc = local_epc;\
+	stack_flush(&value_stack, (amount_to_leave));\
+	local_value_sp = value_stack.sp;\
+	local_context_sp = context_stack.sp;\
+	local_epc = reg_set->e_pc;\
+}
+
+#define CONTEXT_FLUSH(amount_to_leave)\
+{	value_stack.sp = local_value_sp;\
+	context_stack.sp = local_context_sp;\
+	reg_set->e_pc = local_epc;\
+	stack_flush(&context_stack, (amount_to_leave));\
+    local_value_sp = value_stack.sp;\
+	local_context_sp = context_stack.sp;\
+	local_epc = reg_set->e_pc;\
+}
+#else
 #define VALUE_FLUSH(amount_to_leave)\
 {	value_stack.sp = local_value_sp;\
 	context_stack.sp = local_context_sp;\
@@ -30,11 +51,11 @@ extern void stack_flush (stack_t * stack_p, int amount_to_leave);
 	context_stack.sp = local_context_sp;\
 	e_pc = local_epc;\
 	stack_flush(&context_stack, (amount_to_leave));\
-    local_value_sp = value_stack.sp;\
+        local_value_sp = value_stack.sp;\
 	local_context_sp = context_stack.sp;\
 	local_epc = e_pc;\
 }
-
+#endif THREADS
 extern void stack_unflush (stack_t * stack_p, int n);
 
 #define VALUE_UNFLUSH(n) \
@@ -146,12 +167,37 @@ extern void dump_stack (stack_t * stack_p);
 	local_context_sp -= (n);				\
 }
 
+#ifdef THREADS
 #define PUSH_CONTEXT(off_set)					\
 {								\
 	CHECKCXT_PUSH(CONTEXT_FRAME_SIZE);			\
 	local_context_sp[1] = INT_TO_REF((unsigned long)local_epc- \
-	(unsigned long)e_code_segment +((off_set)<<1));		\
-	local_context_sp[2] = e_current_method;			\
+	(unsigned long)E_CODE_SEGMENT +((off_set)<<1));		\
+	local_context_sp[2] = E_CURRENT_METHOD; 		\
+	local_context_sp[3] = PTR_TO_LOC(reg_set->e_bp);			\
+	local_context_sp += 3;					\
+}
+
+#define POP_CONTEXT()						\
+{								\
+	CHECKCXT_POP(CONTEXT_FRAME_SIZE);			\
+	reg_set->e_bp = LOC_TO_PTR(local_context_sp[0]);			\
+	E_CURRENT_METHOD = local_context_sp[-1];       		\
+	e_env = REF_TO_PTR(E_CURRENT_METHOD);			\
+	E_CODE_SEGMENT = SLOT(e_env,METHOD_CODE_OFF);		\
+	e_env = REF_TO_PTR(SLOT(e_env,METHOD_ENV_OFF));		\
+	local_epc = (u_int16_t *)			        \
+				((unsigned long)E_CODE_SEGMENT	\
+				+REF_TO_INT(local_context_sp[-2])); \
+	local_context_sp -= 3;					\
+}
+#else
+#define PUSH_CONTEXT(off_set)					\
+{								\
+	CHECKCXT_PUSH(CONTEXT_FRAME_SIZE);			\
+	local_context_sp[1] = INT_TO_REF((unsigned long)local_epc- \
+	(unsigned long)E_CODE_SEGMENT +((off_set)<<1));		\
+	local_context_sp[2] = E_CURRENT_METHOD;			\
 	local_context_sp[3] = PTR_TO_LOC(e_bp);			\
 	local_context_sp += 3;					\
 }
@@ -160,15 +206,16 @@ extern void dump_stack (stack_t * stack_p);
 {								\
 	CHECKCXT_POP(CONTEXT_FRAME_SIZE);			\
 	e_bp = LOC_TO_PTR(local_context_sp[0]);			\
-	e_current_method = local_context_sp[-1];       		\
-	e_env = REF_TO_PTR(e_current_method);			\
-	e_code_segment = SLOT(e_env,METHOD_CODE_OFF);		\
+	E_CURRENT_METHOD = local_context_sp[-1];       		\
+	e_env = REF_TO_PTR(E_CURRENT_METHOD);			\
+	E_CODE_SEGMENT = SLOT(e_env,METHOD_CODE_OFF);		\
 	e_env = REF_TO_PTR(SLOT(e_env,METHOD_ENV_OFF));		\
 	local_epc = (u_int16_t *)			        \
-				((unsigned long)e_code_segment	\
+				((unsigned long)E_CODE_SEGMENT	\
 				+REF_TO_INT(local_context_sp[-2])); \
 	local_context_sp -= 3;					\
 }
+#endif
 
 #define BASH_VAL_HEIGHT(h)					\
 {	int to_pop = VALUE_STACK_HEIGHT()-(h);			\

@@ -7,7 +7,7 @@
 
 #ifndef _LOOP_H_INCLUDED
 #define _LOOP_H_INCLUDED
-
-extern void loop(void);
+#include "data.h"
+extern void loop(register_set_t *reg_set);
 
 #endif

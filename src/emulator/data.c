@@ -9,7 +9,6 @@
 #include "config.h"
 #include "data.h"
 
-
 /* Version and greeting */
 const char *version = "1.00", *compilation_date = __DATE__, *compilation_time = __TIME__;
 
@@ -48,6 +47,17 @@ const int wp_hashtable_size = 3017;
 
 /* Virtual Machine registers */
 
+register_set_t *reg_set;
+#ifdef THREADS
+ref_t *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type,
+  e_env_type, *e_subtype_table, e_object_type, e_segment_type, e_boot_code,
+  *e_arged_tag_trap_table, *e_argless_tag_trap_table,
+  e_uninitialized, e_method_type, e_operation_type;
+
+size_t e_next_newspace_size;
+size_t original_newspace_size = 128 * 1024;
+
+#else
 ref_t *e_bp, *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type,
   e_env_type, *e_subtype_table, e_object_type, e_segment_type, e_boot_code,
   e_code_segment, *e_arged_tag_trap_table, *e_argless_tag_trap_table,
@@ -57,8 +67,8 @@ size_t e_next_newspace_size;
 size_t original_newspace_size = 128 * 1024;
 
 u_int16_t *e_pc;
-
 unsigned e_nargs = 0;
+#endif
 
 #ifndef DEFAULT_WORLD
 #define DEFAULT_WORLD "/home/bap/usr/oaklisp/src/lib/oakworld.bin"
@@ -70,3 +80,5 @@ int dump_base = 2;		/* 2=binary, other=ascii */
 bool dump_flag = false;
 
 int trace_gc = 0;
+
+
