@@ -6,13 +6,14 @@ Standards-Version: 3.5.7
 Build-depends: oaklisp, debhelper, tetex-extra
 
 Package: oaklisp
-Architecture: i386
+Architecture: !alpha, !ia64, !sparc64
 Depends: ${shlibs:Depends}
 Description: An object-oriented dialect of Scheme
  Oaklisp is a dialect of Scheme that combines lexical scoping with
  first-class types.  It uses a byte-coded implementation, but is
  reasonably fast anyway.  Complete with bignums, formatted output,
- transparent delays, RnRS compatibility package, all the luxuries.
+ transparent delays, RnRS compatibility package; all the luxuries
+ except floating point and foreign function calls.
 
 Package: oaklisp-doc
 Architecture: all
