@@ -3,12 +3,20 @@ Section: interpreters
 Priority: optional
 Maintainer: Barak Pearlmutter <bap@cs.unm.edu>
 Standards-Version: 3.0.1
+Build-depends: oaklisp
 
 Package: oaklisp
-Architecture: any
+Architecture: i386
 Depends: ${shlibs:Depends}
-Description: An object-oriented dialect of Scheme.
- Oaklisp is a dialect of Scheme that combines full lexical scoping
- with first-class types.  It uses a byte-coded implementation, but is
+Description: An object-oriented dialect of Scheme
+ Oaklisp is a dialect of Scheme that combines lexical scoping with
+ first-class types.  It uses a byte-coded implementation, but is
  reasonably fast anyway.  Complete with bignums, formatted output,
  transparent delays, RnRS compatibility package, all the luxuries.
+
+Package: oaklisp-doc
+Architecture: all
+Suggests: oaklisp, postscript-viewer
+Description: Documentation for the Oaklisp dialect of Scheme
+ Documentation for the Oaklisp dialect of Scheme, which combines
+ lexical scoping with first-class types.

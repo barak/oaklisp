@@ -1,6 +1,4 @@
 #!/usr/bin/make -f
-# Sample debian/rules that uses debhelper.
-# GNU copyright 1997 to 1999 by Joey Hess.
 
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
@@ -12,17 +10,16 @@ build: build-stamp
 build-stamp:
 	dh_testdir
 
-	# Add here commands to compile the package.
+#	# Add here commands to compile the package.
 	$(MAKE) CFLAGS="-O2 -g -Wall" CPPFLAGS=-DFAST DESTDIR=`pwd`/debian/tmp prefix=/usr
 
 	touch build-stamp
 
 clean:
 	dh_testdir
-	dh_testroot
 	rm -f build-stamp
 
-	# Add here commands to clean up after the build process.
+#	# Add here commands to clean up after the build process.
 	-$(MAKE) clean
 
 	dh_clean
@@ -32,28 +29,17 @@ install: build
 	dh_testroot
 	dh_clean -k
 	dh_installdirs
-
-	# Add here commands to install the package into debian/tmp.
+#	# Add here commands to install the package into debian/tmp.
 	$(MAKE) install DESTDIR=`pwd`/debian/tmp prefix=/usr
-
+	dh_movefiles
 
 # Build architecture-independent files here.
+binary-indep: DH_OPTIONS=-i
 binary-indep: build install
-# We have nothing to do by default.
-
-# Build architecture-dependent files here.
-binary-arch: build install
-#	dh_testversion
 	dh_testdir
 	dh_testroot
-#	dh_installdebconf	
 	dh_installdocs
 	dh_installexamples
-	dh_installmenu
-#	dh_installemacsen
-#	dh_installpam
-#	dh_installinit
-	dh_installcron
 	dh_installmanpages
 	dh_installinfo
 #	dh_undocumented
@@ -62,11 +48,25 @@ binary-arch: build install
 	dh_strip
 	dh_compress
 	dh_fixperms
-	# You may want to make some executables suid here.
-	dh_suidregister
-#	dh_makeshlibs
+	dh_makeshlibs
 	dh_installdeb
-#	dh_perl
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+# Build architecture-dependent files here.
+binary-indep: DH_OPTIONS=-a
+binary-arch: build install
+	dh_testdir
+	dh_testroot
+	dh_installmenu
+	dh_link
+	dh_strip
+	dh_compress
+	dh_fixperms
+	dh_makeshlibs
+	dh_installdeb
 	dh_shlibdeps
 	dh_gencontrol
 	dh_md5sums
