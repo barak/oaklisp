@@ -1,0 +1,6 @@
+
+
+(define-constant %test-instruction
+  (add-method ((make-open-coded-operation '((test-instruction)) 1 1)
+	       (object) target)
+	      (%test-instruction target)))

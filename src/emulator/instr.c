@@ -76,6 +76,7 @@ const char *ArglessInstrs[] =
   "QUOTIENTM",
   "FULL-GC",
   "MAKE-LAMBDA",
+  "TEST-INSTRUCTION",
 };
 
 const char *Instrs[] =

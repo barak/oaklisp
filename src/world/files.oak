@@ -53,6 +53,7 @@
     undefined da
     subprimitive da
     gc da
+    multi-em da
     tag-trap da
     code-vector da
     hash-table da

@@ -1192,6 +1192,18 @@ loop(void)
 	     }
 	     GOTO_TOP;
 
+	     case 67:		/* TEST-INSTRUCTION */
+		 printf("This is my stupid test instruction\n");
+	       /*
+		 PUSHVAL(e_nil);
+		 GOTO_TOP;
+	       */
+		 instr = (22 << 2);
+		 op_field = 22;
+		 arg_field = 0;
+		 e_nargs--;
+		 goto funcall_tail;
+
 #ifndef FAST
 	   default:
 	     printf ("\nError (vm interpreter): "
