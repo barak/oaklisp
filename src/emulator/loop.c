@@ -285,7 +285,7 @@ loop()
   unsigned timer_counter = 0;
   unsigned timer_increment = 0;
 #endif
- 
+
 #ifdef THREADS
   my_index_p = pthread_getspecific (index_key);
   my_index = *(my_index_p);
@@ -301,7 +301,8 @@ loop()
 
   /* This fixes a bug in which the initial CHECK-NARGS 
      in the boot code tries to pop the operation and fails. */
-  PUSHVAL_IMM(INT_TO_REF(4321));
+  if (value_stack.sp == value_stack.bp)
+      PUSHVAL_IMM(INT_TO_REF(4321));
 
   /* These TRAPx(n) macros jump to the trap code, notifying it that x
      arguments have been popped off the stack and need to be put back
@@ -1235,8 +1236,7 @@ top_of_loop:
 	     GOTO_TOP;
 
 	  case 70:		/* HEAVYWEIGHT-THREAD */
-	      printf("Creating thread...\n");
-	      create_thread(REF_SLOT(PEEKVAL(), OPERATION_LAMBDA_OFF));
+	      create_thread(PEEKVAL());
 	      PEEKVAL() = e_nil;
 	      GOTO_TOP;
 
@@ -1477,13 +1477,7 @@ top_of_loop:
 		  GOTO_TOP;
 		case 14:
 		  CHECKTAG1(x, LOC_TAG, 1);
-#ifdef THREADS
-                  pthread_mutex_lock (&alloc_lock);
-#endif
 		  free_point = LOC_TO_PTR(x);
-#ifdef THREADS
-                  pthread_mutex_unlock (&alloc_lock);
-#endif
 		  GOTO_TOP;
 		case 15:
 		  CHECKTAG1(x, LOC_TAG, 1);
@@ -1627,6 +1621,7 @@ top_of_loop:
 	      /***********/
 
 	      x = PEEKVAL();
+	      
 	      CHECKTAG0(x, PTR_TAG, e_nargs + 1);
 	      CHECKVAL_POP(1);
 	      y = PEEKVAL_UP(1);

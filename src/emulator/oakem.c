@@ -88,7 +88,6 @@ main(int argc, char **argv)
   e_pc = CODE_SEG_FIRST_INSTR (e_code_segment);
   e_bp = e_env;
   e_nargs = 0;
-  create_thread (NULL);
 
 #else
   /* Set the registers to the boot code */
