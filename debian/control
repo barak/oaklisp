@@ -2,7 +2,7 @@ Source: oaklisp
 Section: interpreters
 Priority: optional
 Maintainer: Barak Pearlmutter <bap@debian.org>
-Standards-Version: 3.5.7
+Standards-Version: 3.5.10
 Build-depends: oaklisp, debhelper, tetex-extra
 
 Package: oaklisp
@@ -19,5 +19,4 @@ Package: oaklisp-doc
 Architecture: all
 Suggests: oaklisp, postscript-viewer
 Description: Documentation for the Oaklisp dialect of Scheme
- Documentation for the Oaklisp dialect of Scheme, which combines
- lexical scoping with first-class types.
+ Documentation for the Oaklisp object-oriented dialect of Scheme.
