@@ -4,7 +4,7 @@ This document is a description of one particular implementation of
 Oaklisp, and therefore contains information that is subject to change
 and may not be significant to users in any case.  For a description of
 the language that does not contain a lot of arbitrary distinctions,
-refer to {\em The Oaklisp Language Manual}.
+refer to \emph{The Oaklisp Language Manual}.
 
 \section{Special Forms}
 
@@ -23,7 +23,7 @@ this is compiled using jumps. Otherwise, it is rewritten using
 \df{let} and \df{set\protect\bang}.}
 
 \sform{native-catch}{variable \dt body}
-\doc{Evaluates {\em body} within the lexical scope of {\em variable},
+\doc{Evaluates \emph{body} within the lexical scope of \emph{variable},
 which is bound to a catch tag that is valid within the dynamic scope
 of this form.  This is actually macro expanded to something pretty
 wierd.}
@@ -33,7 +33,7 @@ arglist\rpar form}
 \doc{Yields the specified method object.}
 
 \sform{\%make-locative}{variable}
-\doc{Returns a locative pointing to {\em variable}.}
+\doc{Returns a locative pointing to \emph{variable}.}
 
 \sform{\%block}{\dt forms}
 \doc{Making this a primitive special form simplifies the compiler.}
@@ -47,7 +47,7 @@ forms to be handled and eliminating the need for the compiler to check
 whether special forms it encounters are syntactically correct.
 
 \mc{quote}{x}
-\doc{\macdef{}{(\%quote {\em x})}}
+\doc{\macdef{}{(\%quote \emph{x})}}
 
 \mc{add-method}
 {\lpar operation \lpar type \dt ivar-list\rpar \dt arg-list\rpar \dt body}
@@ -55,48 +55,48 @@ whether special forms it encounters are syntactically correct.
 putting a block around the body if necessary.}
 
 \mc{lambda}{arglist \dt body}
-\doc{\macdef{}{(add-method ((make operation) \dt {\em arglist}) \dt
-{\em body})} Functions are made by hanging methods off of \df{object}.
+\doc{\macdef{}{(add-method ((make operation) \dt \emph{arglist}) \dt
+\emph{body})} Functions are made by hanging methods off of \df{object}.
 There is an optimization in the compiler that expands car-position
 lambdas inline.}
 
 \mc{catch}{var \dt body}
-\doc{\macdef{}{(native-catch {\em x} (let (({\em var} (lambda ({\em
-y}) (throw {\em x} {\em y})))) \dt {\em body}))}}
+\doc{\macdef{}{(native-catch \emph{x} (let ((\emph{var} (lambda
+(\emph{y}) (throw \emph{x} \emph{y})))) \dt \emph{body}))}}
 
 \mc{define}{symbol value}
-\doc{\macdef{}{(set! {\em symbol value})}}
+\doc{\macdef{}{(set! \emph{symbol value})}}
 
-\mc{define}{\lpar{\tt fluid} symbol\rpar value}
-\doc{\macdef{}{(set! (fluid {\em symbol}) {\em value})}}
+\mc{define}{\lpar\texttt{fluid} symbol\rpar value}
+\doc{\macdef{}{(set! (fluid \emph{symbol}) \emph{value})}}
 
 \mc{define}{\lpar variable \dt arglist\rpar \dt body}
-\doc{\macdef{}{(set! {\em variable} (lambda {\em arglist} \dt {\em body}))}}
+\doc{\macdef{}{(set! \emph{variable} (lambda \emph{arglist} \dt \emph{body}))}}
 
 \mc{set\protect\bang}{symbol value}
-\doc{\macdef{}{(set! (contents (make-locative {\em symbol})) {\em
-value})}}
+\doc{\macdef{}{(set! (contents (make-locative \emph{symbol})) 
+\emph{value})}}
 
 \mc{set\protect\bang}{\lpar op $a_1 \ldots a_n$\rpar value}
-\doc{\macdef{}{((setter {\em op}) $a_1 \ldots a_n$ {\em value})}}
+\doc{\macdef{}{((setter \emph{op}) $a_1 \ldots a_n$ \emph{value})}}
 
 \mc{set}{location value}
 \doc{An obsolete form with semantics identical to \df{set\protect\bang}.}
 
 \mc{make-locative}{symbol}
-\doc{\macdef{}{(\%make-locative {\em symbol})}}
+\doc{\macdef{}{(\%make-locative \emph{symbol})}}
 
 \mc{make-locative}{\lpar op \dt args\rpar}
-\doc{\macdef{}{((locater {\em op}) \dt {\em args})}}
+\doc{\macdef{}{((locater \emph{op}) \dt \emph{args})}}
 
 \mc{if}{test thenform}
-\doc{\macdef{}{(\%if {\em test} {\em thenform} (undefined-value))}}
+\doc{\macdef{}{(\%if \emph{test} \emph{thenform} (undefined-value))}}
 
 \mc{if}{test thenform elseform}
-\doc{\macdef{}{(\%if {\em test} {\em thenform} {\em elseform})}}
+\doc{\macdef{}{(\%if \emph{test} \emph{thenform} \emph{elseform})}}
 
 \mc{fluid}{symbol}
-\doc{\macdef{}{(\%fluid (quote {\em symbol}))}}
+\doc{\macdef{}{(\%fluid (quote \emph{symbol}))}}
 
 \mc{bind-error-handler}{}
 \doc{See the language manual for a semantic definition.}
@@ -104,7 +104,7 @@ value})}}
 \mc{catch-errors}{}
 \doc{Implemented with \df{bind-error-handler} and \df{native-catch}.}
 
-\mc{bind}{\lpar\lpar\lpar{\tt fluid} symbol\rpar value\rpar \ldots
+\mc{bind}{\lpar\lpar\lpar\texttt{fluid} symbol\rpar value\rpar \ldots
 \rpar \dt body}
 \doc{Implemented using \df{let} and \df{set\protect\bang}.  Hacks to
 \df{native-catch} and \df{call/cc} are also necessary.  Essentially,
@@ -112,20 +112,20 @@ the bindings are pushed onto \df{fluid-bindings-alist} for the dynamic
 scope of the \df{bind}.  For details, see section \ref{fluid-impl}.}
 
 \mc{wind-protect}{before form after}
-\doc{\macdef{} {(dynamic-wind (lambda () {\em before}) (lambda ()
-{\em form}) (lambda () {\em after}))}}
+\doc{\macdef{} {(dynamic-wind (lambda () \emph{before}) (lambda ()
+\emph{form}) (lambda () \emph{after}))}}
 
 \mc{funny-wind-protect}{before abnormal-before form after abnormal-after}
-\doc{A \df{wind-protect} evaluates {\em before}, {\em form}, and {\em after},
-returning the value of {\em form}.  If {\em form} is entered or exited
-abnormally (due to \df{call/cc} or \df{catch}) the {\em before} and
-{\em after} forms, respectively, are automatically executed.
+\doc{A \df{wind-protect} evaluates \emph{before}, \emph{form}, and \emph{after},
+returning the value of \emph{form}.  If \emph{form} is entered or exited
+abnormally (due to \df{call/cc} or \df{catch}) the \emph{before} and
+\emph{after} forms, respectively, are automatically executed.
 \df{funny-wind-protect} is the same except that different guard forms
 are evaluated depending on whether the dynamic context is entered or
 exited normally or abnormally.}
 
 
-The following macro definitions may be found in {\em The Revised$^3$
+The following macro definitions may be found in \emph{The Revised$^3$
 Report on Scheme} \cite{R3RS}.
 
 \mc{let}{}
@@ -137,7 +137,7 @@ Report on Scheme} \cite{R3RS}.
 
 \section{Primitive Types}
 
-The following types are {\em immediates}.  They have no instance
+The following types are \emph{immediates}.  They have no instance
 variables, occupy no heap storage, and are directly manipulated by the
 micro-engine.  Their references have special tag bits.  See section
 \ref{immtags}.
@@ -201,15 +201,15 @@ discussion below which types the bytecode expects.
 
 \op{throw}{tag value}
 \doc{Causes control to return from the \df{native-catch} form that
-generated {\em tag}.}
+generated \emph{tag}.}
 
 \lo{contents}{locative}
-\doc{Dereferences {\em locative}. {\tt ((setter contents) {\em
-locative} {\em value})} puts {\em value} in the cell pointed to by
-{\em locative}.}
+\doc{Dereferences \emph{locative}. \texttt{((setter contents) 
+\emph{locative} \emph{value})} puts \emph{value} in the cell pointed to by
+\emph{locative}.}
 
 \op{object-unhash}{fixnum}
-\doc{Returns the object that the weak pointer {\em fixnum} points to,
+\doc{Returns the object that the weak pointer \emph{fixnum} points to,
 or \df{\#f} if the object has been reclaimed by the garbage collector.}
 
 
@@ -221,24 +221,24 @@ The following operations are open-coded, and the microcode can handle
 objects of any type, so they can't be \df{add-method}'ed.
 
 \op{get-type}{object}
-\doc{Returns the type of {\em object}.}
+\doc{Returns the type of \emph{object}.}
 
 \op{eq?}{x y}
-\doc{Determines whether {\em x} and {\em y} are the same object.
+\doc{Determines whether \emph{x} and \emph{y} are the same object.
 Implemented by checking if the references are identical.}
 
 \op{object-hash}{x}
-\doc{Returns a ``weak pointer'' to {\em x}.}
+\doc{Returns a ``weak pointer'' to \emph{x}.}
 
 \op{cons}{x y}
-\doc{Conses {\em x} onto {\em y} in the usual lisp fashion.}
+\doc{Conses \emph{x} onto \emph{y} in the usual lisp fashion.}
 
 \op{identity}{x}
-\doc{Returns {\em x}.}
+\doc{Returns \emph{x}.}
 
 \op{list}{\dt args}
-\doc{Constructs a list; \macdef{(list {\em a} {\em b} {\em c})}{(cons
-{\em a} (cons {\em b} (cons {\em c} '()))).}  Actually, the \df{list}
+\doc{Constructs a list; \macdef{(list \emph{a} \emph{b} \emph{c})}{(cons
+\emph{a} (cons \emph{b} (cons \emph{c} '()))).}  Actually, the \df{list}
 operation is open coded and has \df{backwards-args-mixin} mixed into
 the type, so its arguments are pushed onto the stack in left to right
 order.  The code emitted for the operation itself is just a {\tt
@@ -250,14 +250,14 @@ one for each argument.}
 This is open coded in nearly the same way as \df{list}.}
 
 \op{not}{x}
-\doc{\macdef{}{(eq? {\em x} \#f)}}
+\doc{\macdef{}{(eq? \emph{x} \#f)}}
 
 \op{null?}{x}
-\doc{\macdef{}{(eq? {\em x} '())}}
+\doc{\macdef{}{(eq? \emph{x} '())}}
 
 
 \op{second-arg}{x y \dt rest}
-\doc{Returns {\em y}.  Remember, Oaklisp does not guarantee any
+\doc{Returns \emph{y}.  Remember, Oaklisp does not guarantee any
 particular order of evaluation of arguments.}
 
 
@@ -307,7 +307,7 @@ the system dumps core.
 
 
 \op{\%assq}{object alist}
-\doc{Does the usual association list lookup, but assumes that {\em alist}
+\doc{Does the usual association list lookup, but assumes that \emph{alist}
 is made out of simple cons pairs.  Passing it lazy lists or things
 like that will crash the system.}
 
@@ -318,25 +318,25 @@ of a reference, respectively.  On all machines that I know of, this
 is the same as the endianity of bytes.}
 
 \op{\%continue}{stack-photo}
-\doc{Resumes {\em stack-photo}, abandoning the current stack.}
+\doc{Resumes \emph{stack-photo}, abandoning the current stack.}
 
 \op{\%fill-continuation}{empty-stack-photo}
- \doc{Fills in the template stack snapshot {\em empty-stack-photo}
+ \doc{Fills in the template stack snapshot \emph{empty-stack-photo}
 with the appropriate information, copying sections of the stack into
 the heap where necessary, and returns its argument.}
 
 \op{\%filltag}{empty-catch-tag}
-\doc{Fills in {\em empty-catch-tag} with the current stack heights.}
+\doc{Fills in \emph{empty-catch-tag} with the current stack heights.}
 
 \op{\%crunch}{data tag}
-\doc{Returns a reference with the data portion {\em data} and a tag
-of {\em tag}.  Traps if either argument is not a fixnum.}
+\doc{Returns a reference with the data portion \emph{data} and a tag
+of \emph{tag}.  Traps if either argument is not a fixnum.}
 
 \op{\%data}{x}
-\doc{Returns the non-tag field of {\em x} as a fixnum.}
+\doc{Returns the non-tag field of \emph{x} as a fixnum.}
 
 \op{\%tag}{x}
-\doc{Returns the tag of {\em x} as a fixnum.}
+\doc{Returns the tag of \emph{x} as a fixnum.}
 
 \oop{\%gc}
 \doc{Forces an immediate normal garbage collection.}
@@ -348,22 +348,22 @@ value.}
 
 
 \op{\%get-length}{x}
-\doc{Returns the number of storage cells occupied by {\em x}.  Zero
+\doc{Returns the number of storage cells occupied by \emph{x}.  Zero
 for immediates.}
 
 \op{\%increment-locative}{locative n}
-\doc{Returns a locative to the cell {\em n} beyond the cell pointed
-to by {\em locative}.}
+\doc{Returns a locative to the cell \emph{n} beyond the cell pointed
+to by \emph{locative}.}
 
 \lo{\%load-bp-i}{n}
-\doc{Loads the contents of self's instance variable number {\em n}.
+\doc{Loads the contents of self's instance variable number \emph{n}.
 Not for the squeamish, as who is really ``self'' and who would be self
 except that the compiler is compiling away intermediate lambdas is
 very implementation specific.}
 
 \op{\%make-cell}{value}
-\doc{Returns a locative to a new cell containing {\em value}.  Could
-be defined with {\tt (define (\%make-cell x) (make-locative x))}.}
+\doc{Returns a locative to a new cell containing \emph{value}.  Could
+be defined with \texttt{(define (\%make-cell x) (make-locative x))}.}
 
 \op{\%make-closed-environment}{$a_1 \ldots a_n$}
 \doc{Returns a new environment containing $a_1 \ldots a_n$.  At least
@@ -372,12 +372,12 @@ one object is required.  To get an empty environment, look in
 
 
 \op{\%print-digit}{n}
-\doc{Prints {\em n} as a single decimal digit to \df{stdout}.  Used
+\doc{Prints \emph{n} as a single decimal digit to \df{stdout}.  Used
 to indicate various error conditions during the boot process.}
 
 \op{\%push}{\dt args}
-\doc{Pushes {\em args} onto the stack, returning (so to speak) the
-leftmost argument.  This would be about the same as {\tt values}, if
+\doc{Pushes \emph{args} onto the stack, returning (so to speak) the
+leftmost argument.  This would be about the same as \texttt{values}, if
 we had multiple value return.}
 
 \oop{\%read-char}
@@ -390,19 +390,19 @@ the stack.  Will corrupt the stack unless you really know what you are
 doing.}
 
 \op{\%allocate}{type size}
-\doc{Allocates a block of storage {\em size} long, filling in the
-type field with {\em type}.  {\em Type} should not be variable
+\doc{Allocates a block of storage \emph{size} long, filling in the
+type field with \emph{type}.  \emph{Type} should not be variable
 length.}
 
 \op{\%varlen-allocate}{type size}
-\doc{Allocates a block of storage {\em size} long, filling in the
-type field with {\em type} and the size field with {\em size}.  {\em
-Type} should be a variable length type.  Using this instead of
+\doc{Allocates a block of storage \emph{size} long, filling in the
+type field with \emph{type} and the size field with \emph{size}.  
+\emph{Type} should be a variable length type.  Using this instead of
 \df{\%allocate} where appropriate avoids a window of gc
 vulnerability.}
 
 \op{\%write-char}{char}
-\doc{Writes the character {\em char} to \df{stdout}.  No buffering or
+\doc{Writes the character \emph{char} to \df{stdout}.  No buffering or
 anything.}
 
 \op{\%{\protect\upar}super-tail}{type operation object}
@@ -460,27 +460,27 @@ function call whenever the operation appears in a program.}
 The methods for these operations are written in low level Oaklisp.
 
 \op{apply}{operation $a_1 \ldots a_n$ arglist}
-\doc{Calls {\em operation} with arguments $a_1 \ldots a_n$ and the
-contents of {\em arglist}.  For instance, \evto{(apply + 1 2 '(3
+\doc{Calls \emph{operation} with arguments $a_1 \ldots a_n$ and the
+contents of \emph{arglist}.  For instance, \evto{(apply + 1 2 '(3
 4))}{10}.}
 
 \op{make}{type \dt args}
- \doc{Returns a new instance of {\em type} that has been initialized
-by sending it an \df{initialize} message with the extra arguments {\em
-args} passed along.}
+ \doc{Returns a new instance of \emph{type} that has been initialized
+by sending it an \df{initialize} message with the extra arguments 
+\emph{args} passed along.}
 
 \op{\%install-method-with-env}{type operation code-body environment}
-\doc{Adds the specified method to the search table of {\em type}.  It
-returns {\em operation}, since this is what some instances of
+\doc{Adds the specified method to the search table of \emph{type}.  It
+returns \emph{operation}, since this is what some instances of
 \df{add-method} are compiled into.  Methods that don't close over
 anything can refer to \df{\%empty-environment}, whose value is an
 environment object whose vector portion has length zero.  It takes
 care of instance variable mapping conflicts.}
 
 \op{initialize}{object}
-\doc{Returns {\em object}.  This no-op is what is shadowed when you
-define \df{initialize} methods for new types.  {\tt (initialize {\em
-type} {\em supertype-list} {\em ivar-list})} does the work involved in
+\doc{Returns \emph{object}.  This no-op is what is shadowed when you
+define \df{initialize} methods for new types.  \texttt{(initialize 
+\emph{type} \emph{supertype-list} \emph{ivar-list})} does the work involved in
 making a new type.  The list of supertypes is used to make a list of
 all ancestors that is searched at run time to find methods for
 operations. The ancestor tree is considered to be ordered from bottom
@@ -493,14 +493,14 @@ at the end if it is present.  Any method you define to handle
 an \df{initialize} message should return \df{self}.}
 
 \op{dynamic-wind}{before-op main-op after-op}
-\doc{Calls the operation {\em before-op}, calls the operation {\em
-main-op}, calls the operation {\em after-op}, and returns the value
-returned by {\em main-op}.  If {\em main-op} is exited abnormally,
-{\em after-op} is called automatically on the way out.  Similarly, if
-{\em main-op} is entered abnormally, {\em before-op} is called
+\doc{Calls the operation \emph{before-op}, calls the operation 
+\emph{main-op}, calls the operation \emph{after-op}, and returns the value
+returned by \emph{main-op}.  If \emph{main-op} is exited abnormally,
+\emph{after-op} is called automatically on the way out.  Similarly, if
+\emph{main-op} is entered abnormally, \emph{before-op} is called
 automatically on the way in.}
 
 \op{call-with-current-continuation}{operation}
-\doc{Calls {\em operation} with one argument, the current
+\doc{Calls \emph{operation} with one argument, the current
 continuation.  The synonym \df{call/cc} is provided for those who feel
 that \df{call-with-current-continuation} is excessively verbose.}

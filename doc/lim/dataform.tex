@@ -15,7 +15,7 @@ addressing modes.
 \begin{tabular}{|c|c|c|l}
 \cline{1-3}
 \em 31 30 29 28 27 26 \ldots 11 10 9 8 & \em 7 6 5 4 3 2 & \em 1 0 &
- \multicolumn{1}{l}{\em type} \\ \cline{1-3}
+ \multicolumn{1}{l}\emph{type} \\ \cline{1-3}
 \multicolumn{2}{|c|}{twos complement integer} & 0 0 & fixnum \\ \cline{1-3}
 data	&	subtype		& 1 0 & other immediate type \\ \cline{1-3}
 \multicolumn{2}{|c|}{address}	& 0 1 & locative (pointer to cell) \\ \cline{1-3}
@@ -24,7 +24,7 @@ data	&	subtype		& 1 0 & other immediate type \\ \cline{1-3}
 \end{center}
 
 This tagging scheme, along with our object format, does not allow for
-{\em arbitrarily} scannable heaps (in which the divisions between
+\emph{arbitrarily} scannable heaps (in which the divisions between
 objects can be figured out starting the scan at any point in the
 heap.)  In fact, if solitary cells are permitted, as they are in our
 implementation, scanning the heap starting at the begining is not even
@@ -40,8 +40,8 @@ specify a subtype.
 \begin{center}
 \begin{tabular}{|c|c|c|c|c|l}
 \cline{1-5}
-{\em 31 \ldots 24} & {\em 23 \ldots 16} & {\em 15 \ldots 8} &
-{\em 7 \ldots 2} & {\em 1 0} & \multicolumn{1}{l}{\em type} \\ \cline{1-5}
+\emph{31 \ldots 24} & \emph{23 \ldots 16} & \emph{15 \ldots 8} &
+\emph{7 \ldots 2} & \emph{1 0} & \multicolumn{1}{l}\emph{type} \\ \cline{1-5}
  reserved & font & ascii code & 0 0 0 0 0 0 & 1 0 & character\\ \cline{1-5}
 \end{tabular}
 \end{center}
@@ -54,17 +54,17 @@ standard \cite{R3RS}.)
 
 \section{Memory Structure}
 
-Memory is a linear array of {\em cells}, 32-bit aligned words.  These
+Memory is a linear array of \emph{cells}, 32-bit aligned words.  These
 cells are divided into two contiguous chunks: free cells and allocated
-cells.  The {\em free pointer} points to the division between these
+cells.  The \emph{free pointer} points to the division between these
 two chunks, and it is incremented as memory is allocated.  When
 allocating an object would push the free pointer beyond the limits of
 memory, a garbage collection is performed.
 
-The allocated portion of memory is divided into {\em aggregate
-objects} and {\em solitary cells}.  Each aggregate object is a
+The allocated portion of memory is divided into \emph{aggregate
+objects} and \emph{solitary cells}.  Each aggregate object is a
 contiguous chunk of cells.  The first cell of an object is a reference
-to its type; if the type is {\em variable length}, the second is
+to its type; if the type is \emph{variable length}, the second is
 stores the length of the object, including the first two cells.  The
 remainder of the cells of hold the instance variables.  Solitary cells
 are cells that are not part of any object, but are the targets of
@@ -72,42 +72,42 @@ locatives.  Solitary cells are used heavily in the implementation of
 variables.
 
 A reference to an object consists of a pointer to that object with a
-tag of {\em boxed-object}.  References to solitary cells are locatives.
+tag of \emph{boxed-object}.  References to solitary cells are locatives.
 Furthermore, locatives may reference cells that are the instance
 variables of objects.  If such an object is ever deallocated by the
 garbage collector, all of the cells making up the object are made free
-{\em except} for those cells that are referenced by locatives, which are
+\emph{except} for those cells that are referenced by locatives, which are
 not deallocated.  These become solitary cells.
 
 \section{Representation of Specific Types}
 
-Consider an object of type {\em foo}, which is based on {\em bar} and
-{\em baz}.  {\em Bar} had instance variables {\tt bar-1} and {\tt bar-2}, baz
-has instance variables {\tt baz-1}, {\tt baz-2} and {\tt baz-3}, and {\em foo}
-has instance variable {\tt foo-1}.  {\em Foo} inherits the instance
+Consider an object of type \emph{foo}, which is based on \emph{bar} and
+\emph{baz}.  \emph{Bar} had instance variables \texttt{bar-1} and \texttt{bar-2}, baz
+has instance variables \texttt{baz-1}, \texttt{baz-2} and \texttt{baz-3}, and \emph{foo}
+has instance variable \texttt{foo-1}.  \emph{Foo} inherits the instance
 variables of the types it is based on, but methods defined for type
-{\em foo} can not refer to these inherited variables.
+\emph{foo} can not refer to these inherited variables.
 
 Each type's local instance variables are stored contiguously, and in
 order of lexical definition, in instances of that type, and of types
 that inherit it; this allows variable reference to instance variables
 to be resolved into offsets from the start of the relevent instance
-variable frame at compile time.  Here is an instance of {\em foo} as
+variable frame at compile time.  Here is an instance of \emph{foo} as
 it might actually be stored in memory:
 
 \begin{center}
 \begin{tabular}{|c|} \hline
- reference to type {\em foo} \\ \hline\hline
- value of {\tt foo-1} \\ \hline\hline
- value of {\tt baz-1} \\ \hline
- value of {\tt baz-2} \\ \hline
- value of {\tt baz-3} \\ \hline\hline
- value of {\tt bar-1} \\ \hline
- value of {\tt bar-2} \\ \hline
+ reference to type \emph{foo} \\ \hline\hline
+ value of \texttt{foo-1} \\ \hline\hline
+ value of \texttt{baz-1} \\ \hline
+ value of \texttt{baz-2} \\ \hline
+ value of \texttt{baz-3} \\ \hline\hline
+ value of \texttt{bar-1} \\ \hline
+ value of \texttt{bar-2} \\ \hline
 \end{tabular}
 \end{center}
 
-Observe that instances of type {\em foo} are divided into contiguous
+Observe that instances of type \emph{foo} are divided into contiguous
 chunks of instance variables, each inherited from a different
 supertype.  When a type inherits another type through two different
 routes, it still only inherits the instance variables
@@ -142,7 +142,7 @@ microcode to locate the values it needs without going through the type
 heirarchy.
 
 The only constraint this places on the user is that a type may not inherit
-two types both of which are {\em top-wired}, for obvious reasons.  For
+two types both of which are \emph{top-wired}, for obvious reasons.  For
 example, it is impossible to make a type whose instances are both
 operations and types.
 
@@ -213,8 +213,9 @@ arguments and their arguments.
 An alternative that was used earlier in the design process was to
 mandate that all instructions requiring inline arguments occur in a
 position where the following reference can be fetched without
-realigning the pc.  This requires sometimes inserting a padding {\tt
-noop} before an instruction that requires an inline argument, and
+realigning the pc.  This requires sometimes inserting a padding
+\texttt{noop} before an instruction that requires an inline argument,
+and
 analysis showed that the time required to process a \df{noop}
 instruction is much greater than the time required to check if the low
 bit of a register is on and increment that register if so.
@@ -252,13 +253,13 @@ stack buffer, and if so they take appropriate actions to fill or flush
 it, as appropriate, before proceeding.
 
 If the stack buffer is about to overflow, most of it is copied to a
-{\em stack segment} which is allocated on the heap.  These overflown
+\emph{stack segment} which is allocated on the heap.  These overflown
 segments form a linked list, so upon stack underflow the top segment
 is removed from this list and copied back to the stack buffer.
 
 There is one more circumstance in which the stack buffer is flushed.
 The \df{call/cc} construct of Scheme \cite{R3RS} is implemented in
-terms of {\em stack photos,} which are snapshots of the current state
+terms of \emph{stack photos,} which are snapshots of the current state
 of the two stacks, and which can be restored in the future.  A
 \df{fill-continuation} instruction forces the stack buffers to be
 flushed and then copies references to the linked lists of overflow
@@ -294,7 +295,7 @@ between the old system and the new system were definitive.
 In our implementation of Oaklisp we provide two different escape
 facilities: \df{call/cc} and \df{catch}.  The \df{call/cc} construct
 is that described in the Scheme standard \cite{R3RS}.  The \df{catch}
-facility provides with user with a second class {\em catch tag}, which
+facility provides with user with a second class \emph{catch tag}, which
 is valid only within the dynamic extent of the \df{catch}.
 
 The implementation of catch tags is very simple: they contain heights
@@ -306,19 +307,19 @@ are given in sections \ref{sec:oakcatch} and \ref{sec:oakwind}.
 
 \begin{center}
 \begin{tabular}{|c|}\hline
-{\em type:} escape-object \\\hline
-{\em value stack height:} 25 \\\hline
-{\em context stack height:} 19 \\\hline
-{\em saved wind count:} 3 \\\hline
-{\em saved fluid binding list:} \tt ((print-length . \#f) \ldots)\\\hline
+\emph{type:} escape-object \\\hline
+\emph{value stack height:} 25 \\\hline
+\emph{context stack height:} 19 \\\hline
+\emph{saved wind count:} 3 \\\hline
+\emph{saved fluid binding list:} \tt ((print-length . \#f) \ldots)\\\hline
 \end{tabular}
 \end{center}
 
 Actually, there are two variants of \df{catch}.  In the regular
 variant, which is compatible with T, the escape object is invoked by
-calling it like a procedure, as in {\tt (catch a (+ (a 'done) 12))}.
+calling it like a procedure, as in \texttt{(catch a (+ (a 'done) 12))}.
 In the other variant, the escape object is not called but rather
-thrown to using the \df{throw} operation, as in {\tt (native-catch a
+thrown to using the \df{throw} operation, as in \texttt{(native-catch a
 (+ (throw a 'done) 12))}.  Although the latter construct is slightly
 faster, the real motivation for its inclusion is to remind the user
 that the the escape object being thrown to is not first class.  In
@@ -346,15 +347,15 @@ in memory:
 
 \begin{center}
 \begin{tabular}{|c|c|} \hline
- \multicolumn{2}{|c|}{\em type} \\\hline
- {\em instance-length:} & 3 \\\hline
- {\em variable-length?:} & {\tt \#f} \\\hline
- {\em supertype-list:} & {\tt ({\em pair} {\em object})}\\\hline
- {\em ivar-list:} & {\tt (the-car the-cdr)} \\\hline
- {\em ivar-count:} & 2 \\\hline
- {\em type-bp-alist:} & {\tt (({\em cons-pair} . 1))} \\\hline
- {\em operation-method-alist:} & {\tt (({\em car} . {\em meth}) $\ldots$)}\\\hline
- {\em top-wired?:} & {\tt \#f} \\\hline
+ \multicolumn{2}{|c|}\emph{type} \\\hline
+ \emph{instance-length:} & 3 \\\hline
+ \emph{variable-length?:} & \texttt{\#f} \\\hline
+ \emph{supertype-list:} & \texttt{(\emph{pair} \emph{object})}\\\hline
+ \emph{ivar-list:} & \texttt{(the-car the-cdr)} \\\hline
+ \emph{ivar-count:} & 2 \\\hline
+ \emph{type-bp-alist:} & \texttt{((\emph{cons-pair} . 1))} \\\hline
+ \emph{operation-method-alist:} & \texttt{((\emph{car} . \emph{meth}) $\ldots$)}\\\hline
+ \emph{top-wired?:} & \texttt{\#f} \\\hline
 \end{tabular}
 \end{center}
 
@@ -362,7 +363,7 @@ in memory:
 
 Our garbage collector \cite{PEARLMUTTER99} is a variant of Baker's
 algorithm, a so-called ``stop and copy'' collector.  The spaces to be
-reclaimed are renamed {\em old}, all accessible objects in the old
+reclaimed are renamed \emph{old}, all accessible objects in the old
 spaces are transported to a new space, and the old spaces are
 reclaimed.  The data present in the initial world is considered
 ``static'' and is not part of old space in normal garbage collections,
@@ -379,7 +380,7 @@ upon the exhaustion of storage, the garbage collector is automatically
 invoked.  When this happens some messages are printed; these messages
 can be supressed with the \dfsw{-Q} switch.  The default size of new
 space is 1Mb, or 256k references.  This can be altered with the
-\dfsw{-h} {\em size} switch, where {\em size} is measured in bytes.  The
+\dfsw{-h} \emph{size} switch, where \emph{size} is measured in bytes.  The
 operations \df{\%gc} and \df{\%full-gc} invoke the garbage collector
 explicitly.  Programs that use weak pointers can be effected by
 garbage collection; for details, see section \ref{sec:weak}.

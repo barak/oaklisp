@@ -7,7 +7,7 @@ considerable Oaklisp level support.  These include such features as
 \df{call/cc} and its simple cousin \df{catch}.  Others are implemented
 entirely in the core language without the use of special purpose
 bytecodes; in this latter class fall things like infinite precision
-integers (so called {\em bignums}), fluid variables, and the error
+integers (so called \emph{bignums}), fluid variables, and the error
 system.
 
 In this chapter we describe the implementation of these constructs,
@@ -41,8 +41,8 @@ exit, no matter how many \df{bind} constructs are exited and entered
 along the way.
 
 \lo{\%fluid}{symbol}
-\doc{This looks {\em symbol} up on \df{fluid-binding-list}.  If it
-is not found an error is signaled.  In contrast, {\tt (setter
+\doc{This looks \emph{symbol} up on \df{fluid-binding-list}.  If it
+is not found an error is signaled.  In contrast, \texttt{(setter
 \%fluid)} silently adds new fluid variables to the end of the
 association list, thus creating new top level fluid bindings.}
 
@@ -62,16 +62,16 @@ the current dynamic context with respect to these automatic actions.
 \gv{\%windings}
 \doc{This is a list of wind/unwind action pairs, one of which is
 pushed on each time we enter a \df{dynamic-wind} and poped off when we
-leave it.  The wind/unwind action pairs are of the form {\tt ({\em
-after} {\em before} . {\em saved-fluid-binding-list})} where {\em
-before} and {\em after} are operations, guards to be called when
-leaving and entering this dynamic context respectively, and {\em
-saved-fluid-binding-list} is the appropriate value for
+leave it.  The wind/unwind action pairs are of the form
+\texttt{(\emph{after} \emph{before} . \emph{saved-fluid-binding-list})}
+where \emph{before} and \emph{after} are operations, guards to be
+called when leaving and entering this dynamic context respectively,
+and \emph{saved-fluid-binding-list} is the appropriate value for
 \df{fluid-binding-list} when calling these guard operations.}
 
 \gv{\%wind-count}
 \doc{To reduce \df{find-join-point}'s complexity from quadratic to
-linear, we maintain \df{\%wind-count} $=$ {\tt (length \%windings)}.}
+linear, we maintain \df{\%wind-count} $=$ \texttt{(length \%windings)}.}
 
 
 \section{Catch} \label{sec:oakcatch}
@@ -130,22 +130,22 @@ The error system is pretty complete, but is actually not only easy to
 use, but also intuitive and fun, particularly at the user level.
 
 \mc{error-return}{message \dt body}
-\doc{Evaluates {\em body} in a dynamic context in which a restart
+\doc{Evaluates \emph{body} in a dynamic context in which a restart
 handler is available that can force the form to return.  The handler
-is identified by {\em string} in the list of choices printed out by
+is identified by \emph{string} in the list of choices printed out by
 the debugger.  If the handler is invoked by calling \df{ret} with an
 argument in addition to the handler number, the \df{error-return} form
 returns this additional value; otherwise it returns \df{\#f}.  If no
-error occurs, an \df{error-return} form yields the value of {\em
-body}.}
+error occurs, an \df{error-return} form yields the value of 
+\emph{body}.}
 
 \mc{error-restart}{message let-clauses \dt body}
-\doc{Acts like a \df{let}, binding the {\em let-clauses} as you would
-expect, except that if an error occurs while evaluating {\em body},
+\doc{Acts like a \df{let}, binding the \emph{let-clauses} as you would
+expect, except that if an error occurs while evaluating \emph{body},
 the user is given the option of specifying new values for the
-variables of the {\em let-clauses} and starting {\em body} again.
+variables of the \emph{let-clauses} and starting \emph{body} again.
 This is implemented with a \df{native-catch} and some tricky restart
-handlers that get pushed onto {\tt (fluid restart-handlers)}.}
+handlers that get pushed onto \texttt{(fluid restart-handlers)}.}
 
 \fv{restart-handlers}
 \doc{A list of actions that the user can invoke from the debugger in
@@ -157,18 +157,18 @@ level.  Not normally manipulated by user code.}
 
 \mc{catch-errors}
 {\lpar error-type $[$error-lambda $[$non-error-lambda$]]$\rpar \dt body}
-\doc{Evaluates {\em body}.  If an error which is a subtype of {\em
-error-type} occurs, \df{\#f} is returned, unless {\em error-lambda} is
+\doc{Evaluates \emph{body}.  If an error which is a subtype of 
+\emph{error-type} occurs, \df{\#f} is returned, unless \emph{error-lambda} is
 given, in which case it is called on the error object.  If no error
-occurs then the result of evaluating {\em body} is returned, unless
-{\em non-error-lambda} is provided in which case it is called on the
-result of the evaluation of {\em body} within the context of of the
+occurs then the result of evaluating \emph{body} is returned, unless
+\emph{non-error-lambda} is provided in which case it is called on the
+result of the evaluation of \emph{body} within the context of of the
 error handler, and the resultant value returned.}
 
 \mc{bind-error-handler}{\lpar error-type handler\rpar \dt body}
- \doc{This binds a handler to errors which are subtypes of {\em
-error-type}.  When such an error occurs, an appropriate error object
-is created and {\em handler} is applied to it.}
+ \doc{This binds a handler to errors which are subtypes of 
+\emph{error-type}.  When such an error occurs, an appropriate error object
+is created and \emph{handler} is applied to it.}
 
 \op{invoke-debugger}{error}
 \doc{This error handler, when sent to an error object, invokes the debugger.}
@@ -178,29 +178,29 @@ is created and {\em handler} is applied to it.}
 even after the context has been exited the error can still be
 proceeded from, or the debugger can be entered back at the error
 context.  This should always be called tail recursively from a
-handler, and after it stashes away the continuation it calls {\em
-after-op} on {\em error}.  Of course, {\em after-op} should never
+handler, and after it stashes away the continuation it calls 
+\emph{after-op} on \emph{error}.  Of course, \emph{after-op} should never
 return.}
 
 \op{invoke-in-error-context}{error operation}
-\doc{Go back to the context in which {\em error} occured and invoke
-{\em operation} there.}
+\doc{Go back to the context in which \emph{error} occured and invoke
+\emph{operation} there.}
 
 \op{report}{error stream}
-\doc{Write a human readable account of the error to {\em stream}.
+\doc{Write a human readable account of the error to \emph{stream}.
 Controlled studies have shown that error messages can never be too
 verbose.}
 
 \op{proceed}{error value}
-\doc{Proceed from {\em error}, returning {\em value}.  Of course, it
-is actually the call to \df{signal} that returns {\em value}.}
+\doc{Proceed from \emph{error}, returning \emph{value}.  Of course, it
+is actually the call to \df{signal} that returns \emph{value}.}
 
 
 \op{signal}{error-type \dt args}
-\doc{This signals creates an error of type {\em error-type} with
-initialization arguments {\em args}.  It then scans down {\tt (fluid
+\doc{This signals creates an error of type \emph{error-type} with
+initialization arguments \emph{args}.  It then scans down \texttt{(fluid
 error-handlers)} until it finds a type of error which is a supertype
-of {\em error-type}, at which point it sends the corresponding handler
+of \emph{error-type}, at which point it sends the corresponding handler
 to the newly minted error object.  If the handler returns, that value
 is returned by the call to \df{signal}.  One day we'll add a way
 for a handler to refuse to handle an error, in which case the search
@@ -323,7 +323,7 @@ print methods; they also have accessor methods which unpack characters
 from their internals.  Unfortunately, it is not possible to pack four
 eight bit characters into a single reference without violating the
 memory format conventions by putting something other than
-\framebox{\tt 0 0} in the tag field.  We could pack four seven bit
+\framebox{\texttt{0 0}} in the tag field.  We could pack four seven bit
 characters into each reference, but some computers use eight bit
 fonts, and the characters within the string would not be aligned
 compatibly with C strings.  We therefore use the following somewhat
@@ -336,18 +336,18 @@ bits of each fixnum, in littleendian order.  The unused high bits of
 each word are set to zero to simplify equality testing and hash key
 computation.  No trailing null character is required, although one is
 present two thirds of the time due to padding.  Below is the string
-{\tt "Oaklisp Rules!"} as represented in memory.}
+\texttt{"Oaklisp Rules!"} as represented in memory.}
 \begin{center}
 \begin{tabular}{|c|c|c|c|c|}\hline
 31 \ldots 26 & 25 \ldots 18 & 17 \ldots 10 & 9 \ldots 2 & 1 0 \\\hline\hline
-\multicolumn{5}{|c|}{\em string} \\\hline
-\multicolumn{4}{|c|}{{\em object length:} 8} & 0 0 \\\hline
-\multicolumn{4}{|c|}{{\em string length:} 14} & 0 0 \\\hline
-0 0 0 0 0 0&\tt\#\char`\\k   &\tt\#\char`\\a    &\tt\#\char`\\O&0 0 \\\hline
-0 0 0 0 0 0&\tt\#\char`\\s   &\tt\#\char`\\i    &\tt\#\char`\\l&0 0 \\\hline
-0 0 0 0 0 0&\tt\#\char`\\R   &\tt\#\char`\\space&\tt\#\char`\\p&0 0 \\\hline
-0 0 0 0 0 0&\tt\#\char`\\e   &\tt\#\char`\\l    &\tt\#\char`\\u&0 0 \\\hline
-0 0 0 0 0 0&\tt\#\char`\\null&\tt\#\char`\\!    &\tt\#\char`\\s&0 0 \\\hline
+\multicolumn{5}{|c|}\emph{string} \\\hline
+\multicolumn{4}{|c|}{\emph{object length:} 8} & 0 0 \\\hline
+\multicolumn{4}{|c|}{\emph{string length:} 14} & 0 0 \\\hline
+0 0 0 0 0 0&\tt\#$\backslash$k   &\tt\#$\backslash$a    &\tt\#$\backslash$O&0 0 \\\hline
+0 0 0 0 0 0&\tt\#$\backslash$s   &\tt\#$\backslash$i    &\tt\#$\backslash$l&0 0 \\\hline
+0 0 0 0 0 0&\tt\#$\backslash$R   &\tt\#$\backslash$space&\tt\#$\backslash$p&0 0 \\\hline
+0 0 0 0 0 0&\tt\#$\backslash$e   &\tt\#$\backslash$l    &\tt\#$\backslash$u&0 0 \\\hline
+0 0 0 0 0 0&\tt\#$\backslash$null&\tt\#$\backslash$!    &\tt\#$\backslash$s&0 0 \\\hline
 \end{tabular}
 \end{center}
 
@@ -363,7 +363,7 @@ is used for the symbol table.
 the hash and \df{equal?} to compare strings for equality.}
 
 \op{intern}{string}
-\doc{Returns a symbol with print name {\em string} by looking it up
+\doc{Returns a symbol with print name \emph{string} by looking it up
 in the \df{symbol-table} and making and installing a new symbol if it
 isn't found.  Strings passed to \df{intern} should never be side
 effected afterwards or the symbol table could be corrupted.}
@@ -373,13 +373,14 @@ effected afterwards or the symbol table could be corrupted.}
 be with the weird characters escaped.  It also applies to strings.}
 
 \fv{symbol-slashification-style}
-\doc{This flag is only relevent if {\tt (fluid print-escape)} is on.
+\doc{This flag is only relevent if \texttt{(fluid print-escape)} is on.
 With the value \df{t-compatible} then the empty symbol is printed as
-{\tt \#[symbol ""]} and all other symbols requiring escaping are
-printed with a {\tt \char`\\} character preceding every character of the
-symbol.  With any other value, escaped symbols are delimited by {\tt
-|} characters and internal characters {\tt \char`\\} and {\tt |} are
-preceded by {\tt \char`\\}.}
+\texttt{\#[symbol ""]} and all other symbols requiring escaping are
+printed with a \texttt{$\backslash$} character preceding every character of the
+symbol.  With any other value, escaped symbols are delimited by
+\texttt{|} characters and internal characters \texttt{$\backslash$}
+and \texttt{|} are
+preceded by \texttt{$\backslash$}.}
 
 
 
@@ -396,7 +397,7 @@ they know that they actually received no extra arguments.
 
 \sform{rest-length}{varargs-token}
 \doc{Returns the number of trailing arguments represented by
-{\em varargs-token}.}
+\emph{varargs-token}.}
 
 For example, this is legal,
 \begin{verbatim}
@@ -432,11 +433,11 @@ though, so some operations are provided to make handling variable
 numbers of arguments easier.
 
 \op{consume-args}{value \dt extra}
-\doc{Returns {\em value}.}
+\doc{Returns \emph{value}.}
 
 \op{listify-args}{operation \dt args}
-\doc{Calls {\em operation} with a single argument, a list of {\em
-args}.}
+\doc{Calls \emph{operation} with a single argument, a list of 
+\emph{args}.}
 
 There is also a macro package that implements optional and keyword
 arguments using these facilities, and the Scheme compatiblity package

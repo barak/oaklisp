@@ -8,19 +8,19 @@ call/cc) work.
 
 \section{Stack Overview}
 
-The Oaklisp bytecode machine has a two-stack architecture.  The {\em
-value stack} contains arbitrary references and is used for storing
+The Oaklisp bytecode machine has a two-stack architecture.  The 
+\emph{value stack} contains arbitrary references and is used for storing
 temporary variables, passing arguments, and returning results.  The
-{\em context stack} is used for saving non-variable context when
+\emph{context stack} is used for saving non-variable context when
 calling subroutines.  Only context frames are stored on the context
 stack.  This two stack architecture makes tail recursion particularly
 fast, and is in large part responsible for the speed of function call
 in this implementation.
 
 Most of the bytecodes are the usual sort of stack instructions, and
-use only value stack, for instance \df{plus} and {\tt (swap
-$n$)}\index{{\tt swap}}.  All arguments are passed on the value stack,
-and the value stack is {\em not} divided into frames.  Methods consume
+use only value stack, for instance \df{plus} and \texttt{(swap
+$n$)}\index{\texttt{swap}}.  All arguments are passed on the value stack,
+and the value stack is \emph{not} divided into frames.  Methods consume
 their arguments, returning when they have replaced their arguments
 with their result or tail recursing when they have replaced their
 arguments with the appropriate arguments to the operations they are
@@ -40,9 +40,9 @@ $\vdots$\\\hline}{\end{tabular}\end{center}}
 When a method is to be invoked, the arguments and operation are
 assembled on the value stack in right to left order, ie.\ the
 rightmost argument is pushed first and the operation is pushed last.
-Let us walk through the invokation of {\tt (f x y z)}, where {\tt f}
+Let us walk through the invokation of \texttt{(f x y z)}, where \texttt{f}
 is on operations which is being passed three arguments.  Since we
-evaluate right to left, first we push {\tt z}, thus:
+evaluate right to left, first we push \texttt{z}, thus:
 \begin{stackphoto}
 \tt z \\\hline
 \end{stackphoto}
@@ -61,15 +61,15 @@ tail recursive call.  If this is not a tail recursive call, the
 \df{funcall} instruction first pushes a frame containing the contents
 of the \df{current\protect\_method}, \df{bp} and \df{env} registers
 and a return \df{pc} onto the context stack.  The instruction then
-examines the top two values, {\tt f} and {\tt x}, and looks {\tt f} up
-in the \df{operation-method-alist} of the type of {\tt x}, potentially
+examines the top two values, \texttt{f} and \texttt{x}, and looks \texttt{f} up
+in the \df{operation-method-alist} of the type of \texttt{x}, potentially
 also scanning the supertypes until it finds the appropriate method to
 be invoked.  This method is placed in the \df{current\protect\_method}
 register, the method's environment is placed in the \df{env} register,
 the \df{pc} is set to the beginning of the method's code block, and
-the address of the appropriate instance variable frame within {\tt x} is
+the address of the appropriate instance variable frame within \texttt{x} is
 placed in the \df{bp} register.  The \df{funcall} instruction leaves
-the value stack and {\tt nargs} register unchanged:
+the value stack and \texttt{nargs} register unchanged:
 \begin{stackphoto}
 \tt z \\\hline
 \tt y \\\hline
@@ -79,9 +79,9 @@ the value stack and {\tt nargs} register unchanged:
 
 The first thing the code block of the resultant method executes is one
 of the \df{check-nargs} instructions, in this case perhaps {\tt
-(\df{check-nargs} 3)}.  A {\tt (\df{check-nargs} $n$)} instruction
+(\df{check-nargs} 3)}.  A \texttt{(\df{check-nargs} $n$)} instruction
 tests if \df{nargs} is $n$, trapping if not.  After that, it pops the
-operation {\tt f} off the stack.  By leaving the operation to be
+operation \texttt{f} off the stack.  By leaving the operation to be
 popped off by the \df{check-nargs} instruction rather than the
 \df{funcall} instruction, when an an incorrect number of arguments is
 detected the operation is still available to the error system.  The

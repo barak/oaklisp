@@ -53,17 +53,17 @@ method is not incorporated in the \df{operation-method-alist} of type
 
 \item
 To reduce the frequency of full blown method lookup, each operation
-has three slots devoted to a method cache.  When {\em op} is sent to
-{\em obj}, we check if the \df{cache-type} slot of {\em op} is equal
-to the type of {\em obj}.  If so, instead of doing a method search and
+has three slots devoted to a method cache.  When \emph{op} is sent to
+\emph{obj}, we check if the \df{cache-type} slot of \emph{op} is equal
+to the type of \emph{obj}.  If so, instead of doing a method search and
 finding the instance variable frame offset, we can use the cached
 values from \df{cache-method} and \df{cache-offset}.  In addition,
 after each full blown method search, the results of the search are
 inserted into the cache.
 
 Giving the \dfsw{-M} switch to a version of the emulator compiled with
-\df{FAST} not defined will print an \verb|H| when there is a
-method cache hit and an \verb|M| when there is a miss.  The method
+\df{FAST} not defined will print an \texttt{H} when there is a
+method cache hit and an \texttt{M} when there is a miss.  The method
 cache can be completely disabled by defining
 \df{NO\protect\_METH\protect\_CACHE} when compiling the emulator.  We
 note in passing that we have one method cache for each operation.  In
@@ -129,22 +129,22 @@ cleared and the method that used to reside there is added to
 \df{operation-method-alist} of type \df{object}.
 
 \op{\%install-method-with-env}{type operation code-body environment}
-\doc{This flushes the method cache of {\em operation}, ensures that
-the instance variable maps of {\em code-body} and {\em type} agree
-(possibly by copying {\em code-body} and remapping the instance
-variable references), creates a method out of {\em code-body} and {\em
-environment}, and adds this method to the \df{operation-method-alist}
-of {\em type}, modulo the simple lambda optimization if {\em type} is
+\doc{This flushes the method cache of \emph{operation}, ensures that
+the instance variable maps of \emph{code-body} and \emph{type} agree
+(possibly by copying \emph{code-body} and remapping the instance
+variable references), creates a method out of \emph{code-body} and 
+\emph{environment}, and adds this method to the \df{operation-method-alist}
+of \emph{type}, modulo the simple lambda optimization if \emph{type} is
 \df{object}.}
 
 \op{\%install-method}{type operation code-body}
-\doc{\macdef{}{(\%install-method-with-env {\em type operation
+\doc{\macdef{}{(\%install-method-with-env \emph{type operation
 code-body} \%empty-environment)}}
 
 \op{\%install-lambda-with-env}{code-body environment}
 \doc{\macdef{}{(\%install-method-with-env object (make operation)
-{\em code-body environment})} but more efficient.}
+\emph{code-body environment})} but more efficient.}
 
 \op{\%install-lambda}{code-body}
 \doc{\macdef{}{(\%install-method-with-env object (make operation)
-{\em code-body} \%empty-environment)} but more efficient.}
+\emph{code-body} \%empty-environment)} but more efficient.}
