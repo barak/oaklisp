@@ -75,7 +75,7 @@ after the 64th for now.
 (define-instance process type '(pid fluid-binding-list) (list object))
 (define-instance process-id operation)
 
-(define (fluid *number-of-processes*) 64) ;; limited by the number of mutex flags
+(define *number-of-processes* 64) ;; limited by the number of mutex flags
 
 (add-method (initialize (process pid) self)
   (set! pid 0)
@@ -121,7 +121,7 @@ the rest of the multithreading system has been tested.
 
 (add-method (initialize (mutex flags turn) self)
   (set! turn 0)
-  (set! flags (make-initialized-vector (fluid *number-of-processes*) 'idle))
+  (set! flags (make-initialized-vector *number-of-processes* 'idle))
   self)
 
 ; for debugging purposes only...
@@ -133,17 +133,17 @@ the rest of the multithreading system has been tested.
 (add-method (acquire-mutex-pid (mutex flags turn) self pid)
   (let ((j 0)
 	(i pid))
-    (until (and (>= j (fluid *number-of-processes*))
+    (until (and (>= j *number-of-processes*)
 		(or (= turn i) (eq? (nth flags turn) 'idle)))
 	   (set! (nth flags i) 'want-in)
 	   (set! j turn)
 	   (while (not (= j i))
 		  (if (not (eq? (nth flags j) 'idle))
 		      (set! j turn)
-		      (set! j (modulo (+ j 1) (fluid *number-of-processes*)))))
+		      (set! j (modulo (+ j 1) *number-of-processes*))))
 	   (set! (nth flags i) 'in-cs)
 	   (set! j 0)
-	   (while (and (< j (fluid *number-of-processes*))
+	   (while (and (< j *number-of-processes*)
 		       (or (= j i)
 			   (not (eq? (nth flags j) 'in-cs))))
 		  (set! j (+ j 1))))
@@ -154,9 +154,9 @@ the rest of the multithreading system has been tested.
 ; this should make sure the current process owns the mutex, at the very least
 (add-method (release-mutex-pid (mutex flags turn) self pid)
   (let ((i pid)
-	(j (modulo (+ 1 turn) (fluid *number-of-processes*))))
+	(j (modulo (+ 1 turn) *number-of-processes*)))
     (while (eq? (nth flags j) 'idle)
-	   (set! j (modulo (+ j 1) (fluid *number-of-processes*))))
+	   (set! j (modulo (+ j 1) *number-of-processes*)))
     (set! turn j)
     (set! (nth flags i) 'idle)))
 (define (release-mutex self)
@@ -243,35 +243,35 @@ because the scheduler is acquired whenever these things are happening, it
 
 |#
 
-(define (fluid *scheduleQ*) (make-queue))
-(define (fluid *scheduleQ-mutex*) (make mutex))
+(define *scheduleQ* (make-queue))
+(define *scheduleQ-mutex* (make mutex))
 
 (define (acquire-scheduler-pid pid)
   (%disable-alarms)
-  (acquire-mutex-pid (fluid *scheduleQ-mutex*) pid))
+  (acquire-mutex-pid *scheduleQ-mutex* pid))
 (define (release-scheduler-pid pid)
-  (release-mutex-pid (fluid *scheduleQ-mutex*) pid)
+  (release-mutex-pid *scheduleQ-mutex* pid)
   (%enable-alarms))
 
 (define (acquire-scheduler)
   (%disable-alarms)
-  (acquire-mutex (fluid *scheduleQ-mutex*)))
+  (acquire-mutex *scheduleQ-mutex*))
 (define (release-scheduler)
-  (release-mutex (fluid *scheduleQ-mutex*))
+  (release-mutex *scheduleQ-mutex*)
   (%enable-alarms))
 
 (define (lwp thunk)
   (acquire-scheduler)
   (enqueue (cons (%load-process) thunk)
-	   (fluid *scheduleQ*))
+	   *scheduleQ*)
   (release-scheduler))
 (define (start)
   (let ((next nil)
 	(pid (process-id (current-process))))
     (acquire-scheduler-pid pid)
-    (if (qempty? (fluid *scheduleQ*))
+    (if (qempty? *scheduleQ*)
 	'()
-	(set! next (dequeue (fluid *scheduleQ*))))
+	(set! next (dequeue *scheduleQ*)))
     (when next (%store-process (car next))) ;; fix process register and proceed
     (%reset-alarm-counter)
     (release-scheduler-pid pid) ;; using the process prior to the %store-process call
@@ -297,11 +297,11 @@ on lwp and start being atomic
        ;; (lwp (lambda () (k #f)))
        (enqueue (cons (%load-process)
 		      (lambda () (k #f)))
-		(fluid *scheduleQ*))
+		*scheduleQ*)
        ;; (start)
-       (if (qempty? (fluid *scheduleQ*))
+       (if (qempty? *scheduleQ*)
 	   '()
-	   (set! next (dequeue (fluid *scheduleQ*))))
+	   (set! next (dequeue *scheduleQ*)))
        (when next (%store-process (car next))) ;; fix process register and proceed
        (%reset-alarm-counter)
        (release-scheduler-pid pid) ;; using the process prior to the %store-process call
@@ -314,7 +314,7 @@ on lwp and start being atomic
 		 (lambda ()
 		   (apply fn args)
 		   (start)))
-	   (fluid *scheduleQ*))
+	   *scheduleQ*)
   (release-scheduler)
   nil)
 
@@ -386,7 +386,7 @@ This can then be moved directly to the scheduler when the semaphore is signaled.
 
   (set! s-value (+ s-value 1))
   (when (<= s-value 0) ;; wake up the next blocked process
-	(enqueue (dequeue s-Q) (fluid *scheduleQ*)))
+	(enqueue (dequeue s-Q) *scheduleQ*))
 
   (release-mutex self)
   (release-scheduler)
@@ -441,7 +441,7 @@ futures: promises in a multitasking world
 			      ;; at this point no more people will
 			      ;; be trying to add themselves...
 			      (acquire-scheduler)
-			      (qappend (fluid *scheduleQ*) dependantsQ)
+			      (qappend *scheduleQ* dependantsQ)
 			      (release-scheduler)))
 			  nil)))
 		 (start)))))
