@@ -12,6 +12,7 @@
 #include "xmalloc.h"
 #include "gc.h"
 #include "stacks.h"
+#include "threads.h"
 
 int max_segment_size = 256;
 

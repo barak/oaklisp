@@ -8,6 +8,7 @@
 
 #include "config.h"
 #include "data.h"
+#include "threads.h"
 
 /* Version and greeting */
 const char *version = "1.00", *compilation_date = __DATE__, *compilation_time = __TIME__;
@@ -15,8 +16,6 @@ const char *version = "1.00", *compilation_date = __DATE__, *compilation_time = 
 register_set_t* register_array[200];
 stack_t *value_stack_array[200];
 stack_t *cntxt_stack_array[200];
-int next_index = 0;
-pthread_key_t index_key;
 #endif
 /* byte gender */
 int byte_gender = little_endian;

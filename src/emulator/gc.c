@@ -11,6 +11,7 @@
 #include "weak.h"
 #include "xmalloc.h"
 #include "stacks.h"
+#include "threads.h"
 #include "gc.h"
 
 

@@ -13,6 +13,7 @@
 #include "data.h"
 #include "cmdline.h"
 #include "xmalloc.h"
+#include "threads.h"
 
 enum
   {

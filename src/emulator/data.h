@@ -11,9 +11,8 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include </usr/include/pthread.h>
+#include <pthread.h>
 #include "config.h"
-/*#define THREADS*/
 /* Version and greeting */
 extern const char *version, *compilation_date, *compilation_time;
 
@@ -397,8 +396,6 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 extern register_set_t* register_array[];
 extern stack_t *value_stack_array[];
 extern stack_t *cntxt_stack_array[];
-extern int next_index;
-extern pthread_key_t index_key;
 #endif
 
 #ifdef THREADS

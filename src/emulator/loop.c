@@ -23,6 +23,7 @@
 #include "loop.h"
 #include "cmdline.h"
 #include "xmalloc.h"
+#include "threads.h"
 
 #ifndef FAST
 #include "instr.h"
@@ -1234,17 +1235,10 @@ top_of_loop:
 	     GOTO_TOP;
 
 	  case 70:		/* HEAVYWEIGHT-THREAD */
-	      printf("This will eventually launch a heavyweight OS thread.\n");
-	      printf("Let's pretend this is a new thread:\n");
-	      instr = (22 << 2);
-	      op_field = 22;
-	      arg_field = 0;
-	      printf("\tWe set instruction to 0x%x\n", instr);
-	      e_nargs = e_nargs - 1;
-	      printf("\tWe set e_nargs to %d\n", e_nargs);
-	      printf("\tWe pushd 0x%x on the stack\n", PEEKVAL());
-	      printf("\tAnd now we jump to the funcall command.\n");
-	      goto funcall_tail;
+	      printf("Creating thread...\n");
+	      create_thread(REF_SLOT(PEEKVAL(), OPERATION_LAMBDA_OFF));
+	      PEEKVAL() = e_nil;
+	      GOTO_TOP;
 
 	     case 75:		/* TEST-INSTRUCTION */
 		 printf("This is my stupid test instruction\n");

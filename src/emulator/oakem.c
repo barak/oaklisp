@@ -16,56 +16,8 @@
 #include "worldio.h"
 #include "loop.h"
 #include "xmalloc.h"
+#include "threads.h"
 #include <pthread.h>
-
-void *
-test ()
-{
-  printf ("Hello\n");
-  while (1) {
-    sleep (100);
-  }
-}
-void *
-init_thread (void *start_function)
-{
-#ifdef THREADS
-   int my_index;
-   int *my_index_p;
-   my_index_p = (int *)xmalloc (sizeof (int));
-   *my_index_p = next_index;
-   my_index = next_index;
-   pthread_setspecific (index_key, (void *)my_index_p);
-   next_index++;
-   value_stack_array[my_index] = (stack_t*)xmalloc (sizeof (stack_t));
-   cntxt_stack_array[my_index] = (stack_t*)xmalloc(sizeof (stack_t));
-    
-   init_stacks ();
-   register_array[my_index] = (register_set_t*)xmalloc (sizeof (register_set_t));
-   /*What is the current method ?*/
-   e_current_method = (ref_t)test;
-   e_env = REF_TO_PTR (REF_SLOT (e_current_method, METHOD_ENV_OFF));
-   e_code_segment = REF_SLOT (e_current_method, METHOD_CODE_OFF);
-   e_pc = CODE_SEG_FIRST_INSTR (e_code_segment);
-   e_bp = e_env;
-   e_nargs = 0;
-
-   /* Big virtual machine interpreter loop */
-
-   while (1) {
-      sleep(100);
-      }
-
-#endif
-   return 0;
-}
-
-int create_thread (ref_t start_function)
-{
-  pthread_t new_thread;
-  pthread_create (&new_thread, NULL, (void *)init_thread, (void *)&start_function);
-  return 1;
-}
 
 int
 get_byte_gender(void)

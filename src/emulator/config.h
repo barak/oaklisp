@@ -33,6 +33,9 @@
  *  Defined if malloc() might return a pointer that is not longword
  *  aligned, i.e. whose low two bits might not be 0.
  *
+ *  THREADS
+ *  If defined, heavyweight OS pthreads are enabled.
+ *
  */
 
 #ifndef _CONFIG_H_INCLUDED
@@ -61,6 +64,7 @@
 #define ASHR2(x) ((x)>>2)
 #define BYTE_GENDER little_endian
 #define HAVE_GETRUSAGE
+#define THREADS
 
 #include <unistd.h>		/* for the chdir() and isatty() functions */
 

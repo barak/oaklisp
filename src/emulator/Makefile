@@ -3,9 +3,9 @@
 
 psrc=oakem.c
 osrc=cmdline.c data.c gc.c loop.c signal.c stacks.c timers.c \
-	weak.c worldio.c xmalloc.c instr.c
+	weak.c worldio.c xmalloc.c instr.c threads.c
 hsrc=cmdline.h config.h data.h gc.h loop.h signal.h stacks.h timers.h \
-	weak.h worldio.h xmalloc.h instr.h
+	weak.h worldio.h xmalloc.h instr.h threads.h
 
 progs=$(psrc:.c=)
 pobj=$(psrc:.c=.o)
@@ -26,7 +26,6 @@ OAK=oakem
 #We have a small "bootstrapping" problem here.  In order to compile oakem,
 #we need oakem to make instr-data.c.  So let's save the last one.  If we
 #fail to update, oh well.  Just finish and try again.
-instr.o: instr-data.c
 instr-data.c: instruction-table.oak ../world/assembler.oak ../lib/oakworld.bin
 	-$(OAK) $(OAKFLAGS) -- \
 		-locale compiler-locale -load instruction-table \
