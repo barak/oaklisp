@@ -388,7 +388,7 @@ futures: promises in a multitasking world
   '(flag val scheduled? dependantsQ sched-policy err-policy)
   (list promise mutex))
 
-(add-method (initialize (future scheduled? dependantsQ sched-policy err-policy) self)
+(add-method (initialize (future scheduled? dependantsQ sched-policy err-policy) self oper)
   (set! scheduled? (make test-and-settable))
   (set! dependantsQ (make-queue))
   (set! sched-policy 'unused)
@@ -396,7 +396,7 @@ futures: promises in a multitasking world
   ;; not doing this because flag and val have to be instance variables of futures
   ;; (^super promise initialize self)
   (set! flag nil)
-  (set! val nil)
+  (set! val oper)
   (^super mutex initialize self)
   self
   )
@@ -431,4 +431,15 @@ futures: promises in a multitasking world
 			      (release-scheduler)))
 			  nil)))
 		 (start)))))
+
+(define-syntax delay
+  (lambda (form)
+    `(make future (lambda () . ,(cdr form)))))
+
+(define-syntax in-future
+  (lambda (form)
+    (let ((foosym (genvar)))
+      `(let ((,foosym (delay ,form)))
+	 (process-run-fn force (list ,foosym))
+	 foo))))
 
