@@ -4,40 +4,41 @@
 
 (define (read-eval-print-loop)
   (format #t "~&Oaklisp evaluation loop.~%")
-  (bind ((print-length 7)
-	 (print-level 3)
-	 (print-escape #t)
+  (bind ((#*print-length 7)
+	 (#*print-level 3)
+	 (#*print-escape #t)
 	 ;; Current input
-	 (- #f)
+	 (#*- #f)
 	 ;; Previous inputs:
-	 (+ #f)
-	 (++ #f)
-	 (+++ #f)
+	 (#*+ #f)
+	 (#*++ #f)
+	 (#*+++ #f)
 	 ;; Previous macro expanded inputs:
-	 (? #f)
-	 (?? #f)
-	 (??? #f)
+	 (#*? #f)
+	 (#*?? #f)
+	 (#*??? #f)
 	 ;; Previous outputs:
-	 (* #f)
-	 (** #f)
-	 (*** #f))
+	 (#** #f)
+	 (#*** #f)
+	 (#**** #f))
     (let ((message
-	   (if (zero? debug-level)
+	   (if (zero? #*debug-level)
 	       "Return to top level."
-	       (format #f "Return to debugger level ~D." debug-level))))
+	       (format #f "Return to debugger level ~D." #*debug-level))))
       (error-restart message ()
 	(show-handlers)
-	(let ((out-of-here (and (not (zero? debug-level)) up-a-debug-level)))
+	(let ((out-of-here (and (not (zero? #*debug-level))
+				#*up-a-debug-level)))
 	  (iterate aux ()
 	    (native-catch uptag
-	      (bind ((up-a-debug-level uptag))
-		(dotimes (i (+ debug-level 1))
+	      (bind ((#*up-a-debug-level uptag))
+		(dotimes (i (+ #*debug-level 1))
 		  (write-char standard-output #\>))
 		(write-char standard-output #\space)
 		(flush standard-output)
-		(set! +++ ++)
-		(set! ++ +)
-		(set! + -)
+		(set! #*+++ #*++)
+		(set! #*++ #*+)
+		(set! #*+ #*-)
 		(let ((r (bind-error-handler
 			     (read-error
 			      (lambda (x)
@@ -52,14 +53,14 @@
 				(format #t "~&Exiting: EOF on non-interactive control stream.~%")
 				(flush standard-output)
 				(exit))
-			       ((zero? debug-level)
+			       ((zero? #*debug-level)
 				(format #t "~&Type (exit) to leave Oaklisp.~%")
 				(aux))
 			       (else
 				(write-char standard-output #\newline)
 				(throw out-of-here #f))))
 			(else
-			 (set! - r)
+			 (set! #*- r)
 			 (let ((m (bind-error-handler
 				      (general-error
 				       (lambda (x)
@@ -69,17 +70,17 @@
 					 (invoke-debugger x)))
 				    (let ; error-restart
 					; "Try to macroexpand it again (args: expr, locale)."
-					((exp r) (loc current-locale))
+					((exp r) (loc #*current-locale))
 				      (expand-groveling loc exp)))))
-			   (set! ??? ??)
-			   (set! ?? ?)
-			   (set! ? m)
+			   (set! #*??? #*??)
+			   (set! #*?? #*?)
+			   (set! #*? m)
 			   (let ((v (bind-error-handler
 					(general-error invoke-debugger)
-				      (subeval m current-locale))))
-			     (set! *** **)
-			     (set! ** *)
-			     (set! * v)
+				      (subeval m #*current-locale))))
+			     (set! #**** #***)
+			     (set! #*** #**)
+			     (set! #** v)
 			     (bind-error-handler
 				 (general-error
 				  (lambda (x)
@@ -94,7 +95,7 @@
       (lambda ()
 	(format #t
 		"
-Welcome to Oaklisp 1.3
+Welcome to Oaklisp 1.3.1
   Distributed under GNU General Public License v2 or later.
   See http://www.cs.unm.edu/~~bap/oaklisp/ for details.
 ")
@@ -104,9 +105,9 @@ Welcome to Oaklisp 1.3
   (subeval (expand-groveling locale form) locale))
 
 (define (subeval form locale)
-  (top-level-evaluator form locale))
+  (#*top-level-evaluator form locale))
 
-(set! top-level-evaluator interpreter-eval)
+(set! #*top-level-evaluator interpreter-eval)
 
 
 (define (hybrid-eval form locale)

@@ -174,7 +174,7 @@
 (add-method (last (sequence) self)
   (nth self (- (length self) 1)))
 
-(add-method ((coercer list-type) (sequence) v)
+(add-method (#^list-type (sequence) v)
   (let ((len (length v)))
     (iterate aux ((i (- len 1))(l '()))
       (if (= i -1) l

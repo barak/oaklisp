@@ -1,0 +1,6 @@
+;;; This is to guard all usage of thread-related functions so they don't
+;;; get used during the cold boot process.  In particular: fluids.
+
+;;; Set this to FALSE when threading is turned on.
+
+(define %no-threading 0)

@@ -264,7 +264,8 @@
 
 (define-syntax (emit-crunchers class listproc)
   (let ((it (assq class crunch-class-alist)))
-    (block0 (new-hairy-code (cdr it) (eval listproc current-locale))
+    (block0 (new-hairy-code (cdr it)
+			    (eval listproc #*current-locale))
 	    (set! (cdr it) '()))))
 
 
@@ -366,8 +367,8 @@
 
 
 (define (crunch-key-less? a b)
-  (< ((coercer string) (caaar a))
-     ((coercer string) (caaar b))))
+  (< (#^string (caaar a))
+     (#^string (caaar b))))
 
 
 (define (crunch-key-equal? a b)

@@ -19,21 +19,21 @@
 (set! compiler-to-extension ".oa")
 
 ;;; valid values: 0, 1 or 2.
-(define (fluid compiler-noisiness) 1)	
+(define #*compiler-noisiness 1)	
 
-(set! compiling-a-file? #f)
+(set! #*compiling-a-file? #f)
 
 
 (define (print-appropriate-noise form)
-  (when (> (fluid compiler-noisiness) 0)
-    (bind ((print-length 3)
-	   (print-level 2))
+  (when (> #*compiler-noisiness 0)
+    (bind ((#*print-length 3)
+	   (#*print-level 2))
       (format #t "~&~A" form)
       (flush standard-output))))
 
 
 (define (print-sp x)
-  (when (> (fluid compiler-noisiness) 1)
+  (when (> #*compiler-noisiness 1)
     (format #t " ~A" x)
     (flush standard-output)))
 
@@ -51,18 +51,18 @@
 	(to-no (canexno compiler-to-extension))
 	(sub-locale (make locale (list the-locale))))
 
-;    (format t "from: ~a to: ~a~%" from-no to-no)
+    ;; (format #t "from: ~a to: ~a~%" from-no to-no)
 
     (let ((s1 (if (include-stage? from-no to-no ".omac")
 		  (lambda (form)
-		    (block0 (bind ((current-locale sub-locale))
+		    (block0 (bind ((#*current-locale sub-locale))
 			      (expand-groveling sub-locale form))
 			    (print-sp 'macro)))
 		  identity))
 
 	  (s2 (if (include-stage? from-no to-no ".ou")
 		  (lambda (form)
-		    (block0 (append! (bind ((compiling-a-file? #t))
+		    (block0 (append! (bind ((#*compiling-a-file? #t))
 				       (gen-code (compile the-locale form)
 						 'next))
 				     (list '(pop 1)))
@@ -81,7 +81,7 @@
 	  (s3 (if (include-stage? from-no to-no ".oc")
 		  (lambda (form)
 		    (destructure* ('code () form) form
-		      (when (> (fluid compiler-noisiness) 1)
+		      (when (> #*compiler-noisiness 1)
 			(format #t "Peephole optimizing... ")
 			(flush standard-output))
 		      `(code () ,(peephole-optimize form))))
@@ -97,7 +97,7 @@
 		       (map (lambda (form)
 			      (block (print-appropriate-noise form)
 				     (block0 (s2 (s1 form))
-					     (when (> (fluid compiler-noisiness) 0)
+					     (when (> #*compiler-noisiness 0)
 					       (format #t "~%")))))
 			    forms))
 		     identity)))
@@ -108,10 +108,10 @@
 			       (after-reading
 				(read-file
 				 (append file-name compiler-from-extension)))))))
-		 (when (> (fluid compiler-noisiness) 1)
+		 (when (> #*compiler-noisiness 1)
 		   (format #t " writing...")
 		   (flush standard-output))))
-	(when (> (fluid compiler-noisiness) 0)
+	(when (> #*compiler-noisiness 0)
 	  (format #t "~&"))
 	#f))))
 
@@ -126,14 +126,14 @@
 		      ;; The (POP 1) is needed because of the check-nargs hack.
 		      ((pop 1)
 		       ,@(peephole-optimize
-			  (bind ((compiling-a-file? #f))
+			  (bind ((#*compiling-a-file? #f))
 			    (gen-code (compile locale form) 'tail))))))))))
 
 
 (define (cc x)
   (peephole-optimize
-   (bind ((compiling-a-file? #f))
-     (gen-code (expand-compile (fluid current-locale) x)
+   (bind ((#*compiling-a-file? #f))
+     (gen-code (expand-compile #*current-locale x)
 	       'tail))))
 
 
@@ -148,6 +148,6 @@
 ;;; More non-exported stuff:
 
 
-(set! top-level-evaluator hybrid-eval)
+(set! #*top-level-evaluator hybrid-eval)
 
 ;;; eof

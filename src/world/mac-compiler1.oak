@@ -12,10 +12,11 @@
 (define-instance node-type-to-build operation)
 
 
-(set! worry-about-constants nil)  ;this is bound to t while parsing the user code.
+;;; Bound to #t while parsing the user code.
+(set! #*worry-about-constants #f)
 
 (add-method (node-type-to-build (object) form)
-  (if (fluid worry-about-constants)
+  (if #*worry-about-constants
       (cerror
        "Consider it a constant."
        "~A found in evaluated position."
@@ -131,7 +132,7 @@
 (add-method (initialize (ast-contour-node localvars nojumplist closedlist
 					  environment envlist)
 			self locals form)
-  (set! (fluid contour-nodes?) t)
+  (set! #*contour-nodes? #t)
   (set! localvars locals)
   (set! nojumplist nil)
   (set! closedlist nil)
@@ -145,7 +146,7 @@
 
 (add-method (initialize (ast-labels-node labellist gensymlist lambdalist body)
 			self form)
-  (set! labels-count (+ 1 labels-count))
+  (set! #*labels-count (1+ #*labels-count))
   (cond ((and (eq? (car form) '%labels)
 	      (= (length form) 3)
 	      (list? (second form)))

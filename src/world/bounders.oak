@@ -34,7 +34,7 @@
 		  (when (pred? (contents cell) sym)
 		    (push outlist sym))))
     (sort outlist (lambda (a b)
-		    (< ((coercer string) a) ((coercer string) b))))))
+		    (< (#^string a) (#^string b))))))
 
 
 (define (find-and-print-sorted-vars locale pred?)

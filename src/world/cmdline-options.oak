@@ -1,28 +1,56 @@
 ;;; Copyright (C) 1999 Barak A. Pearlmutter.
 
 (define commandline-options
-  `(("eval" 1 ,(lambda (x)
+  `(("help" 0 ,(lambda ()
+		 (format #t "
+Oaklisp level options.
+
+        --help             Print this message & exit.
+
+        --eval expr        Evaluate Oaklisp expression, which is one arg so
+                           be sure to quote for shell.
+
+        --load file        Load a file.
+
+        --compile file     Compile file.oak yielding file.oa
+
+        --locale x         Switch to locale x, eg system-locale (default),
+                           compiler-locale, scheme-locale (for RnRS
+                           compatibility).
+
+        --exit             Exit upon processing this option.
+
+Example:
+    oaklisp --trace-gc 2 -- --locale scheme-locale --compile myfile --exit
+")
+		 (exit 0)))
+
+    ("eval" 1 ,(lambda (x)
 		 (eval (read (make string-input-stream x))
-		       (fluid current-locale))))
+		       #*current-locale)))
+
     ("load" 1 ,(lambda (x)
-		 (load x (fluid current-locale))))
+		 (load x #*current-locale)))
+
     ("compile" 1 ,(lambda (x)
 		    (format #t "~&Compiling ~S..." x)
 		    (flush standard-output)
-		    (bind (((fluid compiler-noisiness) 0))
-		      (compile-file (fluid current-locale)
+		    (bind ((#*compiler-noisiness 0))
+		      (compile-file #*current-locale
 				    x))
 		    (format #t "...done.~%")))
+
     ("locale" 1 ,(lambda (x)
-		   (set! (fluid current-locale)
+		   (set! #*current-locale
 			 (eval (read (make string-input-stream x))
-			       (fluid current-locale)))))
+			       #*current-locale))))
     ("pthreads" 1 ,(lambda (x)
 		     (set! heavyweight-thread-count
 		       (read-token (make string-input-stream x)))
 		     (when (not (integer? heavyweight-thread-count))
 		       (exit 1 "-pthread option takes integer argument.~%"))))
-    ("exit" 0 ,(lambda () (exit 0 "")))))
+    ("exit" 0 ,(lambda ()
+		 (exit 0 "")))))
 
 (define (cmdline-eat)
   (set! argline

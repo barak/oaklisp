@@ -1,3 +1,6 @@
+# This value of prefix will usually be overridden
+prefix=/usr/local
+
 # Bigendian machines need bigendian binary oaklisp worlds, so non-cold
 # worlds are only compatible across machines of the same endianity.
 
@@ -11,10 +14,11 @@ ALLOAFILES = $(TOOLFILES) $(MAKEFILES) $(FILESFILES) $(COLDFILES) \
 SOURCE = $(ALLOAFILES:.oa=.oak) Makefile
 
 # The Oaklisp emulator executable
-OAK=oakem
+#OAK=oaklisp
+OAK=../emulator/oaklisp
 
 # Flags for the emulator
-OAKFLAGS=-trace-gc=1
+OAKFLAGS=--trace-gc=1 --predump-gc 0
 
 # How to compile oaklisp source files into oaklisp bytecode object files:
 .SUFFIXES: .oa .oak
@@ -33,7 +37,7 @@ new.cold: $(COLDFILES) $(TOOLFILES)
 # How to boot cold world into warm world:
 
 oakworld-1.bin: new.cold
-	 $(OAK) $(OAKFLAGS) --world new.cold --dump $@
+	 $(OAK) $(OAKFLAGS) --trace-gc 3 --world new.cold --dump $@
 
 # load successive layers of functionality onto the world
 
@@ -68,7 +72,7 @@ Makefile-vars: $(MAKEFILES) $(FILESFILES)
 
 .PHONY: install
 install: oakworld.bin
-	cp -a $^ ../lib/
+	cp -a $^ $(DESTDIR)$(prefix)/lib/oaklisp/
 
 .PHONY: clean
 clean: clean-oa-files
@@ -81,5 +85,5 @@ clean-oa-files:
 ## What goes in an official release:
 
 .PHONY: release
-release: $(SOURCE) $(GRAVY) Makefile-vars
+release: $(SOURCE) $(GRAVY) Makefile-vars oakworld.bin
 	cp -a $^ $(RTARGET)/

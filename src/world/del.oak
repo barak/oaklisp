@@ -24,7 +24,8 @@
 
 ;;; Make this condition land us in the debugger instead of being ignored:
 
-(set! error-handlers
-      (append! error-handlers (list (cons user-interrupt invoke-debugger))))
+(set! #*error-handlers
+      (append! #*error-handlers
+	       (list (cons user-interrupt invoke-debugger))))
 
 ;;; eof

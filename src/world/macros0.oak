@@ -6,7 +6,7 @@
 (define-syntax (make-locative place)
   (cond ((symbol? place) `(%make-locative ,place))
 	(else
-	 (let ((place (expand-groveling current-locale place)))
+	 (let ((place (expand-groveling #*current-locale place)))
 	   (cond ((symbol? place) `(%make-locative ,place))
 		 (else `((locater ,(car place)) ,@(cdr place))))))))
 
@@ -23,7 +23,7 @@
 
 	  (if (symbol? place)
 	      (normal place)
-	      (let ((place (expand-groveling current-locale place)))
+	      (let ((place (expand-groveling #*current-locale place)))
 		(if (symbol? place)
 		    (normal place)
 		    `((setter ,(car place)) ,@(cdr place) ,value)))))))))
@@ -140,7 +140,7 @@
 		    (value-list (map second canonical-clauses))
 		    (expanded-value-list
 		     (map (lambda (form)
-			    (expand-groveling current-locale form))
+			    (expand-groveling #*current-locale form))
 			  value-list)))
 
 	       (if (any? (lambda (x)

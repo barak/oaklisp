@@ -10,7 +10,7 @@
 ;;; for that returns a value that's what the signal call returns.
 
 ;;; This is an alist of error types and operations.
-(set! error-handlers '())
+(set! #*error-handlers '())
 
 
 
@@ -103,8 +103,8 @@
 (define nested-error-limit 20)
 
 (add-method (really-invoke-debugger (condition) self)
-  (bind ((debug-level (+ debug-level 1)))
-    (when (and nested-error-limit (> debug-level nested-error-limit))
+  (bind ((#*debug-level (+ #*debug-level 1)))
+    (when (and nested-error-limit (> #*debug-level nested-error-limit))
       (exit 1 "Too many nested debuggers!~%"))
     (format standard-error "~&Error: ")
     (report self standard-error)
@@ -120,7 +120,7 @@
 
 ;;; This is what to do with an error that has no other handler.
 
-(push error-handlers (cons general-error invoke-debugger))
+(push #*error-handlers (cons general-error invoke-debugger))
 
 
 
@@ -151,7 +151,7 @@
 	 (destructure (error-type . args) args
 	   (let ((the-error (apply make error-type args)))
 
-	     (iterate aux ((l error-handlers))
+	     (iterate aux ((l #*error-handlers))
 	       (cond ((null? l)
 		      ;; No handler found, ignore the signal.
 		      #f)

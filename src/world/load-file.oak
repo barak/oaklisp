@@ -28,7 +28,7 @@
        (load-aux
 	(lambda (args)
 	  (destructure (file . args) args
-	    (let ((locale (cond ((null? args) current-locale)
+	    (let ((locale (cond ((null? args) #*current-locale)
 				(else
 				 (when (cdr args)
 				   (cerror "Ignore the extra arguments."
@@ -55,7 +55,7 @@
   (define (load file . args)
     (listify-args load-aux
 		  ((if (symbol? file) downcase identity)
-		   (string file))
+		   (#^string file))
 		  . args)))
 
 
@@ -95,7 +95,7 @@
 (define (load-oa-file locale file)
   (load-code-segment
    locale
-   (with-open-file (s (append ((coercer string) file) ".oa") in)
+   (with-open-file (s (append (#^string file) ".oa") in)
       (let ((red (read s)))
 	(if (and (pair? (car red))
 		 (pair? (caar red)))
@@ -104,13 +104,13 @@
 
 (define (load-oa-file locale file)
   (load-code-segment locale
-		     (let ((s (open-input-file (append (string file) ".oa"))))
+		     (let ((s (open-input-file (append (#^string file) ".oa"))))
 		       (block0 (read s) (close s)))))
 
 (define (load-oak-file locale file)
-  (bind ((current-locale locale)
-	 (print-length 3)
-	 (print-level 2))
+  (bind ((#*current-locale locale)
+	 (#*print-length 3)
+	 (#*print-level 2))
     (dofile (append file ".oak")
 	    (lambda (expr)
 	      (format #t "~A...~%" expr)
@@ -124,16 +124,16 @@
   (let* ((raw-forms (read-file (append file-name ".oak")))
 	 (sub-locale (make locale (list the-locale))))
 
-    (bind (((fluid current-locale) the-locale)
-	   ((fluid print-length) 3)
-	   ((fluid print-level) 2))
+    (bind ((#*current-locale the-locale)
+	   (#*print-length 3)
+	   (#*print-level 2))
 
       (dolist (raw-form raw-forms)
 
 	(format #t "~A...~%" raw-form)
 
 	(let ((expanded-form
-	       (bind (((fluid current-locale) sub-locale))
+	       (bind ((#*current-locale sub-locale))
 		 (expand-groveling sub-locale raw-form))))
 	  (subeval expanded-form the-locale))))
 

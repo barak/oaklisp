@@ -27,36 +27,36 @@
 (define-constant-instance character
   coercable-type '() (list self-evaluatory-mixin object))
 
-(set! (coercer character)
-     (make (mix-types oc-mixer (list foldable-mixin settable-operation))))
+(set! #^character
+      (make (mix-types oc-mixer (list foldable-mixin settable-operation))))
 
-(add-method (character (character) x) x)
+(add-method (#^character (character) x) x)
 
 (set! (nth subtype-table 0) character)
 
 (define-instance graphic? operation)
 
 (add-method (graphic? (character) self)
-  (let ((cn (number self)))
-    (and (<= (number #\!) cn)
-	 (<= cn (number #\~)))))
+  (let ((cn (#^number self)))
+    (and (<= (#^number #\!) cn)
+	 (<= cn (#^number #\~)))))
 
 (add-method (print (character) self stream)
-  (cond (print-escape
+  (cond (#*print-escape
 	 (write-char stream #\#)
 	 (write-char stream #\\)
 	 (cond ((and (not (graphic? self))
-		     (symbol self))
+		     (#^symbol self))
 		=> (lambda (p) (print p stream)))
 	       (else
 		(write-char stream self))))
 	(else
 	 (write-char stream self))))
 
-(add-method (character (fixnum) x)
+(add-method (#^character (fixnum) x)
   (%crunch (ash-left x 6) 1))
 
-(add-method (number (character) x)
+(add-method (#^number (character) x)
   (ash-left (%data x) -6))
 
 (add-method (= (character) x y)

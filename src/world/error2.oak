@@ -13,16 +13,16 @@
 ;;; The implementation involves making catch tags and stashing them in a
 ;;; data structure bound to a fluid variable.
 
-(set! restart-handlers '())
+(set! #*restart-handlers '())
 
 (define-syntax (error-return message . body)
   (let ((tag (genvar)))
     `(native-catch ,tag
-       (bind ((restart-handlers
+       (bind ((#*restart-handlers
 	       (cons (list ,message
 			   (lambda (x) (throw ,tag (and x (car x))))
 			   1)
-		     restart-handlers)))
+		     #*restart-handlers)))
 	 ,@body))))
 
 ;;; This utility function is used below for rebinding only the supplied vars.
@@ -47,15 +47,15 @@
 		(catch ,tag
 		  (throw
 		   ,tag0
-		   (bind ((restart-handlers
+		   (bind ((#*restart-handlers
 			   (cons (list ,messvar ,tag ,(length variables))
-				 restart-handlers)))
+				 #*restart-handlers)))
 		     ,@body))))
 	     (,aux ,@temps)))))))
 
 (define (show-handlers)
   (format #t "~&  Active handlers:~%")
-  (iterate aux ((i 0)(l (reverse restart-handlers)))
+  (iterate aux ((i 0)(l (reverse #*restart-handlers)))
     (when (not (null? l))
       (format #t "  ~D: ~A~%" i (caar l))
       (aux (+ i 1) (cdr l)))))
@@ -63,7 +63,7 @@
 (define (ret n . args)
   (listify-args
    (lambda (args)
-     (let* ((handlers restart-handlers)
+     (let* ((handlers #*restart-handlers)
 	    (nhandlers (length handlers))
 	    (handler (nth handlers (- nhandlers (1+ n)))))
        (destructure (message tag arg-count) handler

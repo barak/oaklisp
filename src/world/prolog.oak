@@ -278,26 +278,26 @@
       (^super logic-variable force self)))
 
 (add-method (print (regular-logic-variable flag val) self stream)
-  (if (and flag forcible-print-magic)
+  (if (and flag #*forcible-print-magic)
       (^super logic-variable print self stream)
       (format stream "#_~!" self)))
 
 
 (add-method (print (regular-logic-variable flag val) self stream)
-  (if (and flag forcible-print-magic)
+  (if (and flag #*forcible-print-magic)
       (^super logic-variable print self stream)
       (format stream "#_~!" self)))
 
 
 (add-method (print (regular-logic-variable flag val) self stream)
-  (cond ((and flag forcible-print-magic)
+  (cond ((and flag #*forcible-print-magic)
 	 (^super logic-variable print self stream))
 	(else
 	 (format stream "#_~!" self))))
 
 
 (add-method (print-list-end (regular-logic-variable flag val) self . args)
-  (if (and flag forcible-print-magic)
+  (if (and flag #*forcible-print-magic)
       (print-list-end (force self) . args)
       (^super object print-list-end self . args)))
 
@@ -691,13 +691,13 @@
 				      ,(sym-unify formals hacked-lhs `(,k)))
 	      ,failcode)))
    ((vars lhs ':- . rhs)
-    (bind (((fluid rhs-vars-to-set) '()))
+    (bind ((#*rhs-vars-to-set '()))
       (let* ((result (analyse-lhs-variables (cdr lhs)))
 	     (vars-to-copy (car result))
 	     (hacked-lhs (second result))
 	     (processed-rhs (process-rhs rhs k cutfail)))
 	`(block (hacked-with-logic-vars ,vars ,(map second formals)
-					,vars-to-copy ,(fluid rhs-vars-to-set)
+					,vars-to-copy ,#*rhs-vars-to-set
 					,(sym-unify formals hacked-lhs processed-rhs))
 		,failcode))))))
 
@@ -718,8 +718,8 @@
 		      (pair? (second x))
 		      (= 3 (length (second x)))
 		      (memq (car (second x)) '(set set!))))
-	       (set (fluid rhs-vars-to-set)
-		    (cons (second (second (car rhs))) (fluid rhs-vars-to-set)))
+	       (set #*rhs-vars-to-set
+		    (cons (second (second (car rhs))) #*rhs-vars-to-set))
 	       `(block ,(second (car rhs)) ,munched-rest))
 		   
 	      ((comma-expr? (car rhs))

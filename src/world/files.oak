@@ -5,7 +5,7 @@
 
 ;;; The files that a cold world is made of:
 
-(define between-files '(st da pl do))
+(define between-files '(st da pl do em))
 
 (define kernel-files
   '(
@@ -39,9 +39,7 @@
     eqv pl
     mapping pl
     fastmap pl
-    alarm pl
-    multi-em pl
-;    multiproc pl
+    multi-off em
     fluid pl
     vector-type pl
     vl-mixin pl
@@ -108,7 +106,6 @@
     catch da
     continuation da
     unwind-protect da
-;    multi-em da
     ))
 (define layer5
   '(
@@ -162,7 +159,8 @@
     time
     ;; pretty-print
 
-;    alarm
+    alarm
+    multi-em
     multiproc
     ))
 

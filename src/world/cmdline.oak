@@ -5,7 +5,7 @@
 	    (j 0))
     (let ((c (get-argline-char i j)))
       (cond ((eqv? c #\nul)
-	     ((coercer string) (reverse rchars)))
+	     (#^string (reverse rchars)))
 	    ((eqv? c #f) #f)
 	    (else (aux (cons c rchars) (+ j 1)))))))
 

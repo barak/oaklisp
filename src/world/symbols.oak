@@ -25,11 +25,12 @@
 
 ;;; The following variable is used so that the symbols.oa file does
 ;;; not have to be manually edited each time symbols is recompiled.
-(set! symbol-slashification-style #f)
+(set! #*symbol-slashification-style #f)
 
 (add-method (print (symbol print-name) self stream)
-  (cond ((and print-escape (requires-slashification? self))
-	 (cond ((eq? symbol-slashification-style 't-compatible)
+  (cond ((and #*print-escape (requires-slashification? self))
+	 (cond ((eq? #*symbol-slashification-style
+		     't-compatible)
 		(cond ((eq? self '||)
 		       (write-string "#[symbol \"\"]" stream))
 		      (else
@@ -43,18 +44,18 @@
 	(else
 	 (write-string print-name stream))))
 
-(add-method (string (symbol print-name) self)
+(add-method (#^string (symbol print-name) self)
   print-name)
 
-(add-method (symbol (string) self)
+(add-method (#^symbol (string) self)
   (intern self))
 
-(add-method (symbol (sequence) self)
-  (intern (string self)))
+(add-method (#^symbol (sequence) self)
+  (intern (#^string self)))
 
 (let ((counter 0))
   (define (gensym x)
-    (block0 ((coercer symbol) (format #f "~A~D" x counter))
+    (block0 (#^symbol (format #f "~A~D" x counter))
 	    (set! counter (+ counter 1)))))
 
 (define generate-symbol gensym)
@@ -63,16 +64,16 @@
 (define (genvar/1 ignored) (genvar))
 
 ;(add-method (append (symbol) a b)
-;   (symbol (append (string a) (string b))))
+;   (#^symbol (append (#^string a) (#^string b))))
 
 (add-method (append (symbol) arg . rest)
-  (format t "warning: we are phasing out append for symbols (e.g. ~a)~%" arg)
+  (format #t "warning: we are phasing out append for symbols (e.g. ~a)~%" arg)
   (listify-args
    (lambda (args)
-     ((coercer symbol)
+     (#^symbol
       (apply append
-	     (cons ((coercer string) arg)
-		   (map (coercer string) args)
+	     (cons (#^string arg)
+		   (map #^string args)
 ))))
    . rest))
 
@@ -103,7 +104,7 @@
       (eq? self '|.|)
       (eq? self '|...|)
       (let ((l (length print-name))
-	    (base (fluid print-radix)))
+	    (base #*print-radix))
 
 	(labels ( ((n1 i)
 		   ;; Before first char of first block of digits
@@ -171,9 +172,9 @@
 				(and (pair? c-syntax)
 				     (eq? (car c-syntax) 'nonterminating-macro)))
 			    ;; Got to be constituent and not lowercase char too.
-			    (let ((cn ((coercer number) c)))
-			      (or (< cn ((coercer number) #\a))
-				  (< ((coercer number) #\z) cn))))
+			    (let ((cn (#^number c)))
+			      (or (< cn (#^number #\a))
+				  (< (#^number #\z) cn))))
 		       (scan (+ 1 i))
 		       #t))
 		  )

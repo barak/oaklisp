@@ -86,7 +86,7 @@
 (add-method ((locater nth) (simple-vector) self n)
   (make-locative (%vref self n)))
 
-(add-method (simple-vector (list-type) l)
+(add-method (#^simple-vector (list-type) l)
   (let* ((len (length l))
 	 (v (make simple-vector len)))
     (iterate aux ((l l)(i 0))
@@ -97,7 +97,7 @@
 
 
 
-(add-method ((coercer list-type) (simple-vector) v)
+(add-method (#^list-type (simple-vector) v)
   (iterate aux ((i (- (length v) 1))(l '()))
     (if (negative? i)
 	l
@@ -108,7 +108,7 @@
 
 #|
 
-(add-method ((coercer simple-vector) (sequence) x)
+(add-method (#^simple-vector (sequence) x)
   (let* ((len (length x))
 	 (v (make simple-vector len)))
     (dotimes (i len v)
@@ -125,7 +125,7 @@
 	(set! (%load-bp-i i) (car l))
 	(next (1+ i)(cdr l)))))
 
-  (add-method ((coercer simple-vector) (list-type) x)
+  (add-method (#^simple-vector (list-type) x)
     (let* ((len (length x))
 	   (v (make simple-vector len)))
       (filler v x)
@@ -146,7 +146,7 @@
 
 #||
 (define (vector . args)
-  (listify-args (coercer simple-vector) . args))
+  (listify-args #^simple-vector . args))
 ||#
 
 ;;; eof

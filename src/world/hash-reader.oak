@@ -26,30 +26,43 @@
 	    (aux (+ (* (or i 0) 10)
 		    (digit-value c)))
 	    (let ((c (upcase c)))
-	      (let ((p (nth hash-macro-chars (number c))))
+	      (let ((p (nth hash-macro-chars (#^number c))))
 		(cond (p (p stream c i))
 		      (else
 		       (signal unknown-#-macro i c)
 		       the-unread-object)))))))))
 
 (define (define-hash-macro-char char func)
-  (set! (nth hash-macro-chars (number (upcase char))) func))
+  (set! (nth hash-macro-chars (#^number (upcase char))) func))
+
+;;; #*FOO reads as (FLUID FOO), like the old ^V FOO when ^V was <blat> on Symbolics & Macs
+;;; #^FOO reads as (COERCER FOO), like the old ^Y FOO when ^Y was <rightarrow> on Symbolics & Macs
+
+(define (define-quotelike-#-macro-char c sym)
+  (define-hash-macro-char c
+    (lambda (stream char arg)
+      (when arg
+	(signal cant-have-#-arg char arg))
+      (list sym (read stream)))))
+
+(define-quotelike-#-macro-char #\* 'fluid)
+(define-quotelike-#-macro-char #\^ 'coercer)
 
 ;;; The #+ and #- reader conditionals.
 
-(set! features '())
+(set! #*features '())
 
 (define-instance feature? settable-operation)
 
 (add-method (feature? (symbol) s)
-  (memq s features))
+  (memq s #*features))
 
 (add-method ((setter feature?) (symbol) s bool)
   (cond (bool
-	 (if (not (memq s features))
-	     (set! features (cons s features))))
-	((memq s features)
-	 (set! features (setdifference features (list s)))))
+	 (if (not (memq s #*features))
+	     (set! #*features (cons s #*features))))
+	((memq s #*features)
+	 (set! #*features (setdifference #*features (list s)))))
   bool)
 
 (add-method (feature? (pair) x)
@@ -69,7 +82,7 @@
       (signal cant-have-#-arg char arg))
     (if (feature? (read stream))
 	(read stream)
-	(block (bind ((read-suppress t))
+	(block (bind ((#*read-suppress #t))
 		 (read stream))
 	       the-unread-object))))
 
@@ -78,13 +91,13 @@
     (when arg
       (signal cant-have-#-arg char arg))
     (if (feature? (read stream))
-	(block (bind ((read-suppress t))
+	(block (bind ((#*read-suppress #t))
 		 (read stream))
 	       the-unread-object)
 	(read stream))))
 
-(set! (feature? 'oaklisp) t)
-(set! (feature? 'scheme) t)
+(set! (feature? 'oaklisp) #t)
+(set! (feature? 'scheme) #t)
 
 
 (define-hash-macro-char #\C
@@ -101,34 +114,34 @@
   (lambda (stream char arg)
     (when arg
       (signal cant-have-#-arg char arg))
-    (eval (read stream) current-locale)))
+    (eval (read stream) #*current-locale)))
 
 (define-hash-macro-char #\b
   (lambda (stream char arg)
     (when arg
       (signal cant-have-#-arg char arg))
-    (bind ((input-base 2))
+    (bind ((#*input-base 2))
       (read stream))))
 
 (define-hash-macro-char #\o
   (lambda (stream char arg)
     (when arg
       (signal cant-have-#-arg char arg))
-    (bind ((input-base 8))
+    (bind ((#*input-base 8))
       (read stream))))
 
 (define-hash-macro-char #\d
   (lambda (stream char arg)
     (when arg
       (signal cant-have-#-arg char arg))
-    (bind ((input-base 10))
+    (bind ((#*input-base 10))
       (read stream))))
 
 (define-hash-macro-char #\x
   (lambda (stream char arg)
     (when arg
       (signal cant-have-#-arg char arg))
-    (bind ((input-base 16))
+    (bind ((#*input-base 16))
       (read stream))))
 
 (define-hash-macro-char #\r
@@ -137,7 +150,7 @@
       (cond ((null? arg)
 	     (aux (signal must-have-#-arg char arg)))
 	    (else
-	     (bind ((input-base arg))
+	     (bind ((#*input-base arg))
 	       (read stream)))))))
 
 (define-hash-macro-char #\(
@@ -236,7 +249,7 @@
 	  (when (not (null? (cdr l)))
 	    (cerror "Ignore the extra stuff."
 		    "This contruct takes only one thing to coerce."))
-	  (symbol (car l)))))
+	  (#^symbol (car l)))))
 
 (set! (hash-bracket-option 'delay)
       (lambda (char arg selector stream)

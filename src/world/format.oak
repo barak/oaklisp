@@ -12,7 +12,7 @@
 
 (let ((formats (lambda (arglist)
 		 (apply format arglist)
-		 (string (car arglist)))))
+		 (#^string (car arglist)))))
 
   (define (format stream control-string . args)
     (if (null? stream)
@@ -57,13 +57,13 @@
 		    ((number-starter? char)
 		     (labels ((parse-number
 			       (lambda (char index num neg?)
-				 (let ((cn (number char)))
-				   (cond ((and (<= (number #\0) cn)
-					       (<= cn (number #\9)))
+				 (let ((cn (#^number char)))
+				   (cond ((and (<= (#^number #\0) cn)
+					       (<= cn (#^number #\9)))
 					  (parse-number
 					   (nth control-string index)
 					   (+ index 1)
-					   (+ (* num 10) (- cn (number #\0)))
+					   (+ (* num 10) (- cn (#^number #\0)))
 					   neg?))
 					 (else
 					  (eat-comma
@@ -97,7 +97,7 @@
 	   (terminate
 	    (lambda (char index the-list colon? atsign?)
 	      (destructure (arg-count op) (nth format-control-table
-					       (number (upcase char)))
+					       (#^number (upcase char)))
 		(cond ((eq? 0 arg-count)
 		       (op the-list colon? atsign? char stream)
 		       (formati stream control-string index limit . args))
@@ -142,14 +142,14 @@
     (set! (nth format-control-table i) x)))
 
 (define (define-format-control char arg-count lamb)
-  (set! (nth format-control-table (number (upcase char)))
+  (set! (nth format-control-table (#^number (upcase char)))
        (list arg-count lamb)))
 
 ;;; The way they work:
 
 (define-format-control #\A 1
   (lambda (the-list colon? atsign? char stream arg)
-    (bind ((print-escape #f))
+    (bind ((#*print-escape #f))
       (print arg stream))))
 
 (define-format-control #\~ 0
@@ -166,27 +166,27 @@
 
 (define-format-control #\S 1
   (lambda (the-list colon? atsign? char stream arg)
-    (bind ((print-escape #t))
+    (bind ((#*print-escape #t))
       (print arg stream))))
 
 (define-format-control #\B 1
   (lambda (the-list colon? atsign? char stream arg)
-    (bind ((print-radix 2))
+    (bind ((#*print-radix 2))
       (print arg stream))))
 
 (define-format-control #\D 1
   (lambda (the-list colon? atsign? char stream arg)
-    (bind ((print-radix 10))
+    (bind ((#*print-radix 10))
       (print arg stream))))
 
 (define-format-control #\O 1
   (lambda (the-list colon? atsign? char stream arg)
-    (bind ((print-radix 8))
+    (bind ((#*print-radix 8))
       (print arg stream))))
 
 (define-format-control #\X 1
   (lambda (the-list colon? atsign? char stream arg)
-    (bind ((print-radix 16))
+    (bind ((#*print-radix 16))
       (print arg stream))))
 
 (define-format-control #\R 1
@@ -194,7 +194,7 @@
     (cond ((null? the-list)
 	   (error "Roman numerals are not yet implemented."))
 	  (else
-	   (bind ((print-radix (last the-list)))
+	   (bind ((#*print-radix (last the-list)))
 	     (print arg stream))))))
 
 (define-format-control #\C 1
@@ -208,11 +208,11 @@
 
 (define-format-control #\! 1
   (lambda (the-list colon? atsign? char stream arg)
-    (cond ((and fancy-references
-		(reasonable-expression current-locale arg))
+    (cond ((and #*fancy-references
+		(reasonable-expression #*current-locale arg))
 	   => (lambda (expr)
 		(format stream "~S " expr))))
-    (bind ((print-radix 10))
+    (bind ((#*print-radix 10))
       (print (object-hash arg) stream))))
 
 ;;; This can't be CL compatible, because it has no way to communicate a new

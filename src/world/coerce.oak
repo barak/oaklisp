@@ -4,7 +4,7 @@
 ;;; coercer operation, which can be applied to an instance of some other
 ;;; type in order to coerce it to this type.  For example, to coerce a
 ;;; number X to floating point, write ((COERCER FLOAT) X) or, with read
-;;; macros, (FLOAT X).
+;;; macros, (#^FLOAT X).
 
 ;;; This definition goes in "KERNEL" so primitive types can be coercable.
 ;(define-instance coercable-type type '(co-op) (list type))

@@ -5,22 +5,27 @@
 (define top-level-fluid-binding-list (list (cons nil nil)))
 
 
-(define get-current-fluid-bindings (add-method ((make operation))
-   (let ((z (%load-process)))
-     (if (eq? z 0) fluid-binding-list
-	 (get-fluid-bindings z)))))
+(define get-current-fluid-bindings
+  (add-method ((make operation))
+    (let ((z (or %no-threading (%load-process))))
+      (if (eq? z 0)
+	  fluid-binding-list
+	  (get-fluid-bindings z)))))
 
-(define set-current-fluid-bindings (add-method ((make operation)
-						new-binding-list)
-   (let ((z (%load-process)))
-     (if (eq? z 0) (set! fluid-binding-list new-binding-list)
-	 (set-fluid-bindings z new-binding-list)))))
+(define set-current-fluid-bindings
+  (add-method ((make operation) new-binding-list)
+    (let ((z (or %no-threading (%load-process))))
+      (if (eq? z 0)
+	  (set! fluid-binding-list new-binding-list)
+	  (set-fluid-bindings z new-binding-list)))))
 
-(define add-to-current-fluid-bindings (add-method ((make operation) c-cell)
-   (let ((z (%load-process)))
-     (if (eq? z 0) (set! (cdr top-level-fluid-binding-list)
-			 (cons c-cell (cdr top-level-fluid-binding-list)))
-	 (append! (get-fluid-bindings z) (cons c-cell nil))))))
+(define add-to-current-fluid-bindings
+  (add-method ((make operation) c-cell)
+    (let ((z (or %no-threading (%load-process))))
+      (if (eq? z 0)
+	  (set! (cdr top-level-fluid-binding-list)
+		(cons c-cell (cdr top-level-fluid-binding-list)))
+	  (append! (get-fluid-bindings z) (cons c-cell nil))))))
 
 
 

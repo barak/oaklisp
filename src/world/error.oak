@@ -5,7 +5,7 @@
 ;;; proceded from.
 
 ;;; This holds how many recursive debuggers we're inside.
-(set! debug-level 0)
+(set! #*debug-level 0)
 
 (define (warning format-string . format-args)
   (format standard-error "~&Warning: ")

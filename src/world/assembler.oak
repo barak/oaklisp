@@ -29,7 +29,7 @@
 
 (define (assemble codelist)
   ;; Input is of the form (code ivar-list instruction-list).
-  (when (> (fluid compiler-noisiness) 1)
+  (when (> #*compiler-noisiness 1)
     (format #t "assembling...")
     (flush standard-output))
   (let ((scheduled-segments (list codelist))
@@ -220,7 +220,7 @@
 							     (append
 							      (cdr new-instructions)
 							      (cdr input))))
-						     (when (> (fluid compiler-noisiness) 1)
+						     (when (> #*compiler-noisiness 1)
 						       (format #t "~&Reassembling code segment.~%"))
 						     (throw reassemble nil))))))
 					      patch-alist))
@@ -316,12 +316,12 @@
 	   =>
 	   (lambda (found)
 	     (let ((new-op (cdr found)))
-	       (when (> (fluid compiler-noisiness) 1)
+	       (when (> #*compiler-noisiness 1)
 		 (format #t "~&Longifying instruction ~A to ~A.~%" x new-op))
 	       (list (cons new-op stuff)))))
 	  ;; Put instructions that longify in some odd way in a clause here:
 	  ((eq? op 'funcall-cxt-br)
-	   (when (> (fluid compiler-noisiness) 1)
+	   (when (> #*compiler-noisiness 1)
 	     (format #t "~&Longifying instruction ~A by expanding it.~%" x))
 	   `((funcall-cxt)(long-branch ,@stuff)))
 	  (else (error "Can't longify the ~A opcode in ~A." op x)))))
@@ -531,7 +531,7 @@
 ;;; List all the instructions with certain attributes.
 
 (define (instructions-with attributes)
-  (iterate aux ((l (list-type opcode-notation-hash-table))
+  (iterate aux ((l (#^list-type opcode-notation-hash-table))
 		(yes '()))
     (cond ((null? l) yes)
 	  ((subset? attributes (cdr (car l)))

@@ -38,7 +38,7 @@
   (make-open-coded-operation
    (lambda (ignore)
      `((filltag
-	,(fluid filltag-offset))))	;info from the compiler
+	,#*filltag-offset)))	;info from the compiler
    1 1))
 
 
@@ -69,12 +69,14 @@
 (add-method (gen-code (ast-catch-node expression) self cont)
   (let ((end-cont (if (eq? cont 'next) (gensym "endcatch") cont)))
     (let* ((body-code
-	    (bind ((barrier-node (if (eq? cont 'tail)
-				       barrier-node
-				       (combn-op expression))) ;the LET lambda
-		   (filltag-offset (1+ (if (eq? cont 'tail)
-					     (nguys-to-pop self)
-					     0))))
+	    (bind ((#*barrier-node
+		    (if (eq? cont 'tail)
+			#*barrier-node
+			(combn-op expression))) ;the LET lambda
+		   (#*filltag-offset
+		    (1+ (if (eq? cont 'tail)
+			    (nguys-to-pop self)
+			    0))))
 	      (gen-code expression 'tail))))
       (splice
        (list (if (eq? end-cont 'tail) '() (list `(push-cxt ,end-cont)))

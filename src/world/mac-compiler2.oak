@@ -11,9 +11,9 @@
 
 (labels (((annotate-the-tree astree)
 	  (block
-	   (when contour-nodes?
+	   (when #*contour-nodes?
 	     (mark-inline-lambdas astree)
-	     (if (> labels-count 0)
+	     (if (> #*labels-count 0)
 		 (mark-tail-nodes astree)))
 	   (top-level-resolve-variables astree))))
 
@@ -24,31 +24,31 @@
   
 
 	(add-method (compile (locale) self form)
-	  (bind ((labels-count 0)
-		 (contour-nodes? #f)
-		 (barrier-node #f)
-		 (worry-about-constants #f))
-	    (let ((astree (bind ((worry-about-constants #t))
+	  (bind ((#*labels-count 0)
+		 (#*contour-nodes? #f)
+		 (#*barrier-node #f)
+		 (#*worry-about-constants #f))
+	    (let ((astree (bind ((#*worry-about-constants #t))
 			    (code->ast form))))
 	      (print-sp 'tree)
 	      (annotate-the-tree astree)
 	      (print-sp 'ann)
-	      (iterate step ((pre-count labels-count))
-		(print-sp labels-count)
-		(when (> labels-count 0)
+	      (iterate step ((pre-count #*labels-count))
+		(print-sp #*labels-count)
+		(when (> #*labels-count 0)
 		  (set! astree (rewrite-labels-v astree))
-		  (when (not (= pre-count labels-count))
+		  (when (not (= pre-count #*labels-count))
 		    (annotate-the-tree astree)
 		    (print-sp 'ann)
-		    (step labels-count))))
+		    (step #*labels-count))))
 	      (set! astree (fold-constants-v astree self)) 
 	      (print-sp 'fold)
-	      (when contour-nodes?
+	      (when #*contour-nodes?
 		(set! astree (insert-method-maker-v astree)))
 	      (print-sp 'insert)
 	      (set! astree (heapify-variables-v astree))
 	      (print-sp 'heap)
-	      (when contour-nodes?
+	      (when #*contour-nodes?
 		(stash-stack-map astree nil))
 	      (print-sp 'stack)
 	      (set! dog2 astree)
@@ -388,7 +388,7 @@
     (if (or (contn-nojumplist self)
 	    (any? methn-rest-name lambdalist))
 	(block
-	  (set! labels-count (- labels-count 1))
+	  (set! #*labels-count (- #*labels-count 1))
 	  (code->ast
 	   `((%add-method ((',make ',operation) (',object) . ,labellist)    ;see below   
 			   (%block
