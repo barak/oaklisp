@@ -164,6 +164,23 @@
 #include <fcntl.h>		/* for isatty().  chdir() is in stdio.h */
 #endif
 
+#elif defined(__sparc__) && defined(linux)
+/*** SPARC Linux target ***/
+
+#define WORDSIZE 32
+#define HAVE_LONG_LONG
+#define ASHR2(x) ((x)>>2)
+#define BYTE_GENDER big_endian
+#define HAVE_GETRUSAGE
+
+#elif defined(__mc68000__) && defined(linux)
+/*** Motorola 68k Linux target ***/
+
+#define WORDSIZE 32
+#define HAVE_LONG_LONG
+#define ASHR2(x) ((x)>>2)
+#define BYTE_GENDER big_endian
+#define HAVE_GETRUSAGE
 
 #else
 /*** no machine specified ***/
