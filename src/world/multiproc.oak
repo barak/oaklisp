@@ -28,7 +28,7 @@
 
 (set! (fluid fancy-references) #t)
 
-(define (make-vector n initial-element)
+(define (make-initialized-vector n initial-element)
   (let ((v (make simple-vector n)))
     (dotimes (i n) (set! (nth v i) initial-element))
     v))
@@ -121,7 +121,7 @@ the rest of the multithreading system has been tested.
 
 (add-method (initialize (mutex flags turn) self)
   (set! turn 0)
-  (set! flags (make-vector *number-of-processes* 'idle))
+  (set! flags (make-initialized-vector *number-of-processes* 'idle))
   self)
 
 ; for debugging purposes only...
