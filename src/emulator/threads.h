@@ -22,5 +22,6 @@ void set_gc_flag (bool flag);
 void inc_next_index();
 int lock_next_index();
 void free_registers();
+void wait_for_gc();
 
 #endif /*_THREADS_H_INCLUDED*/

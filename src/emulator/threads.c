@@ -139,3 +139,17 @@ int lock_next_index ()
 void free_registers ()
 {
 }
+
+void wait_for_gc()
+{
+#ifdef THREADS
+  int *my_index_p;
+  int  my_index;
+  my_index_p = pthread_getspecific (index_key);
+  my_index = *(my_index_p);
+  gc_ready[my_index] = 1;
+  set_gc_flag(true);
+  gc_ready[my_index] = 0;
+  set_gc_flag(false);
+#endif
+}

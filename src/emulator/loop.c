@@ -344,8 +344,15 @@ loop()
 #define POLL_TIMER_SIGNALS()
 #endif
 
+#ifdef THREADS
+#define POLL_GC_SIGNALS()	if (gc_pending) wait_for_gc()
+#else
+#define POLL_GC_SIGNALS()
+#endif
+
 #define POLL_SIGNALS()		POLL_USER_SIGNALS() ;		\
-				POLL_TIMER_SIGNALS()
+				POLL_TIMER_SIGNALS() ;		\
+				POLL_GC_SIGNALS()
 
   /* This is the big instruction fetch/execute loop. */
 
