@@ -56,7 +56,9 @@
 #define ASHR2(x) ((x)>>2)
 #define HAVE_GETRUSAGE
 //#define THREADS
+#ifdef THREADS
 #define MAX_THREAD_COUNT 200
+#endif
 #include <unistd.h>		/* for the chdir() and isatty() functions */
 
 #else
