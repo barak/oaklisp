@@ -1,0 +1,19 @@
+
+;; regression tests start here...
+
+(process-id (current-process))
+
+(define x (make mutex))
+(acquire-mutex x)
+(release-mutex x)
+
+(define y (delay (+ 1 2)))
+(define z (future (+ 1 2)))
+
+(define (test-fn)
+  (while t (format t "~s~%" (process-id (current-process)))))
+(process-run-fn test-fn nil)
+(process-run-fn test-fn nil)
+(process-run-fn test-fn nil)
+(test-fn)
+
