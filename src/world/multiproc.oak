@@ -33,12 +33,6 @@
     (dotimes (i n) (set! (nth v i) initial-element))
     v))
 
-(define-syntax (until test . body)
-  `(labels ((fn (lambda ()
-	       ,@body
-	       (if ,test #t (fn)))))
-     (fn)))
-
 (define-syntax (without-interrupts . body)
   `(wind-protect (%disable-alarms)
 		 (progn ,@body)
@@ -151,11 +145,12 @@ the rest of the multithreading system has been tested.
 
 ; this should make sure the current process owns the mutex, at the very least
 (add-method (release-mutex (mutex flags turn) self)
-  (let ((j (modulo (+ 1 turn) (fluid *number-of-processes*))))
+  (let ((i (process-id (current-process)))
+	(j (modulo (+ 1 turn) (fluid *number-of-processes*))))
     (while (eq? (nth flags j) 'idle)
 	   (set! j (modulo (+ j 1) (fluid *number-of-processes*))))
     (set! turn j)
-    (set! (nth flags j) 'idle)))
+    (set! (nth flags i) 'idle)))
 
 ;;; process2.oak
 
