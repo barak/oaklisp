@@ -29,3 +29,29 @@
 (fluid hello)  	;Should error
 
 (set! #*forcible-print-magic #f)
+
+
+;;; TO DO
+
+;;; register for # instructions until alarms ?
+;;; at least make interval modifiable
+
+;;; change C thread maker so malloc'ed stuff doesn't get into oaklisp space
+
+;;; rationalize process descriptor table C vs Oaklisp interface
+
+;;; process priorities
+
+;;; make threads extra "level" in build process.  Prior to that being
+;;; loaded, NO THREAD STUFF AT ALL.
+
+;;; ability to build emulator without thread support
+
+;;; race conditions (symbol tables, hash tables, add-method)
+
+;;; performance
+
+;;; make sure throwing out of thread gets an error
+
+
+;;; completely rewrite allocation subsystem

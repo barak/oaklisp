@@ -87,7 +87,7 @@
 (set! (nth %argless-tag-trap-table 62) remainder)
 (set! (nth %argless-tag-trap-table 63) quotientm)
 ;(set! (nth %argless-tag-trap-table 64) %full-gc)
-(set! (nth %argless-tag-trap-table 127) alarm)
+;(set! (nth %argless-tag-trap-table 127) alarm)
 
 
 ;;; By writing things this way we prevent open coding:

@@ -7,19 +7,20 @@
 #|
 (define (alarm n)
   (%disable-alarms)
-  (format t "*Bing*")
+  (format #t "*Bing*")
   (set! ((%register 'nargs)) n)
   (%reset-alarm-counter)
   (%enable-alarms)
   (%return))
 |#
+
 (define alarm (add-method ((make operation) n)
   (pause)
   (set! ((%register 'nargs)) n)
   (%return)))
 
-;;;Do this in tag-trap.oak
-;(set! (nth %argless-tag-trap-table 127) alarm)
+;;; avoid forward reference in tag-trap.oak
+(set! (nth %argless-tag-trap-table 127) alarm)
 
 ;;
 ;; Define atomic functions (op-codes) for turning alarms on and off.
@@ -28,10 +29,12 @@
   (add-method ((make-open-coded-operation '((enable-alarms)) 0 1)
 	       (object))
 	      (%enable-alarms)))
+
 (define-constant %disable-alarms
   (add-method ((make-open-coded-operation '((disable-alarms)) 0 1)
 	       (object))
 	      (%disable-alarms)))
+
 (define-constant %reset-alarm-counter
   (add-method ((make-open-coded-operation '((reset-alarm-counter)) 0 1)
 	       (object))
