@@ -49,7 +49,8 @@
 	      (set! %windings to)
 	      (set! %wind-count to-count)
 	      (let ((item (car to)))
-		(set! fluid-binding-list (cddr item))
+;		(set! fluid-binding-list (cddr item))
+		(set-current-fluid-bindings (cddr item))
 		((cadr item)))))))
 
   (define (rewind from-count to to-count)
@@ -66,7 +67,8 @@
     (set! %wind-count c)
     (unless (= c to-count)
       (let ((item (car w)))
-	(set! fluid-binding-list (cddr item))
+;	(set! fluid-binding-list (cddr item))
+	(set-current-fluid-bindings (cddr item))
 	((car item)))
       (aux (cdr w)(- c 1)))))
 
@@ -74,7 +76,7 @@
 
 (define (dynamic-wind before during after)
   (before)
-  (push %windings (list* after before fluid-binding-list))
+  (push %windings (list* after before (get-current-fluid-bindings)))
   (set! %wind-count (+ %wind-count 1))
   (block0 (during)
 	  (pop %windings)
@@ -90,7 +92,7 @@
   (let ((a (genvar))(b (genvar)))
     `(let ((,b (lambda () ,before)) (,a (lambda () ,after)))
        (,b)
-       (push %windings (list* ,a ,b fluid-binding-list))
+       (push %windings (list* ,a ,b (get-current-fluid-bindings)))
        (set! %wind-count (+ %wind-count 1))
        (block0 ,during
 	       (pop %windings)
@@ -107,7 +109,7 @@
      ,normal-before
      (push %windings (list* (lambda () ,abnormal-after)
 			    (lambda () ,abnormal-before)
-			    fluid-binding-list))
+			    (get-current-fluid-bindings)))
      (set! %wind-count (+ %wind-count 1))
      (block0 ,during
 	     (pop %windings)

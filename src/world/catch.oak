@@ -22,7 +22,8 @@
 	       (escape-object saved-wind-count saved-fluid-binding-list)
 	       tag value)
     (unwind %windings %wind-count saved-wind-count)
-    (set! fluid-binding-list saved-fluid-binding-list)
+;    (set! fluid-binding-list saved-fluid-binding-list)
+    (set-current-fluid-bindings saved-fluid-binding-list)
     (%throw tag value)))
 
 (define-constant %throw
@@ -49,7 +50,8 @@
     (let ((,var (%filltag
 		 (%allocate escape-object %escape-object-length))))
       (set! ((%slot 3) ,var) %wind-count)
-      (set! ((%slot 4) ,var) fluid-binding-list)
+;      (set! ((%slot 4) ,var) fluid-binding-list)
+      (set! ((%slot 4) ,var) (get-current-fluid-bindings))
       ,@body)))
 
 (define-syntax (catch v . body)
