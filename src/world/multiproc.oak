@@ -155,7 +155,8 @@ the rest of the multithreading system has been tested.
     (while (eq? (nth flags j) 'idle)
 	   (set! j (modulo (+ j 1) (fluid *number-of-processes*))))
     (set! turn j)
-    (set! (nth flags j) 'idle)))
+    (set! (nth flags (process-id (current-process))) ;; thought it was (nth flags j) ...
+	  'idle)))
 
 ;;; process2.oak
 
@@ -402,9 +403,12 @@ futures: promises in a multitasking world
   )
 
 (add-method (force (future-obj flag val scheduled? dependantsQ sched-policy err-policy) self)
+  (format t "Trying to acquire future in process ~S~%" (process-id (current-process)))
   (acquire-mutex self) ;; this mutex prevents dependants from enqueueing badly
+  (format t "Acquired future in process ~S~%" (process-id (current-process)))
   (if flag
-      (block (release-mutex self)
+      (block (format t "Releasing future in process ~S~%" (process-id (current-process)))
+	     (release-mutex self)
 	     val)
       (call/cc (lambda (c)
 		 ;; suspend the current task into the destination queue
@@ -413,16 +417,21 @@ futures: promises in a multitasking world
 				  (let ((result (force self)))
 				    (c result))))
 			  dependantsQ)
+		 (format t "Releasing future in process ~S~%" (process-id (current-process)))
 		 (release-mutex self) ;; now that we're enqueued, we're safe
 		 ;; someone claim responsibility for and initiate future computation
 		 (let ((schedule? (test-and-set scheduled? null? #t)))
 		   (when schedule?
+			 (format t "Scheduling future ~S in process ~S...~%" val (process-id (current-process)))
 			 (process-run-fn
 			  (lambda ()
 			    (let ((newval (val)))
+			      (format t "Trying to acquire future in process ~S~%" (process-id (current-process)))
 			      (acquire-mutex self)
+			      (format t "Acquired future in process ~S~%" (process-id (current-process)))
 			      (set! flag #t)
 			      (set! val newval)
+			      (format t "Releasing future in process ~S~%" (process-id (current-process)))
 			      (release-mutex self)
 			      ;; at this point no more people will
 			      ;; be trying to add themselves...
