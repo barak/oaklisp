@@ -1,0 +1,39 @@
+;;; Copyright (C) 1988,7 Kevin J. Lang & Barak A. Pearlmutter.
+
+(define-instance apropos operation)
+
+(with-operations (apropos2)
+
+  (let ((check-in-list-and-print
+	 (lambda (place list-of-pairs key)
+	   (let ((skey (upcase (string key))))
+	     (bind ((fancy-references #t))
+	       (format #t "~&In ~A:~%" place))
+	     (dolist (x list-of-pairs)
+	       (when (subsequence? skey (string (car x)))
+		 (format #t "   ~A~%" (car x))))))))
+
+    (add-method (apropos (object) key . args)
+      (cond ((= 0 (rest-length args))
+	     (apropos2 current-locale key))
+	    ((= 1 (rest-length args))
+	     (apropos2 key . args))
+	    (else
+	     (error "try (apropos <string> <locale>) "))))
+
+    (add-method (apropos2 (object) key place)
+      (error "try (apropos <string> <locale>).~%"))
+
+    (add-method (apropos2 (symbol) key place) (apropos2 place key))
+    (add-method (apropos2 (string) key place) (apropos2 place key))
+
+    (add-method (apropos2 (locale variable-table macro-alist) self key)
+      (check-in-list-and-print self (list-type variable-table) key)
+      (check-in-list-and-print "macro table" macro-alist key)
+      (check-in-list-and-print "top level fluid variables"
+			       top-level-fluid-binding-list key))
+
+    (add-method (apropos2 (hash-table) self key)
+      (check-in-list-and-print self (list-type self) key))))
+
+;;; eof

@@ -1,0 +1,406 @@
+\chapter{Internal Data Format}
+
+This chapter describes how memory and tags are set up, and how this
+implements the object semantics of the language.
+
+\section{Tag Types} \label{immtags}
+
+In an effort to reduce the complexity of the bytecode interpreter and
+to simplify the system in general, there are only four tag types.
+Tags are stored in the two low order bits of each reference thus
+simplifying tag manipulation, particularly in the presence of indexed
+addressing modes.
+
+\begin{center}
+\begin{tabular}{|c|c|c|l}
+\cline{1-3}
+\em 31 30 29 28 27 26 \ldots 11 10 9 8 & \em 7 6 5 4 3 2 & \em 1 0 &
+ \multicolumn{1}{l}{\em type} \\ \cline{1-3}
+\multicolumn{2}{|c|}{twos complement integer} & 0 0 & fixnum \\ \cline{1-3}
+data	&	subtype		& 1 0 & other immediate type \\ \cline{1-3}
+\multicolumn{2}{|c|}{address}	& 0 1 & locative (pointer to cell) \\ \cline{1-3}
+\multicolumn{2}{|c|}{address}	& 1 1 & reference to boxed object \\ \cline{1-3}
+\end{tabular}
+\end{center}
+
+This tagging scheme, along with our object format, does not allow for
+{\em arbitrarily} scannable heaps (in which the divisions between
+objects can be figured out starting the scan at any point in the
+heap.)  In fact, if solitary cells are permitted, as they are in our
+implementation, scanning the heap starting at the begining is not even
+possible.  However, our garbage collector never needs to scan the heap
+in such a fashion.  Note that there is no extra ``gc'' bit in every
+word, but again, our garbage collector requires no such bit.
+
+
+\section{Other Immediate Types}
+
+References with a tag of  \framebox{1 0} use the next six bits to
+specify a subtype.
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|l}
+\cline{1-5}
+{\em 31 \ldots 24} & {\em 23 \ldots 16} & {\em 15 \ldots 8} &
+{\em 7 \ldots 2} & {\em 1 0} & \multicolumn{1}{l}{\em type} \\ \cline{1-5}
+ reserved & font & ascii code & 0 0 0 0 0 0 & 1 0 & character\\ \cline{1-5}
+\end{tabular}
+\end{center}
+Character is currently the only ``other immediate type.''  More may be
+added later, in particular Macintosh handles.  (At one time weak
+pointers were represented as their own immediate type, but they are
+now represented using integers for compatibility with the Scheme
+standard \cite{R3RS}.)
+
+
+\section{Memory Structure}
+
+Memory is a linear array of {\em cells}, 32-bit aligned words.  These
+cells are divided into two contiguous chunks: free cells and allocated
+cells.  The {\em free pointer} points to the division between these
+two chunks, and it is incremented as memory is allocated.  When
+allocating an object would push the free pointer beyond the limits of
+memory, a garbage collection is performed.
+
+The allocated portion of memory is divided into {\em aggregate
+objects} and {\em solitary cells}.  Each aggregate object is a
+contiguous chunk of cells.  The first cell of an object is a reference
+to its type; if the type is {\em variable length}, the second is
+stores the length of the object, including the first two cells.  The
+remainder of the cells of hold the instance variables.  Solitary cells
+are cells that are not part of any object, but are the targets of
+locatives.  Solitary cells are used heavily in the implementation of
+variables.
+
+A reference to an object consists of a pointer to that object with a
+tag of {\em boxed-object}.  References to solitary cells are locatives.
+Furthermore, locatives may reference cells that are the instance
+variables of objects.  If such an object is ever deallocated by the
+garbage collector, all of the cells making up the object are made free
+{\em except} for those cells that are referenced by locatives, which are
+not deallocated.  These become solitary cells.
+
+\section{Representation of Specific Types}
+
+Consider an object of type {\em foo}, which is based on {\em bar} and
+{\em baz}.  {\em Bar} had instance variables {\tt bar-1} and {\tt bar-2}, baz
+has instance variables {\tt baz-1}, {\tt baz-2} and {\tt baz-3}, and {\em foo}
+has instance variable {\tt foo-1}.  {\em Foo} inherits the instance
+variables of the types it is based on, but methods defined for type
+{\em foo} can not refer to these inherited variables.
+
+Each type's local instance variables are stored contiguously, and in
+order of lexical definition, in instances of that type, and of types
+that inherit it; this allows variable reference to instance variables
+to be resolved into offsets from the start of the relevent instance
+variable frame at compile time.  Here is an instance of {\em foo} as
+it might actually be stored in memory:
+
+\begin{center}
+\begin{tabular}{|c|} \hline
+ reference to type {\em foo} \\ \hline\hline
+ value of {\tt foo-1} \\ \hline\hline
+ value of {\tt baz-1} \\ \hline
+ value of {\tt baz-2} \\ \hline
+ value of {\tt baz-3} \\ \hline\hline
+ value of {\tt bar-1} \\ \hline
+ value of {\tt bar-2} \\ \hline
+\end{tabular}
+\end{center}
+
+Observe that instances of type {\em foo} are divided into contiguous
+chunks of instance variables, each inherited from a different
+supertype.  When a type inherits another type through two different
+routes, it still only inherits the instance variables
+once.\footnote{This aspect of the language is in flux, and should not
+be relied upon by users.} Furthermore, if the instance variables of
+two types inherited by a third have the same names they are still
+distinct instance variables.\footnote{This is in marked contrast to
+ZetaLisp flavors--that's why variable references in flavors go through
+mapping tables, resulting in considerable overhead.  There are also
+important modularity considerations in favor of our scheme which are
+beyond the scope of this document, but are discussed in detail in
+\cite{SNYDER86}.} These semantics allow us to reference instance
+variables very quickly, once the local instance variable block has
+been located.  It also allows us to use the same compiled code for a
+single method regardless of whether it is being invoked upon an
+instance of the type it was added to or on an instance of an
+inheriting type.
+
+
+\section{System Types}
+
+This section describes the format of various objects that are directly
+referenced by the microcode,\footnote{Our microcode is C.} such as
+code vectors and catch tags.
+
+It should be emphasized that these system objects are full-fledged objects.
+They have types which can be inherited and have their methods overridden,
+just like any other object.  The only ``magic'' thing about these types is
+that their local instance variables (ie. the system ones) must live at the
+top of their memory representation, even when inherited.  This allows the
+microcode to locate the values it needs without going through the type
+heirarchy.
+
+The only constraint this places on the user is that a type may not inherit
+two types both of which are {\em top-wired}, for obvious reasons.  For
+example, it is impossible to make a type whose instances are both
+operations and types.
+
+\subsection{Methods}
+
+A method has two instance variables which hold the code object
+containing the code that implements the method and the environment
+vector that holds references to variables that were closed
+over.\footnote{Well, not all closed over variables.  Only ones above
+the locale level.  Locale variable references are implemented as
+inline references to value cells.}
+
+\subsection{Environment Vectors}
+
+Environment vectors have a block of cells, each of which contains a
+locative to a cell.  When the running code needs to reference a
+closed-over variable, it finds the location of the cell by indexing into
+the environment vector.  This index is calculated at compile time, and such
+references consume only one instruction.
+
+Just as it is possible for a number of methods to share the same code,
+differing only in the associated environment, it is also possible for
+a number of methods to share the same environment, differing only in
+the associated code.  Currently the compiler does not generate such
+sophisticated constructs.
+
+\subsection{Code Vectors} \label{sec:codeblock}
+
+Code lives in vectors of integers, which are interpreted as
+instructions by the bytecode emulator.  This format allows code to be
+stored in the same space as all other objects, and allows the garbage
+collector to be ignorant of its existance, treating code vectors like
+any other vector.  Bytecodes are 16 bits long, with the low 2 bits
+always 0.  Here is an example of some stuff taken from the middle of a
+code vector.
+
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|c|}
+\multicolumn{6}{|c|}{$\vdots$}\\\hline
+8 bit inline arg & 6 bit opcode & 0 0 &
+8 bit inline arg & 6 bit opcode & 0 0 \\\hline
+\multicolumn{2}{|c|}{14 bit instruction} & 0 0 &
+8 bit inline arg & 6 bit opcode & 0 0 \\\hline
+\multicolumn{2}{|c|}{14 bit relative address} & 0 0 &
+8 bit inline arg & 6 bit opcode & 0 0 \\\hline
+8 bit inline arg & 6 bit opcode & 0 0 &
+8 bit inline arg & 6 bit opcode & 0 0 \\\hline
+\multicolumn{2}{|c|}{14 bit instruction} & 0 0 &
+\multicolumn{2}{c|}{14 bit instruction} & 0 0 \\\hline
+\multicolumn{6}{|c|}{arbitrary reference used by last instruction of
+ previous word} \\\hline
+\multicolumn{2}{|c|}{14 bit instruction} & 0 0 &
+8 bit inline arg & 6 bit opcode & 0 0 \\\hline
+\multicolumn{6}{|c|}{$\vdots$}
+\end{tabular}
+\end{center}
+
+Note the arbitrary reference right in the middle of code.  To allow
+the garbage collector to properly handle code vectors, as well as to
+allow the processor to fetch the cell efficiently, this reference must
+be cell aligned.  When the processor encounters an instruction that
+requires such an inline argument, if the pc is not currently pointing
+to an aligned location then the pc is suitably incremented.  This
+means that the assembler must sometimes emit a padding instuction,
+which will be ignored, between instructions that require inline
+arguments and their arguments.
+
+An alternative that was used earlier in the design process was to
+mandate that all instructions requiring inline arguments occur in a
+position where the following reference can be fetched without
+realigning the pc.  This requires sometimes inserting a padding {\tt
+noop} before an instruction that requires an inline argument, and
+analysis showed that the time required to process a \df{noop}
+instruction is much greater than the time required to check if the low
+bit of a register is on and increment that register if so.
+
+
+\subsection{Endianity}
+
+The logical order of the instructions in a code vector depends on the
+endianity of the CPU running the emulator.  If the machine is big
+endian, ie.\ addresses start at the most significant and of a word and
+go down (eg.\ a 68000 or an IBM 370) then instructions are executed
+left to right in the picture above.  Conversely, on a littleendian
+machine (eg.\ a VAX) instructions are executed right to left.  Of
+course, the Oaklisp loader has to be able to pack instructions into
+words in the appropriate order.  The format of cold world loads is
+insensitive to endianity, but binary world loads are sensitive to it,
+so binary worlds are distributed in both big endian (with extensions
+beginning with \df{.ol}) and little endian (with extensions beginning
+with \df{.lo}) versions.
+
+\oop{\%big-endian?}
+\doc{This returns the endianity of the machine that Oaklisp is running
+on.  Endianity is determined by the order in which instructions are
+fetched, in other words, the order of two 16-bit words within a 32-bit
+word.  This returns true if the first instruction fetched is from the
+more significant half.}
+
+\subsection{Stack Implementation} \label{sec:stackimpl}
+
+Although the value and context stacks are logically contiguous, they
+are sometimes physically discontinuous.  The instructions all assume
+that stacks live in a designated chunk of memory called the stack
+buffer.  They check if they are about to overflow or enderflow the
+stack buffer, and if so they take appropriate actions to fill or flush
+it, as appropriate, before proceeding.
+
+If the stack buffer is about to overflow, most of it is copied to a
+{\em stack segment} which is allocated on the heap.  These overflown
+segments form a linked list, so upon stack underflow the top segment
+is removed from this list and copied back to the stack buffer.
+
+There is one more circumstance in which the stack buffer is flushed.
+The \df{call/cc} construct of Scheme \cite{R3RS} is implemented in
+terms of {\em stack photos,} which are snapshots of the current state
+of the two stacks, and which can be restored in the future.  A
+\df{fill-continuation} instruction forces the stack buffers to be
+flushed and then copies references to the linked lists of overflow
+segments into a continuation object.
+
+Actually, in the above treatment we have oversimplified the concept of
+flushing a stack buffer.  The emulator constant
+\df{MAX\protect\_SEGMENT\protect\_SIZE} determines the maximum size of
+any flushed stack segment.  When flushing the stack, if the buffer has
+more than that number of references then it is flushed into a number
+of segments.  This provides some hysteresis, speeding \df{call/cc} by
+taking advantage of coherence in its usage patterns.  A possibility
+opened by our stack buffer scheme, which we do not currently exploit,
+is that of using virtual memory faults to detect stack buffer
+overflows, thus eliminating the overhead of explicitly checking for
+stack overflow and underflow.
+
+As a historical note, an early version did not use a stack buffer but
+instead implemented stacks as linked lists of segments which always
+lived in the heap.  When pushing over the top of a segment, a couple
+references were copied from the top of that segment onto a newly
+allocated segment, providing sufficient hysteresis to prevent repeated
+pushing and poping along a segment boundary from incurring inordinate
+overhead.  Regretably, substantial storage is wasted by the hysteresis
+and the overflow and underflow limits vary dynamically wereas in the
+new system these limits are C link-time constants.  Presumably due to
+these factors, in spite of its old world charm, timing experiments
+between the old system and the new system were definitive.
+
+
+\subsection{Escape Objects} \label{sec:ctagform}
+
+In our implementation of Oaklisp we provide two different escape
+facilities: \df{call/cc} and \df{catch}.  The \df{call/cc} construct
+is that described in the Scheme standard \cite{R3RS}.  The \df{catch}
+facility provides with user with a second class {\em catch tag}, which
+is valid only within the dynamic extent of the \df{catch}.
+
+The implementation of catch tags is very simple: they contain heights
+for the value and context stacks.  When a catch tag is thrown to, the
+value and context stacks are chopped off to the appropriate heights.
+The slot \df{saved-wind-count} is used for unwind protection and
+\df{saved-fluid-binding-list} is used for fluid variables.  Details
+are given in sections \ref{sec:oakcatch} and \ref{sec:oakwind}.
+
+\begin{center}
+\begin{tabular}{|c|}\hline
+{\em type:} escape-object \\\hline
+{\em value stack height:} 25 \\\hline
+{\em context stack height:} 19 \\\hline
+{\em saved wind count:} 3 \\\hline
+{\em saved fluid binding list:} \tt ((print-length . \#f) \ldots)\\\hline
+\end{tabular}
+\end{center}
+
+Actually, there are two variants of \df{catch}.  In the regular
+variant, which is compatible with T, the escape object is invoked by
+calling it like a procedure, as in {\tt (catch a (+ (a 'done) 12))}.
+In the other variant, the escape object is not called but rather
+thrown to using the \df{throw} operation, as in {\tt (native-catch a
+(+ (throw a 'done) 12))}.  Although the latter construct is slightly
+faster, the real motivation for its inclusion is to remind the user
+that the the escape object being thrown to is not first class.  In
+order to ensure that an escape object is not used outside of the
+extent of its dynamic validity, references to them should not be
+retained beyond the appropriate dynamic context.
+
+\subsection{Types}
+
+Type objects are used when tracing up the type heirarchy in order to
+find appropriate methods and bp offsets.  Since the types are used to
+find methods, they must be system objects so that reference to their
+instance variables can be done without sending them explicit messages.
+The \df{operation-method-alist} maps from operations to methods
+handled by the type itself, not any supertype.  The \df{type-bp-alist}
+maps from types to offsets which are where the appropriate frame of
+instance variables may be found.  The microengine uses a simple
+move-to-front heuristic in an attempt to reduce the overhead of
+searching these alists.  The \df{supertype-list} contains a list of
+the immediate supertypes.  Supertypes by inheritance that have
+instance variables are present in \df{type-bp-alist}, however.
+
+This is a picture of the \df{cons-pair} type, as it actually appears
+in memory:
+
+\begin{center}
+\begin{tabular}{|c|c|} \hline
+ \multicolumn{2}{|c|}{\em type} \\\hline
+ {\em instance-length:} & 3 \\\hline
+ {\em variable-length?:} & {\tt \#f} \\\hline
+ {\em supertype-list:} & {\tt ({\em pair} {\em object})}\\\hline
+ {\em ivar-list:} & {\tt (the-car the-cdr)} \\\hline
+ {\em ivar-count:} & 2 \\\hline
+ {\em type-bp-alist:} & {\tt (({\em cons-pair} . 1))} \\\hline
+ {\em operation-method-alist:} & {\tt (({\em car} . {\em meth}) $\ldots$)}\\\hline
+ {\em top-wired?:} & {\tt \#f} \\\hline
+\end{tabular}
+\end{center}
+
+\section{Storage Reclamation}
+
+Our garbage collector \cite{PEARLMUTTER99} is a variant of Baker's
+algorithm, a so-called ``stop and copy'' collector.  The spaces to be
+reclaimed are renamed {\em old}, all accessible objects in the old
+spaces are transported to a new space, and the old spaces are
+reclaimed.  The data present in the initial world is considered
+``static'' and is not part of old space in normal garbage collections,
+only in ``full'' garbage collections, which also move everything not
+reclaimed into static space.  Due to locatives, the collector makes an
+extra pass over the data; a paper with more complete details on this
+latter complication is in press.  The weak pointer table is scanned at
+the end of garbage collection, and references to deallocated objects
+are discarded.
+
+The user interface to the garbage collector is quite simple.
+Normally, the user need not be concerned with storage reclamation;
+upon the exhaustion of storage, the garbage collector is automatically
+invoked.  When this happens some messages are printed; these messages
+can be supressed with the \dfsw{-Q} switch.  The default size of new
+space is 1Mb, or 256k references.  This can be altered with the
+\dfsw{-h} {\em size} switch, where {\em size} is measured in bytes.  The
+operations \df{\%gc} and \df{\%full-gc} invoke the garbage collector
+explicitly.  Programs that use weak pointers can be effected by
+garbage collection; for details, see section \ref{sec:weak}.
+
+The \dfsw{-G} switch indicates that if and when the world is dumped, and
+if Oaklisp terminates with an exit code of zero, a full garbage
+collection should be performed.  In full garbage collections preceding
+world dumps, the root set does not include the stacks.
+
+New space is resized dynamically, being expanded to
+\df{RECLAIM\protect\_FRACTION} times the amount of unreclaimed data if
+the fraction of unreclaimed data is above more than one
+\df{RECLAIM\protect\_FRACTION}'th of new space after a normal garbage
+collection, or by the minimal amount needed if there is insufficient
+space available in new space to fulfill the allocation request that
+triggered the collector.  Currently \df{RECLAIM\protect\_FRACTION} is
+two.  The \df{next\protect\_newspace\protect\_size} register says how
+big the next new space allocated will be, and is accessible to Oaklisp
+code.  Its value should not be lowered casually, as the garbage
+collector will fail if new space is too small to hold all of the
+non-reclaimed storage from old space.  A full garbage collection sets
+the size of new space back to the value originally specified by the
+user when Oaklisp was invoked, or the default value if none was
+specified.

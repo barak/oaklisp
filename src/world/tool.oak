@@ -1,0 +1,823 @@
+;;; A quick and dirty Oaklisp file linker.
+;;; (C) Barak A. Pearlmutter and Kevin J. Lang, Fall 1986, Winter 1992.
+
+;;; Potential bugs noticed while porting:
+;;;
+;;; count-variable calls count-symbol always.  Count-symbol always allocates
+;;; storage, even if the symbol already exists.  Is this a core leak?
+
+
+; the input to this program is a bunch of files, each of which
+; contains a big list whose format is
+; 
+; ((
+;   ((constant 14 ((foo bar) baz))
+;    (variable 2 append)  ; these offsets are 
+;    (code 28 6))         ; in terms of 16 shortwords
+;   (100 343 232 ... )    ; 16 bit opcodes
+;   )
+;  ( 
+;     another code block
+;   )
+; )
+
+
+
+(define cell-size 1)
+(define pair-size 3)
+(define symbol-size 2)
+(define method-size 3)
+(define null-size 1)
+(define t-size 1)
+(define type-size 9)
+(define coercable-type-size 10)
+
+
+(define int-tag 0)
+(define imm-tag 1)
+(define loc-tag 2)
+(define ptr-tag 3)
+
+(define return-opcode (* 24 256))
+(define noop-opcode 0)
+
+(define value-stack-size   #x1abc)
+(define context-stack-size #x2abc)
+(set! world-array-size 0)	
+
+(define cache-pairs? #t)
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;macros for speed
+
+; Not any more --BAP
+
+; this code depends on bignums
+
+(define (tagize-int x)
+  (+ int-tag (* 4 (if (negative? x)
+		      (+ x (expt 2 30))
+		      x))))
+
+(define (tagize-imm x) (+ imm-tag (ash-left x 2)))
+(define (tagize-ptr x) (+ ptr-tag (ash-left x 2)))
+(define (tagize-loc x) (+ loc-tag (ash-left x 2)))
+
+(define (store-world-int x word-addr) (store-world-word (tagize-int x) word-addr))
+(define (store-world-ptr x word-addr) (store-world-word (tagize-ptr x) word-addr))
+(define (store-world-loc x word-addr) (store-world-word (tagize-loc x) word-addr))
+
+(define (zero-enough? x)
+  (destructure** x
+    ('0 #t)
+    (('0 . '0) #t)
+    (otherwise #f)))
+
+(define (store-world-word word word-addr)
+  (let ((oldword (nth world word-addr)))
+    (if (zero-enough? oldword)
+	(set! (nth world word-addr) word)
+	(error "Attempt to overwrite <~s ~s>." word word-addr))))
+
+(define (store-world-opcodes o1 o2 word-addr) 
+  (store-world-word (cons o1 o2) word-addr))
+
+;;; End of what used to be macros for speed
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;top level stuff
+;
+
+
+(set! stashed-inlist #f)
+
+(set! var-table #f)
+;impose an ordering on variables
+(set! var-list #f) 
+(set! blk-table #f)
+(set! sym-table #f)
+(set! pair-table #f)
+
+(set! the-empty-string #f)
+
+(define (init-tables)
+  (set! var-list '())
+  (set! the-empty-string #f)
+  (set! var-table (make-eq-hash-table))
+  (set! blk-table (make-eq-hash-table))
+  (set! sym-table (make-eq-hash-table))
+  (set! pair-table (make-equal-hash-table)))
+
+
+(define (tool-files in-files out-file)
+  (format #t "reading ...")
+  (let ((in-names (map (lambda (na) (extensionize na ".oa"))
+		       in-files)))
+    (tool (map (lambda (name)
+		 (format #t " ~a" name)
+		 (flush standard-output)
+		 (read-oa-file name))
+	       in-names)
+	  in-files)
+    (format #t "~%")
+    (dump-tables (extensionize out-file ".sym"))
+    (format #t "symbol-table~%")
+    (dump-world (extensionize out-file ".cold"))
+    (cons 'world out-file)))
+
+
+(define (tool inlist in-names)
+  (set! stashed-inlist inlist)
+  (init-tables)
+  (count-things inlist)
+  (format #t "counts~%")
+  (compute-base-addresses)
+  (format #t "base-addrs~%")
+  (init-world)
+  (format #t "world-init~%")
+  (layout-symbols-and-variables)
+  (format #t "syms-and-vars~%")
+  (layout-handbuilt-data)
+  (format #t "handbuilt~%")
+  (patch-symbols)
+  (format #t "symbol-patches~%")
+  (build-blk-table inlist)
+  (format #t "blk-table~%")
+  (spew-opcodes inlist in-names)
+  (format #t "opcodes~%")
+  (set! stashed-inlist #f)
+  )
+
+
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;first pass
+;  count everything
+;  initialize symbol and variable tables
+
+
+(define reg-code-delta 4)   ;extra opcode units per block
+(define top-code-delta -2)  ;in actual world
+
+(set! blk-count 0)
+(set! opc-count 0)
+(set! var-count 0)
+(set! sym-count 0)
+(set! dat-count 0) ;words
+(set! max-blks 0)  ;most blocks in one file
+
+;
+
+(define (count-things inlist)
+  (set! dat-count 0)
+  (set! blk-count 0)
+  (set! opc-count (- reg-code-delta top-code-delta)) ; header for top code blk
+  (for-each count-variable vars-to-preload)
+  (dolist (fil inlist)
+    (let ((nblks (length fil)))
+      (set! opc-count (+ opc-count
+			 (+ top-code-delta
+			    (* reg-code-delta (- nblks 1)))))
+      (set! max-blks (max nblks max-blks))
+      (set! blk-count (+ nblks blk-count))
+      (dolist (blk fil)
+	(print-dot)
+	(count-opcodes blk)
+	(dolist (x (first blk))
+	  (let ((keyword (first x)))
+	    (cond ((eq? 2 keyword)	;constant
+		   (count-data (third x)))
+		  ((eq? 0 keyword)	;variable
+		   (count-variable (third x)))
+		  ((eq? 1 keyword)	;code
+		   ;;noop
+		   )
+		  (else
+		   (error "bad inline patch keyword ~S.~&" keyword))))))))
+  (set! var-list (reverse! var-list))
+  (set! var-count (length var-table))
+  (set! sym-count (length sym-table))
+  (set! dat-count (+ dat-count (handbuilt-data-size)))
+  (format #t "~&ops:~s  vars:~s  syms:~s cells:~s~%"
+	  opc-count var-count sym-count dat-count))
+  
+
+
+(define (count-opcodes blk)
+  (let ((op-co (length (second blk))))
+    (if (odd? op-co)
+	(error "<~s> odd # of opcodes is ~n ~&" op-co blk))
+    (set! opc-count (+ opc-count op-co))))
+
+
+(define (count-variable v)
+  (if (not (toble-probe v var-table))
+      (push var-list v))
+  (count-symbol v))
+
+
+(define (count-symbol v)
+  (set! dat-count (+ (string-size ((coercer string) v)) dat-count))
+  (toble-probe v sym-table))
+
+
+(define (count-data d)
+  (cond ((symbol? d)
+	 (count-symbol d))
+	((number? d)
+	 )
+	((char? d)
+	 )
+ 	((null? d)
+	 )
+	((eq? d '#t)
+	 )
+	((pair? d)
+	 (set! dat-count (+ pair-size dat-count))
+	 (count-data (car d))
+	 (count-data (cdr d)))
+	((string? d)
+	 (set! dat-count (+ (string-size d) dat-count)))
+	(else (error "count: bad inline constant <~s> ~&" d))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;second pass
+;  layout symbols and variables
+;  build block table
+
+
+(set! start-of-opc-space 0)
+(set! start-of-var-space 0)
+(set! start-of-sym-space 0)
+(set! start-of-dat-space 0)
+
+(set! next-free-dat 0)
+
+(define (compute-base-addresses)
+  (set! start-of-opc-space 0)
+  (set! start-of-var-space (+ start-of-opc-space (quotient opc-count 2)))
+  (set! start-of-sym-space (+ start-of-var-space (* var-count cell-size)))
+  (set! start-of-dat-space (+ start-of-sym-space (* sym-count symbol-size)))
+  (set! world-array-size (+ start-of-dat-space dat-count))
+  (set! next-free-dat start-of-dat-space))
+
+
+(define (alloc-dat n)
+  (let ((old-addr next-free-dat))
+    (set! next-free-dat (+ next-free-dat n))
+    (if (> next-free-dat world-array-size)
+	(space-error 'data)
+	old-addr)))
+
+
+(define (layout-symbols-and-variables)
+  (let ((nextvar start-of-var-space)
+	(nextsym start-of-sym-space))
+    (dolist (name var-list)
+      (toble-set name nextsym sym-table)
+      (set! nextsym (+ nextsym symbol-size))
+      (toble-set name nextvar var-table)
+      (set! nextvar (+ nextvar cell-size)))
+    (toble-walk (lambda (name addr)
+		  (if (not addr)
+		      (block (toble-set name nextsym sym-table)
+			     (set! nextsym (+ nextsym symbol-size)))))
+		sym-table)))
+
+
+(define (patch-symbols)
+  (toble-walk (lambda (name addr)
+		(store-world-ptr where-nil-lives addr)
+		(store-world-word (string-alloc ((coercer string) name))
+				  (+ 1 addr)))
+	      sym-table))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; The blk table is a little strange.
+; Its keys are special code numbers computed by uniq-blkno.
+; The entries are conses (addr . kind), where kind says
+; what sort of code munching needs to be done to append the
+; top level blocks.
+
+
+(set! first-regular-blk-addr 0)
+
+(define (uniq-blkno filno blkno)
+  (+ blkno (* max-blks filno)))
+
+(define (build-blk-table inlist)
+  (let* ((nfils (length inlist))
+	 (next-blk-addr (+ start-of-opc-space
+			   (quotient (- reg-code-delta top-code-delta) 2)))
+	 (allocate-blk (lambda (blk toplevelp)
+			 (let ((old-addr next-blk-addr)
+			       (nwords (quotient (+ (length (second blk))
+						    (if toplevelp
+							top-code-delta
+							reg-code-delta))
+						 2)))
+			   (set! next-blk-addr (+ next-blk-addr nwords))
+			   (if (> next-blk-addr start-of-var-space)
+			       (space-error 'code)
+			       old-addr)))))
+
+    (dolist-count (fils inlist filno)
+      (let ((blk (first fils)))
+	(set! (contents (toble-install (uniq-blkno filno 0)
+				       blk-table))
+	      (cons (allocate-blk blk #t)
+		    (if (= filno (- nfils 1)) 'lastoplevel 'toplevel)))))
+
+    (set! first-regular-blk-addr next-blk-addr)
+
+    (dolist-count (fils inlist filno)
+
+      (dolist-count (blk (cdr fils) blknom1)
+	(set! (contents (toble-install (uniq-blkno filno (+ 1 blknom1))
+				       blk-table))
+	      (cons (allocate-blk blk #f) 'regular))))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;third pass
+;  throw code out into the world
+
+
+
+(define (spew-opcodes inlist in-names)
+  (format #t " spew")
+  (store-world-ptr where-%code-vector-lives start-of-opc-space)
+  (store-world-int first-regular-blk-addr (+ 1 start-of-opc-space)) 
+  (store-world-ptr where-nil-lives (+ 2 start-of-opc-space))
+  (do ((fils inlist (cdr fils))
+       (filno 0 (+ filno 1))
+       (in-names in-names (and (not (null? in-names)) (cdr in-names))))
+      ((null? fils))
+    (if in-names (format #t " ~A" (car in-names)) (format #t "?"))
+    (flush standard-output)
+    (dolist-count (blk (first fils) blkno)
+      (print-dot)
+      (let* ((patches (first blk))
+	     (opcodes (second blk))
+	     (info (toble-get (uniq-blkno filno blkno) blk-table))
+	     (base-addr (car info))
+	     (blk-kind (cdr info))
+	     (regp (eq? blk-kind 'regular))
+	     (delta (quotient (if regp reg-code-delta top-code-delta) 2))
+	     (delbase-addr (+ delta base-addr)))
+	(when regp
+	  (store-world-ptr where-%code-vector-lives base-addr)
+	  (store-world-int (+ 2 (quotient (length opcodes) 2))
+			   (+ 1 base-addr)))
+	(iterate opStep ((ops opcodes)(addr delbase-addr))
+	  (cond (ops (when (>= addr base-addr)
+		       (store-world-opcodes (first ops) (second ops) addr))
+		     (opStep (cddr ops) (+ 1 addr)))
+		((eq? 'toplevel blk-kind) (changereturntonoop (- addr 1)))))
+	(dolist (pat patches)
+	  (let* ((patkind (first pat))
+		 (pataddr (+ delbase-addr (quotient (second pat) 2)))
+		 (patval (third pat))
+		 (patref
+		  (cond ((eq? 2 patkind)
+			 (constant-refgen patval))
+			((eq? 0 patkind)
+			 (tagize-loc (toble-get patval var-table)))
+			((eq? 1 patkind)
+			 (tagize-ptr
+			  (car (toble-get (uniq-blkno filno patval)
+					  blk-table))))
+			(else (error "Unknown patkind in pat ~S." pat)))))
+	    (when (>= pataddr base-addr)
+	      (store-world-word patref pataddr)))))))
+  (format #t "~%"))
+
+
+
+;this is a hack to string the top-level blocks together
+(define (changereturntonoop addr)   
+  (let* ((them (get-world-opcodes addr))
+	 (op1 (car them))
+	 (op2 (cdr them)))
+    (cond ((= op2 return-opcode)
+	   (overwrite-world-opcodes op1 noop-opcode addr))
+	  ((and (= op1 return-opcode)
+		(= op2 noop-opcode))
+	   (overwrite-world-opcodes noop-opcode noop-opcode addr))
+	  (else
+	   (error "bad ops in toplvl blk end <~s ~s> ~&" op1 op2)))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;cons up inline constants
+;
+
+(define (constant-refgen c)
+  (cond ((symbol? c)
+	 (tagize-ptr (toble-get c sym-table)))
+ 	((null? c)
+	 (tagize-ptr where-nil-lives))
+	((eq? c '#t)
+	 (tagize-ptr where-t-lives))
+	((number? c)
+	 (tagize-int c))
+	((char? c)
+	 (tagize-imm (ash-left ((coercer number) c) 6)))
+	((pair? c)
+	 (if cache-pairs?
+	     (caching-pair-alloc c)
+	     (pair-alloc c)))
+	((string? c)
+         (string-alloc c))
+	(else (error "refgen: bad constant data <~s> ~&" c))))
+
+
+(define (pair-alloc c)
+  (let ((newpair (alloc-dat pair-size)))
+    (store-world-ptr where-cons-pair-lives newpair)
+    (store-world-word (constant-refgen (car c)) (+ 1 newpair))
+    (store-world-word (constant-refgen (cdr c)) (+ 2 newpair))
+    (tagize-ptr newpair)))
+
+(define (caching-pair-alloc c)
+  (cond ((present? pair-table c) => cdr)
+	(else
+	 (let ((newp (pair-alloc c)))
+	   ;; Note that this code assumes that C is not EQUAL? to any of its
+	   ;; subexpressions.
+	   (set! (present? pair-table c) newp)
+	   newp))))
+
+(define (string-size c)
+  (let* ((strlen (length c))
+	 (strwordlen (+ 3 (quotient (+ strlen (- 3 1)) 3))))
+    strwordlen))
+
+
+(define (string-alloc c)
+  (let ((strlen (length c)))
+    (if (> strlen 0)
+	(real-string-alloc c strlen)
+	(or the-empty-string
+	    (let ((e-s (real-string-alloc c strlen)))
+	      (set! the-empty-string e-s)
+	      e-s)))))
+
+
+(define (real-string-alloc c strlen)
+  (let* ((strwordlen (+ 3 (quotient (+ strlen (- 3 1)) 3)))
+	 (newstring (alloc-dat  strwordlen))
+	 (strlist (map (coercer number) ((coercer list-type) c))))
+    (store-world-ptr where-string-lives newstring)
+    (store-world-int strwordlen  (+ 1 newstring))
+    (store-world-int strlen  (+ 2 newstring))
+    (string-alloc-aux (+ 3 newstring) strlist strlen)
+    (tagize-ptr newstring)))
+
+
+(define (string-alloc-aux i l to-do)
+  (iterate aux ((i i)(l l)(to-do to-do))
+    (cond ((= to-do 0) )
+	  ((= to-do 1)
+	   (store-world-int (car l) i))
+	  ((= to-do 2)
+	   (store-world-int (bit-or (car l) (ash-left (cadr l) 8)) i))
+	  (else
+	   (let* ((c0 (car l))
+		  (l1 (cdr l))
+		  (c1 (car l1))
+		  (l2 (cdr l1))
+		  (c2 (car l2)))
+	     (store-world-int (bit-or c0
+				      (bit-or (ash-left c1 8)
+					      (ash-left c2 16)))
+			      i)
+	     (aux (+ i 1) (cdr l2) (- to-do 3)))))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;hand-built things
+;
+
+(define vars-to-preload '(nil t cons-pair %code-vector string
+			      %%symloc %%nsyms %%symsize
+			      %%varloc %%nvars))
+
+(set! where-nil-lives #f)
+(set! where-t-lives #f)
+(set! where-string-lives #f)
+(set! where-cons-pair-lives #f)
+(set! where-%code-vector-lives #f)
+(set! where-boot-method-lives #f)
+
+(define (handbuilt-data-size)
+  (+ null-size t-size method-size
+     (* 2 type-size)
+     (* 1 coercable-type-size)))
+
+(define (layout-handbuilt-data)
+  (set! where-nil-lives (alloc-dat null-size))
+  (set! where-t-lives (alloc-dat t-size))
+  (set! where-string-lives (alloc-dat coercable-type-size))
+  (set! where-cons-pair-lives (alloc-dat type-size))
+  (set! where-%code-vector-lives (alloc-dat type-size))
+  (store-world-ptr where-nil-lives (toble-get 'nil var-table))
+  (store-world-ptr where-t-lives (toble-get 't var-table))
+  (store-world-ptr where-string-lives (toble-get 'string var-table))
+  (store-world-ptr where-cons-pair-lives (toble-get 'cons-pair var-table))
+  (store-world-ptr where-%code-vector-lives (toble-get '%code-vector var-table))
+  (store-world-loc start-of-sym-space (toble-get '%%symloc var-table))
+  (store-world-loc start-of-var-space (toble-get '%%varloc var-table))
+  (store-world-int sym-count (toble-get '%%nsyms var-table))
+  (store-world-int var-count (toble-get '%%nvars var-table))
+  (store-world-int symbol-size (toble-get '%%symsize var-table))
+  (layout-boot-method)
+  )
+
+
+
+(define (layout-boot-method)
+  (set! where-boot-method-lives (alloc-dat method-size))
+  (store-world-ptr where-nil-lives where-boot-method-lives)
+  (store-world-ptr start-of-opc-space (+ 1 where-boot-method-lives))
+  (store-world-ptr where-nil-lives    (+ 2 where-boot-method-lives))
+  )
+
+
+
+
+
+      
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;random junk
+;
+
+
+(define (space-error which)
+  (error "Out of ~s space." which))
+
+(define (print-dot)
+  (write-char standard-output #\.)
+  (flush standard-output))
+
+
+
+
+(define (pw)
+  (dotimes (i (length world))
+    (format #t "~s " (nth world i))))
+
+
+(define (extensionize base ext)
+  (append (downcase ((coercer string) base)) ext))
+
+
+(define (read-oa-file file)		;file already has an extension
+  (let ((red (read-file file)))
+    (cond ((not (null? (cdr red)))
+	   (error "File ~S, should contain but one form, but has ~A."
+		  file (length red)))
+	  ((and (pair? (car (car red)))
+		(pair? (caar (car red)))) (car red))
+	  (else (make-oa-list (car red))))))
+
+(define (make-oa-list oaf-list)
+  (let ((sym-vec ((coercer simple-vector) (first oaf-list))))
+    (labels (((rewrite-syms clause)
+	      (let ((car-clause (car clause)))
+		(if (> car-clause (- 5 1))
+		    (list (- car-clause 5)
+			  (second clause)
+			  (nth sym-vec (third clause)))
+		    clause))))
+      (map! (lambda (blk)
+	      (list (map! rewrite-syms (triplify! (first blk)))
+		    (second blk)))
+	    (second oaf-list)))))
+
+
+; this function reverses the order of the triples.
+; also, it is extremely side-effecting, so watch out.
+
+(define (triplify! inlist)
+  (iterate step ((in inlist) (out '()))
+    (if in
+	(let* ((cddrin (cdr (cdr in)))
+	       (nxtrip (cdr cddrin)))
+	  (step nxtrip
+		(block
+		  (set! (cdr cddrin) nil)
+		  (cons in out))))
+	out)))
+
+
+
+;;; Note: the caller of PRINT-HEX must bind (FLUID PRINT-RADIX) to 16
+;;; or results are unpredictable.
+
+(define (print-hex num ndigits outfile)
+  (cond ((not ndigits)
+	 (when (or (negative? num)
+		   (and (not (eq? (get-type num) fixnum))
+			(> num #xffffffff)))
+	   (error "Can't PRINT-HEX #x~X with ~D digits" num ndigits)))
+
+	((= ndigits 4)
+	 (cond ((negative? num)
+		(error "Can't PRINT-HEX #x~X with ~D digits" num ndigits))
+
+	       ((< num #x10) (write-char outfile #\0)
+			     (write-char outfile #\0)
+			     (write-char outfile #\0))
+
+	       ((< num #x100) (write-char outfile #\0)
+			      (write-char outfile #\0))
+
+	       ((< num #x1000) (write-char outfile #\0))
+
+	       ((> num #xffff)
+		(error "Can't PRINT-HEX #x~X with ~D digits" num ndigits))))
+
+	(else
+	 (error "Can't PRINT-HEX #x~X with ~D digits" num ndigits)))
+
+  (print num outfile))
+  
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;test stuff
+;
+
+(define testlist 
+  '(	
+    (					; start of file 1
+     (					; start of block
+      ((constant 6 ((foo bar) 1))
+       (code     10 1)
+       (constant 0 ())
+       (variable 2 append))
+      (0 0 0 0 100 343 0 0 232 1 0 0 2 3 4 5 5 6 7 6144) ;18
+      )					; end of block
+     (					; start of block
+      ((constant 4 12)
+       (constant 0 (ivar1 ivar2))
+       (constant 6 dog)
+       (variable 10 dog))
+      (0 0 2 3 0 0 0 0 100 343 0 0 54 23 6144 0)          ;14
+      )					; end of block
+     )					; end of file
+    (					; start of file 2
+     (					; start of block
+      ((constant 0 ())
+       (variable 2 nil)
+       (variable 4 foo))
+      (0 0 0 0 0 0 9 8 7 6 5 6144)                   ;12
+      )					; end of block
+     )					;end of file
+    )
+  )
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;world accessor functions
+;
+
+(set! world nil)			;this holds an array of words.
+					;opcodes are stored as pairs.
+
+(define (init-world)
+  (let ((array-size world-array-size))
+    (set! world (make simple-vector array-size))
+    (dotimes (i array-size)
+      (set! (nth world i) 0))))
+
+(define (overwrite-world-opcodes o1 o2 word-addr) 
+  (set! (nth world word-addr) (cons o1 o2)))
+
+(define (overwrite-world-word word word-addr) 
+  (set! (nth world word-addr) word))
+
+(define (get-world-word word-addr)
+  (nth world word-addr))
+
+(define (get-world-opcodes word-addr)
+  (nth world word-addr))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;write output files
+;
+
+(define (dump-world filename)
+  (let ((actual-size next-free-dat)
+	(world world))
+    (with-open-file (outfile filename out)
+      (write-world-header outfile)
+      (bind (((fluid print-radix) 16))
+	(dotimes (i actual-size)
+	  (when (zero? (modulo i 8))
+	    (format outfile "~%"))
+	  (let ((guy (nth world i)))
+	    (cond ((number? guy)
+		   (write-char outfile #\space)
+		   (print-hex guy #f outfile))
+		  ((pair? guy)
+		   (write-char outfile #\^)
+		   (print-hex (car guy) #f outfile)
+		   (print-hex (cdr guy) 4 outfile))
+		  (else (error "Unknown guy ~S." guy))))))
+      ;; Size of weak-pointer table:
+      (format outfile "~%0~%"))
+    (format #t "~&Total words:~D~%" actual-size)))
+
+
+(define	(write-world-header outfile)
+  (bind (((fluid print-radix) 16))
+    (print-hex value-stack-size #f outfile)
+    (format outfile " ")
+    (print-hex context-stack-size #f outfile)
+    (format outfile " ")
+    (print-hex (tagize-ptr where-boot-method-lives) #f outfile)
+    (format outfile " ")
+    (print-hex next-free-dat #f outfile)
+    (format outfile "~%")))
+
+
+
+(define (dump-tables filename)
+  (write-file filename `((variables ,(ordered-toble->alist var-table var-list))
+			 (symbols   ,(reverse (toble->alist sym-table))))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; toble stuff
+;
+
+
+(define (toble-install key toble)
+  (if (toble-probe key toble)
+      (error "Key ~S already installed in table ~S." key toble)
+      (toble-probe key toble)))
+
+
+(define (toble-get key toble)
+  (let ((slot (toble-probe key toble)))
+    (if (not slot)
+	(error "Key ~S not found in table ~S." key toble)
+	(contents slot))))
+
+(define (toble-set key value toble)
+  (let ((slot (toble-probe key toble)))
+    (if (not slot)
+	(error "Key ~S not found in table ~S." key toble)
+	(set! (contents slot) value))))
+
+;;; BAP: TOBLE-PROBE used to be a macro for speed.
+
+(define (toble-probe key toble)
+  (cond ((table-entry toble key))
+	(else (set! (table-entry toble key) (%make-cell nil))
+	      #f)))
+
+;;; BAP: Fix quick fix.
+
+(define (toble-walk lamder toble)
+  ;; LAMDER is to be applied to each key,value pair.
+  (dolist (a ((coercer list-type) toble))
+    (lamder (car a) (contents (cdr a)))))
+
+(define (toble->alist toble)
+  (map (lambda (x) `(,(car x) ,(contents (cdr x))))
+       ((coercer list-type) toble)))
+
+(define (ordered-toble->alist toble keylist)
+  (map (lambda (key)
+	 (cons key (contents (table-entry toble key))))
+       keylist))
+
+(define (toble-clear x)
+  (set! (length x) 0))

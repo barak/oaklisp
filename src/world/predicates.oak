@@ -1,0 +1,51 @@
+;;; Copyright (C) Fall 1986, 1989. Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; The following can fail for things that don't inherit from OBJECT,
+;;; or that do it in the wrong order.  These anomalous conditions should
+;;; probably be detected at type creation time, and cause the type to be
+;;; uninstantiable.
+
+(define (type-pred typ)
+  (let ((op (make operation)))
+
+    ;; Force delays and check 'em again.
+    (add-method (op (forcible) self) (op (force self)))
+
+    ;; Yes for instances of TYP.
+    (add-method (op (typ) self) #t)
+
+    ;; No is the default.
+    (add-method (op (object) self) #f)
+
+    op))
+
+(define (inverse-type-pred typ)
+  (let ((op (make operation)))
+
+    ;; Force delays and check 'em again.
+    (add-method (op (forcible) self) (op (force self)))
+
+    ;; No for instances of TYP.
+    (add-method (op (typ) self) #f)
+
+    ;; Yes is the default.
+    (add-method (op (object) self) #t)
+
+    op))
+
+(define number? (type-pred number))
+(define integer? (type-pred integer))
+(define fixnum? (type-pred fixnum))
+
+(define symbol? (type-pred symbol))
+(define string? (type-pred string))
+(define char? (type-pred character))
+
+(define pair? (type-pred pair))
+(define list? (type-pred list-type))
+(define atom? (inverse-type-pred pair))
+
+(define procedure? (type-pred operation))
+(define vector? (type-pred simple-vector))
+
+;null? is defined in subprimitive.oak.

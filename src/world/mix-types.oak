@@ -1,0 +1,42 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Define mixin management tools.
+;;
+
+(define-instance mixin-manager type '(type-alist) (list object))
+
+(add-method (initialize (mixin-manager type-alist) self)
+  (set! type-alist '())
+  self)
+
+(define-instance mix-types operation)
+
+(add-method (mix-types (mixin-manager type-alist) self types)
+  ;; Run through the list looking for what we want.
+  (iterate aux ((l type-alist))
+    (if (null? l)
+	;; not on list, make it.
+	(let ((newtype (make type '() types)))
+	  (set! type-alist (cons (cons types newtype) type-alist))
+	  newtype)
+
+	;; We want to write test (EQUAL? TYPES (CAAR L)) here, but
+	;; EQUAL? doesn't work yet so the comparison is done inline,
+	;; element by element.
+
+	(labels ((non-equal-exit (lambda () (aux (cdr l)))))
+
+	  (iterate loop ((x types) (y (caar l)))
+	    (cond ((null? x)
+		   (if (null? y)
+		       ;; They are equal, return the right type:
+		       (cdar l)
+		       (non-equal-exit)))
+		  ((or (null? y)
+		       (not (eq? (car x) (car y))))
+		   (non-equal-exit))
+		  (else (loop (cdr x) (cdr y)))))))))
+
+;;; eof

@@ -1,0 +1,38 @@
+;;; Copyright (C) 1987,8, Kevin J. Lang & Barak A. Pearlmutter.
+
+(let ((exit-aux
+       (lambda (args)
+	 (destructure (status . format-args) args
+	   (flush standard-error)
+	   (if (null? format-args)
+	       (if (= 0 status)
+		   (format standard-output "~&Oaklisp stopped itself...~%")
+		   (format standard-output
+			   "~&Oaklisp stopped itself (status ~D)...~%" status))
+	       (apply format standard-output format-args))
+	   (flush standard-output)
+	   (flush standard-error)
+	   (cond ((= 0 status) ((%halt 0)))
+		 ((= 1 status) ((%halt 1)))
+		 ((= 2 status) ((%halt 2)))
+		 ((= 3 status) ((%halt 3)))
+		 ((= 4 status) ((%halt 4)))
+		 ((= 5 status) ((%halt 5)))
+		 ((= 6 status) ((%halt 6)))
+		 ((= 7 status) ((%halt 7)))
+		 ((= 8 status) ((%halt 8)))
+		 ((= 9 status) ((%halt 9)))
+		 ((= 10 status) ((%halt 10)))
+		 (else
+		  (format standard-output
+			  "(exit status ~D out of range)~%" status)
+		  (flush standard-output)
+		  ((%halt 10))))))))
+
+  (define (exit . args)
+    (cond ((= 0 (rest-length args))
+	   (listify-args exit-aux debug-level . args))
+	  (else
+	   (listify-args exit-aux . args)))))
+
+;;; eof

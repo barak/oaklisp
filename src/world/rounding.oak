@@ -1,0 +1,34 @@
+;;; Copyright (C) 1986,7,8 Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; The rounding stuff from R3RS.
+
+(define-instance floor operation)
+(define-instance ceiling operation)
+(define-instance truncate operation)
+(define-instance round operation)
+
+
+(dolist (op (list floor ceiling truncate round))
+  (add-method (op (integer) x) x))
+
+(add-method (floor (fraction the-numerator the-denominator) x)
+  (quotientm the-numerator the-denominator))
+
+(add-method (ceiling (fraction the-numerator the-denominator) x)
+  (+ (quotientm the-numerator the-denominator) 1))
+
+(add-method (truncate (fraction the-numerator the-denominator) x)
+  (quotient the-numerator the-denominator))
+
+;;; This rounds to the nearest integer, breaking ties by rounding to even:
+(add-method (round (fraction the-numerator the-denominator) x)
+  (let ((f (quotientm the-numerator the-denominator)))
+    (cond ((= the-denominator 2)
+	   ;; round to even:
+	   (if (even? f) f (+ 1 f)))
+	  (else
+	   (let ((m (modulo the-numerator the-denominator)))
+	     (if (< (+ m m) the-denominator)
+		 f (+ 1 f)))))))
+
+;;; eof

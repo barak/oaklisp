@@ -1,0 +1,71 @@
+;;; Copyright (C) 1986 Barak A. Pearlmutter & Kevin J. Lang.
+
+;;; Set up the immediate types.
+
+;;; There are 6 bits of immediate subtype tag:
+
+(define-instance subtype-table simple-vector 64)
+
+(define-instance illegal-immediate type '() (list object))
+
+(add-method (print (illegal-immediate) self stream)
+  (format stream "#<?IMMEDIATE? ~D|~D~~~D>"
+	  (ash-left (%data self) -6)
+	  (bit-and (%data self) #x3F)
+	  (%tag self)))
+
+(dotimes (i 64)
+  (set! (nth subtype-table i) illegal-immediate))
+
+(define (setup-subtype-table)
+  (set! ((%register 'subtype-table)) subtype-table))
+
+(setup-subtype-table)
+
+;;; Now for characters
+
+(define-constant-instance character
+  coercable-type '() (list self-evaluatory-mixin object))
+
+(set! (coercer character)
+     (make (mix-types oc-mixer (list foldable-mixin settable-operation))))
+
+(add-method (character (character) x) x)
+
+(set! (nth subtype-table 0) character)
+
+(define-instance graphic? operation)
+
+(add-method (graphic? (character) self)
+  (let ((cn (number self)))
+    (and (<= (number #\!) cn)
+	 (<= cn (number #\~)))))
+
+(add-method (print (character) self stream)
+  (cond (print-escape
+	 (write-char stream #\#)
+	 (write-char stream #\\)
+	 (cond ((and (not (graphic? self))
+		     (symbol self))
+		=> (lambda (p) (print p stream)))
+	       (else
+		(write-char stream self))))
+	(else
+	 (write-char stream self))))
+
+(add-method (character (fixnum) x)
+  (%crunch (ash-left x 6) 1))
+
+(add-method (number (character) x)
+  (ash-left (%data x) -6))
+
+(add-method (= (character) x y)
+  (eq? x y))
+
+(add-method (< (character) x y)
+  (if (char? y)
+      (< (%character->fixnum x)
+	 (%character->fixnum y))
+      (error "Incompatible types: (< ~S ~S)." x y)))
+
+;;; eof

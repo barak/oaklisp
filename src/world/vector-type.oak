@@ -1,0 +1,24 @@
+;;; Copyright (C) 1988 Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; The abstract vector type:
+
+(define-instance vector-type coercable-type
+  '() (list self-evaluatory-mixin sequence))
+
+(add-method (print (vector-type) self stream)
+  (cond ((and print-level (= print-level 0))
+	 (write-char stream #\#))
+	(else (write-string "#(" stream)
+	      (let ((nmi (- (length self) 1)))
+		(bind ((print-level (and print-level (- print-level 1))))
+		  (iterate step ((i 0)(l print-length))
+		    (cond ((and l (= l 0))
+			   (write-string "..." stream))
+			  ((<= i nmi)
+			   (print (nth self i) stream)
+			   (cond ((< i nmi)
+				  (write-char stream #\space)
+				  (step (+ i 1) (and l (- l 1))))))))))
+	      (write-char stream #\)))))
+
+;;; eof

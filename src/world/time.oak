@@ -1,0 +1,11 @@
+;;; Copyright (C) 1988 Kevin J. Lang & Barak A. Pearlmutter.
+
+(define (*time f n)
+  (let ((before (get-time)))
+    (dotimes (i n (/ (- (get-time) before) n))
+      (f))))
+
+(define-syntax (time (n) . body)
+  `(*time (lambda () . ,body) ,n))
+
+;;; eof

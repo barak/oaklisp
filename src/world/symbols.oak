@@ -1,0 +1,188 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;;; This file defines the Symbol datatype.
+
+;(initialize symbol '(print-name) (list object))
+
+(add-method (initialize (symbol print-name) self the-print-name)
+  (set! print-name the-print-name)
+  self)
+
+(define symbol-table (make-string-hash-table))
+
+(define-instance intern settable-operation)
+
+(add-method (intern (string) self)
+  (cond ((present? symbol-table self) => cdr)
+	(else
+	 (set! (present? symbol-table self)
+	      (make symbol self)))))
+
+(add-method (intern (symbol print-name) self)
+  (if (present? symbol-table print-name)
+      (warning "attempt to reintern symbol ~S ignored.~%" self)
+      (set! (present? symbol-table print-name) self)))
+
+;;; The following variable is used so that the symbols.oa file does
+;;; not have to be manually edited each time symbols is recompiled.
+(set! symbol-slashification-style #f)
+
+(add-method (print (symbol print-name) self stream)
+  (cond ((and print-escape (requires-slashification? self))
+	 (cond ((eq? symbol-slashification-style 't-compatible)
+		(cond ((eq? self '||)
+		       (write-string "#[symbol \"\"]" stream))
+		      (else
+		       (dotimes (i (length print-name))
+			 (write-char stream #\\)
+			 (write-char stream (nth print-name i))))))
+	       (else
+		(write-char stream #\|)
+		(write-string-with-slashes print-name #\| stream)
+		(write-char stream #\|))))
+	(else
+	 (write-string print-name stream))))
+
+(add-method (string (symbol print-name) self)
+  print-name)
+
+(add-method (symbol (string) self)
+  (intern self))
+
+(add-method (symbol (sequence) self)
+  (intern (string self)))
+
+(let ((counter 0))
+  (define (gensym x)
+    (block0 ((coercer symbol) (format #f "~A~D" x counter))
+	    (set! counter (+ counter 1)))))
+
+(define generate-symbol gensym)
+
+(define (genvar) (gensym "v"))
+(define (genvar/1 ignored) (genvar))
+
+;(add-method (append (symbol) a b)
+;   (symbol (append (string a) (string b))))
+
+(add-method (append (symbol) arg . rest)
+  (format t "warning: we are phasing out append for symbols (e.g. ~a)~%" arg)
+  (listify-args
+   (lambda (args)
+     ((coercer symbol)
+      (apply append
+	     (cons ((coercer string) arg)
+		   (map (coercer string) args)
+))))
+   . rest))
+
+
+
+;;; Things that can make a symbol require slashification:
+;;;  A lower case character.
+;;;  First character not a constituent.
+;;;  Any chararacter other than the first neither a contituent nor a
+;;;     non-terminating macro character.
+;;;  Being || or |.| or |...|.
+;;;  Looking like a number: either an integer, or a fraction, or an
+;;;   integer with an embedded decimal point.
+;;;
+;;; Only the last condition is hairy.  We use a DFA, with states:
+;;;        --n1--  --n2--        --n3--   --n4--
+;;;  ['-'] <digit> <digit>* ['/' <digit> <digit>*]
+;;;  ['-'] <digit> <digit>* ['.'         <digit>*]
+;;;  ['-']                   '.' <digit> <digit>*
+;;; The initial '-' doesn't get a state because it's handled (along with
+;;; initial non-terminating macro chars) by some prologue code.
+
+(add-method (requires-slashification? (symbol print-name) self)
+  ;; It is somewhat unfortunate that || |.| and |...| get interned because
+  ;; they are mentioned below.  In fact, in the initial world, these are the
+  ;; only symbols requiring slashification.
+  (or (eq? self '||)
+      (eq? self '|.|)
+      (eq? self '|...|)
+      (let ((l (length print-name))
+	    (base (fluid print-radix)))
+
+	(labels ( ((n1 i)
+		   ;; Before first char of first block of digits
+		   (if (= i l) #f
+		       (let* ((c (nth print-name i))
+			      (c-syntax (nth standard-read-table c)))
+			 (n1.5 i c c-syntax))))
+
+		  ((n1.5 i c c-syntax)
+		   ;; Before first char of first block of digits (half done)
+		   (if (and (or (eq? c-syntax 'constituent)
+				(and (pair? c-syntax)
+				     (eq? (car c-syntax) 'nonterminating-macro)))
+			    (digit? c base))
+		       (n2 (+ 1 i))
+		       (cond ((eq? c #\.) (n3 (+ 1 i)))
+			     (else (scan.5 i c c-syntax)))))
+		  ((n2 i)
+		   ;; After first char of first block of digits
+		   (if (= i l) #t
+		       (let* ((c (nth print-name i))
+			      (c-syntax (nth standard-read-table c)))
+			 (if (and (or (eq? c-syntax 'constituent)
+				      (and (pair? c-syntax)
+					   (eq? (car c-syntax) 'nonterminating-macro)))
+				  (digit? c base))
+			     (n2 (+ 1 i))
+			     (cond ((eq? c #\/) (n3 (+ 1 i)))
+				   ((eq? c #\.) (n4 (+ 1 i)))
+				   (else (scan.5 i c c-syntax)))))))
+
+		  ((n3 i)
+		   ;; Before required digit of the last block of digits
+		   (if (= i l) #f
+		       (let* ((c (nth print-name i))
+			      (c-syntax (nth standard-read-table c)))
+			 (if (and (or (eq? c-syntax 'constituent)
+				      (and (pair? c-syntax)
+					   (eq? (car c-syntax) 'nonterminating-macro)))
+				  (digit? c base))
+			     (n4 (+ 1 i))
+			     (scan.5 i c c-syntax)))))
+
+		  ((n4 i)
+		   ;; Before optional digit of the last block of digits
+		   (if (= i l) #t
+		       (let* ((c (nth print-name i))
+			      (c-syntax (nth standard-read-table c)))
+			 (if (and (or (eq? c-syntax 'constituent)
+				      (and (pair? c-syntax)
+					   (eq? (car c-syntax) 'nonterminating-macro)))
+				  (digit? c base))
+			     (n4 (+ 1 i))
+			     (scan.5 i c c-syntax)))))
+
+		  ((scan i)
+		   ;; Scan along for a character that requires slashification
+		   (if (= i l) #f
+		       (let* ((c (nth print-name i))
+			      (c-syntax (nth standard-read-table c)))
+			 (scan.5 i c c-syntax))))
+
+		  ((scan.5 i c c-syntax)
+		   (if (and (or (eq? c-syntax 'constituent)
+				(and (pair? c-syntax)
+				     (eq? (car c-syntax) 'nonterminating-macro)))
+			    ;; Got to be constituent and not lowercase char too.
+			    (let ((cn ((coercer number) c)))
+			      (or (< cn ((coercer number) #\a))
+				  (< ((coercer number) #\z) cn))))
+		       (scan (+ 1 i))
+		       #t))
+		  )
+
+	  (let* ((c (nth print-name 0))
+		 (c-syntax (nth standard-read-table c)))
+	    (or (not (eq? c-syntax 'constituent))
+		(if (eq? c #\-)
+		    (n1 1)
+		    (n1.5 0 c c-syntax))))))))
+
+;;; eof

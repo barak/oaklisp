@@ -1,0 +1,199 @@
+;;; Copyright (C) 1987,8,9, Barak A. Pearlmutter and Kevin J. Lang, Carnegie Mellon.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                 peephole optimizer                                  ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; This is a rewrite of the peephole optimizer that should both
+;;; faster and more modular.
+
+;;; Interface function: (peephole-optimize instruction-list).  Extra fields
+;;; in the instructions are comments.  Labels are bare symbols in the list.
+
+
+(local-syntax peep
+	      (lambda (form)
+		`(define-crunch peephole ,@(cdr form))))
+
+
+
+;;; Single instruction optimizations:
+
+(peep (BLAST 1) => (BLT-STK 1 1))
+(peep (POP 0) => )
+(peep (BLT-STK ,n 0) => )
+(peep (BLT-STK 0 ,n) => (POP ,n))
+;(peep (NOOP) => )
+
+
+;;; Pure branches:
+
+(peep (LABEL ,l) (BRANCH ,l) => 1 (load-glo-con infinite-loop)
+      (load-glo-con signal)(store-nargs 1) (funcall-cxt))
+(peep (forall x branch in0) (,x ,l) (LABEL ,l) => 2)
+(peep (forall x branch in1) (,x ,l) (LABEL ,l) => (POP 1) 2)
+
+
+;;; Branch interactions:
+
+(peep (NOT)(BRANCH-NIL ,l) => (BRANCH-T ,l))
+(peep (NOT)(BRANCH-T ,l) => (BRANCH-NIL ,l))
+
+(peep (forall x in0 out1 notnil nosides)(,x)(BRANCH-T ,l) => (BRANCH ,l))
+(peep (forall x in0 out1 notnil nosides)(,x)(BRANCH-NIL ,l) => )
+
+(peep (forall x in1 out1 notnil nosides)(,x)(BRANCH-T ,l) =>(POP 1)(BRANCH ,l))
+(peep (forall x in1 out1 notnil nosides)(,x)(BRANCH-NIL ,l) => (POP 1))
+
+(peep (forall x in2 out1 notnil nosides)(,x)(BRANCH-T ,l) =>(POP 2)(BRANCH ,l))
+(peep (forall x in2 out1 notnil nosides)(,x)(BRANCH-NIL ,l) => (POP 2))
+
+
+
+;;; Pure stack motion:
+
+(peep (SWAP ,n)(SWAP ,n) => )
+(peep (BLT-STK ,a ,b) (BLT-STK ,c ,d)
+      => (>= a c) (>= (+ c d) a) (< (+ b d) 17) => (BLT-STK ,c ,(+ b d)))
+(peep (BLT-STK ,g ,n) (POP ,m) => (<= g m) => (POP ,(+ n m)))
+
+(peep (LOAD-STK ,k)(BLT-STK 1 ,n)
+      => (> n k) => (POP ,k) (BLT-STK 1 ,(- n (+ k 1))))
+(peep (LOAD-STK ,k)(BLT-STK 1 ,n) => (<= n k) => (POP ,n) (LOAD-STK ,(- k n)))
+
+(peep (LOAD-STK ,n)(BLAST ,(+ n 1))	=> )
+(peep (LOAD-STK ,n)(STORE-STK ,(+ n 1)) => 1)
+
+(peep (LOAD-STK 1) (BLT-STK 2 1)   => (SWAP 1))
+(peep (LOAD-STK 1) (BLT-STK 2 2)   => (BLAST 2))
+(peep (LOAD-STK 2) (BLT-STK 2 2)   =>(BLT-STK 1 1)(SWAP 1))
+(peep (LOAD-STK ,k)(BLT-STK ,g ,n) => (>= (+ 1 k) (+ g n))
+  => (BLT-STK ,(- g 1) ,n) (LOAD-STK ,(- k n)))
+
+(peep (POP ,a)	    (POP ,b) => (POP ,(+ a b)))
+(peep (STORE-STK ,a)(POP ,n) => (BLAST ,a)(POP ,(- n 1)))
+
+
+
+
+;;; Stack motion interactions:
+
+(peep (forall x in0 out0 ns) (,x)(BLT-STK)	 => 2 1)
+(peep (forall x in0 out1 ns) (,x)(BLT-STK ,g ,n) => (BLT-STK ,(- g 1) ,n) 1)
+(peep (forall x in1 out1 ns) (,x)(BLT-STK)	 => 2 1)
+
+;;; Screws up peephole termination proof by using extra stack:
+;(peep (forall x in2 out1 ns) (,x)(BLT-STK ,g ,n) => (BLT-STK ,(+ g 1) ,n) 1)
+;;; Screws up tail recursion:
+;(peep (forall x in2 out1 ns) (BLT-STK ,g ,n)(,x) => 2 (BLT-STK ,(- g 1) ,n))
+
+
+(peep (forall x in0 out1 nosides) (,x) (POP ,n) => (POP ,(- n 1)))
+(peep (forall x in1 out1 nosides) (,x) (POP)	=> 2)
+(peep (forall x in2 out1 nosides) (,x) (POP ,n) => (POP ,(+ n 1)))
+
+(peep (forall x in2 commutes)
+      (SWAP 1)(,x)	     => 2)
+(peep (SWAP 1)(REVERSE-CONS) => (CONS))
+(peep (SWAP 1)(CONS)	     => (REVERSE-CONS))
+
+
+
+;;; to speed fibb ?
+;(peep (LOAD-IMM 0) (LOAD-GLO-CON ,v) (=) => (LOAD-GLO-CON ,v) (=0?))
+
+
+
+
+;;; Miscellaneous:
+
+(peep (LOAD-IMM 0) (=)			=> (=0?))
+(peep (LOAD-GLO ,x)(CONTENTS)		=> (LOAD-GLO-CON ,x))
+(peep (MAKE-BP-LOC ,n)(SET-CONTENTS)	=> (STORE-BP ,n))
+(peep (LOAD-IMM ,x)(EQ?)   => (null? x)	=> (NOT))
+(peep (LOAD-IMM ,x)(NOT)		=> (LOAD-IMM ,(not x)))
+(peep (CONS)	    (CAR)		=> (BLT-STK 1 1))
+(peep (REVERSE-CONS)(CDR)		=> (BLT-STK 1 1))
+(peep (CONS)	    (CDR)		=> (POP 1))
+(peep (REVERSE-CONS)(CAR)		=> (POP 1))
+(peep (LOCATE-CAR)(CONTENTS)		=> (CAR))
+(peep (LOCATE-CDR)(CONTENTS)		=> (CDR))
+(peep (LOCATE-CAR)(SET-CONTENTS)	=> (SET-CAR))
+(peep (LOCATE-CDR)(SET-CONTENTS)	=> (SET-CDR))
+
+
+
+(destructure* (t1 t2) (emit-crunchers peephole instructions-with)
+  (define peephole/1 t1)
+  (define peephole/2 t2))
+
+
+
+
+
+;;; Output rewrites:
+
+(define-crunch peepout (blt-stk 1 1) => (blast 1))
+(define-crunch peepout (load-imm ,n) => (tiny-number? n) => (load-imm-fix ,n))
+(define-crunch peepout (load-imm ,x) => (null? x) => (load-reg nil))
+(define-crunch peepout (load-imm #t) => (load-reg t))
+(define-crunch peepout (load-code (code ,ivarmap ,instrs))
+  => (load-code (code ,ivarmap ,(peephole-optimize instrs))))
+
+
+(destructure* (t1) (emit-crunchers peepout instructions-with)
+  (define peepout/1 t1))
+
+
+
+
+
+;;; Main routine:
+
+;;; Turn this on to watch the optimizer in action.
+(define peeptrace #f)
+
+(let ((output-rewrite
+       (lambda (inguy)
+	 (let ((it (peepout/1 inguy)))
+	   (if (eq? it 'nochange)
+	       inguy
+	       (car it))))))
+
+  (define (peephole-optimize instruction-list)
+    (when peeptrace
+      (format #t "~&~A~%" instruction-list))
+    (iterate step ((left '()) (right instruction-list))
+      (cond ((null? right)
+	     ;; Finished.
+	     (let ((e (map! output-rewrite (reverse! left))))
+	       (when peeptrace
+		 (format #t "~A~%" e))
+	       e))
+	    ((null? left)
+	     ;; Maybe move right:
+	     (let* ((i (car right))
+		    (j (peephole/1 i))
+		    (k (cdr right)))
+	       (if (eq? j 'nochange)
+		   (step (cons i left) k)
+		   (step left (append! j k)))))
+	    (else
+	     (let* ((i2 (car right))
+		    (rr (cdr right))
+		    (j (peephole/1 i2)))
+
+	       (if (eq? j 'nochange)
+		   (let ((att (peephole/2 (car left) i2)))
+		     (if (eq? att 'nochange)
+			 ;; Move right:
+			 (step (cons i2 left) rr)
+			 ;; Stay to left of new stuff:
+			 (block
+			   (when peeptrace
+			     (format #t "~&~A || ~A~%~A~%"
+				     (reverse left) right att))
+			   (step (cdr left) (append! att rr)))))
+		   (step left (append! j rr)))))))))
+
+;;; eof

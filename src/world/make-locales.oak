@@ -1,0 +1,21 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;; currently, the locale structure looks like this:
+;;
+;;                     SYSTEM  . . . OAKLISP
+;;                     /                  \
+;;               COMPILER                 USER
+;;
+;;
+;;
+
+;; system-locale gets filled in from the boot world by patch-locales.oak.
+;; oaklisp-locale will be filled with stuff exported from system-locale.
+
+(define-instance system-locale locale '())
+(define-instance compiler-locale locale (list system-locale))
+
+(define-instance oaklisp-locale locale '())
+(define-instance user-locale locale (list oaklisp-locale))
+
+;;; eof

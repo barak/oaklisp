@@ -1,0 +1,50 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+;;;;;;;;;;some functions defined here for expediency;;;;;;;;;;
+
+(set! subtype? (%allocate operation %simple-operation-length))
+(set! %length  (%allocate operation %simple-operation-length))
+(set! %memq    (%allocate operation %simple-operation-length))
+(set! %append  (%allocate operation %simple-operation-length))
+
+(set! ((%slot 1) subtype?) 0)
+(set! ((%slot 1) %length) 0)
+(set! ((%slot 1) %memq) 0)
+(set! ((%slot 1) %append) 0)
+
+
+;;; SUBTYPE? code goes here because of some load dependencies.
+
+(add-method (subtype? (type type-bp-alist) self potential-super)
+  (not (null? (%assq potential-super type-bp-alist))))
+
+(add-method (%length (object) l)
+    (iterate aux ((l l) (n 0))
+      (if (null? l) n (aux (cdr l) (+ n 1)))))
+
+(add-method (%memq (object) ob l)
+    (cond ((null? l) '())
+	  ((eq? ob (car l)) l)
+	  (else (%memq ob (cdr l)))))
+
+(add-method (%append (object) a b)
+  (cond ((null? a) b)
+	((null? b) a)
+	(else
+	 (cons (car a) (%append (cdr a) b)))))
+
+
+
+
+
+
+#|
+(add-method (subtype? (type supertype-list) self potential-super)
+  (or (eq? self potential-super)
+      (iterate aux ((l supertype-list))
+	(cond ((null? l) nil)
+	      (t (let ((cdrl (cdr l)))
+		   (cond ((null? cdrl) (subtype? (car l) potential-super))
+			 ((subtype? (car l) potential-super) t)
+			 (t (aux cdrl)))))))))
+|#

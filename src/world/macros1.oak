@@ -1,0 +1,252 @@
+;;; Copyright (C) 1987, Kevin J. Lang and Barak A. Pearlmutter.
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                macros (first chunk)                                 ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(define-syntax (comment . x)
+  ''comment)
+
+
+(define-syntax (let* clauses . body)
+  (if (null? clauses)
+      `(block ,@body)
+      `(let (,(car clauses))
+	 (let* ,(cdr clauses)
+	   ,@body))))
+
+(define-syntax define
+  (lambda (form)
+    (destructure** form
+      ;; This clause is for when you go (DEFINE FOO 'BAR).
+      ((#t ('fluid var) val) `(set! ,@(cdr form)))
+      ((#t ('fluid var) . #t) (error "Malformed expression ~S." form))
+      ((#t (var . arglist) . rhstuff) `(set! ,var (lambda ,arglist ,@rhstuff)))
+      ((#t var val) `((setter contents) (make-locative ,var) ,val)))))
+
+; When compiling a file (using compile-file or load-oak-file),
+; macro expansion occurs in a sub-locale that is augmented with
+; the local syntax of that file, and so ^Vcurrent-locale is temporarily 
+; rebound to the sub-locale.  It is bound to the actual current locale
+; during the load phase.
+;
+; When evaluation occurs as the result of an ordinary call to eval,
+; like at the behest of the read-eval-print-loop, this split does not
+; occur, so the following three forms are equivalent.
+
+(define-syntax (define-syntax sym def)
+  (cond ((pair? sym)
+	 (let ((v (genvar)))
+	   `(define-syntax ,(car sym)
+	      (lambda (,v)
+		(destructure* (#t . ,(cdr sym)) ,v
+		  ,def)))))
+	(else
+	 ;; Load time:
+	 `(set! (macro-here? current-locale ',sym) ,def))))
+
+(define-syntax (local-syntax sym def)
+  (cond ((pair? sym)
+	 (let ((v (genvar)))
+	   `(local-syntax ,(car sym)
+			  (lambda (,v)
+			    (destructure* (#t ,@(cdr sym)) ,v
+			      ,def)))))
+	(else
+	 ;; Compile time:
+	 (set! (macro-here? current-locale sym)
+	       (eval def current-locale))
+	 ''local-syntax)))
+
+(define-syntax (define-local-syntax sym def)
+  (cond ((pair? sym)
+	 (let ((v (genvar)))
+	   `(define-local-syntax ,(car sym)
+	      (lambda (,v)
+		(destructure* (#t ,@(cdr sym)) ,v
+		  ,def)))))
+	(else
+	 ;; Compile time:
+	 (set! (macro-here? current-locale sym)
+	       (eval def current-locale))
+	 ;; Load time:
+	 `(set! (macro-here? current-locale ',sym) ,def))))
+
+
+;;;
+
+(define-syntax (define-instance loc typ . args)
+
+  (let ((t1 (genvar))
+	(t2 (genvar)))
+
+    `(let ((,t1 (make-locative ,loc))
+	   (,t2 ,typ))
+       (if (eq? (get-type (contents ,t1)) ,t2)
+	   (contents ,t1)
+	   (set! (contents ,t1) (make ,t2 ,@args))))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; Parallel assignment.  Similar to the ZetaLisp form with the
+;;; analagous name.  For example, (pset (a b) (b c) (c a)) is a
+;;; typical use, as is (pset ( (car x) (cdr x) ) ( (cdr x) (car x) )).
+;;; The tricky cases are like (pset (a 6) ((car a) 5)).
+;;;
+;;; Maybe this should be optimized to not make a locative when the
+;;; location is a simple variable.  But not for global variables,
+;;; which is hard.
+
+(define-syntax (pset . clauses)
+  (let ((locvars (map genvar/1 clauses))
+	(valvars (map genvar/1 clauses)))
+    (when (any? (map null? (map cddr clauses)))
+      (error "Malformed PSET clause within ~S." `(pset ,@clauses)))
+    `((lambda ,locvars
+	((lambda ,valvars
+	   ,@(map (lambda (locvar valvar)
+		    `(set! (contents ,locvar) ,valvar))
+		  locvars valvars))
+	 ,@(map cadr clauses)))
+      ,@(map (lambda (clause) `(make-locative ,(car clause)))
+	     clauses))))
+
+;;; DOTIMES, just like in Common Lisp
+
+(define-syntax (dotimes (var limit . exit-body) . body) 
+  (let ((exit-form (and exit-body (destructure* (a) exit-body a)))
+	(v-limit (genvar))
+	(v-label (genvar)))
+    `(let ((,v-limit ,limit))
+       (labels (( (,v-label ,var)
+		  (cond ((< ,var ,v-limit) ,@body (,v-label (+ ,var 1)))
+			(else ,exit-form))))
+	 (,v-label 0)))))
+
+
+;;; DO, just like in Common Lisp and R3RS.
+
+(define-syntax (do clauses (test . exit-body) . body)
+  (let ((clauses
+	 (map (lambda (c)
+		(destructure** c
+		  ((var init) `(,var ,init ,var))
+		  ((var init iter) c)
+		  (otherwise (error "Malformed DO clause ~S." c))))
+	      clauses))
+	(aux (genvar)))
+    `(iterate ,aux ,(map list (map car clauses) (map cadr clauses))
+       (cond (,test ,@exit-body)
+	     (else ,@body (,aux ,@(map caddr clauses)))))))
+
+(define-syntax (when test . body) 
+  `(if ,test
+       (block ,@body)
+       when-undefined-value))
+
+(define-syntax (unless test . body)
+  `(if (not ,test)
+       (block ,@body)
+       unless-undefined-value))
+
+(define-syntax (while test . body)
+  (let ((v (genvar)))
+    `(iterate ,v ()
+       (if ,test
+	   (block ,@body (,v))
+	   while-undefined-value))))
+
+
+(define-syntax (select-type selector . clauses)
+  (let ((tv (genvar)))
+    `(let ((,tv (get-type ,selector)))
+       (cond ,@(map (lambda (clause)
+		      (destructure** clause
+			(('otherwise . body)
+			 `(else ,@body))
+			((types . body)
+			 `((or ,@(map (lambda (ty) `(subtype? ,tv ,ty))
+				      types))
+			   ,@body))))
+		    clauses)))))
+
+(define-syntax (fselect-type selector . clauses)
+
+  (labels (((aux normal-clauses otherwise-clause v expr)
+
+	    (let ((tv (genvar)) (lab (genvar)))
+	      `(iterate ,lab ((,v ,expr))
+		 (let ((,tv (get-type ,v)))
+		   (cond 
+		    ,@(map (lambda (clause)
+			     (destructure* (types . body) clause
+			       `((or ,@(map (lambda (ty)
+					      `(subtype? ,tv ,ty))
+					    types))
+				 ,@body)))
+			   normal-clauses)
+
+		    ;; Check if the thing we got is forcible; if so
+		    ;; force it and restart the case.
+		    ((subtype? ,tv forcible)
+		     (,lab (force ,v)))
+
+		    ,@(if otherwise-clause
+			  (destructure* ('otherwise . body) otherwise-clause
+			    `((else ,@body)))
+			  '())))))))
+ 
+    (labels (((aux2 v expr)
+	      (if (null? clauses)
+		  (aux clauses #f v expr)
+		  (let ((lc (last clauses)))
+		    (if (eq? (car lc) 'otherwise)
+			(aux (subseq clauses 0 (- (length clauses) 1)) lc
+			     v expr)
+			(aux clauses #f v expr))))))
+
+      (if (symbol? selector)
+	  (aux2 selector selector)
+	  (destructure* (v expr) selector
+	    (aux2 v expr))))))
+
+
+
+(define-syntax (eselect-type selector . clauses)
+  `(select-type ,selector
+     ,@clauses
+     (otherwise (error "Inappropriate type.~%"))))
+
+(define-syntax (efselect-type selector . clauses)
+  `(fselect-type ,selector
+		 ,@clauses
+		 (otherwise (error "Inappropriate type.~%"))))
+
+
+(define-syntax (case key . clauses)
+  (let ((keyvar (genvar)))
+    `(let ((,keyvar ,key))
+       (cond
+	,@(map (lambda (clause)
+
+		 (destructure** clause
+		   (('else . body) clause)
+		   (('otherwise . body) clause)
+		   ((things . body)
+		    `((or ,@(map (lambda (th)
+				   ;; Some things can be compared with
+				   ;; EQ? while others require EQV?.
+				   `(,(if (or (fixnum? th)
+					      (not (number? th)))
+					  'eq?
+					  'eqv?)
+				     ',th ,keyvar))
+				 things))
+		      ,@body))))
+	       clauses)))))
+
+;;; eof

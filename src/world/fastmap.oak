@@ -1,0 +1,188 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+
+
+(add-method (map1 (operation) op oldcopy)
+  (and oldcopy
+    (let ((newcopy (cons (op (car oldcopy)) nil)))
+      (iterate next ((oldpair (cdr oldcopy))(last-newpair newcopy))
+	(if oldpair
+	    (next (cdr oldpair)
+		  (set! (cdr last-newpair) (cons (op (car oldpair)) nil)))
+	    newcopy)))))
+
+
+
+(add-method (map2 (operation) op l1 l2)
+  (and (not (null? l1))
+       (not (null? l2))
+    (let ((newcopy (cons (op (car l1)(car l2)) '())))
+      (iterate next ((oldpair1 (cdr l1))
+		     (oldpair2 (cdr l2))
+		     (last-newpair newcopy))
+	(if (and (not (null? oldpair1))
+		 (not (null? oldpair2)))
+	    (next (cdr oldpair1)
+		  (cdr oldpair2)
+		  (set! (cdr last-newpair)
+			(cons (op (car oldpair1)(car oldpair2)) '())))
+	    newcopy)))))
+
+
+
+
+; 3.1 sec for 10000    (now 2.2)
+(add-method (map! (operation) op lis)
+  (iterate next ((l lis))
+    (cond (l
+	   (set! (car l) (op (car l)))
+	   (next (cdr l)))
+	  (else
+	   lis))))
+
+
+
+; 2.8 sec for 10000
+(add-method (for-each1 (operation) op l)
+  (iterate next ((l l))
+    (when l
+      (op (car l))
+      (next (cdr l)))))
+
+
+
+; 3.1 sec for 10000
+(add-method (mem (operation) pred ob l)
+  (iterate next ((l l))
+    (cond ((null? l)
+	   '())
+	  ((pred ob (car l))
+	   l)
+	  (else
+	   (next (cdr l))))))
+
+; 1.4 sec for 10000
+(define (memq ob l)
+  (iterate next ((l l))
+    (cond ((null? l)
+	   '())
+	  ((eq? ob (car l))
+	   l)
+	  (else
+	   (next (cdr l))))))
+
+; 3.2 sec for 10000
+(add-method (ass (operation) pred ob l)
+  (iterate next ((l l))
+    (cond ((null? l)
+	   '())
+	  ((pred ob (caar l))
+	   (car l))
+	  (else
+	   (next (cdr l))))))
+
+
+; 1.5 sec for 10000
+(define (assq ob l)
+  (iterate next ((l l))
+    (cond ((null? l)
+	   '())
+	  ((eq? ob (caar l))
+	   (car l))
+	  (else
+	   (next (cdr l))))))
+
+;%assq takes 0.06 sec for 10000
+
+
+
+; 2 sec for 10000  (was 8 before method cache)
+(with-operations (last-pair-next)
+
+  (add-method (last-pair-next (pair) self prev-cdr)
+    (last-pair-next (cdr self) self))
+
+  (add-method (last-pair-next (object) self prev-cdr)
+    prev-cdr)
+
+  (add-method (last-pair-next (forcible) self prev-cdr)
+    (last-pair-next (force self) prev-cdr))
+
+  (add-method (last-pair (pair) self)
+    (last-pair-next (cdr self) self)))
+
+
+#|
+; 5 sec for 10000  (was 20)
+(add-method (last-pair-a (pair) self)
+  (iterate last-pair ((self self))
+    (if (is-a? (cdr self) pair)
+	(last-pair (cdr self))
+	self)))
+
+; 4 sec for 10000
+(with-operations (lpoc-next)
+  (add-method (lpoc-next (pair) oldpair last-newpair)
+    (let ((newpair (cons (car oldpair) nil)))
+      (set! (cdr last-newpair) newpair)
+      (lpoc-next (cdr oldpair) newpair)))
+  (add-method (lpoc-next (object) oldobj last-newpair)
+    (set! (cdr last-newpair) oldobj)
+    last-newpair)
+  (add-method (last-pair-of-copy (pair) oldpair)
+    (let ((newpair (cons (car oldpair) nil)))
+      (lpoc-next (cdr oldpair) newpair))))
+|#
+
+
+
+#|
+; now the correct definition lives back in mapping.oak
+(add-method (append (pair) oldcopy b)
+  (let ((newcopy (cons (car oldcopy) b)))
+    (iterate next ((oldpair (cdr oldcopy))(last-newpair newcopy))
+      (if oldpair
+	  (next (cdr oldpair) (set! (cdr last-newpair) (cons (car oldpair) b)))
+	  newcopy))))
+|#
+
+#|
+(CODE ()
+      (
+       (CHECK-NARGS 2)
+       (LOAD-STK 1 B)
+       (LOAD-STK 1 OLDCOPY)
+       (CAR)
+       (CONS)
+       (LOAD-STK 0 NEWCOPY)
+       (LOAD-STK 2 OLDCOPY)
+       (CDR)
+ LABEL0
+       (LOAD-STK 0 OLDPAIR)
+       (BRANCH-NIL ELSE1)
+       (LOAD-STK 4 B)
+       (LOAD-STK 1 OLDPAIR)
+       (CAR)
+       (CONS)
+       (LOAD-STK 2 LAST-NEWPAIR)
+       (SET-CDR)
+       (BLAST 2)
+       (CDR)
+       (BRANCH LABEL0)
+ ELSE1
+       (POP 2)
+       (BLT-STK 1 2)
+       (RETURN)
+       ))
+
+|#
+
+
+
+
+
+
+;reverse takes 2.1 sec
+;reverse! takes 2.2 sec
+
+

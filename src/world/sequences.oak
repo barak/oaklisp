@@ -1,0 +1,200 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+(add-method (subsequence? (sequence) s1 s2)
+  (let* ((l1 (length s1))
+	 (l2 (length s2))
+	 (ldiff (- l2 l1)))
+    (iterate loop2 ((i2 0))
+      (if (> i2 ldiff)
+	  #f
+	  (iterate loop1 ((i1 0))
+	    (if (>= i1 l1)
+		i2
+		(if (eq? (nth s1 i1) (nth s2 (+ i1 i2)))
+		    (loop1 (1+ i1))
+		    (loop2 (1+ i2)))))))))
+
+
+
+;;; NOTE: the following definition would make two identical vectors, where
+;;; one of them is an odd lazy-evaluating kind, not be equal, which is bad.
+;;; Having a SEQUENCE-TYPE operation which returns the right "high level"
+;;; sequence type might work.
+
+(add-method (equal? (sequence) a b)
+  (or (eq? a b)
+      (and (eq? (get-type a) (get-type b))
+	   (let ((l (length a)))
+	     (and (= l (length b))
+		  (or (zero? l)
+		      (let ((lm1 (- l 1)))
+			(iterate aux ((i 0))
+			  (cond ((= i lm1)
+				 (equal? (nth a lm1) (nth b lm1)))
+				((equal? (nth a i) (nth b i))
+				 (aux (+ i 1)))
+				(else #f))))))))))
+
+
+
+(add-method (fill! (sequence) self val)
+  (dotimes (i (length self) self)
+    (set! (nth self i) val)))
+
+
+;;; Note: this must be shadowed for list-type, since you can make neither
+;;; cons-pair nor null-type with this interface.
+
+(add-method (reverse (sequence) self)
+  (let* ((len (length self))
+	 (new (make (get-type self) len))
+	 (len-1 (- len 1)))
+    (dotimes (i len new)
+      (set! (nth new i) (nth self (- len-1 i))))))
+
+
+
+(add-method (reverse! (sequence) self)
+  (let ((len (length self)))
+    (iterate aux ((a 0) (b (- len 1)))
+      (cond ((<= a b)
+	     (let ((x (nth self a)))
+	       (set! (nth self a) (nth self b))
+	       (set! (nth self b) x)
+	       (aux (+ a 1) (- b 1))))
+	    (else self)))))
+
+
+(add-method (copy (sequence) self)
+  (let* ((len (length self))
+	 (new (make (get-type self) len)))
+    (dotimes (i len new)
+      (set! (nth new i) (nth self i)))))
+
+
+#|
+(add-method (append (sequence) s1 s2)
+  (let* ((len1 (length s1))
+	 (len2 (length s2))
+	 (len (+ len1 len2))
+	 (new (make (get-type s1) len)))
+    (dotimes (i len1)
+      (set! (nth new i) (nth s1 i)))
+    (dotimes (i len2 new)
+      (set! (nth new (+ i len1)) (nth s2 i)))))
+|#
+
+
+
+; this method contains an internal special case for simple-vectors
+
+
+(add-method (append (sequence) . rest)
+  (listify-args
+   (lambda (args)
+
+     (let* ((lens (map length args))
+	    (car-type (get-type (car args)))
+	    (new-guy (make car-type (apply + lens)))
+	    (new-guy-setter (if (eq? car-type simple-vector)
+				(setter %vref-nocheck)
+				(setter nth))))
+
+       (iterate outerloop ((sources args) (lens lens) (offset 0))
+
+	 (if (null? sources)
+
+	     new-guy
+
+	     (if (subtype? (get-type (car sources)) forcible)
+
+		 (outerloop (cons (force (car sources)) (cdr sources)) lens offset)
+
+		 (let* ((source (car sources))
+			(source-type (get-type source))
+			(source-accessor (if (eq? simple-vector source-type)
+					     %vref-nocheck nth))
+			(len (car lens)))
+
+		   (when (not (eq? car-type source-type))
+		     (append-type-error car-type source))
+
+		   (iterate innerloop ((from 0)(to offset))
+
+		     (if (= from len)
+			 (outerloop (cdr sources)(cdr lens)(+ offset len))
+			 (block
+			  (new-guy-setter new-guy to (source-accessor source from))
+			  (innerloop (1+ from)(1+ to)))))))))))
+   . rest))
+
+
+
+
+
+
+
+
+(add-method (subseq (sequence) self index len)
+  (let ((new (make (get-type self) len)))
+    (dotimes (i len new)
+      (set! (nth new i) (nth self (+ index i))))))
+
+;;; Sometimes one wants two indexes rather than an index and a length.
+;;; SUBSEQ-INDEXES takes and sequence and two indices.  It returns the
+;;; subsequence from START (inclusive) to END (exclusive).
+
+(define (subseq-indexes seq start end)
+  (subseq seq start (- end start)))
+
+(add-method (tail (sequence) self index)
+  (subseq self index (- (length self) index))
+  ;(let* ((len (length self))
+  ;	  (nlen (- len index))
+  ;	  (new (make (get-type self) nlen)))
+  ;  (dotimes (i nlen new)
+  ;    (set! (nth new i) (nth self (+ index i)))))
+  )
+
+(labels ((copy-first-chunk
+	  (lambda (l i)
+	    (if (zero? i)
+		'()
+		(cons (car l)
+		      (copy-first-chunk (cdr l)
+					(- i 1)))))))
+
+  (add-method (subseq (list-type) self index len)
+    (copy-first-chunk (tail self index) len)))
+
+;;; From beginning to INDEX (exclusive).
+(add-method (head (sequence) self index)
+  (subseq-indexes self 0 index))
+
+(add-method (last (sequence) self)
+  (nth self (- (length self) 1)))
+
+(add-method ((coercer list-type) (sequence) v)
+  (let ((len (length v)))
+    (iterate aux ((i (- len 1))(l '()))
+      (if (= i -1) l
+	  (aux (- i 1) (cons (nth v i) l))))))
+
+;;; Selection
+(add-method (remove (pair) x y)
+  (if (eq? (car x) y)
+      (remove (cdr x) y)
+      (cons (car x) (remove (cdr x) y))))
+
+(add-method (remove (null-type) x y)
+  x)
+
+(add-method (remove-if (pair) x pred)
+  (if (pred (car x))
+      (remove-if (cdr x) pred)
+      (cons (car x) (remove-if (cdr x) pred))))
+
+(add-method (remove-if (null-type) x pred)
+  x)
+
+;;; eof

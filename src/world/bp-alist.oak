@@ -1,0 +1,6 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+(define-instance get-bp-alist operation)
+
+(add-method (get-bp-alist (type type-bp-alist) self)
+  type-bp-alist)

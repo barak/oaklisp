@@ -1,0 +1,347 @@
+;;; Copyright (C) 1986,7,8, Barak A. Pearlmutter&Kevin J. Lang.
+
+;;; Generic streams, and specific ones for file and terminal I/O.
+
+(define-instance stream type '() '())
+
+(define-instance input-stream type '(peek-buff) (list stream))
+
+(add-method (initialize (input-stream peek-buff) self)
+  (set! peek-buff #f)
+  self)
+
+;;; INPUT-STREAM is an abstract type that defines these:
+
+(define-instance read-char operation)
+(define-instance unread-char operation)
+(define-instance peek-char operation)
+
+;;; In terms of this:
+
+(define-instance really-read-char operation)
+
+;;; Like this:
+
+(add-method (read-char (input-stream peek-buff) self)
+  (if peek-buff
+      (block0 peek-buff
+	      (set! peek-buff #f))
+      (really-read-char self)))
+
+(add-method (unread-char (input-stream peek-buff) self c)
+  (if peek-buff
+      (error "Can't unread two characters.")
+      (set! peek-buff c)))
+
+(add-method (peek-char (input-stream peek-buff) self)
+  (or peek-buff
+      (set! peek-buff (really-read-char self))))
+
+;;; For internal use only, something to check if there is a char in the
+;;; unread buffer.
+
+(define-instance unread-chars settable-operation)
+
+(add-method (unread-chars (input-stream peek-buff) self)
+  (if peek-buff 1 0))
+
+(add-method ((setter unread-chars) (input-stream peek-buff) self val)
+  (unless (zero? val)
+    (cerror "Proceed."
+	    "can only set UNREAD-CHARS to 0, not ~D." val))
+  (set! peek-buff #f))
+
+;;; OUTPUT-STREAM is similar, but doesn't have to do any of that stuff.
+
+(define-instance output-stream type '() (list stream))
+
+(define-instance write-char operation)
+
+;;; Define a distinguished object, the-eof-token.
+
+(define-instance eof-token type '() (list object))
+(define-simple-print-method eof-token "EOF")
+(define-instance the-eof-token eof-token)
+
+
+
+
+
+;;; How to do carriage returns without typing #\newline, which is ugly:
+
+(define-instance newline operation)
+(define-instance freshline operation)
+
+;;; If nothing better is known, a freshline request must do a newline:
+
+(add-method (freshline (output-stream) self)
+  (newline self))
+
+(add-method (newline (output-stream) self)
+  (write-char self #\NEWLINE))
+
+
+
+
+;;; Make (format s "~&") work for selected streams:
+
+(define-instance freshline-hacking-mixin type '(on-a-new-line) (list))
+
+(add-method (initialize (freshline-hacking-mixin on-a-new-line) self)
+  (set! on-a-new-line #t)
+  self)
+
+(add-method (freshline (freshline-hacking-mixin on-a-new-line) self)
+  (unless on-a-new-line
+    (write-char self #\NEWLINE)))
+
+(add-method (write-char (freshline-hacking-mixin on-a-new-line) self char)
+  (set! on-a-new-line (eq? char #\NEWLINE)))
+
+
+
+
+
+;;; UNIX file descriptor I/O:
+
+
+;;; Define our primitives.
+
+;;; The STREAM-PRIMITIVE opcode is here for your OS dependent pleasure.
+;;; UNIX dependent in this case.
+
+(define-constant-instance %stream-primitive
+  (mix-types oc-mixer (list foldable-mixin operation)))
+
+(let ((sp-alist '()))
+
+  (add-method (%stream-primitive (object) n)
+    (let ((x (assq n sp-alist)))
+      (cond (x => cdr)
+	    (else
+	     (let ((op
+		    (make
+		     (mix-types oc-mixer (list open-coded-mixin operation))
+		     `((stream-primitive ,n))
+		     (nth '(0 0 0 2 2 2 1 1 2 1 1 1 2 2) n)
+		     1)))
+	       (set! sp-alist (cons (cons n op) sp-alist))
+	       op))))))
+
+#||
+;;; This is what all the stream primitives do:
+
+;;; The number of arguments is listed in the list passed to nth above.
+
+(define (get-stdin) ((%stream-primitive 0)))
+(define (get-stdout) ((%stream-primitive 1)))
+(define (get-stderr) ((%stream-primitive 2)))
+(define (fopen-read string-loc len) ((%stream-primitive 3) string-loc len))
+(define (fopen-write string-loc len) ((%stream-primitive 4) string-loc len))
+(define (fopen-append string-loc len) ((%stream-primitive 5) string-loc len))
+(define (fclose fd) ((%stream-primitive 6) fd))
+(define (fflush fd) ((%stream-primitive 7) fd))
+(define (putc fd char) ((%stream-primitive 8) fd char))
+(define (getc fd) ((%stream-primitive 9) fd))
+(define (interactive? fd) ((%stream-primitive 10) fd))
+(define (ftell fd) ((%stream-primitive 11) fd))
+(define (fseek fd position) ((%stream-primitive 12) fd position))
+(define (chdir string-loc len) ((%stream-primitive 13) string-loc len))
+||#
+
+;;; Streams that go to Unix file descriptors:
+
+(define-instance file-stream type '(fd) '())
+
+(add-method (initialize (file-stream fd) self the-fd)
+  (set! fd the-fd)
+  self)
+
+
+(define-instance file-input-stream
+  type '() (list file-stream input-stream object))
+
+(define-instance file-output-stream
+  type '() (list freshline-hacking-mixin file-stream output-stream object))
+
+
+
+(add-method (initialize (file-input-stream) self the-fd)
+  (^super file-stream initialize self the-fd)
+  (^super input-stream initialize self))
+
+(add-method (initialize (file-output-stream) self the-fd)
+  (^super freshline-hacking-mixin initialize self)
+  (^super file-stream initialize self the-fd))
+
+(add-method (write-char (file-output-stream) self char)
+  (^super freshline-hacking-mixin write-char self char)
+  (^super file-stream write-char self char))
+
+
+;;; For use in writing .oa files and similar stuff that never gets freshline
+;;; messages because it's not for people to read:
+
+(define-instance ugly-file-output-stream
+  type '() (list file-stream output-stream object))
+
+
+;;;
+
+
+(define-instance open-input-file operation)
+(define-instance open-output-file operation)
+(define-instance open-output-file-append operation)
+
+(define-instance open-output-file-ugly operation)
+(define-instance open-output-file-append-ugly operation)
+
+
+
+(add-method (open-input-file (string) self)
+  (iterate aux ((filename self))
+    (let ((the-fd ((%stream-primitive 3)
+		   (make-locative (%vref filename 0)) (length filename))))
+      (cond ((not the-fd)
+	     (aux (signal error-opening-read filename)))
+	    (else
+	     (make file-input-stream the-fd))))))
+
+(add-method (open-output-file (string) self)
+  (iterate aux ((filename self))
+    (let ((the-fd ((%stream-primitive 4)
+		   (make-locative (%vref filename 0)) (length filename))))
+      (cond ((not the-fd)
+	     (aux (signal error-opening-write filename)))
+	    (else
+	     (make file-output-stream the-fd))))))
+
+(add-method (open-output-file-append (string) self)
+  (iterate aux ((filename self))
+    (let ((the-fd ((%stream-primitive 5)
+		   (make-locative (%vref filename 0)) (length filename))))
+      (cond ((not the-fd)
+	     (aux (signal error-opening-append filename)))
+	    (else
+	     (make file-output-stream the-fd))))))
+
+(add-method (open-output-file-ugly (string) self)
+  (iterate aux ((filename self))
+    (let ((the-fd ((%stream-primitive 4)
+		   (make-locative (%vref filename 0)) (length filename))))
+      (cond ((not the-fd)
+	     (aux (signal error-opening-write filename)))
+	    (else
+	     (make ugly-file-output-stream the-fd))))))
+
+(add-method (open-output-file-append-ugly (string) self)
+  (iterate aux ((filename self))
+    (let ((the-fd ((%stream-primitive 5)
+		   (make-locative (%vref filename 0)) (length filename))))
+      (cond ((not the-fd)
+	     (aux (signal error-opening-append filename)))
+	    (else
+	     (make ugly-file-output-stream the-fd))))))
+
+(add-method (really-read-char (file-stream fd) self)
+  (or ((%stream-primitive 9) fd)
+      the-eof-token))
+
+(add-method (write-char (file-stream fd) self char)
+  ;; Note: this returns #t on success, #f on failure:
+  ((%stream-primitive 8) fd char))
+
+;;;;;;;;;;;;
+
+(define-instance close operation)
+(define-instance flush operation)
+
+(add-method (close (file-stream fd) self)
+  (cond ((null? fd)
+	 (cerror "Proceed."
+		 "attempt to close ~S, which is already closed." self))
+	(((%stream-primitive 6) fd)
+	 (set! fd nil))
+	(else
+	 (cerror "Ignore the problem."
+		 "couldn't close ~S." self))))
+
+(add-method (flush (file-stream fd) self)
+  (cond ((null? fd)
+	 (cerror "Proceed."
+		 "attempt to flush ~S, which is closed." self))
+	((null? ((%stream-primitive 7) fd))
+	 (cerror "Ignore the problem."
+		 "error flushing ~S." self))
+	(else nil)))
+
+(define-instance interactive? operation)
+
+(add-method (interactive? (file-stream fd) self)
+  ((%stream-primitive 10) fd))
+
+(add-method (interactive? (stream) self)
+  nil)
+
+
+;;; Position returns the current position of the "read head" in a file
+
+(define-instance position settable-operation)
+
+(add-method (position (file-stream fd) self)
+  ((%stream-primitive 11) fd))
+
+(add-method (position (file-input-stream) self)
+  (- (^super file-stream position self)
+     (unread-chars self)))
+
+(add-method ((setter position) (file-stream fd) self pos)
+  (unless ((%stream-primitive 12) fd pos)
+    (cerror "Proceed."
+	    "unable to set the position of ~A to ~D." self pos))
+  pos)
+
+(add-method ((setter position) (file-input-stream) self pos)
+  ;; Clear out any unread characters:
+  (set! (unread-chars self) 0)
+  (^super file-stream (setter position) self pos))
+
+;;; The current working directory.  Settable.  Currently does not use a
+;;; primitive to try to figure it out for real, but just remembers.
+
+(define-instance cwd settable-operation)
+
+(let ((the-cwd #f))
+
+  (add-method (cwd (object)) the-cwd)
+
+  (add-method ((setter cwd) (string) self)
+    (iterate aux ((filename self))
+      (cond (((%stream-primitive 13) (make-locative (%vref filename 0))
+				     (length filename))
+	     (set! the-cwd filename)
+	     #t)
+	    (else (aux (signal error-changing-directory filename)))))))
+
+;;; define this as a no op for now; used in top-level, so it has to be
+;;; in the cold world, but backspace hacking streams use continuations
+;;; so we don't want them in the cold world load.
+
+(define-instance clear-backspace-buffer operation)
+
+(add-method (clear-backspace-buffer (input-stream) self)
+  #f)
+
+;;; SETUP-STANDARD-STREAMS should be called at warm boot time.
+
+(define (setup-standard-streams)
+  (set! standard-input (make file-input-stream ((%stream-primitive 0))))
+  (set! standard-output (make file-output-stream ((%stream-primitive 1))))
+  ;; Stop buffer skew from desyncing error messages:
+  ;; (set! standard-error (make file-output-stream ((%stream-primitive 2))))
+  (set! standard-error standard-output)
+  #f)
+
+(add-warm-boot-action setup-standard-streams)
+
+;;; eof

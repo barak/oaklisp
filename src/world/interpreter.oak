@@ -1,0 +1,286 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;;; APPLY is a good thing to have in a lisp.
+
+#|
+
+(labels (((apply0 op arglist . rest)
+	  (if (null? arglist)
+	      (op . rest)
+	      (apply0 op (cdr arglist) (car arglist) . rest)))
+
+	 ((general-apply args)
+	  (let ((op (car args))
+		(args (apply list* (cdr args))))
+	    (apply op args))))
+
+	(define (apply op x . args)
+	  (cond ((= (rest-length args) 0)
+		 (apply0 op (reverse x) . args))
+		(else
+		 (listify-args general-apply op x . args)))))
+
+|#
+
+
+
+
+
+
+
+
+
+(labels (((partially-reverse-4 inlist) 
+	  (labels (((loop3 old new)
+		    (if (null? old)
+			new
+			(loop0 (cdr old) new)))
+		   ((loop2 old new)
+		    (if (null? old)
+			new
+			(loop3 (cdr old) new)))
+		   ((loop1 old new)
+		    (if (null? old)
+			new
+			(loop2 (cdr old) new)))
+		   ((loop0 old new)
+		    (if (null? old)
+			new
+			(loop1 (cdr old) (cons old new)))))
+	    (loop0 inlist '())))
+
+
+	 ((apply4-aux op rev-chunk-list . rest)
+	  (if (null? rev-chunk-list)
+	      (op . rest)
+	      (let* ((chunk1 (car rev-chunk-list))
+		     (a (car chunk1))
+		     (a-cdr (cdr chunk1))
+		     (b (car a-cdr))
+		     (b-cdr (cdr a-cdr))
+		     (c (car b-cdr))
+		     (c-cdr (cdr b-cdr))
+		     (d (car c-cdr)))
+		(apply4-aux op (cdr rev-chunk-list) a b c d . rest))))
+
+
+	 ((general-apply args)
+	  (let ((op (car args))
+		(args (apply list* (cdr args))))
+	    (apply op args))))
+
+
+  (define (apply op inlist . args)
+
+    (if (> (rest-length args) 0)
+
+	(listify-args general-apply op inlist . args)
+
+	(if (null? inlist)
+	    (op)
+	    (let* ((rev-chunk-list (partially-reverse-4 inlist))
+		   (chunk1 (car rev-chunk-list)))
+
+	      (let ((a (car chunk1))
+		    (a-cdr (cdr chunk1)))
+		(if (null? a-cdr)
+		    (apply4-aux op (cdr rev-chunk-list) a)
+		    (let ((b (car a-cdr))
+			  (b-cdr (cdr a-cdr)))
+		      (if (null? b-cdr)
+			  (apply4-aux op (cdr rev-chunk-list) a b)
+			  (let ((c (car b-cdr))
+				(c-cdr (cdr b-cdr)))
+			    (if (null? c-cdr)
+				(apply4-aux op (cdr rev-chunk-list) a b c)
+				(let ((d (car c-cdr)))
+				  (apply4-aux op (cdr rev-chunk-list) a b c d)
+
+				  )))))))
+	      )))))
+
+
+
+
+
+
+
+(define (interpreter-eval form locale)
+  (i-eval form '() locale))
+
+(define (i-eval expr env locale)
+  (let ((typ (get-type expr)))
+    (cond ((eq? typ symbol)
+	   (contents (lookup-var expr env locale #f)))
+	  ((eq? typ cons-pair)
+	   (i-eval-pair expr env locale))
+	  ((or (eq? typ fixnum)
+	       (eq? expr #t)
+	       (eq? expr #f))
+	   expr)
+	  ((symbol? expr)
+	   (contents (lookup-var expr env locale #f)))
+	  ((is-a? expr self-evaluatory-mixin)
+	   expr)
+	  ((pair? expr)
+	   (i-eval-pair expr env locale))
+	  (else
+	   (cerror "Consider it a constant."
+		   "~A found in evaluated position."
+		   expr)
+	   expr))))
+
+
+;;; The primitive special forms:
+;;; (%ADD-METHOD (op (typ . ivars) . args) body)
+;;; (%CATCH (let (v tag) form))
+;;; (%LABELS clause-list body)
+;;; (%MAKE-LOCATIVE sym)
+;;; (%BLOCK . forms)
+;;; (%IF test a b)
+;;; (QUOTE obj)
+;;; (REST-LENGTH var)
+
+(define (i-eval-pair expr env locale)
+  (let ((op (car expr)))
+    (cond ((eq? op 'quote)
+	   (car (cdr expr)))
+	  ((eq? op '%make-locative)
+	   (lookup-var (cadr expr) env locale #t))
+	  ((eq? op '%if)
+	   (i-eval (if (i-eval (car (cdr expr)) env locale)
+			  (car (cdr (cdr expr)))
+			  (car (cdr (cdr (cdr expr)))))
+		      env locale))
+	  ((eq? op '%block)
+	   (iterate aux ((l (cdr expr)))
+	     (if (null? l) nil
+		 (let ((cdrl (cdr l)))
+		   (cond ((null? cdrl)
+			  (i-eval (car l) env locale))
+			 (else
+			  (i-eval (car l) env locale)
+			  (aux cdrl)))))))
+	  ((eq? op '%labels)
+	   (i-eval-labels expr env locale))
+	  ((eq? op '%catch)
+	   (i-eval-catch expr env locale))
+	  ((eq? op '%add-method)
+	   (i-eval-add-method expr env locale))
+	  ((eq? op 'rest-length)
+	   ;; Legality check for symbolhood and length here?
+	   (length (i-eval (cadr expr) env locale)))
+	  (else
+	   (let ((op (i-eval op env locale)))
+	     ;; If this evaluated things in the other order, ie. right
+	     ;; to left like the compiler, typing (SET! A B) wouldn't
+	     ;; install A before the error looking up B.
+	     (iterate aux ((l (cdr expr)) (r '()))
+	       (cond ((pair? l)
+		      (aux (cdr l)
+			   (cons (i-eval (car l) env locale) r)))
+		     (else (apply op
+				  (if (null? l) (reverse r)
+				      ;; Rest arguments.
+				      (append (reverse r)
+					       (i-eval l env locale))))))))))))
+
+;;; Environments are implemented as opposing ribs of symbols and locatives.
+
+(define (lookup-var sym env locale auto-install)
+  (iterate aux ((env env))
+    (if (not (null? env))
+	(let ((this-pair (car env)))
+	  (iterate aux1 ((vars (car this-pair))
+			 (locs (cdr this-pair)))
+	    (cond ((eq? sym vars)	;This clause is for rest args.
+		   (let ((x (map contents locs)))
+		     (make-locative x)))
+		  ((or (null? vars) (symbol? vars))
+		   (aux (cdr env)))
+		  ((eq? sym (car vars)) (car locs))
+		  (else (aux1 (cdr vars) (cdr locs))))))
+	(cond ((variable? locale sym) => identity)
+	      (else
+	       (if auto-install
+		   (warning "Installing ~A in ~A.~%" sym locale)
+		   (cerror (format #f "Install ~S in ~S." sym locale)
+			   "Variable ~S not found in ~S." sym locale))
+	       (set! (variable-here? locale sym)
+		    (%make-cell (make-undefined-variable-value sym))))))))
+
+(define (i-eval-catch expr env locale)
+  (destructure*
+      (#t (('add-method (#t #|makop|# #t #|typ|# thevar) body) #t #|escape|#))
+      expr
+    (native-catch tag
+      (i-eval body
+	      `( ( (,thevar) . (,(make-locative tag)) ) ,@env )
+	      locale))))
+
+(define (i-eval-labels expr env locale)
+  (destructure* (#t clauses body ) expr
+    (let ((vars (map car clauses))
+	  (locs (iterate aux ((l clauses)(r '()))
+		  (if (null? l) r
+		      (aux (cdr l) (cons (let ((x nil)) (make-locative x))
+					 r))))))
+      (let ((env (cons (cons vars locs) env)))
+	(iterate aux ((clauses clauses)(locs locs))
+	  (cond ((null? clauses)
+		 (i-eval body env locale))
+		(else (set! (contents (car locs))
+			   (i-eval (car (cdr (car clauses))) env locale))
+		      (aux (cdr clauses) (cdr locs)))))))))
+
+;;; The following two functions really belong somewhere else.
+
+(define (proper-list? l)
+  (iterate aux ((l l))
+    (cond ((null? l) t)
+	  ((pair? l) (aux (cdr l)))
+	  (else nil))))
+
+(define (proper-length l)
+  (iterate aux ((l l) (n 0))
+    (cond ((pair? l) (aux (cdr l) (+ n 1)))
+	  (else n))))
+
+(define (i-eval-add-method expr env locale)
+  (destructure* (#t ( op ( typ . ivars ) . args ) body ) expr
+    (let ((op (i-eval op env locale))
+	  (typ (i-eval typ env locale)))
+      (let ((rest-args-okay? (not (proper-list? args)))
+	    (desired-args (proper-length args))
+	    (f (lambda (rest-arglist)
+		 (let ((arg-locs
+			(mapcdr (locater car) rest-arglist))
+		       (ivar-locs (and rest-arglist ivars
+				       (%locate-ivars typ (car rest-arglist)
+						      ivars))))
+		   (i-eval body
+			   `((,ivars . ,ivar-locs)
+			     (,args . ,arg-locs) ,@env)
+			   locale)))))
+	(add-method (op (typ) . rest-args)
+	  (if (or (< (rest-length rest-args) desired-args)
+		  (and (not rest-args-okay?)
+		       (not (= (rest-length rest-args) desired-args))))
+	      ((if rest-args-okay? incorrect-nargs-gte incorrect-nargs)
+	       desired-args . rest-args)
+	      (listify-args f . rest-args)))))))
+
+(define-instance %locate-ivars operation)
+
+(add-method (%locate-ivars (type ivar-list) self obj var-list)
+  (let ((frame-loc
+	 (%increment-locative (%set-tag obj %locative-tag)
+			      (cdr (%assq self
+					  ((%slot 6) (get-type obj)))))))
+    (iterate aux ((l var-list)(locs '()))
+      (cond ((null? l) (reverse locs))
+	    (else (aux (cdr l) (cons (%increment-locative frame-loc
+				       (position-in-list (car l) ivar-list))
+				     locs)))))))
+
+;;; eof

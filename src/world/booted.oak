@@ -1,0 +1,26 @@
+;;; Copyright (C) 1987, 1988, 1989 Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; We're up enough now to attempt a read eval print loop upon reboot.
+
+(define (%get-an-ivar t o v)
+  (contents (car (%locate-ivars t o (list v)))))
+
+(let* ((reboot-lambda
+
+	(lambda ()
+	  (set! ((%register 'nil)) (the-runtime nil))
+	  (set! ((%register 't)) (the-runtime t))
+	  (set! ((%register 'cons-type)) (the-runtime cons-pair))
+	  (set! ((%register 'object-type)) (the-runtime object))
+	  (set! ((%register 'fixnum-type)) (the-runtime fixnum))
+	  (set! ((%register 'loc-type)) (the-runtime locative))
+	  (set! ((%register 'env-type)) (the-runtime %closed-environment))
+	  (set! ((%register 'segment-type)) (the-runtime stack-segment))
+	  (set! ((%register 'method-type)) (the-runtime %method))
+	  (set! ((%register 'operation-type)) (the-runtime operation))
+
+	  (warm-boot)
+	  (top-level)))
+
+       (reboot-method (%get-an-ivar operation reboot-lambda 'lambda?)))
+  (set! ((%register 'boot-code)) reboot-method))

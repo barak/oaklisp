@@ -1,0 +1,138 @@
+;;; Copyright (C) 1987,8,9 Kevin J. Lang & Barak A. Pearlmutter.
+
+(define (destructure-2 pattern expr body expr-important noper)
+
+  (cond ((symbol? pattern)
+	 `(let ((,pattern ,expr)) ,body))
+
+	((and (not noper)
+	      (or (eq? '#f pattern)
+		  (eq? '#t pattern)
+		  (eq? 'quote (car pattern))))
+	 (if expr-important `(block ,expr ,body) body))
+
+	((eq? '#t pattern)
+	 (if expr-important `(block ,expr ,body) body))
+
+	((eq? '#f pattern)
+	 (let ((v (genvar)))
+	   `(let ((,v ,expr))
+	      (if (null? ,v)
+		  ,body
+		  ,(noper v '#f)))))
+
+	((eq? 'quote (car pattern))
+	 (let ((v (genvar)))
+	   `(let ((,v ,expr))
+	      (if (eq? ,v ',(second pattern))
+		  ,body
+		  ,(noper v (second pattern))))))
+
+	(else
+	 (let* ((v (genvar))
+		(inner (destructure-2 (car pattern) `(car ,v)
+				      (destructure-2 (cdr pattern)
+						     `(cdr ,v)
+						     body #f noper)
+				      #f noper)))
+	   (if noper
+	       `(let ((,v ,expr))
+		  (if (pair? ,v) ,inner ,(noper v pattern)))
+
+	       `(let ((,v ,expr)) ,inner))))))
+			
+
+;;; This is for destructuring lists.  As in
+;;;   (destructure (a (b c) (d . e) f) my-list
+;;;      (crunch-on a c b d f e))
+;;; Sort of the inverse of backquote.
+
+;;; In the pattern, #t's are placed in positions to be ignored.  In order to
+;;; be compatible with destructure*, #f's and (QUOTE x)'s are also ignored.
+
+(define-syntax destructure
+    (lambda (form)
+      (destructure (#t pattern expr . body) form
+	(destructure-2 pattern expr `(block ,@body) #t #f))))
+
+;;; DESTRUCTURE* is just like DESTRUCTURE, except that positions with
+;;; #F's and ()'s are required to be #F's and ()'s, and positions with
+;;; 'FOO, alias (QUOTE FOO), are required to have the literal value
+;;; FOO in them, where FOO is not evaluated.  Positions with #T's have
+;;; the corresponding value ignored; use '#T to check for a literal #T.
+
+;;; Destructure* is primarily useful in macro expanders, where it can
+;;; be used to do much of the syntax checking.
+
+#||
+(define (contains-#t x)
+  (or (eq? x '#t)
+      (and (pair? x)
+	   (or (contains-#t (car x))
+	       (contains-#t (cdr x))))))
+||#
+
+(define (destr-signaler-lambda found desired)
+  ;;(if (contains-#t desired)
+  ;;    `(signal-destructure-error ,found "a list")
+  `(signal-destructure-error ,found ',desired) ;)
+  )
+
+(define-syntax destructure*
+  (lambda (form)
+    (destructure (#t pattern expr . body) form
+      (destructure-2 pattern expr `(block . ,body) #t destr-signaler-lambda))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; This is even hairier.  It is like DESTRUCTURE* except that instead
+;;; of an error in the event of a match failure, there are multiple
+;;; templates, and each template gets a chance to match.  Syntax is
+;;;
+;;; (destructure** expr
+;;;    (template1 . body1)
+;;;    (template2 . body2)
+;;;    ...
+;;;    [(OTHERWISE . nomatch-body)] )
+;;;
+;;; If no OTHERWISE clause is passed, an appropriate error is signaled.
+
+(define-syntax (destructure** expr . clauses)
+  (let* ((v (genvar))
+	 (tags (map genvar/1 clauses))
+	 (tags0 (append (cdr tags) '(#f))))
+    (if (null? clauses)
+	`(error "No DESTRUCTURE** clauses, so none match ~S." ,expr)
+	`(let ((,v ,expr))
+	   (labels
+	       ,(map
+		 (lambda (this next clause)
+		   (destructure* (pattern . body) clause
+		     `(,this
+		       (lambda ()
+			 ,(if (eq? pattern 'otherwise)
+			      (if next
+				  (error
+				   "Nonterminal clause ~S in DESTRUCTURE**."
+				   clause)
+				  `(block . ,body))
+			      (destructure-2 pattern v `(block . ,body) #f
+					     (if next
+						 (lambda (a b) `(,next))
+						 destr-signaler-lambda)))))))
+		 tags tags0 clauses)
+	     (,(car tags)))))))
+
+
+
+
+;;;
+
+(define (signal-destructure-error found required)
+  ;;(cerror "Proceed destructuring anyway."
+  ;;	    "While destructuring, ~S was found where ~S is required."
+  ;;	    found required)
+  (error "While destructuring, ~S was found where ~A is required."
+	  found required))
+
+;;; eof

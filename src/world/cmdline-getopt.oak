@@ -1,0 +1,36 @@
+;;; Copyright (C) 1999 Barak A. Pearlmutter.
+
+;;; This can be made more sophisticated later, with command completion etc.
+;;; For now is is quite rudimentary.
+
+(define (getopt options args)
+  (let aux ((args args))
+    (if (null? args)
+	'()
+	(cond ((strip-dashes (car args))
+	       => (lambda (a)
+		    (cond ((ass equal? a options)
+			   => (lambda (o)
+				(let ((n (cadr o))
+				      (f (caddr o)))
+				  (let ((stuff (head (cdr args) n)))
+				    (catch-errors (general-error
+						   (lambda (err)
+						     (format standard-error
+							     "~&An error occurred while processing switch ~A args ~S~%"
+							     a stuff)
+						     (report err standard-error)
+						     (format standard-error "~%")))
+						  (apply f stuff)))
+				  (aux (tail (cdr args) n)))))
+			  (else (format standard-error  "~&error: unknown switch: ~A" a)
+				(exit 1)))))
+	      (else args)))))
+
+(define (strip-dashes a)
+  (let ((n (length a)))
+    (and (> n 1)
+	 (equal? (nth a 0) #\-)
+	 (let ((dashlen (if (equal? (nth a 1) #\-) 2 1)))
+	   (and (> n dashlen)
+		(subseq a dashlen (- n dashlen)))))))

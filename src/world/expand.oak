@@ -1,0 +1,108 @@
+;;; Copyright (C) Kevin J. Lang and Barak A. Pearlmutter, Fall '86.
+
+;;; The quick and dirty macro expander written in T ported back to Oaklisp.
+
+(define-instance expand-groveling operation)
+(define-instance idiosyncratically-grovel operation)
+
+(define (improper-list? x)
+  (if (pair? x)
+      (cdr (last-pair x))
+      x))
+
+(define (make-proper x)
+  (if (pair? x)
+      (let ((the-copy (copy x)))
+	(set! (cdr (last-pair the-copy)) nil)
+	the-copy)
+      '()))
+
+(define (safe-length self)
+  (if (pair? self)
+      (+ 1 (safe-length (cdr self)))
+      0))
+
+
+(define (map-proper-part op l)
+  (let ((improper-part (improper-list? l)))
+    (if improper-part
+	(let ((proper-answer (map op (make-proper l))))
+	  (set! (cdr (last-pair proper-answer)) improper-part)
+	  proper-answer)
+	(map op l))))
+
+
+(define (special-form? sym)
+  (or (eq? sym 'quote)
+      (eq? sym '%block)
+      (eq? sym '%if)
+      (eq? sym '%add-method)
+      (eq? sym '_%add-method)
+      (eq? sym '%make-locative)
+      (eq? sym '%labels)))
+; eventually (%unwind-protect unwind-protect0 catch %fluid-bind)
+
+(define trace-expansion nil)
+
+(add-method (expand-groveling (locale) self form)
+  (if trace-expansion (format #t "~&expand-groveling ~S~%" form))
+  (cond ((is-a? form self-evaluatory-mixin)
+	 form)
+	((not (pair? form))
+	 (if (special-form? form)
+	     (warning "Special form specifier ~A used as a variable.~%" form))
+	 form)
+	((special-form? (car form))
+	 (idiosyncratically-grovel self form))
+	(else (let ((m (macro? self (car form))))
+		(cond (m (expand-groveling self (m form)))
+		      (else (map-proper-part (lambda (x) (expand-groveling self x)) form)))))))
+
+(add-method (idiosyncratically-grovel (locale) self form)
+  (if trace-expansion (format #t "~&idiosyncratically-grovel ~s~%" form))
+  (let ((s (car form)))
+    (cond ((or (eq? s '%if)
+	       (eq? s '%block)
+	       (eq? s '%make-locative))
+	   `(,(first form)
+	     . ,(map (lambda (x) (expand-groveling self x))
+		     (cdr form))))
+	  ((or (eq? s '%add-method)
+	       (eq? s '_%add-method))
+	   (destructure* (kind (op (typ . ivars) . args) body) form
+	     `(,kind
+	       (,(expand-groveling self op)
+		(,(expand-groveling self typ) . ,ivars) . ,args)
+	       ,(expand-groveling self body))))
+	  ((eq? s '%labels)
+	   `(,(first form)
+	     ,(map (lambda (x)
+		     (destructure (var val) x
+		       `(,var ,(expand-groveling self val))))
+		   (second form))
+	     ,(expand-groveling self (third form))))
+	  ((eq? s 'quote)
+	   form)
+	  (else (error "Form ~S can't be idiosyncratically groveled." form)))))
+
+
+
+
+
+; for later use in idiosyncratically-grovel
+;((memq s '(catch %fluid-bind))
+;	    `(,(first form) ,(second form)
+;	      . ,(map (lambda (x) (expand-groveling self x))
+;		      (cddr form))))
+;this is a more correct version of expand-groveling
+;(define (expand-groveling  self form)
+;  (cond ((symbol? form) form)
+;	((is-a? form self-evaluatory-mixin)
+;	 form)
+;	((special-form? (car form))
+;	 (idiosyncratically-grovel self form))
+;	((macro? self (car form))
+;	 (expand-groveling self ((macro? self (car form)) form)))
+;	(t (map-proper-part (lambda (x) (expand-groveling self x)) form))))
+;
+;;; note 11 was	(else `(add-method ((',make ',operation) . ,(cadr form)) . ,(cddr form)))))))

@@ -1,0 +1,437 @@
+;;; Copyright (C) 1987, Barak A. Pearlmutter and Kevin J. Lang.
+
+;;; This file defines strings.  It uses the ARRAY stuff.
+
+;;; Add in variable-length-mixin and make fancy NTH methods
+
+(initialize string '(char-count) (list simple-vector))
+
+(define-constant %chars-per-word 3)
+
+;;; Try to make only one empty string.  The following works, because the
+;;; world builder makes only one empty string.
+
+(define (make-string len)
+  (if (zero? len) ""
+      (let* ((word-count
+	      (quotient (+ len (- %chars-per-word 1)) %chars-per-word))
+	     (s (make string word-count len))
+	     (loc (make-locative (%vref s 0))))
+	(dotimes (i word-count s)
+	  (set! (contents (%increment-locative loc i))
+		(bit-or (number #\NULL)
+			(bit-or (ash-left (number #\NULL) 8)
+				(ash-left (number #\NULL) 16))))))))
+
+(add-method (initialize (string char-count) self word-count len)
+  (set! char-count len)
+  self)
+
+(add-method (length (string char-count) self)
+  char-count)
+
+
+
+;;;;;;;;;;;;;;;;;
+
+#|
+(add-method (nth (string char-count) self n)
+  (if (<= char-count n)
+      (error "Index ~D into ~S out of bounds." n self)
+      (%fixnum->character
+       (bit-and #xFF
+		(let ((d (modulo n %chars-per-word))
+		      (x (%vref self (quotient n %chars-per-word))))
+		  (cond ((= d 0) x)
+			((= d 1) (ash-left x -8))
+			((= d 2) (ash-left x -16))))))))
+
+(add-method ((setter nth) (string char-count) self n new-c)
+  (if (<= char-count n)
+      (error "Index ~D into ~S out of bounds." n self)
+      (let ((m (quotient n %chars-per-word))
+	    (i (* (modulo n %chars-per-word) 8)))
+	(set! (%vref self m)
+	     (bit-or (bit-and (%vref self m)
+			      (bit-and #xFFFFFF
+				       (bit-not (ash-left #xFF i))))
+		     (ash-left (%character->fixnum new-c) i))))))
+|#
+
+;;;;;;;;;;;;;;;;;
+
+
+
+(add-method (nth (string char-count) self n)
+  (if (or (negative? n) (<= char-count n))
+      (error "Index ~D into ~S out of bounds." n self)
+      (%fixnum->character
+       (bit-and #xFF
+		(let ((d (modulo n %chars-per-word))
+		      (x (%vref-nocheck self (quotient n %chars-per-word))))
+		  (cond ((= d 0) x)
+			((= d 1) (ash-left x -8))
+			((= d 2) (ash-left x -16))))))))
+
+
+
+(add-method ((setter nth) (string char-count) self n new-c)
+  (if (or (negative? n) (<= char-count n))
+      (error "Index ~D into ~S out of bounds." n self)
+      (let ((m (quotient n %chars-per-word))
+	    (i (* (modulo n %chars-per-word) 8)))
+	(set! (%vref-nocheck self m)
+	      (bit-or (bit-and (%vref-nocheck self m)
+			       (bit-and #xFFFFFF
+					(bit-not (ash-left #xFF i))))
+		      (ash-left (%character->fixnum new-c) i))))))
+
+
+
+(add-method ((locater nth) (string) self n)
+  (error "sorry, (locater nth) doesn't work on strings (e.g. ~a)"
+	 self))
+
+
+
+;;;;;;;;;;;;;;;;;
+
+
+(define-instance upcase operation)
+(define-instance downcase operation)
+
+(add-method (print (string) self stream)
+  (cond (print-escape
+	 (write-char stream #\")
+	 (write-string-with-slashes self #\" stream)
+	 (write-char stream #\"))
+	(else
+	 (write-string self stream))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+;;; Coerce any kind of sequence to a string.
+
+(add-method (string (sequence) seq)
+  (let* ((len (length seq))
+	 (s (make-string len)))
+    (iterate aux ((i 0))
+      (cond ((< i len)
+	     (set! (nth s i) (nth seq i))
+	     (aux (+ i 1)))
+	    (else s)))))
+
+;;; The following code coerces only lists to strings, but is highly optimized.
+;;; This code packs characters in by threes instead of shifting and or'ing
+;;; each one in individually, and avoids the overhead of the nth's.
+
+(let ((fill-string (make operation)))
+
+  (add-method (fill-string (variable-length-mixin) s l len)
+
+    (iterate aux ((i 0)(l l)(to-do len))
+      (cond ((zero? to-do)
+	     s)
+	    ((= 1 to-do)
+	     (set! (%load-bp-i i) (%character->fixnum (car l)))
+	     s)
+	    ((= 2 to-do)
+	     (set! (%load-bp-i i)
+		   (bit-or (%character->fixnum (car l))
+			   (ash-left (%character->fixnum (cadr l)) 8)))
+	     s)
+	    (else
+	     (let* ((c0 (%character->fixnum (car l)))
+		    (l1 (cdr l))
+		    (c1 (%character->fixnum (car l1)))
+		    (l2 (cdr l1))
+		    (c2 (%character->fixnum (car l2))))
+	       (set! (%load-bp-i i)
+		     (bit-or c0 (bit-or (ash-left c1 8) (ash-left c2 16))))
+	       (aux (+ i 1) (cdr l2) (- to-do %chars-per-word)))))))
+
+
+  (add-method ((coercer string) (list-type) l)
+    (if (null? l)
+	""
+	(let* ((len (length l))
+	       (s (make string
+			(quotient (+ len (- %chars-per-word 1))
+				  %chars-per-word)
+			len)))
+
+	  (fill-string s l len)
+
+	  ))))
+
+
+
+
+
+; Note: the following 3 macros exist ONLY to 
+; improve the readability of the following procedure.  
+; They use %load-bp-i, and hence will break in other contexts.
+
+
+(local-syntax (get-3-from-string instring i)
+  `(let ((the-word (%load-bp-i ,i)))
+     (list (%fixnum->character (bit-and 255 the-word))
+	   (%fixnum->character
+	    (ash-right (bit-and (ash-left 255 8) the-word) 8))
+	   (%fixnum->character
+	    (ash-right (bit-and (ash-left 255 16) the-word) 16)))))
+
+
+(local-syntax (get-2-from-string instring i)
+  `(let ((the-word (%load-bp-i ,i)))
+     (list (%fixnum->character (bit-and 255 the-word))
+	   (%fixnum->character
+	    (ash-right (bit-and (ash-left 255 8) the-word) 8)))))
+
+
+(local-syntax (get-1-from-string instring i)
+  `(let ((the-word (%load-bp-i ,i)))
+     (list (%fixnum->character (bit-and 255 the-word)))))
+
+
+
+(let ((quick-vref-helper (make operation)))
+
+  (add-method (quick-vref-helper (variable-length-mixin) instring char-count)
+
+    (let* ((n-in-last (modulo char-count %chars-per-word))
+	   (n-full-words (quotient char-count %chars-per-word)))
+
+      (iterate loop ((outlist
+		      (if (zero? n-in-last) '()
+			  (if (= 1 n-in-last)
+			      (get-1-from-string instring n-full-words)
+			      (get-2-from-string instring n-full-words))))
+		     (down-counter (- n-full-words 1)))
+
+	(if (negative? down-counter)
+	    outlist
+	    (let ((next-triple (get-3-from-string instring down-counter)))
+	      (set (cdddr next-triple) outlist)
+	      (loop next-triple (- down-counter 1)))))))
+
+
+  (add-method ((coercer list-type) (string char-count) instring)
+    (quick-vref-helper instring char-count)))
+  
+
+
+
+
+
+#|
+(add-method ((coercer string) (list-type) l)
+  (if (null? l) ""
+      (let* ((len (length l))
+	     ;;(s (make-string len))
+	     (s (make string
+		      (quotient (+ len (- %chars-per-word 1)) %chars-per-word)
+		      len)))
+	(iterate aux ((i 0)(l l)(to-do len))
+	  (cond ((zero? to-do) s)
+		((= 1 to-do)
+		 (set! (%vref s i) (%character->fixnum (car l)))
+		 s)
+		((= 2 to-do)
+		 (set! (%vref s i)
+		      (bit-or (%character->fixnum (car l))
+			      (ash-left (%character->fixnum (cadr l)) 8)))
+		 s)
+		(else
+		 (let* ((c0 (%character->fixnum (car l)))
+			(l1 (cdr l))
+			(c1 (%character->fixnum (car l1)))
+			(l2 (cdr l1))
+			(c2 (%character->fixnum (car l2))))
+		   (set! (%vref s i)
+			(bit-or c0 (bit-or (ash-left c1 8) (ash-left c2 16))))
+		   (aux (+ i 1) (cdr l2) (- to-do %chars-per-word)))))))))
+
+|#
+
+
+(add-method ((coercer string) (character) s)
+  ((coercer string) (list s)))
+
+
+(define-instance write-string operation)
+
+(add-method (write-string (string char-count) self stream)
+  (dotimes (i char-count)
+    (write-char stream (nth self i))))
+
+(add-method (reverse (string char-count) self)
+  (let ((new (make-string char-count)))
+    (dotimes (i char-count new)
+      (set! (nth new i) (nth self (- char-count (+ i 1)))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; String predicates
+;;; 
+
+(add-method (= (string) x y)
+  (equal? x y))
+
+
+; WARNING, the following method assumes that the
+; unused high bits in the last word of a string are
+; always initialized to the same value.  This is currently
+; true (see the make-string method), but you should watch
+; out in the future.
+
+
+(labels (((string-guts-equal? a b n-chars)
+	  (let ((n-words (quotient (+ n-chars (- %chars-per-word 1))
+				   %chars-per-word))
+		(a-loc (make-locative (%vref-nocheck a 0)))
+		(b-loc (make-locative (%vref-nocheck b 0))))
+
+	    (iterate aux ((i (- n-words 1)))
+	      (cond ((zero? i)
+		     (= (contents a-loc)
+			(contents b-loc)))
+		    ((= (contents (%increment-locative a-loc i))
+			(contents (%increment-locative b-loc i)))
+		     (aux (- i 1)))
+		    (else #f))))))
+
+
+  (add-method (equal? (string) a b)
+    (or (eq? a b)
+	(and (eq? (get-type a) (get-type b))
+	     (let ((l (length a)))
+	       (and (= l (length b))
+		    (or (zero? l)
+			(string-guts-equal? a b l))))))))
+
+
+
+(add-method (< (string) s1 s2)
+  (let ((l1 (length s1))
+	(l2 (length s2)))
+    (iterate aux ((i 0))
+      (cond ((= i l2) #f)
+	    ((= i l1) #t)
+	    ((< (%character->fixnum (nth s1 i))
+		(%character->fixnum (nth s2 i))) #t)
+	    ((> (%character->fixnum (nth s1 i))
+		(%character->fixnum (nth s2 i))) #f)
+	    (else (aux (+ i 1)))))))
+
+(add-method (upcase (character) c)
+  (let ((c (%character->fixnum c)))
+    (%fixnum->character
+     (cond ((and (<= (number #\a) c)
+		 (<= c (number #\z)))
+	    (- c (- (number #\a) (number #\A))))
+	   (else c)))))
+
+(add-method (downcase (character) c)
+  (let ((c (%character->fixnum c)))
+    (%fixnum->character
+     (cond ((and (<= (number #\A) c)
+		 (<= c (number #\Z)))
+	    (- c (- (number #\A) (number #\a))))
+	   (else c)))))
+
+(add-method (upcase (string) self)
+  (string (map upcase (list-type self))))
+
+(add-method (downcase (string) self)
+  (string (map downcase (list-type self))))
+
+
+(define (write-string-with-slashes s delimiter-to-avoid stream)
+  (dotimes (i (length s))
+    (let ((c (nth s i)))
+      (if (or (eq? c delimiter-to-avoid)
+	      (eq? c #\\))
+	  (write-char stream #\\))
+      (write-char stream c))))
+
+(define-instance requires-slashification? operation)
+
+(add-method (requires-slashification? (string) s)
+  (let ((len (length s)))
+    (iterate aux ((i 0))
+      (if (= i len) #f
+	  (let ((c (nth s i)))
+	    (or (eq? c #\")
+		(eq? c #\\)
+		(aux (+ i 1))))))))
+
+
+
+; the coercion here between strings and char-lists
+; is for speed, not just convenience.
+
+(add-method (append (string) . rest)
+  (listify-args
+   (lambda (args)
+     ((coercer string)
+      (apply append
+	     (map (lambda (x)
+		    (let ((x (if (is-a? x forcible) (force x) x)))
+		      (if (not (string? x))
+			  (append-type-error "string" x)
+			  ((coercer list-type) x))))
+		  args))))
+   . rest))
+
+
+
+
+#|
+(add-method (append (string char-count) x y)
+  (let* ((y (string y))
+	 (l1 (length y))
+	 (l2 (+ char-count l1))
+	 (s (make-string l2)))
+    (dotimes (i char-count
+		(iterate aux ((i char-count) (j 0))
+		  (cond ((< j l1)
+			 (set! (nth s i) (nth y j))
+			 (aux (+ i 1) (+ j 1)))
+			(else s))))
+      (set! (nth s i) (nth x i)))))
+|#
+
+
+; this method is simply wrong
+; (add-method (copy (string char-count) s)
+;   (if (zero? char-count) s
+;       (let ((l (quotient (+ len (- %chars-per-word 1)) %chars-per-word))
+; 	    (n (make string l char-count)))
+; 	(dotimes (i l n)
+; 	  (set! (%vref n i) (%vref s i))))))
+
+
+
+(add-method (copy (string char-count) s)
+  (if (zero? char-count) s
+      (let* ((l (quotient (+ char-count (- %chars-per-word 1))
+			  %chars-per-word))
+	     (n (make string l char-count)))
+	(dotimes (i l n)
+	  (set! (%vref n i) (%vref s i))))))
+
+
+
+
+
+
+(add-method (subseq (string) self index len)
+  (let ((new (make-string len)))
+    (dotimes (i len)
+      (set! (nth new i) (nth self (+ index i))))
+    new))
+
+;;; eof

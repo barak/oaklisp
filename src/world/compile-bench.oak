@@ -1,0 +1,99 @@
+;;; Copyright (C) Barak A. Pearlmutter & Kevin J. Lang. Fall 1986.
+
+;;; Define the stuff to link in fasl format code segments, and to load files.
+
+(define-instance %ivar-map locatable-operation)
+
+(add-method ((locater %ivar-map) (%code-vector ivar-map) self)
+  (make-locative ivar-map))
+
+(define (link-code-segment locale segment)
+  (iterate aux0 ((inputs segment)
+		 (outputs '())
+		 (code-resolution-lists '()))
+    (cond ((null? inputs)
+	   (let ((outputs (reverse outputs)))
+	     (dolist (crl (reverse code-resolution-lists))
+	       (dolist (clause crl)
+		 (set! (contents (cdr clause)) (nth outputs (car clause)))))
+	     (car outputs)))
+	  (else
+	   (let* ((input (car inputs))
+		  (resolution-list (first input))
+		  (code (cddr (second input)));the cddr strips off the zeros where the ivar list belongs.
+		  (instruction-count (length code))
+		  (word-count (quotient (+ instruction-count 1) 2))
+		  (v (make %code-vector word-count)))
+	     (iterate aux ((c code) (i 0))
+	       (cond (c (set! (nth v i) (car c))
+			(aux (cdr c) (+ i 1)))
+		     (else
+		      (iterate aux ((resolution-list resolution-list) (code-number-to-locs-alist '()))
+			(cond ((null? resolution-list)
+			       (aux0 (cdr inputs) (cons v outputs) (cons code-number-to-locs-alist code-resolution-lists)))
+			      (else
+			       (let ((clause (car resolution-list)))
+				 (destructure (which where what) clause
+				      (cond ((eq? where 0)
+					     (cond ((not (or (eq? which 'constant) (eq? which 2)))
+						    (error
+						     "Bad resolution clause ~S; only constants can be put in the IVAR-MAP slot."
+						     clause))
+						   (else
+						    (set! (%ivar-map v) what)
+						    (aux (cdr resolution-list) code-number-to-locs-alist))))
+					    (else
+					     (let ((where-loc (make-locative (%vref v (- (quotient where 2) 1)))))
+					       (cond ((or (eq? which 'constant)(eq? which 2))
+						      (set! (contents where-loc) what)
+						      (aux (cdr resolution-list) code-number-to-locs-alist))
+						     ((or (eq? which 'variable)(eq? which 0))
+						      (set! (contents where-loc)
+							   (or (variable? locale what)
+							       (let* ((x variable-undefined-value)
+								      (y (make-locative x)))
+								 (format t "Warning: installing ~S in ~A.~%" what locale)
+								 (set! (variable? locale what) y)
+								 y))) 
+						      (aux (cdr resolution-list) code-number-to-locs-alist))
+						     ((or (eq? which 'code)(eq? which 1))
+						      (aux (cdr resolution-list)
+							   (cons (cons what where-loc) code-number-to-locs-alist)))
+						     (else
+						      (error "Weird resolution clause ~S." clause)))))))))))))))))))
+
+(define (load-code-segment locale segment)
+  ((%install-method-with-env object
+			     (make operation)
+			     (link-code-segment locale segment)
+			     %empty-environment)
+   'loaded))
+
+(define (load-oa-file locale file)
+  (load-code-segment
+   locale
+   (with-open-file (s (append ((coercer string) file) ".oa") in)
+     (let ((red (read s)))
+       (if (pair? (caar red))
+	   red
+	   (make-oa-list red))))))
+
+#|
+(define (load-oa-file locale file)
+  (load-code-segment
+   locale
+   (let ((s (open-input-file (append (string file) ".oa"))))
+     (block0 (read s) (close s)))))
+|#
+
+(define (load-oak-file locale file)
+  (dofile (append file ".oak")
+	  (lambda (expr)
+	    (format t "~A...~%" expr)
+	    (dumb-eval (expand-groveling locale expr) '() locale))))
+
+(define (load-omac-file locale file)
+  (dofile (append file ".omac")
+	  (lambda (expr) (dumb-eval expr '() locale))))
+
+;;; eof

@@ -1,0 +1,466 @@
+;;; Copyright (C) 1986,7,8 Kevin J. Lang and Barak A. Pearlmutter.
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                   handy list utilities                              ;;; 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (swap-car-with-nth inlist n)
+  `(,(nth inlist n)
+    ,@(subseq inlist 1 (- n 1))
+    ,(car inlist)
+    ,@(tail inlist (+ n 1))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;        generate code to copy args down before tail calls            ;;;  
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+; plan-blt generates the sequence of swap,blast,and pop instructions
+; that is used to copy the top of the stack down in tail recursive positions.
+; (plan-blt 2 3) returns ((swap 2)(blast 4)(blast 2)),
+; which converts (3 2 1 d d) to (3 2 1).
+
+
+(labels (((build-model old new)		;sends 2,3 to (3 2 1 d d)
+	  (reverse
+	    (append (map (lambda (d) 'd) (iota old))
+		    (iota new))))
+	 
+	 ((count-trash-on-top x)		; sends (d d 3 2 1 d) to (2 3 2 1 d)
+	  (iterate step ((count 0)(l x))
+	    (if (or (null? l) (number? (car l)))
+		(cons count l)
+		(step (+ 1 count) (cdr l)))))
+	 
+	 ((plan-blt old new)
+	  (iterate step ((plan '())(model (build-model old new)))
+	    (cond ((= (length model) new)
+		   (reverse plan))
+		  ((number? (car model))
+		   (let* ((delta (- (length model) (car model)))
+			  (swapped (swap-car-with-nth model delta)))
+		     (if (number? (car swapped))
+			 (step (cons `(swap ,delta) plan)
+			       swapped)
+			 (step (cons `(blast ,delta) plan)
+			       (cdr swapped)))))
+		  (else
+		    (let ((counted (count-trash-on-top model)))
+		      (step (cons `(pop ,(car counted)) plan)
+			    (cdr counted))))))))
+  
+  (define (blt-stack n m)
+    (cond ((zero? m)
+	   '())
+	  ((zero? n)
+	   (list `(pop ,m)))
+	  ((> n 16)
+	   (plan-blt m n)) ;arguments reversed
+	  (else
+	    (append (make list-type (quotient m 16) `(blt-stk ,n 16))
+		    (list `(blt-stk ,n ,(remainder m 16))))))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;           primitive continuation definition                         ;;;                
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;This supplies the continuation epilogue code for
+;things like constants and variable references.
+
+
+(define-instance primitive-continuation operation)
+(define-instance nguys-to-pop operation)
+(define-instance pop-args operation)
+(define-instance pop-args-before-labels-jump operation)
+
+(set! barrier-node nil)
+
+(with-operations (number-of-args-to-pop)
+
+  (add-method (number-of-args-to-pop (ast-contour-node) self)
+    0)
+
+  (add-method (number-of-args-to-pop (ast-method-node arglist) self)
+    (+ (length arglist)
+       (if (and (contn-transparent? self)
+	        (not (eq? self barrier-node)))
+	   (number-of-args-to-pop (node-enclosing-contour self))
+	   0)))
+  
+  (add-method (number-of-args-to-pop (ast-labels-node) self)
+    (if (and (contn-transparent? self)
+	     (not (eq? self barrier-node)))
+	(number-of-args-to-pop (node-enclosing-contour self))
+	0))
+  
+  (add-method (nguys-to-pop (ast-node enclosing-contour) self)
+    (number-of-args-to-pop enclosing-contour))
+
+  (add-method (pop-args (ast-node enclosing-contour) self n-to-blt)
+    (blt-stack n-to-blt (number-of-args-to-pop enclosing-contour)))
+
+  (add-method (pop-args-before-labels-jump (ast-node enclosing-contour)
+					   self n-to-blt stop-contour)
+    (bind ((barrier-node stop-contour))
+      (blt-stack n-to-blt (number-of-args-to-pop enclosing-contour)))))
+
+
+
+
+
+(add-method (primitive-continuation (ast-node) self cont)
+  (cond ((eq? cont 'next) '())
+	((eq? cont 'tail)
+	 (append (pop-args self 1) (list '(return))))
+	(else `((branch ,cont)))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;          generate the code for variable references                  ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(define-instance compute-offset operation)
+(define-instance gen-access-code operation)
+
+
+
+(add-method (compute-offset (ast-variable-node var-type name) self the-map)
+  (or (position-in-list name the-map)
+      (error "CodeGen: can't find variable ~S in ~S map ~S" name var-type the-map)))
+
+
+;;; Hey, Kevin, isn't the following routine a little inconsistent in the way
+;;; it handles globals?  I don't understand.
+
+;;; Is it true that this is always called in LOAD mode now, since %SET has
+;;; been flushed?
+
+(add-method (gen-access-code (ast-variable-node var-type name source-contour)
+			     self cont store?)
+  (append 
+   (cond ((eq? var-type 'stack)
+	  `((,(if store? 'store-stk 'load-stk)
+	     ,(compute-offset self (node-stack-map self))
+	     ,name)))
+	    
+	 ((eq? var-type 'evar)
+	  `((,(if store? 'store-env 'load-env)
+	     ;; Note the extra offset of 2 here:
+	     ,(+ 2 (compute-offset self (contn-envlist source-contour)))
+	     ,name)))
+	    
+	 ((eq? var-type 'ivar)
+	  `((,(if store? 'store-bp 'load-bp)
+	     ,(compute-offset self (methn-ivarmap source-contour))
+	     ,name)))
+	    
+	 ((eq? var-type 'global)
+	  `((load-glo ,name)))
+	    
+	 (else (error "gen-access: Error in var-type for ~S"
+		      (list var-type name))))
+   (primitive-continuation self cont)))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                       the code generator                            ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; The gen-code operation takes two arguments, an ast node and a continuation,
+; which may be one of three things: the symbol TAIL, the symbol NEXT, 
+; or a label, which can be any other symbol. 
+
+
+(define-instance top-level-gen-code operation)
+
+(add-method (top-level-gen-code (ast-node) self)
+  (block0 (list 'code '()
+		(peephole-optimize
+		  (block0 (gen-code self 'tail)
+			  (print-sp 'code))))
+	  (print-sp 'done)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-instance gen-code operation)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;Definitions for the primitive forms
+
+(with-operations (nargs-prologue)
+  
+  (add-method (nargs-prologue (ast-method-node arglist rest-name) self)
+    (if rest-name
+	(let ((real-nargs (length (cdr arglist))))
+	  (if (= 0 real-nargs)
+	      ;; The (POP 1) is here due to the new operation nargs discipline.
+	      (list `(pop 1)
+		    `(load-reg nargs))
+	      (list `(check-nargs-gte ,real-nargs)
+		    `(load-imm ,real-nargs)
+		    `(load-reg nargs)
+		    `(subtract))))
+	(list `(check-nargs ,(length arglist)))))
+  
+  (add-method (gen-code (ast-method-node ivarmap status body arglist) self cont)
+    (cond ((eq? status 'code)
+	   (append
+	    (list `(load-code (code ,ivarmap
+				    ,(append (nargs-prologue self)
+					     (gen-code body 'tail)))))
+	    (primitive-continuation self cont)))
+	  ((eq? status 'inline)
+	   (gen-code body cont))
+	  (else
+	   `((,status is the wrong kind of method))))))
+
+
+(labels (((how-to-load value name)
+	  (if name
+	      `(load-imm ,value ,name)
+	      `(load-imm ,value))))
+
+  (add-method (gen-code (ast-constant-node value name origin) self cont)
+    (cond ((or (not (fluid compiling-a-file?))
+	       (eq? value #t)
+	       (null? value)
+	       (number? value)
+	       (symbol? value)
+	       (string? value)
+	       (char? value)
+	       (pair? value))
+	   (list* (how-to-load value name)
+		  (primitive-continuation self cont)))
+	  ((eq? origin nichevo)
+	   (warning "~S should not be an inline constant.~%" value)
+	   (list* (how-to-load value name)
+		  (primitive-continuation self cont)))
+	  (else
+	   (gen-code origin cont)))))
+
+
+(add-method (gen-code (ast-variable-node) self cont)
+  (gen-access-code self cont #f))
+
+
+
+(add-method (gen-code (ast-set-node variable expression) self cont)
+  (append (gen-code expression 'next)
+	  (gen-access-code variable cont #t)))
+
+
+
+(let ((gen-makloc-code (make operation)))
+  
+  (add-method (gen-makloc-code (ast-variable-node var-type name source-contour) self cont)
+    (append
+      (cond ((memq var-type '(stack evar global))
+	     (error "CodeGen: the makloc node around ~S should have been removed by fold-contents"
+		    (list var-type name)))
+	    ((eq? var-type 'ivar)
+	     (list
+	       `(make-bp-loc ,(compute-offset self (methn-ivarmap source-contour)) ,name)))
+	    (else (error "Makloc: Error in var-type for ~S" (list var-type name))))
+      (primitive-continuation self cont)))
+  
+  
+  (add-method (gen-code (ast-make-locative-node variable) self cont)
+    (gen-makloc-code variable cont)))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;Definitions for the composite forms.
+
+
+(add-method (gen-code (ast-block-node body) self cont)
+    (if (< (length body) 1)
+	(error "CodeGen: Empty body in block.")
+	(iterate step ((in body)(out '()))
+	  (if (= 1 (length in))
+	      (append out (gen-code (car in) cont))
+	      (step (cdr in) (splice (list out
+					    (gen-code (car in) 'next)
+					    (list '(pop 1)))))))))
+
+
+
+(add-method (gen-code (ast-if-node predicate consequent alternate) self cont)
+  (let ((alt-label (gensym "ELSE"))
+	(arm1-cont (if (eq? cont 'next) (gensym "ENDIF") cont)))
+    (splice
+     (list (gen-code predicate 'next)
+	   `((branch-nil ,alt-label))
+	   (gen-code consequent arm1-cont)
+	   (list `(label ,alt-label))
+	   (gen-code alternate cont)
+	   (if (eq? cont 'next)
+	       (list `(label ,arm1-cont))
+	       '())))))
+
+
+
+(add-method (gen-code (ast-labels-node gensymlist lambdalist body) self cont)
+  (let ((end-cont (if (eq? cont 'next) (gensym "ENDLABELS") cont)))
+    (bind ((barrier-node (if (eq? cont 'tail) barrier-node self)))
+      (splice
+       (list (if (eq? end-cont 'tail) '() (list `(push-cxt ,end-cont)))
+	     (gen-code body 'tail)
+	     (iterate step ((gen gensymlist)(lam lambdalist)(out '()))
+	       (if (null? gen)
+		   out
+		   (step (cdr gen) (cdr lam)
+			 (append (cons `(label ,(car gen))
+				       (gen-code (car lam) 'tail))
+				 out))))
+	     (if (eq? cont 'next) (list `(label ,end-cont)) '()))))))
+
+
+;; see catch.oak for an explanation of the following method.
+
+(add-method (gen-code (ast-catch-node expression) self cont)
+  (let ((end-cont (if (eq? cont 'next) (gensym "ENDCATCH") cont)))
+    (let* ((body-code
+	    (bind ((barrier-node (if (eq? cont 'tail)
+				       barrier-node
+				       (combn-op expression))) ;the LET lambda
+		   (filltag-offset (1+ (if (eq? cont 'tail)
+					     (nguys-to-pop self)
+					     0))))
+	      (gen-code expression 'tail))))
+      (splice
+       (list (if (eq? end-cont 'tail) '() (list `(push-cxt ,end-cont)))
+	     body-code
+	     (if (eq? cont 'next) (list `(label ,end-cont)) '()))))))
+
+
+
+ ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;Definitions for compiling combinations
+
+
+
+
+(with-operations (open-code label-code inline-code regular-code combo-op get-jump-info)
+  
+  (add-method (combo-op (ast-combination-node op rest-name) self)
+    (cond ((not (eq? rest-name nichevo))
+	   regular-code)
+	  ((and (is-a? op ast-constant-node)
+		(is-a? (constn-value op) open-coded-mixin))
+	   open-code)
+	  ((and (is-a? op ast-variable-node)
+		(eq? 'label (varn-var-type op)))
+	   label-code)
+	  ((and (is-a? op ast-method-node)
+		(eq? 'inline (methn-status op)))
+	   inline-code)
+	  ((is-a? op ast-method-node)
+	   (error "CodeGen: ~S is the wrong status for a car position method."
+		  (methn-status op)))
+	  (else
+	   regular-code)))
+  
+  
+  (add-method (gen-code (ast-combination-node) self cont)
+      ((combo-op self) self cont))
+  
+  
+  (add-method (get-jump-info (ast-labels-node labellist lambdalist gensymlist)
+			     self name)
+      (let* ((the-lambda (rib-lookup labellist lambdalist name))
+	     (the-target (rib-lookup labellist gensymlist name))
+	     (nargs-required (length (methn-arglist the-lambda))))
+	(cons the-target nargs-required))) 
+  
+  
+  (add-method (label-code (ast-combination-node op args) self cont)
+      (let* ((name (varn-name op))
+	     (source-contour (varn-source-contour op))
+	     (jump-info (get-jump-info source-contour name))
+	     (the-target (car jump-info))
+	     (nargs-required (cdr jump-info)))
+	(if (eq? cont 'tail)
+	    (if (= (length args) nargs-required)
+		`(,@(splice (map (lambda (x) (gen-code x 'next))
+				 (reverse args)))
+		  ,@(pop-args-before-labels-jump self (length args)
+						 source-contour)
+		  (branch ,the-target))
+		(error "CodeGen: Wrong number of arguments to operation ~S" name))
+	    (error "Compiler error: branch to ~S not tail recursive" the-target))))
+  
+  
+  (add-method (open-code (ast-combination-node op args) self cont)
+    (let* ((n-args (length args))
+	   (opval (constn-value op))
+	   (desired-n-args (get-n-arguments opval))
+	   (open-coder (copy (get-byte-code-list opval)))
+	   (bytes (if (list? open-coder)
+		      open-coder
+		      (open-coder n-args))))
+      (if (or (null? desired-n-args)
+	      (= n-args desired-n-args))
+	   `(,@(splice (map (lambda (x) (gen-code x 'next))
+			    (if (is-a? opval backwards-args-mixin)
+				args
+				(reverse args))))
+	     ,@(if (eq? cont 'tail) (pop-args self n-args) '())
+	     ,@(copy bytes)
+	     ,@(cond ((eq? cont 'next) '())
+		     ((eq? cont 'tail) (list '(return)))
+		     (else `((branch ,cont)))))
+	  (error "CodeGen: Wrong number of arguments to operation ~S" opval))))
+
+  
+  (add-method (inline-code (ast-combination-node op args) self cont)
+      (let ((label? (not (memq cont '(next tail)))))
+	(if (= (length args) (length (methn-arglist op)))
+	    (splice
+	     (list (splice (map (lambda (x) (gen-code x 'next)) (reverse args)))
+		   (gen-code op (if label? 'next cont))
+		   (if (eq? cont 'tail) '() (blt-stack 1 (length args)))
+		   (if label? `((branch ,cont)) '())))
+	    (error "CodeGen: Wrong number of arguments to inline lambda"))))
+
+  
+
+		
+  (add-method (regular-code (ast-combination-node op args rest-name) self cont)
+    (let* ((nmyargs (length args))
+	   (totalmyargs (+ 1 nmyargs)))
+      (splice
+       (list (splice (map (lambda (x) (gen-code x 'next)) (reverse args)))
+	     (gen-code op 'next)
+	     (if (eq? rest-name nichevo)
+		 `((store-nargs ,nmyargs))
+		 (splice
+		  (list
+		   (gen-code rest-name 'next)
+		   (if (= 0 nmyargs)
+		       '()
+		       (list
+			`(load-imm ,nmyargs) '(plus)))
+		   (list 
+		    `(store-reg nargs) `(pop 1)))))
+	     (if (eq? cont 'tail)
+		 (pop-args self totalmyargs)
+		 '())
+	     (cond ((eq? cont 'tail)
+		    `((funcall-tail)))
+		   ((eq? cont 'next)
+		    `((funcall-cxt)))
+		   (else
+		    `((funcall-cxt-br ,cont)))))))))
+

@@ -1,0 +1,249 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;;; The access interface is PRESENT?, same as for SAT-TREEs.  Returns
+;;; a PAIR whose CAR is the key and whose CDR is the associated value.
+
+;;; A different interface to hash tables is provided by the T-style
+;;; TABLE-ENTRY operation which returns the associated value or #f if
+;;; the key isn't in the table.
+
+;;; The setter of either operation can be used to add, modify, and
+;;; remove associations.
+
+;;; Set PRESENT? to a new value, not a (key . val) pair.
+
+
+;(define-instance present? settable-operation)
+;(define-instance table-entry settable-operation)
+
+(define-instance hash-table type '() '())
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;    generic hash tables
+
+
+(define-instance generic-hash-table
+  type '(table count size key-op =?) (list hash-table object))
+
+
+(add-method (initialize (generic-hash-table key-op =? table count size)
+			self the-key-op the-=?)
+  (set! key-op the-key-op)
+  (set! =? the-=?)
+  (set! count 0)
+  (set! size 17)
+  (set! table (make simple-vector size))
+  (dotimes (i size) (set! (nth table i) '()))
+  self)
+
+
+(add-method (present? (generic-hash-table key-op =? table count size) self x)
+  (ass =? x (nth table (modulo (key-op x) size))))
+
+(add-method ((setter present?) (generic-hash-table key-op =? table count size)
+			       self x v)
+  (let* ((key (key-op x))
+	 (index (modulo key size))
+	 (lslot (make-locative (nth table index)))
+	 (slot (contents lslot))
+	 (entry (ass =? x slot)))
+    (if v
+	(if entry
+	    (set! (cdr entry) v)	;modify
+	    (block			;insert
+	      (set! (contents lslot)
+		    (cons (cons x v) slot))
+	      (set! count (+ count 1))
+	      (when (> (+ count count) size)
+		(resize self (+ 1 (+ size size))))))
+
+	(when entry			;remove
+	  (set! (contents lslot)
+		(del (lambda (k p) (=? k (car p))) x slot))
+	  (set! count (- count 1)))))
+  v)
+
+
+
+(define-instance resize operation)
+
+(add-method (resize (generic-hash-table key-op table count size) self new-size)
+  (let ((old-table table)
+	(old-size size))
+    (set! table (make simple-vector new-size))
+    (set! size new-size)
+    (dotimes (i new-size)
+      (set! (nth table i) '()))
+    (dotimes (i old-size)
+      (dolist (entry (nth old-table i))
+	(let* ((key (key-op (car entry)))
+	       (j (modulo key size))
+	       (jloc (make-locative (nth table j))))
+	  (set! (contents jloc) (cons entry (contents jloc))))))
+    self))
+
+
+;;; String hash tables:
+
+
+(define-instance string-hash-key operation)
+
+#||
+(add-method (string-hash-key (string char-count) s)
+  (iterate aux ((i 0) (k 0))
+    (if (= i char-count) k
+	(aux (+ i 1)
+	     (bit-xor (rot-left k 7)
+		      (%character->fixnum (nth s i)))))))
+||#
+
+;;; Maybe the following will speed up reading:
+(add-method (string-hash-key (string char-count) s)
+  (if (eq? char-count 0) 0
+      (let ((n (quotient (+ char-count (- %chars-per-word 1)) %chars-per-word))
+	    (p0 (make-locative (%vref s 0))))
+	(iterate aux ((i 0) (k 0))
+	  (if (= i n) k
+	      (aux (+ i 1)
+		   (bit-xor (rot-left k (- (* 8 %chars-per-word) 1))
+			    (contents (%increment-locative p0 i)))))))))
+
+
+
+(define (make-string-hash-table)
+  (make generic-hash-table string-hash-key equal?))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;    EQ? hash tables
+
+
+(define-instance eq-hash-table
+  type '(table count size) (list hash-table object))
+
+(add-method (initialize (eq-hash-table table count size) self)
+  (set! count 0)
+  (set! size 17)
+  (set! table (make simple-vector size))
+  (dotimes (i size) (set! (nth table i) '()))
+  self)
+
+(add-method (present? (eq-hash-table table count size) self x)
+  (%assq x (%vref-nocheck table (modulo (object-hash x) size))))
+
+(add-method ((setter present?) (eq-hash-table table count size) self x v)
+  (let* ((lslot (make-locative
+		 (nth table (modulo (object-hash x) size))))
+	 (slot (contents lslot))
+	 (entry (%assq x slot)))
+    (if v
+	(if entry
+	    (set! (cdr entry) v)		;modify
+	    (block			;insert
+	     (set! (contents lslot)
+		  (cons (cons x v) slot))
+	     (set! count (+ count 1))
+	     (when (> (+ count count) size)
+	       (resize self (+ 1 (+ size size))))))
+	(if entry
+	    (block			;remove
+	     (set! (contents lslot)
+		  (del (lambda (k p) (eq? k (car p))) x slot))
+	     (set! count (- count 1)))
+	    #f)))			;noop
+  v)
+
+
+
+(add-method (resize (eq-hash-table table count size) self new-size)
+  (let ((old-table table)
+	(old-size size))
+    (set! table (make simple-vector new-size))
+    (set! size new-size)
+    (dotimes (i new-size)
+      (set! (nth table i) '()))
+    (dotimes (i old-size)
+      (dolist (entry (nth old-table i))
+	(push (nth table
+		   (modulo (object-hash (car entry)) size))
+	      entry)))
+    self))
+
+(define (make-eq-hash-table) (make eq-hash-table))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;   EQUAL-HASH-TABLE
+
+(define (tree-hash x)
+  (tree-hash-aux x 0))
+
+(define (tree-hash-aux x d)
+  (cond ((= d 4) #x162534)
+	((pair? x) (bit-xor (tree-hash-aux (car x) (+ d 1))
+			    (rot-left (tree-hash-aux (cdr x) (+ d 1)) 17)))
+	((string? x) (string-hash-key x))
+	((vector? x) (vector-hash-key-aux x d))
+	(else (object-hash x))))
+
+(define (vector-hash-key-aux x d)
+  (let ((l (length x)))
+    ;; First clause is not portable--relies on uniqueness of the empty vector.
+    (cond ((zero? l) (object-hash x))
+	  (else (bit-xor 
+		 (bit-xor (rot-left l 23)
+			  (rot-left (tree-hash-aux (nth x 0) (+ d 1)) 17))
+		 (bit-xor (rot-left (tree-hash-aux (nth x (modulo 7 l)) (+ d 1)) 11)
+			  (tree-hash-aux (nth x (modulo 39 l)) (+ d 1))))))))
+
+(define-instance equal-hash-table type '() (list generic-hash-table))
+
+(add-method (initialize (equal-hash-table) self)
+  (^super generic-hash-table initialize self tree-hash equal?))
+
+(define (make-equal-hash-table) (make equal-hash-table))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;   shared methods
+
+
+(add-method (print (hash-table) self stream)
+  (format stream "#<hash-table ~D ~!>" (length self) self))
+
+(dolist (typ (list generic-hash-table eq-hash-table))
+
+  (add-method (length (typ count) self)
+    count)
+
+  (add-method (list-type (typ table size) self)
+    (iterate aux ((i 0)(l '()))
+      (if (= i size) l
+	  (aux (+ i 1) (append (nth table i) l)))))
+
+  (add-method ((setter length) (typ table count size) self new-length)
+    (when (!= new-length 0)
+      (error "Attempt to set hash table ~S to non-zero length." self))
+    (set! count 0)
+    (dotimes (i size)
+      (set! (nth table i) '())))
+
+  )
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;  table-entry interface, like in T
+
+
+(define-instance table-entry settable-operation)
+
+(set! (setter table-entry) (setter present?))
+
+(add-method (table-entry (hash-table) tab key)
+  (cond ((present? tab key) => cdr)
+	(else #f)))
+
+
+;;; eof

@@ -1,0 +1,118 @@
+;;; Copyright (C) 1987, Kevin J. Lang and Barak A. Pearlmutter.
+
+
+(define-instance get-ivar-list operation)
+(add-method (get-ivar-list (type ivar-list) self)
+  ivar-list)
+
+(define-instance side-effect-free? operation)
+
+(add-method (side-effect-free? (object) self)
+  #f)
+(add-method (side-effect-free? (foldable-mixin) self)
+  #t)
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                      set utility functions                          ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+    
+(define (subset? x y)
+  (null? (setdifference x y)))
+
+
+(define-instance map-with-arg operation)
+(add-method (map-with-arg (operation) op l arg)
+  (if (null? l)
+      '()
+      (cons (op (car l) arg) (map-with-arg op (cdr l) arg))))
+
+(define-instance walk-with-arg operation)
+(add-method (walk-with-arg (operation) op l arg)
+  (iterate step ((left l))
+    (when (not (null? left))
+      (op (car left) arg)
+      (step (cdr left)))))
+
+
+(define (rib-lookup keys vals thing)
+  (let ((pos (position-in-list thing keys)))
+    (if pos
+	(nth vals pos)
+	(error "Can't find ~S in rib ~S" thing keys))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;      Things that must be set up in compiler locale.                 ;;;
+;;;									;;;
+;;; Perhaps this stuff should go into a seperate file that goes into	;;;
+;;; compiler-locale.							;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+(define-constant _%install-method-with-env
+  (make-open-coded-operation 
+   (lambda (n)
+     (if (not (= n 4))
+	 (error "_%install-method-with-env takes 4 args, not ~A." n)
+	 (let ((l0517 (gensym "L-IM-"))
+	       (l0518 (gensym "L-IM-"))
+	       (l0519 (gensym "L-IM-"))
+	       (l0520 (gensym "L-IM-")))
+	   `(;;(CHECK-NARGS 4)
+	     (LOAD-IMM 3)
+	     (LOAD-GLO %METHOD)
+	     (CONTENTS)
+	     (ALLOCATE)
+	     (LOAD-STK 3 CODE-BODY)
+	     (LOAD-STK 1 THE-METHOD)
+	     (STORE-SLOT 1)
+	     (POP 1)
+	     (LOAD-STK 4 ENV)
+	     (LOAD-STK 1 THE-METHOD)
+	     (STORE-SLOT 2)
+	     (POP 1)
+	     (LOAD-GLO OBJECT)
+	     (CONTENTS)
+	     (LOAD-STK 2 TYP)
+	     (EQ?)
+	     (BRANCH-NIL ,L0519)
+	     (LOAD-STK 2 OP)
+	     (LOAD-SLOT 1)
+	     (BRANCH ,L0520)
+	     (LABEL ,L0519)
+	     (LOAD-REG NIL)
+	     (LABEL ,L0520)
+	     (BRANCH-NIL ,L0517)
+	     (LOAD-STK 0 THE-METHOD)
+	     (LOAD-STK 3 OP)
+	     (STORE-SLOT 1)
+	     (BRANCH ,L0518)
+	     (LABEL ,L0517)
+	     (LOAD-STK 1 TYP)
+	     (LOAD-SLOT 7)
+	     (LOAD-STK 1 THE-METHOD)
+	     (LOAD-STK 4 OP)
+	     (CONS)
+	     (CONS)
+	     (LOAD-STK 2 TYP)
+	     (STORE-SLOT 7)
+	     (POP 1)
+	     (LOAD-REG NIL NIL)
+	     (LOAD-STK 3 OP)
+	     (STORE-SLOT 1)
+	     (LABEL ,L0518)
+	     (POP 3)
+	     (BLT-STK 1 2)
+	     ;;(RETURN)
+	     ))))
+   nil
+   1))
+
+;(freeze-guys flat-compiler-locale
+;	     '( _%install-method-with-env %make-closed-environment %make-cell))

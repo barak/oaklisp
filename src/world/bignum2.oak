@@ -1,0 +1,56 @@
+;;; Copyright (C) 1988 Kevin J. Lang & Barak A. Pearlmutter.
+
+
+(define (bignum-speed-test)
+  (set frog1 (apply * (subseq prime-list 0 60)))
+  (set frog2 (apply * (subseq prime-list 60 45)))
+  (set frog3 (* frog1 frog2))
+  (set frog4 (make bignum 1 (reverse (bignum-digits frog3))))
+  (%gc)
+  (set junk (quotient frog1 123456))
+  (map quotient
+       (list
+	(time (10) (+ frog3 frog4))
+	(time (10) (- frog3 frog4))
+	(time (5) (* frog1 frog2))
+	(time (1) (quotient frog4 frog2)))
+       '(1000 1000 1000 1000)))
+
+
+
+
+; (), 1, (1 . 2), ((2 . 3) . 1), ((1 . 4) . (2 . 3))
+
+(define-instance insert-balanced-tree operation)
+
+(add-method (insert-balanced-tree (null-type) self new)
+  new)
+
+(add-method (insert-balanced-tree (object) self new)
+  (cons self new))
+
+(add-method (insert-balanced-tree (cons-pair the-car the-cdr) self new)
+  (let ((old-car the-car))
+    (set! the-car (insert-balanced-tree the-cdr new))
+    (set! the-cdr old-car))
+  self)
+
+
+(define-instance multiply-tree operation)
+
+(add-method (multiply-tree (null-type) self) 1)
+
+(add-method (multiply-tree (object) self) self)
+
+(add-method (multiply-tree (cons-pair the-car the-cdr) self)
+  (* (multiply-tree the-car)
+     (multiply-tree the-cdr)))
+
+
+(define (fact n)
+  (iterate next ((n n)(tree '()))
+    (if (zero? n)
+	(multiply-tree tree)
+	(next (- n 1)(insert-balanced-tree tree n)))))
+
+;;; eof

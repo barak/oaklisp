@@ -1,0 +1,191 @@
+\chapter{User Interface} \label{user}
+
+The Oaklisp user interface currently consists of a read-eval-print
+loop and a simple debugging facility.
+
+Errors land the user into a recursive evaluation loop in which special
+restart handlers are available.  Our implementation includes
+mechanisms for inspecting objects and tracing functions calls.
+
+
+\section{The Top Level Environment}
+
+All expressions must be evaluated with respect to a particular naming
+environment.  The read-eval-print loop uses the locale specified by
+the fluid variable \df{current-locale}.  The Oaklisp system boots up
+with this variable bound to \df{user-locale}.  Other useful name
+spaces are \df{scheme-locale}, \df{system-locale}, and
+\df{compiler-locale}.
+
+Several fluid variables are used to keep a short history of the
+dialogue conducted by the top level evaluator.  The most useful of
+these is \dffl{*}, which contains the value produced by the most
+recent user expression.  The value of this variable is rolled back
+into \dffl{**} and then into \dffl{***} to provide access to the three
+most recent values.  Similarly, there are three copies of \dffl{+} and
+\dffl{?} that provide access to recent expressions that were read in
+and to their form after macro expansion.
+
+The switch \dffl{fancy-references} controls the printing of anonymous
+objects.  When this switch is turned off, an object usually prints out
+something like this: {\tt\#<op 806>}.  This format indicates the type
+of the object, and provides a weak pointer that can be derefenced with
+\df{object-unhash} to get the object.  When the
+\dffl{fancy-references} switch is turned on, the printer attempts to
+generate an expression that will evaluate to the object in the current
+locale.  For example, the above operation might print out as {\tt\#<op
+(setter car) 806>}.  The default value for this switch is
+\df{\#f}, but it is briefly switched on by \df{describe}.
+
+Two more fluid variables that are frequently used at the top level are
+\dffl{print-length} and \dffl{print-level}, which are normally set to
+small integer values in order to abbreviate the printing of long
+lists, but which can be set to \df{\#f} in order to enable exhaustive
+printing.
+
+%%
+% 
+% The read-eval-print loop uses the \df{eval} function to perform the
+% actual evaluation of expressions.  The \df{eval} function in turn
+% calls one of several functionally equivalent evaluation functions in
+% our implementation: \df{interpreter-eval}, \df{compiler-eval}, and
+% \df{hybrid-eval}.  The variable \dffl{top-level-evaluator}
+% specifies which one should be used.  \df{hybrid-eval} is the default
+% value in worlds that contain the compiler.  This evaluator minimizes
+% top level latency by only using the compiler for expressions that
+% contain \df{add-method} forms.
+% 
+% 
+
+
+\section{Miscellaneous Functions}
+
+There are some other very useful functions that are part of the user
+interface.
+
+\op{apropos}{word [place]}
+\doc{Returns either variables or symbols containing {\em word},
+depending on {\em place}, which can be a locale or \df{symbol-table}.
+{\em place} defaults to \dffl{current-locale}.}
+
+\oop{\%gc}
+\doc{Collect garbage.  This does not collect garbage in ``static
+space,'' but it is exceedingly unlikely that there is any there.}
+\oop{\%full-gc}
+\doc{Collect more garbage.  This does collect garbage from ``static
+space,'' but more importantly, it put everything not freed into static
+space, so it need not be transported in future normal garbage
+collections.}
+
+
+
+\section{Debugging}
+
+
+The following special forms can be used to trace the
+execution of an operation.
+
+\sform{trace-variable-in}{global-var}
+\doc{Puts a trace on the operation stored in {\em global-var}, causing
+a message to be printed every time the operation is called.}
+
+\sform{trace-variable-out}{global-var}
+\doc{Puts a trace on the operation stored in {\em global-var}, causing
+a message to be printed every time a call to the operation returns.}
+
+\sform{trace-variable-in-out}{global-var}
+\sform{untrace-variable}{global-var}
+
+
+Objects can be examined in detail with \df{describe}
+function, which prints the object and its type with
+\dffl{fancy-references} turned on, and then prints the object's
+internal state, organized as instance-variable blocks from the
+object's various component types.  An object's internal state usually
+contains anonymous objects whose printed representation includes weak
+pointers which can be dereferenced using \df{object-unhash}.
+Together, \df{describe} and \df{object-unhash} constitute a simple but
+effective inspector.
+
+\op{describe}{object}
+\doc{Prints out lots of stuff about {\em object}.}
+
+\op{object-unhash}{i}
+\doc{Dereferences the weak pointer {\em i}.}
+
+
+When an error occurs in our implementation of Oaklisp, the
+user is thrown into a recursive evaluation loop whose dynamic context
+is nested inside that of the error.  Several restart handlers are
+typically available in a recursive evaluation loop, and the \df{ret}
+function is the mechanism for invoking one of these handlers.
+\df{call/cc} can be used to preserve an error context when it might
+be useful to restart the computation at a later time.
+
+
+\op{ret}{n \dt args}
+\doc{Invokes restart handler {\em n}, as specified by the list of
+handlers printed out by a subordinate evaluation loop.  {\tt(ret 0)},
+which returns control to the top level evaluation loop, is always in
+effect.}
+
+The following dialogue with Oaklisp illustrates some of these
+points.
+
+\begin{verbatim}
+Oaklisp 1.0  - (C) 1987 Barak Pearlmutter and Kevin Lang.
+Oaklisp evaluation loop.
+  Active handlers:
+  0: Return to top level.
+
+> (with-open-file (inf "fone.nums" in) (car (read inf)))
+
+Error: Error opening "fone.nums" for reading.
+Oaklisp evaluation loop.
+  Active handlers:
+  0: Return to top level.
+  1: Retry opening file (argument for different file name).
+  2: Return to debugger level 1.
+
+>> (call/cc identity)                ;get error context.
+
+>> (set foo (fluid *))               ;stash it away.
+
+>> (ret 0)                           ;back to top level.
+
+   Invoking handler Return to top level..
+
+> (describe foo)                    ;inspect continuation.
+
+#<Op FOO 798> is of type #<Type OPERATION 801>.
+
+ from #<Type 801>:
+  LAMBDA? : #<Object 802>           ;what's this thing?
+  CACHE-TYPE : 0
+  CACHE-METHOD : 0
+  CACHE-TYPE-OFFSET : 0
+
+> (describe (object-unhash 802))
+
+#<Object 802> is of type #<Type %METHOD 803>.
+
+ from #<Type 803>:
+  THE-CODE : #<VLmixin 804>
+  THE-ENVIRONMENT : #<VLmixin 805>
+
+> (foo 0)                    ;re-enter error context.
+
+>> (ret 1 "phone.nums")      ;resume computation
+
+   Invoking handler Retry opening the file ...
+
+268-7598                     ;got that phone number!
+
+> (exit)
+
+Oaklisp stopped itself...
+\end{verbatim}
+
+Using the error system effectively is an important part of providing
+the user with a helpful interface.  Details on the error system can be
+found in section \ref{errors}.

@@ -1,0 +1,41 @@
+\chapter{The Compiler}
+
+\subsection{File Types}
+
+There are a number of different kinds of object files, distinguished
+by extension.
+
+\begin{center}
+\begin{tabular}{l|l}
+{\em extension} & \multicolumn{1}{c}{\em file type} \\\hline
+\tt .oak  & Oaklisp source file \\
+\tt .omac & Macroexpanded Oaklisp source file \\
+\tt .ou   & Assembly file, not peephole optimized \\
+\tt .oc   & Assembly file, peephole optimized \\
+\tt .oa   & Assembled object file
+\end{tabular}
+\end{center}
+
+\gv{compiler-from-extension}
+\doc{The extension of the input files the compiler will read.
+Default \df{".oak"}.  This variable is in the compiler locale.}
+
+\gv{compiler-to-extension}
+\doc{The extension the the output files the compiler will produce.
+Default \df{".oa"}.  This variable is in the compiler locale.}
+
+\gv{compiler-noisiness}
+\doc{The amount of noise the compiler should produce; zero for none, 1
+for a little, and 2 for a lot.  Default value is 1, but the
+\df{oakliszt} batch file compiler sets it to zero.  This variable is
+in the compiler locale.}
+
+
+\subsection{Object File Formats}
+
+
+\subsection{Compiler Internals}
+
+Some compiler internals documentation.  Very sketchy, just enough to
+give people a vague idea of what the internal program representation
+is and what the various passes are for.

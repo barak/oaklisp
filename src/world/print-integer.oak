@@ -1,0 +1,74 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;;; How to print integers.  Lets try to be fast out there...
+
+
+(define (digit->char x)
+  (%fixnum->character
+   (+ x (if (< x 10)
+	    (number #\0)
+	    (- (number #\A) 10)))))
+
+
+(define (print-place x place stream)
+  (let ((q (quotient x place))
+	(r (remainder x place)))
+    (write-char stream (digit->char q))
+    r))
+
+
+(add-method (print (integer) self stream)
+  (cond ((negative? self)
+	 (write-char stream #\-) (print (- self) stream) self)
+	((zero? self)
+	 (write-char stream #\0) self)
+	(else
+	 (let ((base (fluid print-radix)))
+	   ;; Successive division; push onto list
+	   (iterate aux ((digits '()) (rem self))
+	     (cond ((zero? rem)
+		    (dolist (d digits self)
+		      (write-char stream (digit->char d))))
+		   (else
+		    (aux (cons (remainder rem base) digits)
+			 (quotient rem base)))))))))
+
+
+(add-method (print (fixnum) self stream)
+  (cond ((negative? self)
+	 (write-char stream #\-) (print (- self) stream) self)
+
+	((zero? self)
+	 (write-char stream #\0) self)
+
+	((= (fluid print-radix) 10)
+
+	 ;; Special case base 10.
+	 ;;  Have to add another digit here is FIXNUMS get bigger, and take one
+	 ;;  off if they get smaller.  Because this goes in the cold world,
+	 ;;  none of these can be bignums, as the world builder doesn't know
+	 ;;  how to format them in memory.
+
+	 (labels ((d9 (lambda (q) (d8 (print-place q 100000000 stream))))
+		  (d8 (lambda (q) (d7 (print-place q 10000000 stream))))
+		  (d7 (lambda (q) (d6 (print-place q 1000000 stream))))
+		  (d6 (lambda (q) (d5 (print-place q 100000 stream))))
+		  (d5 (lambda (q) (d4 (print-place q 10000 stream))))
+		  (d4 (lambda (q) (d3 (print-place q 1000 stream))))
+		  (d3 (lambda (q) (d2 (print-place q 100 stream))))
+		  (d2 (lambda (q) (d1 (print-place q 10 stream))))
+		  (d1 (lambda (q) (write-char stream (digit->char q)) self)))
+
+	   (cond ((< self 10) (d1 self))
+		 ((< self 100) (d2 self))
+		 ((< self 1000) (d3 self))
+		 ((< self 10000) (d4 self))
+		 ((< self 100000) (d5 self))
+		 ((< self 1000000) (d6 self))
+		 ((< self 10000000) (d7 self))
+		 ((< self 100000000) (d8 self))
+		 (else                (d9 self)))))
+
+	(else (^super integer print self stream))))
+
+;;; eof

@@ -1,0 +1,104 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;;; Define locales
+
+(define-instance locale type
+  '(variable-table frozen-symbols superiors macro-alist) (list object))
+
+(add-method (initialize (locale variable-table frozen-symbols superiors macro-alist)
+			    self sups)
+  (set! frozen-symbols '())			;start out with nothing frozen here
+  (set! variable-table (make-eq-hash-table))
+  (set! superiors sups)
+  (set! macro-alist '())
+  self)
+
+(define-simple-print-method locale "Locale")
+
+(define-instance variable? settable-operation)
+(define-instance variable-here? settable-operation)
+(define-instance macro? settable-operation)
+(define-instance macro-here? settable-operation)
+(define-instance frozen? settable-operation)
+(define-instance frozen-here? settable-operation)
+
+(define-instance find-locale operation)
+
+(add-method (find-locale (locale superiors) self sym pred?)
+  (if (pred? self sym) self
+      (iterate aux ((locale-list superiors))
+	(if locale-list
+	    (or (find-locale (car locale-list) sym pred?)
+		(aux (cdr locale-list)))
+	    nil))))
+
+(add-method (variable? (locale) self sym)
+  (let ((where (find-locale self sym variable-here?)))
+    (if where
+	(variable-here? where sym)
+	nil)))
+
+(add-method ((setter variable?) (locale) self sym loci)
+  (set! (variable-here? (or (find-locale self sym variable-here?) self) sym)
+       loci))
+
+(add-method (variable-here? (locale variable-table) self sym)
+  (let ((x (present? variable-table sym)))
+    (if x (cdr x) nil)))
+
+(add-method ((setter variable-here?) (locale variable-table) self sym loci)
+  (cond ((null? loci)
+	 (set! (present? variable-table sym) nil))
+	(else (set! (present? variable-table sym)
+		    (if (eq? loci t)
+			(%make-cell (make-undefined-variable-value sym))
+			loci)))))
+
+(add-method (macro? (locale superiors) self sym)
+;    (let ((loc (find-locale self sym macro-here?)))
+;      (if loc (macro-here? loc) nil))
+  (or (macro-here? self sym)
+      (any? (lambda (loc) (macro? loc sym)) superiors))
+  )
+
+(add-method ((setter macro?) (locale variable-table) self sym expander)
+  (set! (macro-here? (or (find-locale self sym macro-here?) self)
+		    sym)
+       expander))
+
+(add-method (macro-here? (locale macro-alist) self sym)
+  (let ((entry (assq sym macro-alist)))
+    (if entry (cdr entry) nil)))
+
+(add-method ((setter macro-here?) (locale macro-alist) self sym expander)
+  (when (variable? self sym)
+    (warning "installing macro ~S in ~S where it is already a variable.~%"
+	     sym self))
+  (let ((entry (assq sym macro-alist)))
+    (cond ((null? expander)
+	   (if entry
+	       (set! macro-alist (del! eq? entry macro-alist))
+	       (warning "~S already isn't a macro in ~S.~%" sym self)))
+	  (entry (set! (cdr entry) expander))
+	  (else (set! macro-alist (cons (cons sym expander) macro-alist)))))
+  expander)
+
+(add-method (frozen? (locale) self sym)
+  (frozen-here? (find-locale self sym variable-here?) sym))
+
+(add-method ((setter frozen?) (locale) self sym new-phase)
+  (set! (frozen-here? (find-locale self sym variable-here?) sym) new-phase))
+
+(add-method (frozen-here? (locale frozen-symbols) self sym)
+  (if (variable-here? self sym)
+      (memq sym frozen-symbols)
+      (error "Symbol ~A not installed in ~A so shouldn't be checked for FROZEN-HERE?." sym self)))
+
+(add-method ((setter frozen-here?) (locale frozen-symbols) self sym new-phase)
+  (let ((old-phase (frozen-here? self sym)))
+    (cond ((and new-phase (not old-phase))
+	   (set! frozen-symbols (cons sym frozen-symbols)))
+	  ((and (not new-phase) old-phase)
+	   (set! frozen-symbols (delq sym frozen-symbols))))))
+
+;;; eof

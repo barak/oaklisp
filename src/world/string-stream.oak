@@ -1,0 +1,39 @@
+;;; Copyright (C) Barak A. Pearlmutter & Kevin J. Lang. Fall 1986.
+
+;;; Magic streams that don't really do i/o, but save or get their
+;;; stuff from strings.  Used mostly for (FORMAT NIL ...) and some
+;;; Common Lisp like things.
+
+(define-instance string-output-stream
+  type '(accumulated) (list output-stream object))
+
+(add-method (initialize (string-output-stream accumulated) self)
+  (set! accumulated '())
+  self)
+
+(add-method (write-char (string-output-stream accumulated) self char)
+  (set! accumulated (cons char accumulated))
+  char)
+
+(add-method (string (string-output-stream accumulated) self)
+  (string (reverse accumulated)))
+
+;;; Calling this a STRING-INPUT-STREAM is a misnomer; actually, it can get
+;;; its input from any sequence.
+
+(define-instance string-input-stream
+  type '(the-string index len) (list input-stream stream object))
+
+(add-method (initialize (string-input-stream the-string index len) self stuff)
+  (set! the-string stuff)
+  (set! index 0)
+  (set! len (length the-string))
+  (^super input-stream initialize self))
+
+(add-method (really-read-char (string-input-stream the-string index len) self)
+  (if (= index len)
+      the-eof-token
+      (block0 (nth the-string index)
+	      (set! index (+ index 1)))))
+
+;;; eof

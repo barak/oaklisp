@@ -1,0 +1,251 @@
+;;; Copyright (C)  Kevin J. Lang and Barak A. Pearlmutter. Fall 1986.
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                      define the AST node types                      ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(define-instance ast-node type '(enclosing-contour stack-map) (list object))
+
+(define-instance ast-constant-node type
+  '(value
+    name				;name is for documentation purposes
+    origin)				;origin holds folded node	
+  (list ast-node))
+
+(define-instance ast-if-node type
+  '(predicate consequent alternate) (list ast-node))
+
+(define-instance ast-set-node type
+  '(variable expression)
+  (list ast-node))
+
+
+(define-instance ast-contour-node
+  type '(localvars			;names added in this contour
+	 nojumplist			;localvars that are referenced except in car position
+	 closedlist			;localvars that are closed over
+	 environment			;lexically apparent external variables 
+	 envlist)			;external variables that are closed over 
+  (list ast-node))
+
+(define-instance ast-method-node
+  type '(method-type			;type to add the method to
+	 op				;the operation
+	 status				;'method,'inline, or 'code
+	 inlabels?			;labels clauses are special
+	 ivarlist			;ivars declared
+	 ivarmap			;assumed layout of ivars in type
+	 arglist			;arguments declared
+	 heaplist			;args that must be moved to heap
+	 primitivep			;whether its the crude open coded kind
+	 body
+	 rest-name)
+  (list ast-contour-node))
+
+(define-instance ast-labels-node
+  type '(labellist			;label names
+	 lambdalist			;this is a rib parallel to labellist
+	 gensymlist			;another rib
+	 body)				;we'll keep this here for now
+  (list ast-contour-node))
+
+
+(define-instance ast-make-locative-node type '(variable) (list ast-node))
+
+(define-instance ast-block-node type '(body) (list ast-node))
+
+(define-instance ast-variable-node
+  type '(var-type name source-contour car-pos?)
+  (list ast-node))
+
+(define-instance ast-combination-node
+  type '(op args tail-pos? rest-name)
+  (list ast-node))
+
+
+(define-instance ast-catch-node type '(expression) (list ast-node))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                      set up accessors                               ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(create-setters ast-block-node blkn- body)
+(create-setters ast-constant-node constn- value name origin)
+(create-setters ast-node node- enclosing-contour)
+(create-setters ast-method-node methn- inlabels?)
+
+(create-accessors ast-node node- stack-map)
+(create-accessors ast-if-node ifn- predicate consequent alternate)
+(create-accessors ast-set-node setn- variable expression)
+
+(create-accessors ast-contour-node contn-
+		  localvars envlist closedlist nojumplist environment)
+(create-accessors ast-method-node methn-
+		  method-type op status ivarlist arglist heaplist ivarmap rest-name body)
+(create-accessors ast-labels-node labn-
+		  gensymlist labellist lambdalist body)
+
+(create-accessors ast-make-locative-node maklocn- variable)
+(create-accessors ast-variable-node varn- var-type name source-contour car-pos?)
+(create-accessors ast-combination-node combn- op args tail-pos? rest-name)
+(create-accessors ast-catch-node catchn-  expression)
+
+
+
+
+(define-set-manager heap? ast-method-node heaplist)
+
+(define-set-manager evar? ast-contour-node envlist)
+(define-set-manager localvar? ast-contour-node localvars)
+(define-set-manager closed-over? ast-contour-node closedlist)
+(define-set-manager cant-jump? ast-contour-node nojumplist)
+
+
+(add-method (equal? (ast-constant-node value) self x)
+  (equal? value x))   ;notice this function is not symmetric
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                      debugging stuff                                ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;listify takes an AST and converts it to a list representation suitable for printing
+
+(define-instance listify operation)
+
+(add-method (listify (ast-node) self) '(astn))
+
+(add-method (listify (ast-if-node predicate consequent alternate) self)
+  (list 'ifn (listify predicate) (listify consequent) (listify alternate)))
+
+(add-method (listify (ast-constant-node value name) self)
+  (if name (list 'constn value name) (list 'constn value)))
+
+(add-method (listify (ast-set-node variable expression) self)
+  (list 'setn (listify variable) (listify expression)))
+
+(add-method (listify (ast-method-node method-type status op ivarlist arglist
+				      inlabels? primitivep heaplist
+				      ivarmap body) self)
+  (list (if primitivep 'primethn 'methn)
+	(if inlabels? (list 'inlabels status) status)
+	`(type ,(listify method-type))
+	`(op ,(listify op))
+	`(ivars ,@ivarlist)
+	`(args ,@arglist)
+	`(heap ,@heaplist)
+	`(env ,@(contn-envlist self))
+	`(loc ,@(contn-localvars self))
+	`(lex ,@(contn-environment self))
+	`(closed ,@(contn-closedlist self))
+	`(nojump ,@(contn-nojumplist self))
+	(listify body)))
+
+(add-method (listify (ast-labels-node labellist gensymlist lambdalist body)
+		     self)
+  (list 'labn labellist gensymlist
+	`(closed ,@(contn-closedlist self))
+	`(nojump ,@(contn-nojumplist self))
+	(map listify lambdalist)
+	(listify body)))
+
+(add-method (listify (ast-contour-node localvars) self)
+  (list 'contn (contn-transparent? self) localvars))
+
+(add-method (listify (ast-make-locative-node variable) self)
+  (list 'maklocn (listify variable)))
+
+(add-method (listify (ast-block-node body) self)
+  `(blkn ,@(map listify body)))
+
+(add-method (listify (ast-variable-node var-type name) self)
+  (list var-type name))
+
+(add-method (listify (ast-combination-node op args tail-pos? rest-name) self)
+  (let ((mylist
+	  `(,(if tail-pos? 'tailcombn 'combn)
+	    ,(listify op) ,@(map listify args))))
+    (if (eq? rest-name nichevo)
+	mylist
+	(list* 'restcall
+	       (listify rest-name)
+	       mylist))))
+
+(add-method (listify (ast-catch-node expression) self)
+  (list 'catchn (listify expression)))
+
+(add-method (print (ast-node) self stream)
+  (print (listify self) stream))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                  define methods for walking the AST                 ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(local-syntax add-map-walk
+  (lambda (form)
+    (let ((typ  (second form))
+	  (vars (cddr form))
+	  (arg  (genvar))
+	  (op   (genvar)))
+      (let ((fixedvars (map (lambda (x)
+			      (if (atom? x) x (car x)))
+			    vars)))
+	`(block
+	  (add-method (walk-ast (,typ . ,fixedvars) self ,op)
+	    ,@(map (lambda (x)
+		     (if (atom? x)
+			 `(,op ,x)
+			 `(for-each ,op ,(car x))))
+		   vars)
+	    ,@(if vars '() '(nil)))
+	  (add-method (map-ast! (,typ . ,fixedvars) self ,op)
+	    ,@(map (lambda (x)
+		     (if (atom? x)
+			 `(set! ,x (,op ,x))
+			 `(set! ,(car x) (map ,op ,(car x)))))
+		   vars)
+	    self)
+	  (add-method (walk-ast-with-arg (,typ . ,fixedvars) self ,op ,arg)
+	    ,@(map (lambda (x)
+		     (if (atom? x)
+			 `(,op ,x ,arg)
+			 `(walk-with-arg ,op ,(car x) ,arg)))
+		   vars)
+	    ,@(if vars '() '(nil)))
+	  (add-method (map-ast-with-arg! (,typ . ,fixedvars) self ,op ,arg)
+	    ,@(map (lambda (x)
+		     (if (atom? x)
+			 `(set! ,x (,op ,x ,arg))
+			 `(set! ,(car x) (map-with-arg ,op ,(car x) ,arg))))
+		   vars)
+	    self))))))
+
+
+(define-instance walk-ast operation)
+(define-instance map-ast! operation)
+(define-instance walk-ast-with-arg operation)
+(define-instance map-ast-with-arg! operation)
+
+(add-map-walk ast-if-node predicate consequent alternate)
+(add-map-walk ast-node)
+(add-map-walk ast-constant-node origin)
+(add-map-walk ast-set-node variable expression)
+(add-map-walk ast-variable-node)
+
+(add-map-walk ast-method-node op method-type body)
+(add-map-walk ast-labels-node body (lambdalist))
+
+(add-map-walk ast-make-locative-node variable)
+(add-map-walk ast-block-node (body))
+(add-map-walk ast-combination-node op (args) rest-name)
+(add-map-walk ast-catch-node expression)

@@ -1,0 +1,536 @@
+;;; Copyright (C) 1989,8,7,6 Barak A. Pearlmutter.
+
+;;; Assemble Oaklisp bytecode.
+
+;;; Input format: A single s-expr, of the form (CODE () byte-code-list)
+;;; where byte-code-list is a list of bytecodes.
+
+;;; Output format: a list of code segments, where each code segment is
+;;; a list of two things: a resolution list and a list of numbers.  The 
+
+;;; Some bytecodes refer
+;;; to constants, such as symbols and lists.  Such references are
+;;; emited as zeros and information to the linker detailing the
+;;; location and desired reference are emited in an epilogue.  Also,
+;;; there are references to global variables.  These are handled in a
+;;; similar fashion.
+
+;;; The main routine is ASSEMBLE.  It takes a list of bytecodes as input
+;;; and returns a list of code segment descriptors, each of which is
+;;; a list of bytecodes and a list of instructions to the linker.  These
+;;; instructions are of the form (resolution-type address thing) where
+;;; resolution-type is constant, variable or code, address is a zero based
+;;; offset into the code, and thing is either a constant, a symbol, or
+;;; the number of another code segment.
+
+
+
+
+
+(define (assemble codelist)
+  ;; Input is of the form (code ivar-list instruction-list).
+  (when (> (fluid compiler-noisiness) 1)
+    (format #t "assembling...")
+    (flush standard-output))
+  (let ((scheduled-segments (list codelist))
+	(segment-count 1))
+    (iterate aux ((output '()))
+      (cond ((null? scheduled-segments)
+	     (reverse output))
+	    (else
+	     (let ((assembled-segment (assemble-code-segment
+				       (car scheduled-segments))))
+	       (set! scheduled-segments (cdr scheduled-segments))
+	       (aux
+		(cons
+		 (list (map (lambda (resolvant)
+			      (cond ((eq? (car resolvant) code-key)
+				     (set! segment-count (+ segment-count 1))
+				     (set! scheduled-segments
+					   (append scheduled-segments
+						   (list (third resolvant))))
+				     (list (first resolvant)
+					   (second resolvant)
+					   (- segment-count 1)))
+				    (else resolvant)))
+			    (first assembled-segment))
+		       (second assembled-segment))
+		 output))))))))
+
+(define (assemble-code-segment l)
+
+  ;; Input is of the form (code ivar-list instruction-list).
+  (unless (eq? (car l) 'code)
+    (error "Input does not appear to be a code segment: ~A." l))
+
+  ;; Throw the answer to OK when done.
+
+  (native-catch ok
+
+    (iterate infinite-loop ()
+
+      ;; If an already assembled instruction is hacked so badly that the whole
+      ;; code segment has to be reassembled, throw to REASSEMBLE.
+
+      (native-catch reassemble
+
+	(throw ok
+
+	       (iterate aux ((input (third l)) (addr 2) (output '(0 0))
+					       (label-alist '()) (patch-alist '())
+					       (resolution-alist `((,constant-key 0 ,(second l)))))
+		 (cond
+		  ((null? input)
+		   (unless (null? patch-alist)
+		     (error "Unresolved label ~A." patch-alist))
+		   (list (reverse resolution-alist)
+			 (reverse (if (odd? addr) (cons 0 output) output))))
+		  (else
+		   (let* ((this (car input)))
+		     (if
+		      (eq? (car this) 'LABEL)
+		      ;; Just found a label; record it and resolve forward refs.
+		      (let ((lab (cadr this)))
+			(aux (cdr input) addr output
+			     (cons (cons lab addr) label-alist)
+			     ;; Run through resolving forward references:
+			     (iterate aux ((l patch-alist)(o '()))
+			       (cond ((null? l) o)
+				     ((eq? (caar l) lab)
+				      ((cdr (car l)) addr)
+				      (aux (cdr l) o))
+				     (else
+				      (aux (cdr l) (cons (car l) o)))))
+			     resolution-alist))
+		      ;; Encode and emit instruction:
+		      (let* ((opcode (car this))
+			     (the-opcode-descriptor (opcode-descriptor opcode)))
+			(when (null? the-opcode-descriptor)
+			  (error "Unrecognized opcode ~A" opcode))
+			(destructure (opcode-field arg-field-descriptor)
+			    the-opcode-descriptor
+			  (cond
+			   ((number? arg-field-descriptor)
+			    (if (null? (cddr the-opcode-descriptor))
+				(aux (cdr input) (+ addr 1)
+				     (cons (construct-instruction
+					    opcode-field
+					    arg-field-descriptor) output)
+				     label-alist patch-alist resolution-alist)
+				;; Uh oh, requires an inline argument.
+				(cond
+
+				 ((eq? (caddr the-opcode-descriptor)
+				       'long-label)
+				  (let* ((the-label (second this))
+					 (place (assq the-label label-alist))
+					 (output (list*
+						  (and place
+						       (make-long-label
+							(- (cdr place) addr 2)))
+						  (construct-instruction
+						   opcode-field
+						   arg-field-descriptor)
+						  output)))
+				    (aux (cdr input) (+ addr 2)
+					 output
+					 label-alist
+					 (if place patch-alist
+					     (cons
+					      (cons the-label
+						    (lambda (other-addr)
+						      (set! (car output)
+							    (make-long-label
+							     (- other-addr
+								addr
+								2)))))
+					      patch-alist))
+					 resolution-alist)))
+
+				 (else
+				  (aux (cdr input)
+				       (+ addr (+ 1 (if (odd? addr) 2 3)))
+				       (list* 0 0
+					      (let ((new-out
+						     (cons
+						      (construct-instruction
+						       opcode-field
+						       arg-field-descriptor)
+						      output)))
+						(if (odd? addr) new-out
+						    (cons 0 new-out))))
+				       label-alist patch-alist
+				       (cons (list (encode-resolution-symbol
+						    (caddr the-opcode-descriptor))
+						   (+ addr (if (odd? addr) 1 2))
+						   (second this))
+					     resolution-alist))))))
+			   ((eq? arg-field-descriptor 'unsigned)
+			    (aux (cdr input) (+ addr 1)
+				 (cons (construct-instruction
+					opcode-field
+					(unsigned-arg (second this))) output)
+				 label-alist patch-alist resolution-alist))
+			   ((eq? arg-field-descriptor 'signed)
+			    (aux (cdr input) (+ addr 1)
+				 (cons (construct-instruction
+					opcode-field
+					(signed-arg (second this))) output)
+				 label-alist patch-alist resolution-alist))
+			   ((eq? arg-field-descriptor 'register)
+			    (aux (cdr input) (+ addr 1)
+				 (cons (construct-instruction
+					opcode-field
+					(register-arg (second this))) output)
+				 label-alist patch-alist resolution-alist))
+			   ((eq? arg-field-descriptor 'label)
+			    (let* ((place (assq (second this) label-alist))
+				   (distance (and place
+						  (- (cdr place) addr 1))))
+			      (if (or (not place) (tiny-number? distance))
+				  (let ((output (cons (construct-instruction
+						       opcode-field
+						       (if place
+							   (signed-arg distance)
+							   0))
+						      output)))
+				    (aux (cdr input) (+ addr 1)
+					 output
+					 label-alist
+					 (if place patch-alist
+					     (cons
+					      (cons
+					       (second this)
+					       (lambda (other-addr)
+						 (let ((patched-instruction
+							(patch-branch
+							 (car output)
+							 addr other-addr)))
+						   (cond
+						    (patched-instruction
+						     (set! (car output)
+							   patched-instruction))
+						    (else
+						     (let ((new-instructions
+							    (longify-instruction
+							     this)))
+						       (set! (car input)
+							     (car new-instructions))
+						       (set! (cdr input)
+							     (append
+							      (cdr new-instructions)
+							      (cdr input))))
+						     (when (> (fluid compiler-noisiness) 1)
+						       (format #t "~&Reassembling code segment.~%"))
+						     (throw reassemble nil))))))
+					      patch-alist))
+					 resolution-alist))
+				  (aux (append (longify-instruction this)
+					       (cdr input))
+				       addr output label-alist
+				       patch-alist resolution-alist))))
+			   ((eq? arg-field-descriptor 'blt-arg)
+			    (aux (cdr input) (+ addr 1)
+				 (cons (construct-instruction
+					opcode-field
+					(blt-args (second this) (third this)))
+				       output)
+				 label-alist patch-alist resolution-alist))
+			   (else
+			    (error
+			     "Internal error; bad arg field descriptor ~S.~%"
+			     arg-field-descriptor))))))))))))
+      (infinite-loop))))
+
+(define (tiny-number? x)
+  (and (integer? x)
+       (<= (- (expt 2 7)) x)
+       (< x (expt 2 7))))
+
+(define (construct-instruction opcode arg)
+  (+ (* opcode 4)
+     (* arg 256)))
+
+(define (patch-branch old addr other-addr)
+  (let ((distance (- other-addr addr 1)))
+    (if (tiny-number? distance)
+	(+ old (* (signed-arg distance) 256))
+	nil)))
+
+(define (unsigned-arg x)
+  (cond ((or (< x 0) (> x 255))
+	 (error "~D is out of range for an unsigned arg.~%" x))
+	(else x)))
+
+(define (signed-arg x)
+  (cond ((or (< x -128) (< 127 x))
+	 (error "~D is out of range for a signed arg.~%" x))
+	((< x 0) (+ 256 x))
+	(else x)))
+
+(define (make-long-label distance)
+  (if (and (< (- (expt 2 13)) distance)
+	   (< distance (- (expt 2 13) 1)))
+      (* 4
+	 (cond ((< distance 0) (+ (expt 2 14) distance))
+	       (else distance)))
+      (error "Even a long label can't go a distance of ~A." distance)))
+
+(define (blt-args stuff trash)
+  (cond ((or (<= stuff 0)
+	     (>= stuff 16)
+	     (<= trash 0)
+	     (> trash 16))
+	 (error "Instruction (BLT-STACK ~D ~D); arguments out of range."
+		stuff trash))
+	(else
+	 (+ stuff (* (- trash 1) 16)))))
+
+(define (register-arg x)
+  (iterate aux ((l register-list)(n 0))
+    (cond ((null? l)
+	   ;; Return an unused register number.
+	   (warning "Unknown register ~A." x)
+	   69)
+	  ((eq? x (car l)) n)
+	  (else (aux (cdr l) (+ n 1))))))
+
+(define register-list
+  '(t nil fixnum-type loc-type cons-type
+      subtype-table bp env nargs env-type
+      argless-tag-trap-table arged-tag-trap-table object-type boot-code
+      free-ptr cons-limit segment-type uninitialized next-newspace-size
+      method-type operation-type))
+
+;;; Try and longify an instruction.  Return a list of opcodes to replace the old one.
+
+(define (longify-instruction x)
+  (destructure (op . stuff) x
+    (cond ((assq op
+		 ;; Put instructions that are easy to longify in this list:
+		 '((branch . long-branch)
+		   (branch-nil . long-branch-nil)
+		   (branch-t . long-branch-t)
+		   (push-cxt . push-cxt-long)
+		   ))
+	   =>
+	   (lambda (found)
+	     (let ((new-op (cdr found)))
+	       (when (> (fluid compiler-noisiness) 1)
+		 (format #t "~&Longifying instruction ~A to ~A.~%" x new-op))
+	       (list (cons new-op stuff)))))
+	  ;; Put instructions that longify in some odd way in a clause here:
+	  ((eq? op 'funcall-cxt-br)
+	   (when (> (fluid compiler-noisiness) 1)
+	     (format #t "~&Longifying instruction ~A by expanding it.~%" x))
+	   `((funcall-cxt)(long-branch ,@stuff)))
+	  (else (error "Can't longify the ~A opcode in ~A." op x)))))
+
+(define (encode-resolution-symbol x)
+  (cond ((eq? x 'constant) constant-key)
+	((eq? x 'variable) variable-key)
+	((eq? x 'code) code-key)
+	(else (error "Can't encode resolution symbol ~S." x))))
+
+;;; The mechanism for storing opcode descriptions:
+
+(define-instance opcode-descriptor settable-operation)
+
+(define opcode-descriptor-hash-table (make-eq-hash-table))
+
+(add-method (opcode-descriptor (object) opcode)
+  (cond ((present? opcode-descriptor-hash-table opcode) => cdr)
+	(else #f)))
+
+(add-method ((setter opcode-descriptor) (object) opcode description)
+  (set! (present? opcode-descriptor-hash-table opcode) description))
+
+
+;;; The mechanism for storing opcode notations:
+
+(define-instance opcode-notation settable-operation)
+
+(define opcode-notation-hash-table (make-eq-hash-table))
+
+(add-method (opcode-notation (object) opcode)
+  (cond ((present? opcode-notation-hash-table opcode) => cdr)
+	(else #f)))
+
+(add-method ((setter opcode-notation) (object) opcode notation)
+  (set! (present? opcode-notation-hash-table opcode) notation))
+
+;; Possible notations:
+;;  branch (some kind of branch)
+;;  in0
+;;  in1
+;;  in2
+;;  inn (number consumed determined by inline argument)
+;;  out0
+;;  out1
+;;  notnil (never returns nil, out1 must be true)
+;;  nosides (no side effects)
+;;  commutes (commutative, in2 must be true)
+;;  ns (no stack except formals)
+
+;;; Some syntax:
+
+(local-syntax (define-opcode opcode description . notation)
+  `(block (set! (opcode-descriptor ',opcode) ',description)
+	  (set! (opcode-notation ',opcode) ',notation)))
+
+
+;;; Describe all the opcodes:
+
+(define-opcode halt		(1 unsigned) in1 ns)
+(define-opcode log-op		(2 unsigned) in2 out1 notnil nosides ns)
+(define-opcode blt-stk		(3 blt-arg))
+(define-opcode branch-nil	(4 label) in1 branch ns)
+(define-opcode branch-t		(5 label) in1 branch ns)
+(define-opcode branch		(6 label) in0 branch ns)
+(define-opcode pop		(7 unsigned) inn out0 ns)
+(define-opcode swap		(8 unsigned) in1 out1)
+(define-opcode blast		(9 unsigned) in1 out0)
+(define-opcode load-imm-fix	(10 signed) in0 out1 notnil nosides ns)
+(define-opcode store-stk	(11 unsigned) in1 out1)
+(define-opcode load-bp		(12 unsigned) in0 out1 nosides ns)
+(define-opcode store-bp		(13 unsigned) in1 out1 ns)
+(define-opcode load-env		(14 unsigned) in0 out1 nosides ns)
+(define-opcode store-env	(15 unsigned) in1 out1 ns)
+(define-opcode load-stk		(16 unsigned) in0 out1 nosides)
+(define-opcode make-bp-loc	(17 unsigned) in0 out1 notnil nosides ns)
+(define-opcode make-env-loc	(18 unsigned) in0 out1 notnil nosides ns)
+(define-opcode store-reg	(19 register) in1 out1 ns)
+(define-opcode load-reg		(20 register) in0 out1 nosides ns)
+; special case:
+(define-opcode funcall-cxt		(21 0))
+(define-opcode funcall-cxt-br		(21 label))
+; opcode chosen for clean emulator implementation:
+(define-opcode funcall-tail		(22 0))
+(define-opcode store-nargs		(23 unsigned) in0 out0 ns)
+(define-opcode check-nargs		(24 unsigned) in1 out0 ns)
+(define-opcode check-nargs-gte		(25 unsigned) in1 out0 ns)
+(define-opcode store-slot		(26 unsigned) in2 out1 ns)
+(define-opcode load-slot		(27 unsigned) in1 out1 nosides ns)
+(define-opcode make-closed-environment	(28 unsigned) inn out1 notnil nosides ns)
+(define-opcode push-cxt			(29 label) in0 out0 ns)
+(define-opcode locate-slot		(30 unsigned) in1 out1 notnil nosides ns)
+(define-opcode stream-primitive		(31 unsigned) out1 ns)
+(define-opcode filltag			(32 unsigned) in1 out1 ns)
+; special case
+(define-opcode ^super-cxt		(33 0))
+(define-opcode ^super-cxt-br		(33 label))
+; opcode chosen for clean emulator implementation
+(define-opcode ^super-tail		(34 0))
+
+(define-opcode noop			(0 0) in0 out0 nosides ns)
+(define-opcode plus			(0 1) in2 out1 notnil nosides commutes ns)
+(define-opcode negate			(0 2) in1 out1 notnil nosides ns)
+(define-opcode eq?			(0 3) in2 out1 nosides commutes ns)
+(define-opcode not			(0 4) in1 out1 nosides ns)
+(define-opcode times			(0 5) in2 out1 notnil nosides commutes ns)
+(define-opcode load-glo			(0 6 variable) in0 out1 nosides ns)
+(define-opcode load-code		(0 6 code) in0 out1 nosides ns)
+(define-opcode load-imm			(0 6 constant) in0 out1 nosides ns)
+(define-opcode div			(0 7) in2 out1 notnil nosides ns)
+(define-opcode =0?			(0 8) in1 out1 nosides ns)
+(define-opcode get-tag			(0 9) in1 out1 notnil nosides ns)
+(define-opcode get-data			(0 10) in1 out1 notnil nosides ns)
+(define-opcode crunch			(0 11) in2 out1 nosides ns)
+(define-opcode getc			(0 12) in0 out1 ns)
+(define-opcode putc			(0 13) in1 out1 ns)
+(define-opcode contents			(0 14) in1 out1 nosides ns)
+(define-opcode set-contents		(0 15) in2 out1 ns)
+(define-opcode load-type		(0 16) in1 out1 nosides ns)
+
+(define-opcode cons			(0 17) in2 out1 notnil nosides ns)
+
+(define-opcode <0?			(0 18) in1 out1 nosides ns)
+(define-opcode modulo			(0 19) in2 out1 notnil nosides ns)
+(define-opcode ash			(0 20) in2 out1 notnil nosides ns)
+(define-opcode rot			(0 21) in2 out1 notnil nosides ns)
+(define-opcode store-bp-i		(0 22) in2 out1 ns)
+(define-opcode load-bp-i		(0 23) in1 out1 nosides ns)
+(define-opcode return			(0 24) ns)
+(define-opcode allocate			(0 25) in2 out1 notnil nosides ns)
+(define-opcode assq			(0 26) in2 out1 nosides ns)
+(define-opcode load-length		(0 27) in1 out1 notnil nosides ns)
+(define-opcode peek			(0 28) in1 out1 ns)
+(define-opcode poke			(0 29) in2 out1 ns)
+(define-opcode make-cell		(0 30) in1 out1 notnil nosides ns)
+(define-opcode subtract			(0 31) in2 out1 notnil nosides ns)
+(define-opcode =			(0 32) in2 out1 nosides commutes ns)
+(define-opcode <			(0 33) in2 out1 nosides ns)
+(define-opcode bit-not			(0 34) in1 out1 notnil nosides ns)
+(define-opcode long-branch		(0 35 long-label) in0 branch ns)
+(define-opcode long-branch-nil		(0 36 long-label) in1 branch ns)
+(define-opcode long-branch-t		(0 37 long-label) in1 branch ns)
+(define-opcode locate-bp-i		(0 38) in1 out1 notnil nosides ns)
+(define-opcode load-glo-con		(0 39 variable) in0 out1 nosides ns)
+
+(define-opcode car			(0 40) in1 out1 nosides ns)
+(define-opcode cdr			(0 41) in1 out1 nosides ns)
+(define-opcode set-car			(0 42) in2 out1 ns)
+(define-opcode set-cdr			(0 43) in2 out1 ns)
+(define-opcode locate-car		(0 44) in1 out1 nosides ns)
+(define-opcode locate-cdr		(0 45) in1 out1 nosides ns)
+(define-opcode push-cxt-long		(0 46 long-label) ns)
+
+; Used by Bruce Horn for the Macintosh implementation:
+(define-opcode call-primitive		(0 47))
+
+(define-opcode throw			(0 48) in2 ns)
+(define-opcode object-hash		(0 49) in1 out1 notnil nosides ns)
+(define-opcode object-unhash		(0 50) in1 out1 nosides ns)
+(define-opcode gc			(0 51) in0 out0 ns)
+(define-opcode big-endian?		(0 52) in0 out1 nosides ns)
+(define-opcode vlen-allocate		(0 53) in2 out1 nosides ns)
+(define-opcode inc-loc			(0 54) in2 out1 notnil nosides ns)
+(define-opcode fill-continuation	(0 55) in1 out1 notnil ns)
+(define-opcode continue			(0 56) in2 ns)
+(define-opcode reverse-cons		(0 57) in2 out1 notnil nosides ns)
+(define-opcode most-negative-fixnum?	(0 58) in1 out1 nosides ns)
+(define-opcode fx-plus			(0 59) in2 out1 notnil nosides commutes ns)
+(define-opcode fx-times			(0 60) in2 out1 notnil nosides commutes ns)
+(define-opcode get-time			(0 61) in0 out1 notnil nosides ns)
+(define-opcode remainder		(0 62) in2 out1 notnil nosides ns)
+(define-opcode quotientm		(0 63) in2 out1 notnil nosides ns)
+(define-opcode full-gc			(0 64) in0 out1 ns)
+(define-opcode make-lambda		(0 65) in2 out1 notnil nosides ns)
+(define-opcode get-argline-char		(0 66) in2 out1 nosides ns)
+
+
+
+;;; Bitwise operations are translated into LOG-OPs with the
+;;; appropriate bitfields.  Fill in the following truth table, and
+;;; then construct a bitfield with the bits you get, as below.
+;;; 
+;;;              X
+;;;            0   1
+;;;           -------
+;;;        0 | 8 | 4 |
+;;;     Y    | - - - |
+;;;        1 | 2 | 1 |
+;;;           -------
+;;;
+;;;    #b8421
+
+(define-opcode bit-and		(2 #b0001) in2 out1 notnil nosides commutes ns)
+(define-opcode bit-nand		(2 #b1110) in2 out1 notnil nosides commutes ns)
+(define-opcode bit-or		(2 #b0111) in2 out1 notnil nosides commutes ns)
+(define-opcode bit-nor		(2 #b1000) in2 out1 notnil nosides commutes ns)
+(define-opcode bit-xor		(2 #b0110) in2 out1 notnil nosides commutes ns)
+(define-opcode bit-equiv	(2 #b1001) in2 out1 notnil nosides commutes ns)
+(define-opcode bit-andca	(2 #b0100) in2 out1 notnil nosides ns)
+
+
+;;; List all the instructions with certain attributes.
+
+(define (instructions-with attributes)
+  (iterate aux ((l (list-type opcode-notation-hash-table))
+		(yes '()))
+    (cond ((null? l) yes)
+	  ((subset? attributes (cdr (car l)))
+	   (aux (cdr l) (cons (caar l) yes)))
+	  (else (aux (cdr l) yes)))))
+
+;;; eof

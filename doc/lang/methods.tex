@@ -1,0 +1,164 @@
+\chapter{Methods and Scoping} \label{methods}
+
+In chapter \ref{types}, the concept of {\it type} was discussed.
+The assertion was made that operation methods lie at the heart of the
+typing system, because they determine the behavior of objects.  This
+chapter describes the mechanism for defining methods.
+
+\section{Methods}
+
+A table of methods is maintained in the descriptor of every type. At
+run-time, these tables are searched to find the methods which are used
+to handle operations on objects. The only mechanism for manipulating
+method tables is the following side-effecting special form.
+
+\sform{add-method}{\lpar operation $[$\lpar type \dt
+ivar-list\rpar$]$ \dt arg-list\rpar \dt body}
+\doc{Adds a method for {\em operation} to the method table of {\em type}.
+If a method for {\em operation} already exists, it is replaced.  The
+value returned by \df{add-method} is {\em operation}.}
+
+The body of the form is surrounded by an implicit \df{block}.  The
+arguments to the method are specified by {\em arg-list}.  Since the
+first argument is always the object handling the message, a useful
+convention is to call it \df{self}.  Instance variables of {\em type}
+can be referenced in the body if they are declared in {\em ivar-list}.
+Instance variables of supertypes may not be referenced in any case.
+Naming conflicts between instance variables and arguments are resolved
+by the rule that the variables in {\em arg-list} shadow instance
+variables that have the same names.  Oaklisp closes methods over free
+variable references at compile-time, thereby solving the upward funarg
+problem and allowing procedures to share state in a controlled manner.
+
+
+\section{Scoping}
+
+Oaklisp is a lexically scoped language in which all variable
+references are resolved at compile-time.  When a variable reference is
+encountered, the compiler searches outwards from that point through
+the nested lexical binding contours until it finds a declaration for
+the variable.\footnote{If a declaration isn't found, the compiler
+proceeds to look for the variable in the appropriate locale. See
+chapter \ref{locales}.} We have already seen one mechanism for
+introducing new lexical contours: the argument list of the
+\df{add-method} special form.  Oaklisp provides several other forms
+which can be used to define local variables and procedures.
+
+\sform{let}
+{\lpar\lpar var$_1$ val$_1$\rpar\ldots var$_n$ val$_n$\rpar \dt body}
+\doc{Evaluates {\em body} in an environment where the $n$ variables
+are bound to the $n$ values. The value returned is that of {\em
+body}.}
+
+\sform{let*}
+{\lpar\lpar var$_1$ val$_1$\rpar\ldots var$_n$ val$_n$\rpar \dt body}
+\doc{This form is similar to \df{let}.  The difference is that \df{let}
+performs the bindings simultaneously whereas \df{let*} performs the bindings
+sequentially so that each value expression can refer to the preceding
+variables.}
+
+\sform{labels}
+{\lpar\lpar var$_1$ val$_1$\rpar\ldots\lpar var$_n$ val$_n$\rpar\rpar \dt body}
+\doc{\df{labels} differs from \df{let} in that the value expressions are
+evaluated in a binding environment in which all of the variables are already
+defined.  This facilitates the definition of mutually recursive procedures.}
+
+
+\section{Functional Syntax}
+
+Sometimes it is convenient to adopt a more conventional Lisp
+viewpoint while designing programs.  This viewpoint considers functions
+to be the primary programming abstraction, with objects downgraded to
+the status of data which is passed around between functions. The key
+to this programming style is the ability to write functions which can accept
+arguments of any type.
+
+Oaklisp readily accommodates the functional programming style, since
+methods can be defined for the type \df{object}, which is the
+supertype of all other types.  In fact, if the type specifier is
+omitted in an \df{add-method} form, the type \df{object} is assumed.
+Thus, {\tt (add-method (\mbox{cons-1} x) (cons x 1))} defines a method that
+is valid for any type.  To give the language a more familiar
+appearance when this programming style is used, the following macros
+are also provided.
+
+\mc{lambda}{arg-list \dt body}
+\doc{\macdef{}{(add-method ((make operation) . {\em arg-list}) . {\em body})}}
+
+\mc{define}{\lpar variable \dt arg-list\rpar \dt body}
+\doc{\macdef{}{(define {\em variable} (lambda {\em arg-list} . {\em body}))}}
+
+
+\section{Dispatching to Supertypes}
+
+Sometimes a method doesn't want to override the inherited method
+completely, but rather wishes to only to modify or extent its
+behaviour.  For instance, imagine that the type {\tt dog} has a method
+so that the {\tt notice-stranger} operation causes it to run around,
+jump up and down, bark, and return the amount of time wasted.  Say
+that {\tt stupid-dog} is a subtype of {\tt dog} defined by {\tt
+(define-instance stupid-dog type '() (list dog))}, and that we want
+stupid dogs to behave just like regular dogs in response to a {\tt
+see-stranger} message, except that they do it twice.  This could be
+accomplished without the duplication of code by dispatching to the
+supertype twice, as in the following code fragment.
+\begin{flushleft}\tt
+(add-method (see-stranger (stupid-dog) self stranger)\\
+~~(+ ({\upar}super dog see-stranger self stranger)\\
+~~~~~({\upar}super dog see-stranger self stranger)))
+\end{flushleft}
+
+
+\op{{\protect\upar}super}{type operation self \dt args}
+\doc{This is just like {\tt (\em operation self \dt args\tt)} except
+that the method search begins at {\em type} rather than at the type of
+{\em self}.  It is required that {\em type} be an immediate supertype
+of the type that the method this call appears in is added to, although
+our current implementation does not yet enforce this restriction.
+\df{{\protect\upar}super} is analogous to the Smalltalk-80
+\index{Smalltalk-80} mechanism of the same name, except that due to
+Oaklisp's multiple inheritance it is necessary for the programmer to
+explicitly state which supertype is to be dispatched to.}
+
+
+
+\section{Rest Args}
+
+When a method is defined with a parameter list that is improper (\ie\
+dotted) the method is permitted to receive extra values in addition to
+its regular parameters at run time.  These values are associated with
+the pseudo variable name that appears after the dot, which will
+henceforth be called the rest name.  Unlike a real variable name, a
+rest name can't be evaluated and can only be referred to in two
+places: at the end of a function call that uses dotted syntax (which
+signifies that the extra values should be passed on to the function
+being called), and in a \df{rest-length} form, which is the mechanism
+for finding out how many rest args a method has been passed.
+
+\sform{rest-length}{rest-name}
+\doc{Yields the number of extra values that were received by the
+method in which \df{rest-name} is declared.}
+
+Rest args can never be accessed directly, but must be passed tail
+recursively to other functions.  In fact, a function is not permitted
+to return without disposing of its rest args.  Usually a function that
+takes a variable number of arguments will recurse on itself or on a
+helper function, consuming its arguments one by one until they are all
+gone, at which point the function is free to return.
+
+The following functions have been provided to make it easier to write a
+function definition that satisfies all of the rules for rest args.
+
+\op{consume-args}{val \dt args}
+\doc{Returns {\em val} after consuming {\em args}.}
+
+\op{listify-args}{op \dt args}
+\doc{Calls {\em op} on a list consisting of the values of {\em args}.}
+
+A call to \df{listify-args} can be used as the body of a
+method definition as a means of trivially satisfying the rest arg
+rules.  When using this technique, {\em op} is a lambda that performs
+all of the computation for the method.  The rest args of the method
+are wrapped up in a list that is passed in as the lambda's one
+parameter, and the regular parameters and instance variables of the
+method are available inside the lambda because of lexical scoping.

@@ -1,0 +1,44 @@
+;;; Copyright (C) 1987 Kevin J. Lang & Barak A. Pearlmutter.
+
+(define warm-boot-actions '())
+
+(define (warm-boot)
+  (%write-char #\W)
+  (%write-char #\a)
+  (%write-char #\r)
+  (%write-char #\m)
+  (%write-char #\space)
+  (%write-char #\b)
+  (%write-char #\o)
+  (%write-char #\o)
+  (%write-char #\t)
+  (%write-char #\i)
+  (%write-char #\n)
+  (%write-char #\g)
+  (%write-char #\space)
+  (dolist (op warm-boot-actions)
+    (op)
+    (%write-char #\.)))
+
+
+(define (add-warm-boot-action op)
+  (set! warm-boot-actions (append! warm-boot-actions (list op)))
+  op)
+
+
+;;; Due to load order constraints, some things go here rather than in
+;;; the files they are defined in.
+
+;;; from UNDEFINED:
+(add-warm-boot-action setup-undefined-ivar)
+
+;;; from TAG-TRAP:
+(add-warm-boot-action setup-tag-traps)
+
+;;; from SUBTYPES:
+(add-warm-boot-action setup-subtype-table)
+
+;;; from FLUID:
+(add-warm-boot-action revert-fluid-binding-list)
+
+;;; eof

@@ -1,0 +1,21 @@
+;;; Copyright (C) 1988, Barak A. Pearlmutter and Kevin J. Lang.
+
+(%write-char #\C)
+(%write-char #\o)
+(%write-char #\l)
+(%write-char #\d)
+(%write-char #\space)
+(%write-char #\b)
+(%write-char #\o)
+(%write-char #\o)
+(%write-char #\t)
+(%write-char #\i)
+(%write-char #\n)
+(%write-char #\g)
+(%write-char #\space)
+(%write-char #\.)
+(%write-char #\.)
+(%write-char #\.)
+(%write-char #\newline)
+
+;;; eof

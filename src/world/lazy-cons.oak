@@ -1,0 +1,86 @@
+;;; Copyright (C) 1886,7,8 Kevin J. Lang & Barak A. Pearlmutter.
+
+(define-instance lazy-cons type
+  '(car-thunk cdr-thunk car-flag cdr-flag) (list pair object))
+
+(add-method (initialize (lazy-cons car-thunk cdr-thunk car-flag cdr-flag)
+			    self new-car-thunk new-cdr-thunk)
+  (set! car-thunk new-car-thunk)
+  (set! cdr-thunk new-cdr-thunk)
+  (set! car-flag nil)
+  (set! cdr-flag nil)
+  self)
+
+(add-method (car (lazy-cons car-thunk car-flag) self)
+  (if car-flag car-thunk
+      (let ((newcar (car-thunk)))
+	;; Critical section; would be a good idea to disable interrupts.
+	(set! car-flag #t)
+	(set! car-thunk newcar))))
+
+(add-method (cdr (lazy-cons cdr-thunk cdr-flag) self)
+  (if cdr-flag cdr-thunk
+      (let ((newcdr (cdr-thunk)))
+	;; Critical section; would be a good idea to disable interrupts.
+	(set! cdr-flag #t)
+	(set! cdr-thunk newcdr))))
+
+(add-method ((setter car) (lazy-cons car-thunk car-flag) self val)
+  (set! car-flag #t)
+  (set! car-thunk val))
+
+(add-method ((setter cdr) (lazy-cons cdr-thunk cdr-flag) self val)
+  (set! cdr-flag #t)
+  (set! cdr-thunk val))
+
+(add-method ((locater car) (lazy-cons car-thunk) self)
+  (car self)
+  (make-locative car-thunk))
+
+(add-method ((locater cdr) (lazy-cons cdr-thunk) self)
+  (cdr self)
+  (make-locative cdr-thunk))
+
+(define-syntax (lcons a d)
+  `(make lazy-cons (lambda () ,a) (lambda () ,d)))
+
+(define-instance lmap operation)
+
+(add-method (lmap (operation) op l)
+  (if (null? l) '() (lcons (op (car l)) (lmap op (cdr l)))))
+
+(define (square-list n)
+  (make lazy-cons (lambda () (* n n)) (lambda () (square-list (+ n 1)))))
+
+(define (integer-list n)
+  (make lazy-cons (lambda () n) (lambda () (integer-list (+ n 1)))))
+
+(define (fair-merge l1 l2)
+  (if (not (null? l1))
+      (lcons (car l1)
+	     (fair-merge l2 (cdr l1)))
+      l2))
+
+;;; This print method isn't really necessary:
+
+(add-method (print (lazy-cons car-thunk cdr-thunk car-flag cdr-flag) self s)
+
+  (let ((f (fluid forcible-print-magic)))
+
+    (cond ((eq? f 'transparent)
+	   (^super pair print self s))
+
+	  ((eq? f '#f)
+
+	   (format s "#[LAZY-CONS ~A ~A ~!]"
+		   (if car-flag car-thunk "?")
+		   (if cdr-flag cdr-thunk "?")
+		   self))
+
+	  ((eq? f 'indicate)
+	   (format s "#L")
+	   (^super pair print self s))
+
+	  (else (error "Unknow (FLUID FORCIBLE-PRINT-MAGIC) option ~S." f)))))
+
+;;; eof

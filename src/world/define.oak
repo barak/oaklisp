@@ -1,0 +1,14 @@
+;;; Copyright (C) 1987, Kevin J. Lang and Barak A. Pearlmutter.
+
+;;; Define define-constant and related forms.
+
+(define-syntax (define-constant var . body)
+  `(block0 (define ,var . ,body)
+	   (freeze-in-current-locale
+	    ',(if (pair? var) (car var) var))))
+
+(define-syntax (define-constant-instance var typ . args)
+  `(block0 (define-instance ,var ,typ . ,args)
+	   (freeze-in-current-locale ',var)))
+
+;;; eof

@@ -1,0 +1,132 @@
+;;; Copyright (C) 1986,1987,1988,1989 Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; Read eval print loop for Oaklisp.
+
+(define (read-eval-print-loop)
+  (format #t "~&Oaklisp evaluation loop.~%")
+  (bind ((print-length 7)
+	 (print-level 3)
+	 (print-escape #t)
+	 ;; Current input
+	 (- #f)
+	 ;; Previous inputs:
+	 (+ #f)
+	 (++ #f)
+	 (+++ #f)
+	 ;; Previous macro expanded inputs:
+	 (? #f)
+	 (?? #f)
+	 (??? #f)
+	 ;; Previous outputs:
+	 (* #f)
+	 (** #f)
+	 (*** #f))
+    (let ((message
+	   (if (zero? debug-level)
+	       "Return to top level."
+	       (format #f "Return to debugger level ~D." debug-level))))
+      (error-restart message ()
+	(show-handlers)
+	(let ((out-of-here (and (not (zero? debug-level)) up-a-debug-level)))
+	  (iterate aux ()
+	    (native-catch uptag
+	      (bind ((up-a-debug-level uptag))
+		(dotimes (i (+ debug-level 1))
+		  (write-char standard-output #\>))
+		(write-char standard-output #\space)
+		(flush standard-output)
+		(set! +++ ++)
+		(set! ++ +)
+		(set! + -)
+		(let ((r (bind-error-handler
+			     (read-error
+			      (lambda (x)
+				(format standard-error
+					"~&Malformed user input.~%")
+				;; Flush typeahead here?
+				(invoke-debugger x)))
+			   (read standard-input))))
+		  (clear-backspace-buffer standard-input)
+		  (cond ((eq? r the-eof-token)
+			 (cond ((not (interactive? standard-input))
+				(format #t "~&Exiting: EOF on non-interactive control stream.~%")
+				(flush standard-output)
+				(exit))
+			       ((zero? debug-level)
+				(format #t "~&Type (exit) to leave Oaklisp.~%")
+				(aux))
+			       (else
+				(write-char standard-output #\newline)
+				(throw out-of-here #f))))
+			(else
+			 (set! - r)
+			 (let ((m (bind-error-handler
+				      (general-error
+				       (lambda (x)
+					 (format standard-error
+						 "~&Unable to macroexpand ~S.~%"
+						 r)
+					 (invoke-debugger x)))
+				    (let ; error-restart
+					; "Try to macroexpand it again (args: expr, locale)."
+					((exp r) (loc current-locale))
+				      (expand-groveling loc exp)))))
+			   (set! ??? ??)
+			   (set! ?? ?)
+			   (set! ? m)
+			   (let ((v (bind-error-handler
+					(general-error invoke-debugger)
+				      (subeval m current-locale))))
+			     (set! *** **)
+			     (set! ** *)
+			     (set! * v)
+			     (bind-error-handler
+				 (general-error
+				  (lambda (x)
+				    (format standard-error
+					    "~&Unable to print result.~%")
+				    (invoke-debugger x)))
+			       (print v standard-output))
+			     (write-char standard-output #\newline))))))))
+	    (aux)))))))
+
+(set! top-level
+      (lambda ()
+	(format #t
+		"
+Welcome to Oaklisp 1.3
+  Distributed under GNU General Public License v2 or later.
+  See http://www.cs.unm.edu/~~bap/oaklisp/ for details.
+")
+	(read-eval-print-loop)))
+
+(define (eval form locale)
+  (subeval (expand-groveling locale form) locale))
+
+(define (subeval form locale)
+  (top-level-evaluator form locale))
+
+(set! top-level-evaluator interpreter-eval)
+
+
+(define (hybrid-eval form locale)
+  ((if (contains-add-method? form) compiler-eval interpreter-eval)
+   form locale))
+
+(let ((warned-yet? #f))
+
+  (define (compiler-eval form locale)
+    (unless warned-yet?
+      (warning "compiler isn't loaded, using interpreter.")
+      (set! warned-yet? #t))
+    (interpreter-eval form locale)))
+
+
+(define (contains-add-method? form)
+  (and (pair? form)
+       (not (eq? 'quote (car form)))
+       (or (eq? '%add-method (car form))
+	   (contains-add-method? (car form))	;close enough for
+	   (contains-add-method? (cdr form)))))	;rock and roll.
+
+;;; eof

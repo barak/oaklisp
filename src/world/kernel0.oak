@@ -1,0 +1,71 @@
+;;; Copyright (C) Barak A. Pearlmutter & Kevin J. Lang. Fall 1986.
+
+;;; This is the lowest level kernel code in Oaklisp.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Set up some registers.
+
+(set! ((%register 'nil)) (the-runtime nil))
+(set! ((%register 't)) (the-runtime t))
+(set! ((%register 'cons-type)) (the-runtime cons-pair))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Make TYPE
+
+(let ((type0 (%allocate nil 9)))
+  (set! ((%slot 0) type0) type0)
+  (set! ((%slot 1) type0) 9)		;instance-length
+  (set! ((%slot 2) type0) nil)		;var-length?
+  (set! ((%slot 4) type0)		;ivar-list
+       '(instance-length variable-length? supertype-list ivar-list
+         ivar-count type-bp-alist operation-method-alist top-wired?))
+  (set! ((%slot 5) type0) 8)		;ivar-count
+  (set! ((%slot 6) type0) '())		;type-bp-alist
+  (set! ((%slot 7) type0) '())		;op-meth-alist
+  (set! ((%slot 8) type0) 't)		;top-wired?
+  (set! type type0))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Make OBJECT
+
+(let ((object0 (%allocate type 9)))
+  (set! ((%slot 1) object0) 1)		;instance-length
+  (set! ((%slot 2) object0) nil)		;var-length?
+  (set! ((%slot 3) object0) '())		;supertype-list
+  (set! ((%slot 4) object0) '())		;ivar-list
+  (set! ((%slot 5) object0) 0)		;ivar-count
+  (set! ((%slot 6) object0) (cons (cons object0 1) '()))
+				 	;type-bp-alist
+  (set! ((%slot 7) object0) '())		;op-meth-alist
+  (set! ((%slot 8) object0) nil)		;top-wired?
+  (set! object object0))
+
+;;; tell the machine where object lives.
+(set! ((%register 'object-type)) (the-runtime object))
+
+;;; Back patch the supertypes of TYPE
+(set! ((%slot 3) type) (cons object '()))
+
+;;; Back patch TYPE's TYPE-BP-ALIST
+(set! ((%slot 6) type) (list (cons type 1) (cons object 9)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Make OPERATION
+
+(let ((operation0 (%allocate type 9)))
+  (set! ((%slot 1) operation0) %simple-operation-length)	;instance-length
+  (set! ((%slot 2) operation0) nil)	;var-length?
+  (set! ((%slot 3) operation0)		;supertype-list
+       (cons object '()))
+  (set! ((%slot 4) operation0) '(lambda? cache-type cache-method cache-type-offset)) ;ivar-list
+  (set! ((%slot 5) operation0) (- %simple-operation-length 1))	;ivar-count
+  (set! ((%slot 6) operation0)		;type-bp-alist
+       (cons (cons operation0 1)
+	     (cons (cons object 0)
+		   '())))
+  (set! ((%slot 7) operation0) '())	;op-meth-alist
+  (set! ((%slot 8) operation0) t)	;top-wired?
+  (set! operation operation0))

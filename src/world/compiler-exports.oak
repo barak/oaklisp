@@ -1,0 +1,10 @@
+;;; Copyright (C) 1999 Barak A. Pearlmutter & Kevin J. Lang
+
+;;; The last two variables exported might already be in system-locale
+;;; due to forward references; hence the check.
+
+(dolist (v '(cc compile-file compile-code-fragment))
+  (when (not (variable-here? system-locale v))
+    (export-sharing-cell compiler-locale system-locale v)))
+
+;;; eof

@@ -1,0 +1,20 @@
+;;; Copyright (C) 1987,8, Barak A. Pearlmutter & Kevin J. Lang.
+
+;;; Some entry points.
+
+(let ((bad-nargs
+       (lambda (stuff)
+	 (destructure (extra-okay requested op . args) stuff
+	   (signal (if extra-okay nargs-gte-error nargs-exact-error)
+		   op args requested)))))
+
+  (define (incorrect-nargs requested op . args)
+    (listify-args bad-nargs #f requested op . args))
+
+  (define (incorrect-nargs-gte minimum-requested op . args)
+    (listify-args bad-nargs #t minimum-requested op . args)))
+
+(set! (nth %arged-tag-trap-table 24) incorrect-nargs)
+(set! (nth %arged-tag-trap-table 25) incorrect-nargs-gte)
+
+;;; eof

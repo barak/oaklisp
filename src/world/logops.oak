@@ -1,0 +1,29 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+(define (xor a b)
+  (if a
+      (not b)
+      b))
+
+(define (and* . args)
+  (cond ((= (rest-length args) 0)
+	 t)
+	(else (and*aux . args))))
+
+(define (and*aux arg . args)
+  (cond (arg (if (= (rest-length args) 0)
+		 arg
+		 (and*aux . args)))
+	(else (consume-args nil . args))))
+
+(define (or* . args)
+  (cond ((= (rest-length args) 0)
+	 nil)
+	(else (or*aux . args))))
+
+(define (or*aux arg . args)
+  (cond (arg (consume-args arg . args))
+	(else (if (= (rest-length args) 0)
+		  nil
+		  (or*aux . args)))))
+

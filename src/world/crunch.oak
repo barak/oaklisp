@@ -1,0 +1,400 @@
+;;; Copyright (C) 1989, Barak A. Pearlmutter and Kevin J. Lang, Carnegie Mellon.
+
+
+
+;;; A linear graph transformation language implemented with a hairy
+;;; macro.  Assume two real instructions, no labels.
+
+;;;;;; Features:
+;;;
+;;; ,x in LHS matches a variable first time; same as ,(identity i) later.
+;;;
+;;; names for insts in RHS: 1, 2.
+;;;
+;;; names for classes of insts in FORALL constructs:
+;;;
+;;; ,(...) in LHS must match computed value.
+
+(define (split-crunch stuff)
+  (let* ((i (subsequence? '(=>) stuff))
+	 (lhs (subseq stuff 0 i))
+	 (stuff (tail stuff (+ i 1)))
+	 (i (subsequence? '(=>) stuff))
+	 (test (if i (subseq stuff 0 i) '#t))
+	 (rhs (if i (tail stuff (+ i 1)) stuff)))
+    (list lhs (if (pair? test) `(and ,@test) #t) rhs)))
+
+(define crunch-class-alist '())
+
+(define-syntax (define-crunch class . stuff)
+  (let ((crunch (split-crunch stuff)))
+    (cond ((assq class crunch-class-alist)
+	   => (lambda (it)
+		(push (cdr it) crunch)))
+	  (else
+	   (push crunch-class-alist (cons class (list crunch)))))
+    'generic-undefined-value))
+
+
+;;; The following macro does all the work.
+
+;;; Helper functions:
+
+
+(define (substitute old new form)
+  (cond ((null? form) form)
+	((equal? old form) new)
+	((pair? form)
+	 (cons (substitute old new (car form))
+	       (substitute old new (cdr form))))
+	(else form)))
+
+;;; Take a rhs and substitute in things for numbers.
+
+(define (flush-inumbers rhs things)
+  (if (null? rhs) '()
+      (cons (if (number? (car rhs))
+		(nth things (- (car rhs) 1))
+		(car rhs))
+	    (flush-inumbers (cdr rhs) things))))
+
+;;; Take a forall crunch and expand it out.  Returns a list of crunches.
+
+(define (expand-forall crunch listproc)
+  (destructure (lhs test rhs) crunch
+    (destructure* (('forall v . attributes) . stuff) lhs
+      (let ((instrs (listproc attributes))
+	    (var (varify v)))
+	(map (lambda (instr)
+	       (substitute var instr (list (cdr lhs) test rhs)))
+	     instrs)))))
+
+;;; Expand out all the FORALLs
+
+(define (expand-foralls crunch-list listproc)
+  (iterate aux ((l crunch-list)(a '()))
+    (if (null? l) (reverse a)
+	(let* ((crunch (car l))
+	       (lhs (car crunch)))
+	  (if (null? lhs)
+	      (aux (cdr l) (cons crunch a))
+	      (let ((lhs0 (car lhs)))
+		(if (and (pair? lhs0)
+			 (eq? (car lhs0) 'forall))
+		    (aux (append (expand-forall crunch listproc) (cdr l)) a)
+		    (aux (cdr l) (cons crunch a)))))))))
+
+;;; Take x and return ,x.
+
+(define (varify x) (list (car ',x) x))
+
+(define (var? x) (and (pair? x) (eq? (car x) (car ',x))))
+
+(define unvarify second)
+
+;;; Take x and return `x.
+
+(define (backquotify x) (list (car '`x) x))
+
+;;; Process a crunch.  Returns code which evaluates YESPROC called on
+;;; the new list of instructions if it matches and evaluates NOCODE if
+;;; it doesn't.  INSTRS is a list of the variables that the LHS forms
+;;; of CRUNCH are bound to.
+
+(define (do-a-crunch crunch instrs yesproc nocode)
+  (destructure (lhs test rhs) crunch
+    (tease-lhs
+     instrs lhs '() nocode test
+     (lambda (bound-vars test nocode)
+       (if-ify test
+	       (yesproc (map backquotify
+			     (flush-inumbers rhs (map varify instrs))))
+	       nocode)))))
+
+;;; For DEBUGGING:
+
+(define (test-a-crunch stuff)
+  (let ((c (split-crunch stuff)))
+    (do-a-crunch c (map genvar/1 (car c))
+		 (lambda (l) (cons 'list l)) `'NOCHANGE)))
+
+;;; For constructing forms.
+
+(define (let-ify var val body)
+  (if (and (pair? body) (eq? 'let* (car body)))
+      (destructure* ('let* clauses body) body
+	`(let* ((,var ,val) ,@clauses) ,body))
+      `(let* ((,var ,val)) ,body)))
+
+(define (and-ify new test)
+  (cond ((eq? test '#t) new)
+	((and (pair? test) (eq? (car test) 'and))
+	 `(and ,new ,@(cdr test)))
+	(else
+	 `(and ,new ,test))))
+
+(define (if-ify test yes no)
+  (if (eq? test '#t)
+      yes
+      `(if ,test ,yes ,no)))
+
+;;; Tease apart the LHS while binding variables.
+;;;  instrs are bound to things that we hope match lhs.
+
+(define (tease-lhs instrs lhs bound-vars nocode test yesser)
+  (if (null? instrs)
+      (yesser bound-vars test nocode)
+      (tease-form (car lhs) (car instrs) bound-vars nocode test
+		  (lambda (bound-vars test nocode)
+		    (tease-lhs (cdr instrs) (cdr lhs)
+			       bound-vars nocode test yesser)))))
+
+;;; Tease apart a single LHS clause.
+
+(define (tease-form form var bound-vars nocode test yesser)
+  (cond ((null? form)
+	 (yesser bound-vars test nocode))
+	((symbol? form)
+	 `(if (eq? ',form ,var)
+	      ,(yesser bound-vars test nocode)
+	      ,nocode))
+	((is-a? form self-evaluatory-mixin)
+	 `(if (eq? ,form ,var)
+	      ,(yesser bound-vars test nocode)
+	      ,nocode))
+	((var? form)
+	 (let ((x (unvarify form)))
+	   (if (or (not (symbol? x)) (memq x bound-vars))
+	       (yesser bound-vars (and-ify `(eq? ,x ,var) test) nocode)
+	       (let-ify x var (yesser (cons x bound-vars) test nocode)))))
+	;; At this point we know FORM must be a list of things.
+	((and (var? (car form))
+	      (symbol? (unvarify (car form)))
+	      (not (memq (unvarify (car form)) bound-vars)))
+	 ;; This clause avoids useless shuffling of variables.
+	 ;; It can be removed without loss of correctness
+	 (let ((vcar (unvarify (car form))))
+	   (let-ify
+	    vcar `(car ,var)
+	    (if (null? (cdr form))
+		(yesser (cons vcar bound-vars) test nocode)
+		(let ((vcdr (genvar)))
+		  (let-ify vcdr `(cdr ,var)
+			   (tease-form (cdr form) vcdr (cons vcar bound-vars)
+				       nocode test yesser)))))))
+	(else
+	 ;; Must be a list of things:
+	 (let ((vcar (genvar)))
+	   (let-ify vcar `(car ,var)
+		    (tease-form
+		     (car form) vcar bound-vars nocode test
+		     (if (null? (cdr form))
+			 yesser
+			 (lambda (bound-vars test nocode)
+			   (let ((vcdr (genvar)))
+			     (let-ify vcdr `(cdr ,var)
+				      (tease-form (cdr form) vcdr bound-vars
+						  nocode test yesser)))))))))))
+
+(define (car-er l x) (if (not (null? l)) (car l) x))
+
+;; PROC wants current element of L1, next element of L1, and current of L2.
+(define (hairmap proc l1 l2 default)
+  (if (null? l1)
+      '()
+      (cons (proc (car l1) (car-er (cdr l1) default) (car l2))
+	    (hairmap proc (cdr l1) (cdr l2) default))))
+
+;; PROC wants current element of L1, code for next element of L1, and
+;; current of L2.
+(define (hairmap1 proc l1 l2 default)
+  (if (null? l1)
+      '()
+      (cons (proc (car l1) (call-er (cdr l1) default) (car l2))
+	    (hairmap1 proc (cdr l1) (cdr l2) default))))
+
+(define (call-er l default)
+  (if (null? l) default `(,(car l))))
+
+(let ((!=lhsl (lambda (n c)
+		(!= n (length (car c))))))
+
+  (define (catagorize-crunches cl)
+    (iterate aux ((l cl)(m 0))
+      (if (null? l)
+	  (iterate aux ((i 1)(o '()))
+	    (if (> i m)
+		(reverse o)
+		(aux (+ i 1) (cons (del !=lhsl i cl) o))))
+	  (let ((lhsl (length (car (car l)))))
+	    (aux (cdr l)
+		 (if (> lhsl m) lhsl m)))))))
+
+;;; Really do it.  Assume a max of two forms in LHS.
+
+(define (hairy-code crunches listproc)
+
+  (let ((l (catagorize-crunches (expand-foralls crunches listproc)))
+	(yup (lambda (l) `(list ,@l))))
+
+    `(list
+
+      ,@(map
+
+	 (lambda (cl i)
+	   (let ((invars (map genvar/1 (iota i)))
+		 (vcl (map genvar/1 cl)))
+
+	     `(lambda ,invars
+		(labels ,(reverse
+			  (hairmap1
+			   (lambda (this next crunch)
+			     `(,this
+			       (lambda ()
+				 ,(do-a-crunch crunch invars yup next))))
+			   vcl cl `'nochange))
+		  ,(call-er vcl `'nochange)))))
+
+	 l (iota (length l))))))
+
+
+
+;;; The termination interface
+
+
+(define-syntax (emit-crunchers class listproc)
+  (let ((it (assq class crunch-class-alist)))
+    (block0 (new-hairy-code (cdr it) (eval listproc current-locale))
+	    (set! (cdr it) '()))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+; This procedure sorts the productions according to the 
+; length of their left-hand-sides, and returns a list
+; of expression matching functions, each of which only
+; handles a given LHS length.
+
+
+
+(define (new-hairy-code raw-crunch-list listproc)
+  (let ((hacked-crunch-list
+	 (catagorize-crunches
+	  (expand-foralls raw-crunch-list listproc))))
+    (cons 'list 
+	  (map hash-table-hairy-code
+	       hacked-crunch-list
+	       (iota (length hacked-crunch-list))))))
+
+
+
+; The following procedure generates the code for a single 
+; pattern matching function which handles all of the productions
+; in crunch-list (whose LHS's must be of equal length).
+
+; The generated function uses the first opcode in its 
+; first argument as a key for retrieving from a hash table
+; a sub-function that only tries to apply the productions
+; that are relevant for that opcode.
+
+; The sub-functions are generated using a different procedure
+; that causes the relevant productions to be tried sequentially.
+
+
+
+(define (hash-table-hairy-code crunch-list lhs-len)
+
+  (if (< (length crunch-list) 10)
+
+      (sequential-hairy-code crunch-list lhs-len) ;fast enough
+
+      (let* ((sorted-crunch-list
+	      (combine-similar-neighbors (sort crunch-list crunch-key-less?)
+					 crunch-key-equal?))
+	     (crunch-key-list (map caaaar sorted-crunch-list))
+	     (invars (map genvar/1 (iota lhs-len))))
+
+	`(let ((cruncher-lookup-table (make-eq-hash-table)))
+
+	   ,@(map (lambda (crunchers crunch-key)
+		    `(set! (table-entry cruncher-lookup-table ',crunch-key)
+			   ,(sequential-hairy-code crunchers lhs-len)))
+		  sorted-crunch-list crunch-key-list)
+
+	   (lambda ,invars
+	     (let ((cruncher (present? cruncher-lookup-table
+				       (car ,(car invars)))))
+	       (if (not cruncher)
+		   'nochange
+		   ((cdr cruncher) ,@invars)))))))
+  )
+
+
+
+
+
+; This is Barak's procedure that combines
+; a bunch of crunchers into a big labels expression
+; that sequentially runs through all of the tests in 
+; crunch-list with no function calls.
+
+
+(define (sequential-hairy-code crunch-list lhs-len)
+
+  (let ((invars (map genvar/1 (iota lhs-len)))
+	(crunch-var-names (map genvar/1 crunch-list))
+	(yup (lambda (l) `(list ,@l))))
+
+    `(lambda ,invars
+       (labels ,(reverse
+		 (hairmap1
+		  (lambda (this next crunch)
+		    `(,this
+		      (lambda ()
+			,(do-a-crunch crunch invars yup next))))
+		  crunch-var-names crunch-list `'nochange))
+	 ,(call-er crunch-var-names `'nochange)))))
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+(define (crunch-key-less? a b)
+  (< ((coercer string) (caaar a))
+     ((coercer string) (caaar b))))
+
+
+(define (crunch-key-equal? a b)
+  (eq? (caaar a)
+       (caaar b)))
+
+
+
+;  '(a a b c c c d e) eq? --> '((a a) (b) (c c c) (d) (e))
+
+(define (combine-similar-neighbors inlist similar?)
+  (if (null? inlist)
+      '()
+      (iterate next ((remaining (cdr inlist))
+		     (group-so-far (list (car inlist)))
+		     (listout '()))
+	(if (null? remaining)
+	    (reverse (cons group-so-far listout))
+	    (let ((this-guy (car remaining)))
+	      (if (similar? this-guy (car group-so-far))
+		  (next (cdr remaining)
+			(cons this-guy group-so-far)
+			listout)
+		  (next (cdr remaining)
+			(list this-guy)
+			(cons group-so-far listout))))))))
+
+
+
+;;; eof

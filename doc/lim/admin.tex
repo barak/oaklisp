@@ -1,0 +1,50 @@
+\chapter{Administrative Details}
+
+\section{Getting a Copy}
+
+The most recent released version of Oaklisp, along with the manuals,
+are available at http://www.cs.unm.edu/\verb|~|bap/oaklisp/
+
+\section{Bugs}
+
+The following are known serious problems and inadequacies of the
+current implementation.  People are invited to work on remedying them.
+None of these are fundamental; they're simply due to lack of either
+effort or motivation.
+
+\begin{itemize}
+\item Floating point numbers are not supported.  Rationals can be
+used to make up for this lack.
+
+\item In contrast to the error handling system, which is Industrial
+Strength, the debugger barely exists.
+
+\item There is no foreign function interface for loading and calling
+C routines from a running Oaklisp.
+
+%% Removed because this has been tightened up so much that only someone
+%% familiar with the internals would be able to cobble up something that
+%% would cause a core dump when invoked, and that would take some work.
+%
+% \item Calling some non-operations dumps core rather than invoking the
+% debugger.
+\end{itemize}
+
+Bug reports and enhancements should be sent to {\tt bap@cs.unm.edu}
+
+We appreciate enhancements (especially in the form of patch files),
+bug fixes, and bug reports.  We are particularly grateful for porting
+problem fixes.  In a bug report, please include the precise version of
+Oaklisp, which is indicated by the date at the end of the tar file.
+And please try to make sure that it's really a bug and not a feature,
+and pretty please, if at all possible, find a {\em very short} program
+that manifests your bug.  In any case please be aware that we are
+under no obligation to respond to bug reports in any way whatsoever.
+
+\section{Copyright and Lack of Warranty}
+
+The Oaklisp copyright belongs to its authors.  It is authorized for
+distribution under the GNU General Public License, version 2, copies
+of which are readily obtainable from the Free Software Foundation.
+There is no warranty; use at your own risk.  For more precise
+information, see the COPYING file in the Oaklisp source distribution.

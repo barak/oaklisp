@@ -1,0 +1,20 @@
+;;;; Copyright (C) 1988, Barak A. Pearlmutter & Kevin J. Lang.
+
+;;; Define the has-method? operation.
+
+(define (has-method? typ op)
+  (let ((it (%get-an-ivar operation op 'lambda?)))
+    (and (not (eq? it 0))
+	 (or (and it (subtype? typ object))
+	     (really-has-method? typ op)))))
+
+
+(define-instance really-has-method? operation)
+
+(add-method (really-has-method? (type supertype-list operation-method-alist)
+				self op)
+  (or (%assq op operation-method-alist)
+      (any? (lambda (typ) (really-has-method? typ op))
+	    supertype-list)))
+
+;;; eof

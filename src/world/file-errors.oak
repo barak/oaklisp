@@ -1,0 +1,50 @@
+;;; Copyright (C) 1988, Barak A. Pearlmutter & Kevin J. Lang.
+
+
+;;; Define some error types to signal when file system stuff fails.  Below,
+;;; fs is used as an abbreviation for file system.
+
+(define-instance fs-error type '() (list general-error))
+
+(define-instance proceedable-fs-error type
+  '() (list proceedable-error fs-error))
+
+(define-instance error-opening type '(name) (list proceedable-fs-error))
+
+(define-instance error-opening-read type '() (list error-opening object))
+(define-instance error-opening-write type '() (list error-opening object))
+(define-instance error-opening-append type '() (list error-opening object))
+
+(add-method (initialize (error-opening name) self filename)
+  (set! name filename)
+  (^super proceedable-fs-error initialize self
+	  (format #f "Supply a file to ~A instead (none to retry \"~A\")."
+		  (what-attempting self) filename)))
+
+(add-method (report (error-opening name) self stream)
+  (format stream "Unable to open ~S for ~A access.~%"
+	  name (what-attempting self)))
+
+;;; If passed no new filename return the old one.
+(add-method (really-invoke-debugger (error-opening name) self)
+  (or (^super proceedable-fs-error really-invoke-debugger self)
+      name))
+
+(define-instance what-attempting operation)
+(add-method (what-attempting (error-opening-read) self) 'read)
+(add-method (what-attempting (error-opening-write) self) 'write)
+(add-method (what-attempting (error-opening-append) self) 'append)
+
+(define-instance error-changing-directory
+  type '(name) (list proceedable-fs-error object))
+
+(add-method (initialize (error-changing-directory name) self filename)
+  (set! name filename)
+  (^super proceedable-fs-error initialize self
+	  (format #f "Supply a directory to change to (none to retry \"~A\")."
+		  filename)))
+
+(add-method (report (error-changing-directory name) self stream)
+  (format stream "Unable to change to directory \"~A\".~%" name))
+
+;;; eof

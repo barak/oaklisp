@@ -1,0 +1,53 @@
+;;; Copyright (C) Barak A. Pearlmutter & Kevin J. Lang. Fall 1986.
+
+;;; This program defines some types in a crude way so that
+;;; we can send messages to everything.  
+;;; Most of these these types must be adjusted later in the boot
+;;; process so that their inheritance relationships will be correct.
+
+(set! ((%slot 0) %code-vector) type)
+(set! ((%slot 0) cons-pair) type)
+(set! ((%slot 0) string) type)
+
+
+(set! %method (%allocate type 9))
+(set! %closed-environment (%allocate type 9))
+(set! null-type (%allocate type 9))
+(set! fixnum (%allocate type 9))
+(set! locative (%allocate type 9))
+
+(set! ((%register 'fixnum-type)) (the-runtime fixnum))
+;(set! ((%register 'cons-type)) (the-runtime cons-pair))
+(set! ((%register 'loc-type)) (the-runtime locative))
+(set! ((%register 'env-type)) (the-runtime %closed-environment))
+(set! ((%register 'method-type)) (the-runtime %method))
+(set! ((%register 'operation-type)) (the-runtime operation))
+
+;; The MAKE-CLOSED-ENVIRONMENT instruction has been modified to disallow
+;; an argument of 0:
+;(set! %empty-environment (%make-closed-environment))
+(set! %empty-environment (%varlen-allocate %closed-environment 2))
+
+(let ((booter ((%register 'boot-code))))
+  (set! ((%slot 0) booter) %method)
+  (set! ((%slot 2) booter) %empty-environment))
+
+(set! %sort-of-init  (%allocate operation %simple-operation-length))
+(set! ((%slot 1) %sort-of-init) 0)
+(_add-method (%sort-of-init (type supertype-list type-bp-alist
+				  operation-method-alist)
+			    self)
+  (set! supertype-list (list object))
+  (set! type-bp-alist `((,self . 1)))
+  (set! operation-method-alist nil))
+
+(%sort-of-init %code-vector)
+(%sort-of-init cons-pair)
+(%sort-of-init string)
+(%sort-of-init %method)
+(%sort-of-init %closed-environment)
+(%sort-of-init null-type)
+(%sort-of-init fixnum)
+(%sort-of-init locative)
+
+(set! ((%slot 0) '()) null-type)

@@ -1,0 +1,19 @@
+;;; Copyright (C) 1986, Barak A. Pearlmutter and Kevin J. Lang.
+
+;;; Define both input and output streams that might work during the cold
+;;; load process, so we can have a gander at error messages and maybe poke
+;;; about.
+
+(let ((cold-load-input-stream (make type '() (list input-stream object)))
+      (cold-load-output-stream (make type '() (list output-stream object))))
+
+  (add-method (really-read-char (cold-load-input-stream) self)
+    (%read-char))
+
+  (add-method (write-char (cold-load-output-stream) self char)
+    (%write-char char))
+
+  (set! standard-input (make cold-load-input-stream))
+  (set! standard-output (make cold-load-output-stream)))
+
+;;; eof

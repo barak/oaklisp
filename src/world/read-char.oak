@@ -1,0 +1,147 @@
+;;; Copyright (C) 1986-1988 Barak A. Pearlmutter & Kevin J. Lang
+;;; Thanks to Richard O'Keefe <ok@yallara.cs.rmit.oz.au> for a couple mods.
+
+;;; Syntax: '#\'<char> or '#\' ({'s' 'c' 'm' 'shift' 'control' 'meta'}'-')+<char>
+;;; Where <char>
+
+(define-hash-macro-char #\\
+  (lambda (stream char arg)
+    (when arg
+      (cerror
+       "Ignore the font specifier."
+       "A #~A~C was encountered, but #~C does not understand fonts yet."
+       arg char char))
+    (unread-char stream char)
+    (let* ((token (read stream))
+	   (str (string token))
+	   (len (length str)))
+      (cond ((= len 1) (nth str 0))
+	    (else
+	     (let ((token (upcase-first-char token)))
+	       (cond ((character token) => identity)
+		     (else
+		      (cerror
+		       "Supply a character to be returned instead."
+		       "The token ~S cannot be interpreted as a character."
+		       str)))))))))
+
+(define (upcase-first-char sym)
+  (let* ((str (string sym))
+	 (char (nth str 0))
+	 (nchar (upcase char)))
+    (cond ((eq? char nchar) sym)
+	  (else
+	   (let* ((len (length str))
+		  (str2 (make-string len)))
+	     (dotimes (i len)
+	       (set! (nth str2 i) (nth str i)))
+	     (set! (nth str2 0) nchar)
+	     (symbol str2))))))
+
+(let ((named-character-table '()))
+
+  (add-method (character (symbol) sym)
+    (cond ((assq sym named-character-table) => cdr)
+	  (else nil)))
+
+  (add-method ((setter character) (symbol) sym char)
+    (let ((char (character char)))
+      (cond ((assq sym named-character-table)
+	     => (lambda (x) (set! (cdr x) char)))
+	    (else (push named-character-table (cons sym char))
+		  char))))
+
+  (add-method (symbol (character) char)
+    (cond ((rassq char named-character-table) => car)
+	  (else #f))))
+
+;;; Note:  The ASCII name for the character with all bits off is
+;;; NUL.  Not NULL, N-U-L, three letters.  The correct name has
+;;; been added.  "null" is still there so old code won't break.
+;;; The ASCII name DEL for #o177 has also been added.  In order
+;;; to help port code from other Schemes, the following names have
+;;; been added:
+;;;	altmode		= #\esc
+;;;	escape		= #\esc
+;;;	rubout		= #\del
+;;; They are not "standard" names (indeed, the only standard names
+;;; are #\Space and #\Newline).  They are placed in the table early
+;;; so that the ASCII names will be generated in output.
+
+(set! (character 'null) 0)		; Idiosyncratic name
+(set! (character 'nul) 0)		; ASCII name.
+(set! (character 'soh) 1)
+(set! (character 'stx) 2)
+(set! (character 'etx) 3)
+(set! (character 'eot) 4)
+(set! (character 'enq) 5)
+(set! (character 'ack) 6)
+(set! (character 'bel) 7)
+(set! (character 'bs) 8)
+(set! (character 'ht) 9)
+(set! (character 'nl) 10)		; Weird name
+(set! (character 'lf) 10)		; ASCII name
+(set! (character 'vt) 11)
+(set! (character 'np) 12)		; Weird name
+(set! (character 'ff) 12)		; ASCII name
+(set! (character 'cr) 13)
+(set! (character 'so) 14)
+(set! (character 'si) 15)
+(set! (character 'dle) 16)
+(set! (character 'dc1) 17)
+(set! (character 'dc2) 18)
+(set! (character 'dc3) 19)
+(set! (character 'dc4) 20)
+(set! (character 'nak) 21)
+;; Previously removed so #\^V would print as #\^V so T could read it.
+;; No longer necessary, since the world builder is running in Oaklisp not T.
+(set! (character 'syn) 22)
+(set! (character 'etb) 23)
+(set! (character 'can) 24)
+;; As above, used to be commented out so #\^Y would be generated for T.
+(set! (character 'em) 25)
+(set! (character 'sub) 26)
+(set! (character 'altmode) 27)	; A common name
+(set! (character 'escape) 27)		; A common name
+(set! (character 'esc) 27)		; ASCII name
+(set! (character 'fs) 28)
+(set! (character 'gs) 29)
+(set! (character 'rs) 30)
+(set! (character 'us) 31)
+(set! (character 'delete) 127)	; A common name
+(set! (character 'rubout) 127)	; A common name
+(set! (character 'del) 127)		; ASCII name
+
+;;; These go at the end so that these characters will get printed this way.
+
+(set! (character 'return) 13)
+(set! (character 'newline) 10)
+(set! (character 'form) 12)
+(set! (character 'page) 12)
+(set! (character 'tab) 9)
+(set! (character 'space) 32)
+(set! (character 'backspace) 8)
+(set! (character 'bell) 7)
+(set! (character 'fluid) 22)
+(set! (character 'coercer) 25)
+
+
+
+#|
+(define (read-fancy-char stream)
+  (labels (((after-quote r-charlist)
+	    (normal (cons (read-char stream) r-charlist)))
+	   ((normal r-charlist)
+	    (let* ((char (read-char stream))
+		   (syntax (nth standard-read-table char)))
+	      (cond ((or (eq? syntax 'constituent)
+			 (and (not (symbol? syntax))
+			      (eq? (car syntax) 'nonterminating-macro)))
+		     (normal (cons char r-charlist)))
+		    ((eq? syntax 'single-escape)
+		     (after-quote r-charlist))
+		    (else (unread-char stream char)
+			  (parse-token (reverse! r-charlist))))))
+	   ((parse-token charlist)
+	    (
+|#

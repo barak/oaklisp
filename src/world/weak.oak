@@ -1,0 +1,13 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+(define-constant object-hash
+  (add-method ((make-open-coded-operation '((object-hash)) 1 1)
+	       (object) x)
+    (object-hash x)))
+
+(define-constant object-unhash
+  (add-method ((make-open-coded-operation '((object-unhash)) 1 1)
+	       (fixnum) x)
+    (object-unhash x)))
+
+;;; eof

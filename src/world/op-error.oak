@@ -1,0 +1,58 @@
+;;;; Copyright (C)  Kevin J. Lang and Barak A. Pearlmutter. Fall 1986.
+
+;;; This entry point strips off the arg field that we don't care about
+;;; that the emulator stuck on because funcall is an arged
+;;; instruction.
+
+(define (no-handler-for-operation n . args)
+  (listify-args failed-funcall . args))
+
+;;; Leave autoforcing turned off until the facility actually comes up.
+
+(define forcible-magic #f)
+
+;;; This function actually does the work.
+
+(define (failed-funcall args)
+  (destructure (op . args) args
+    (cond
+     ;; It would be nice if the user level error system could
+     ;; handle this:
+     ((and forcible-magic
+	   ;; IS-A? not used because it might force the promise, and
+	   ;; then the promse would end up not getting forced.  Clear?
+	   (subtype? (get-type op) forcible))
+      (apply (force op) args))
+     ((not (is-a? op operation))
+      (signal not-an-operation op args))
+     ((and (not (null? args))
+	   (is-a? op locatable-operation)
+	   (has-method? (get-type (car args)) (locater op)))
+      (when monitor-for-bruce
+	(%write-char #\%))
+      (contents (apply (locater op) args)))
+     ;; In an ideal world this would be handled at user level:
+     ((and forcible-magic (not (null? args))
+	   ;; IS-A? not used because it might force the promise, and
+	   ;; then the promse would end up not getting forced.  Clear?
+	   (subtype? (get-type (car args)) forcible))
+      (apply op (force (car args)) (cdr args)))
+     (else
+      (signal operation-not-found op args)))))
+
+(set! (nth %arged-tag-trap-table 21) no-handler-for-operation)
+(set! (nth %arged-tag-trap-table 22) no-handler-for-operation)
+
+;;; This is in direct analogy with the above.
+
+(define (no-^super-handler n . args)
+  (listify-args failed-^super . args))
+
+(define (failed-^super args)
+  (destructure (the-type op . args) args
+    (signal ^super-not-found the-type op args)))
+
+(set! (nth %arged-tag-trap-table 33) no-^super-handler)
+(set! (nth %arged-tag-trap-table 34) no-^super-handler)
+
+;;; eof

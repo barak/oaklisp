@@ -1,0 +1,76 @@
+\chapter{Control} \label{control}
+
+Nonlocal control constructs like \df{call/cc} are described in section
+\ref{sec:nonlocal}.
+
+\discuss{Since control structures are not a very interesting issue,
+we followed existing Lisp dialects closely when designing this aspect
+of Oaklisp. Every control structure in this chapter does just what you
+would expect.}
+
+\section{Simple Constructs}
+
+These forms are compatible with both T \cite[chapter 5]{T-MAN} and the
+Scheme standard \cite{R3RS}.
+
+\sform{cond}{\dt clauses}
+\doc{The {\em clauses} are run through sequentially until one is
+selected.  Each clause can be of four possible forms.  {\em\lpar test
+\dt body\rpar} evaluates {\em body} if {\em test} is true.
+{\em\lpar\df{else} \dt body\rpar} always evaluates {\em body},
+and if present must be the last clause.  {\em\lpar test {\tt =>}
+operation\rpar} calls {\em operation} on the result of {\em test} if
+the result of evaluating {\em test} was not {\em false}.  {\em\lpar
+test\rpar} is equivalent to {\em\lpar test {\tt => identity}\rpar}.}
+
+\sform{if}{test consequent $[$alternate$]$}
+\pr{not}{object}
+\sform{and}{\dt tests}
+\sform{or}{\dt tests}
+\sform{iterate}{variable specs \dt body}
+\sform{block}{\dt body}
+\doc{Evaluates the forms of {\em body} sequentially, returning (tail
+recursively) the value of the last one.}
+\sform{block0}{form \dt body}
+\doc{\meq{}{(let ((x {\em form})) (block \dt {\em body}) x)}}
+
+\sform{dotimes}{\lpar variable number $[$rform$]$\rpar \dt body}
+\doc{\meq{}{(let ((x (lambda ({\em variable}) \dt {\em body}))) (map x
+(iota {\em number})) {\em rform})}}
+\sform{dolist}{\lpar variable list $[$rform$]$\rpar \dt body}
+\doc{\meq{}{(let ((x (lambda ({\em variable}) \dt {\em body}))) (map x
+{\em list}) {\em rform})}}
+\sform{dolist-count}{\lpar variable list count-var\rpar \dt body}
+\doc{Just like {\tt dolist} except that {\em count-var} gives the
+count of the current element in the list, starting at zero.}
+\sform{while}{condition \dt body}
+\doc{\meq{}{(let ((q (lambda () {\em test}))(x (lambda () \dt {\em
+body}))) (iterate aux () (cond (({\em q}) ({\em x}) (aux)))))}}
+\sform{unless}{test \dt body}
+\doc{\meq{}{(cond ((not {\em test}) \dt {\em body}))}}
+\sform{do}{\lpar \lpar var initial step \rpar \ldots \rpar
+ \lpar termination-test \dt termination-body \rpar \dt body}
+\doc{\meq{}{(iterate aux (({\em var initial}) \ldots)
+(cond ({\em termination-test} \dt {\em termination-body})
+      (else (block \dt {\em body}) (aux {\em step} \ldots))))}} 
+
+\section{Mapping Constructs} \label{sec:controlmap}
+
+Although these can be used as control constructs, they can also be
+thought of as ways to manipulate data structures.  \df{map} maps an
+operation over some sequences generating a sequence of results.
+\df{for-each}, which doesn't save the results, is used when the
+operation is called for effect only.  For all of these, the order of
+evaluation is undefined; the system may apply the operation to the
+various elements of the sequence in any order it desires.
+
+\op{map}{operation \dt sequences}
+\op{mapcdr}{operation \dt lists}
+\doc{Applies {\em operation} to successive ``cdrs'' rather than to
+elements, and returns a list of the returned values.}
+\op{for-each}{operation \dt sequences}
+\op{for-each-cdr}{operation \dt lists}
+\doc{Like \df{mapcdr} but for effect only.}
+\op{map\protect\bang}{operation \dt sequences}
+\doc{Like \df{map}, except that the retuned values are destructively
+placed into the successive storage locations of the first {\em sequence}.}

@@ -1,0 +1,12 @@
+;;;Copyright (C) Barak A. Pearlmutter & Kevin J. Lang. 1987
+
+(define (export-sharing-cell source destination variable)
+  (let ((try (variable-here? source variable)))
+    (if try
+	(set! (variable-here? destination variable) try)
+	(warning "~S not found in ~S; can't export.~%" variable source))))
+       
+
+
+
+

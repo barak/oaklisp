@@ -1,0 +1,295 @@
+;;; Copyright (C) 1986,7,8 Kevin J. Lang & Barak A. Pearlmutter.
+
+
+(define-constant %fixnum-tag 0)
+(define-constant %immediate-tag 1)
+(define-constant %locative-tag 2)
+(define-constant %pointer-tag 3)
+
+(define-constant %character-subtag (bit-or (ash-left 0 2) %immediate-tag))
+(define-constant %wp-subtag	   (bit-or (ash-left 1 2) %immediate-tag))
+
+
+(define-constant %increment-locative
+  (add-method ((make-open-coded-operation '((inc-loc)) 2 1)
+	       (locative) self i)
+    (%increment-locative self i)))
+
+
+(define-constant (%set-tag ref tag)
+  (%crunch (%data ref) tag))
+
+
+
+
+(define-constant get-type
+  (add-method ((make-foldable-open-coded-operation '((load-type)) 1 1)
+	       (object) self)
+    (get-type self)))
+
+(define-constant get-time
+  (add-method ((make-open-coded-operation '((get-time)) 0 1)
+	       (object))
+    (get-time)))
+
+(define-constant %get-length
+  (add-method ((make-open-coded-operation '((load-length)) 1 1)
+	       (object) self)
+    (%get-length self)))
+
+#||
+;;; Maybe %get-length should not be open coded, but rather should be
+;;; defined as follows.  The LOAD-LENGTH instructions could then be
+;;; removed from the emulator.
+(define (%get-length x)
+  (let ((typ (get-type x)))
+    (if ((%slot 2) typ)
+	((%slot 1) x)
+	((%slot 1) typ))))
+||#
+
+
+(define-constant eq?
+  (add-method ((make-foldable-open-coded-operation '((eq?)) 2 1)
+	       (object) x y)
+    (eq? x y)))
+
+(define-constant null?
+  (add-method ((make-foldable-open-coded-operation '((not)) 1 1)
+	       (object) x)
+    (null? x)))
+
+(define-constant not null?)
+
+(define-constant %allocate
+  (add-method ((make-open-coded-operation '((allocate)) 2 1)
+	       (type) self size)
+    (%allocate self size)))
+
+(define-constant %varlen-allocate
+  (add-method ((make-open-coded-operation '((vlen-allocate)) 2 1)
+	       (type) self size)
+    (%varlen-allocate self size)))
+
+(define-constant %data
+  (add-method ((make-open-coded-operation '((get-data)) 1 1)
+	       (object) self)
+    (%data self)))
+
+(define-constant %pointer %data)
+
+(define-constant %tag
+  (add-method ((make-foldable-open-coded-operation '((get-tag)) 1 1)
+	       (object) x)
+    (%tag x)))
+
+(define-constant %crunch
+  (add-method ((make-open-coded-operation '((crunch)) 2 1)
+	       (fixnum) x y)
+    (%crunch x y)))
+
+(define-constant most-negative-fixnum?
+  (add-method ((make-foldable-open-coded-operation '((most-negative-fixnum?))
+						   1 1)
+	       (object) x)
+    (most-negative-fixnum? x)))
+
+(define-constant fx-plus
+  (add-method ((make-foldable-open-coded-operation '((fx-plus)) 2 1)
+	       (fixnum) x y)
+    (if (eq? (get-type y) fixnum)
+	(fx-plus x y)
+	(error "Illegal second arg ~S to FX-PLUS." y))))
+
+(define-constant fx-times
+  (add-method ((make-foldable-open-coded-operation '((fx-times)) 2 1)
+	       (fixnum) x y)
+    (if (eq? (get-type y) fixnum)
+	(fx-times x y)
+	(error "Illegal second arg ~S to FX-PLUS." y))))
+
+(define-constant get-argline-char
+  (add-method ((make-open-coded-operation '((get-argline-char)) 2 1)
+	       (fixnum) x y)
+    (if (eq? (get-type y) fixnum)
+	(get-argline-char x y)
+	(error "Illegal second arg ~S to GET-ARGLINE-CHAR." y))))
+
+
+
+;;; The following is for use only at boot time, for feedback before the I/O system is up.
+
+(define-constant %write-char
+  (add-method ((make-open-coded-operation '((putc)) 1 1)
+	       (character) x)
+    (%write-char x)))
+
+(define-constant %print-digit
+  (add-method ((make-open-coded-operation
+		'((load-imm 48)(plus)(ash 6)(load-imm 1)(crunch)(putc))
+		1 1)
+	       (integer) x)
+    (%print-digit x)))
+
+(define-constant %read-char
+  (add-method ((make-open-coded-operation '((getc)) 0 1)
+	       (object))
+    (%read-char)))
+
+(define-constant %assq
+  (add-method ((make-open-coded-operation '((assq)) 2 1)
+	       (object) x y)
+    (%assq x y)))
+
+;;; This is for use in a tail recursive position when you want to fool the
+;;; compiler into just emiting a return.  See the code for +.
+(define-constant %return
+  (add-method ((make-open-coded-operation '() 0 1)
+	       (object))
+    (%return)))
+
+
+(define-constant-instance %load-bp-i
+  (mix-types oc-mixer (list open-coded-mixin locatable-operation))
+  '((load-bp-i)) 1 1)
+
+(set! (setter %load-bp-i)
+     (make (mix-types oc-mixer (list open-coded-mixin operation))
+	   '((store-bp-i)) 2 1))
+
+(set! (locater %load-bp-i)
+     (make (mix-types oc-mixer (list open-coded-mixin operation))
+	   '((locate-bp-i)) 1 1))
+			   
+
+
+
+(define-constant-instance %register
+  (mix-types oc-mixer (list foldable-mixin operation)))
+
+(let ((reg-operation-alist '()))
+
+  (add-method (%register (object) reg)
+    (cond ((assq reg reg-operation-alist) => cdr)
+	  (else
+	   (let ((op (make (mix-types oc-mixer
+				      (list open-coded-mixin
+					    settable-operation))
+			   `((load-reg ,reg)) 0 1)))
+
+	     (set! (setter op)
+		  (make (mix-types oc-mixer
+				   (list open-coded-mixin operation))
+			`((store-reg ,reg)) 1 1))
+	     (set! reg-operation-alist (cons (cons reg op)
+					    reg-operation-alist))
+	     op)))))
+
+
+
+(define-constant-instance %halt
+  (mix-types oc-mixer (list foldable-mixin operation)))
+
+(let ((status-operation-alist '()))
+
+  (add-method (%halt (object) status)
+    (cond ((assq status status-operation-alist) => cdr)
+	  (else
+	   (let ((op (make (mix-types oc-mixer
+				      (list open-coded-mixin operation))
+			   (lambda (n)
+			     `((halt ,status)))
+			   nil 1)))
+
+	     (add-method (op (object))
+	       (exit status "((%HALT ~D))~%" status))
+
+	     (set! status-operation-alist (cons (cons status op)
+					       status-operation-alist))
+	     op)))))
+
+
+
+(define-constant-instance %slot
+  (mix-types oc-mixer (list foldable-mixin operation)))
+
+(let ((slot-operation-alist '()))
+
+  (add-method (%slot (object) slot)
+    (cond ((assq slot slot-operation-alist) => cdr)
+	  (else
+	   (let ((op (make (mix-types oc-mixer
+				      (list open-coded-mixin
+					    locatable-operation))
+			   `((load-slot ,slot)) 1 1)))
+	     (set! (setter op)
+		  (make (mix-types oc-mixer
+				   (list open-coded-mixin operation))
+			`((store-slot ,slot)) 2 1))
+	     (set! (locater op)
+		  (make (mix-types oc-mixer
+				   (list open-coded-mixin operation))
+			`((locate-slot ,slot)) 1 1))
+	     (set! slot-operation-alist (cons (cons slot op)
+					     slot-operation-alist))
+	     op)))))
+
+
+(define-constant second-arg
+  (add-method ((make-foldable-open-coded-operation
+		(lambda (n)
+		  (if (< n 2)
+		      (error "A function passed ~D arguments can't return it's second." n)
+		      (list (list 'load-stk 1) (list 'blt-stk 1 n))))
+		nil 1)
+	       (object) a b . args)
+    (listify-args car b . args)))
+
+
+
+
+(define-constant %push
+  (add-method ((make-open-coded-operation (lambda (n) '((load-imm 0))) nil 1)
+	       (object) . args)
+    0))
+
+
+
+(define-constant %make-cell
+  (add-method ((make-open-coded-operation '((make-cell)) 1 1)
+	       (object) x)
+    (make-locative x)))
+
+(define-constant %make-closed-environment
+  (add-method ((make-open-coded-operation
+		(lambda (n)
+		  (list `(make-closed-environment ,n)))
+		nil 1)
+	       (object) . args)
+    (listify-args
+     (lambda (args)
+       (let* ((l (length args))
+	      (v (make %closed-environment l)))
+	 (dotimes (i l)
+	   (set! (nth v i)(nth args i)))
+	 v))
+     . args)))
+
+
+(define-constant %big-endian?
+  (add-method ((make-open-coded-operation '((big-endian?)) 0 1)
+	       (object))
+    (%big-endian?)))
+
+
+
+(define-constant %simple-operation-length 5)
+
+
+;;; This is temporary, until ^super is open coded directly.
+(define-constant %^super-tail
+  (add-method ((make-open-coded-operation '((^super-tail)) 3 1)
+	       (object) the-type the-op self)
+    (error "Non-open-coded call to %^super-tail.")))
+
+;;; eof

@@ -1,0 +1,17 @@
+;;; Copyright (C) 1987, Barak A. Pearlmutter & Kevin J. Lang.
+
+(let ((remember-to-freeze '()))
+
+  (define (freeze-in-current-locale variable)
+    (if variable
+	(push remember-to-freeze variable)
+	remember-to-freeze)))
+
+;; Now freeze everything that should have been frozen in the files preceding
+;; this that couldn't be because this stuff wasn't defined yet:
+
+(dolist (v '(operation object make type %varlen-make initialize nil t
+		       %method fixnum cons-pair locative %closed-environment))
+  (freeze-in-current-locale v))
+
+;;; eof

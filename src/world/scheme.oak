@@ -1,0 +1,153 @@
+;;; Copyright (C) 1988,7, Barak A. Pearlmutter & Kevin J. Lang.
+
+;;; This is a compatibility package for R3RS Scheme.
+
+;;; This file defines things that are part of R3RS but that are not
+;;; part of standard Oaklisp, usually because they are non-generic
+;;; versions of operations which have generic variants in Oaklisp, but
+;;; sometimes because we just decided to be gratuitously incompatible.
+
+;(define (boolean? x) #f)
+;(add-method (boolean? (truths) x) #t)
+;
+;(define (boolean? x) (is-a? x truths))
+;
+;(define (boolean? x) (or (eq? #f x) (eq? #t x)))
+;
+;(define (boolean? x) (if (not x) #t (eq? x #t)))
+;
+(define (boolean? x) (eq? x (not (not x))))
+
+
+(define-constant set-car! (setter car))
+(define-constant set-cdr! (setter cdr))
+
+(define list-tail tail)
+(define list-ref nth)
+
+(define symbol->string string)
+
+(define string->symbol symbol)
+
+(define-constant char=?  =)
+(define-constant char<?  <)
+(define-constant char>?  >)
+(define-constant char<=? <=)
+(define-constant char>=? >=)
+
+(define char-ci=?  (lambda (c1 c2) (=  (upcase c1) (upcase c2))))
+(define char-ci<?  (lambda (c1 c2) (<  (upcase c1) (upcase c2))))
+(define char-ci>?  (lambda (c1 c2) (>  (upcase c1) (upcase c2))))
+(define char-ci<=? (lambda (c1 c2) (<= (upcase c1) (upcase c2))))
+(define char-ci>=? (lambda (c1 c2) (>= (upcase c1) (upcase c2))))
+
+(define (char-whitespace? c)
+  (eq? 'whitespace (nth standard-read-table c)))
+
+
+(define char->integer number)
+(define integer->char character)
+
+(define char-upcase upcase)
+(define char-downcase downcase)
+
+
+
+(define string-length length)
+(define string-ref nth)
+(define string-set! (setter nth))
+
+
+(define-constant string=?  =)
+(define-constant string<?  <)
+(define-constant string>?  >)
+(define-constant string<=? <=)
+(define-constant string>=? >=)
+
+(define string-ci=?  (lambda (c1 c2) (=  (upcase c1) (upcase c2))))
+(define string-ci<?  (lambda (c1 c2) (<  (upcase c1) (upcase c2))))
+(define string-ci>?  (lambda (c1 c2) (>  (upcase c1) (upcase c2))))
+(define string-ci<=? (lambda (c1 c2) (<= (upcase c1) (upcase c2))))
+(define string-ci>=? (lambda (c1 c2) (>= (upcase c1) (upcase c2))))
+
+(define substring subseq-indexes)
+
+; (define string-append append)
+
+(define (string-append . args)
+  (if (zero? (rest-length args))
+      "" (append . args)))
+
+
+(define string->list list-type)
+(define list->string string)
+
+(define string-copy copy)
+(define string-fill! fill!)
+
+
+(define (make-vector n) (make simple-vector n))
+
+(define vector-length length)
+(define vector-ref nth)
+(define vector-set! (setter nth))
+(define vector->list list-type)
+(define list->vector simple-vector)
+(define vector-fill! fill!)
+
+
+
+(define input-port? (type-pred input-stream))
+(define output-port? (type-pred output-stream))
+
+(define (call-with-input-file string proc)
+  (with-open-file (s string in)
+    (proc s)))
+
+(define (call-with-output-file string proc)
+  (with-open-file (s string out)
+    (proc s)))
+
+(define (current-input-port) standard-input)
+(define (current-output-port) standard-output)
+
+(define (eof-object? x)
+  (eq? x the-eof-token))
+
+(define close-input-port close)
+(define close-output-port close)
+
+(define write
+  (let ((write0 (lambda (obj port)
+		  (bind ((print-escape #t))
+		    (print obj port)))))
+
+    (lambda (obj . rest)
+      (if (zero? (rest-length rest))
+	  (write0 obj standard-output . rest)
+	  (write0 obj . rest)))))
+
+(define display
+  (let ((display0 (lambda (obj port)
+		  (bind ((print-escape #f))
+		    (print obj port)))))
+
+    (lambda (obj . rest)
+      (if (zero? (rest-length rest))
+	  (display0 obj standard-output . rest)
+	  (display0 obj . rest)))))
+
+;;; Argument order incompatibility hackaround:
+
+(add-method (write-char (character) char stream)
+  (write-char stream char))
+
+;;; with no args:
+
+(add-method (newline (object)) (newline standard-output))
+
+(define (write-line x) (print x standard-output))
+
+#| (add-method (read (object)) (read standard-input)) |#
+
+;;; eof

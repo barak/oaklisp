@@ -1,0 +1,267 @@
+;;; Copyright (C) 1986,7,8 Barak A. Pearlmutter & Kevin J. Lang.
+
+;;; This file defines the # reader dispatch macro character.
+
+
+;;; The hash dispatch macro character.
+
+(define-instance hash-macro-chars simple-vector 256)
+
+(define (errorful-hash-macro-reader stream char arg)
+  (signal unknown-#-macro char arg)
+  the-unread-object)
+
+(dotimes (c 256)
+  (set! (nth hash-macro-chars c) errorful-hash-macro-reader))
+
+;;; Hash macro reader functions take three args: the stream, the
+;;; character, and the argument, the number between the # and the
+;;; macro char.  Non-negative, NIL if none.
+
+(define-nonterminating-macro-char #\#
+  (lambda (stream char)
+    (iterate aux ((i nil))
+      (let ((c (read-char stream)))
+	(if (digit? c 10)
+	    (aux (+ (* (or i 0) 10)
+		    (digit-value c)))
+	    (let ((c (upcase c)))
+	      (let ((p (nth hash-macro-chars (number c))))
+		(cond (p (p stream c i))
+		      (else
+		       (signal unknown-#-macro i c)
+		       the-unread-object)))))))))
+
+(define (define-hash-macro-char char func)
+  (set! (nth hash-macro-chars (number (upcase char))) func))
+
+;;; The #+ and #- reader conditionals.
+
+(set! features '())
+
+(define-instance feature? settable-operation)
+
+(add-method (feature? (symbol) s)
+  (memq s features))
+
+(add-method ((setter feature?) (symbol) s bool)
+  (cond (bool
+	 (if (not (memq s features))
+	     (set! features (cons s features))))
+	((memq s features)
+	 (set! features (setdifference features (list s)))))
+  bool)
+
+(add-method (feature? (pair) x)
+  (let ((s (car x)))
+    (cond ((eq? s 'and) (every? feature? (cdr x)))
+	  ((eq? s 'or) (any? feature? (cdr x)))
+	  ((eq? s 'not)
+	   (when (not (null? (cddr x)))
+	     (error "~S is a bad feature specifier, as not only takes one argument."
+		    x))
+	   (not (feature? (second x))))
+	  (else (error "~S is an unknown feature specifier." x)))))
+
+(define-hash-macro-char #\+
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    (if (feature? (read stream))
+	(read stream)
+	(block (bind ((read-suppress t))
+		 (read stream))
+	       the-unread-object))))
+
+(define-hash-macro-char #\-
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    (if (feature? (read stream))
+	(block (bind ((read-suppress t))
+		 (read stream))
+	       the-unread-object)
+	(read stream))))
+
+(set! (feature? 'oaklisp) t)
+(set! (feature? 'scheme) t)
+
+
+(define-hash-macro-char #\C
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    (let ((l (read stream)))
+      (when (cddr l)
+	(cerror "Ignore the excess components."
+		"#~C~A is ill formed: too many components." char l))
+      (make-complex (car l) (cadr l)))))
+
+(define-hash-macro-char #\.
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    (eval (read stream) current-locale)))
+
+(define-hash-macro-char #\b
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    (bind ((input-base 2))
+      (read stream))))
+
+(define-hash-macro-char #\o
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    (bind ((input-base 8))
+      (read stream))))
+
+(define-hash-macro-char #\d
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    (bind ((input-base 10))
+      (read stream))))
+
+(define-hash-macro-char #\x
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    (bind ((input-base 16))
+      (read stream))))
+
+(define-hash-macro-char #\r
+  (lambda (stream char arg)
+    (iterate aux ((arg arg))
+      (cond ((null? arg)
+	     (aux (signal must-have-#-arg char arg)))
+	    (else
+	     (bind ((input-base arg))
+	       (read stream)))))))
+
+(define-hash-macro-char #\(
+  (lambda (stream char arg)
+    (let* ((r (read-until #\) nil stream))
+	   (l (length r))
+	   (arg (or arg l)))
+      (when (< arg l)
+	(cerror
+	 "Ignore the excess componants."
+	 "The construct #~D~S puts more things in the vector than it is long."
+	 arg r))
+      (let ((v (make simple-vector arg)))
+	(iterate aux ((i 0)(r r)(default nil))
+	  (if (< i arg)
+	      (let ((it (if r (car r) default)))
+		(set! (nth v i) it)
+		(aux (+ i 1) (if r (cdr r) nil) it))
+	      v))))))
+
+
+;;; A finite state machine augmented with a counter:
+
+(define-hash-macro-char #\|
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    (iterate aux ((level 1) (c (read-char stream)))
+      (cond ((eq? c the-eof-token)
+	     (signal eof-in-#pipe level))
+	    ((eq? c #\#)
+	     (let ((c (read-char stream)))
+	       (if (eq? c #\|)
+		   (aux (+ level 1) (read-char stream))
+		   (aux level c))))
+	    ((eq? c #\|)
+	     (let ((c (read-char stream)))
+	       (if (eq? c #\#)
+		   (if (= level 1)
+		       the-unread-object
+		       (aux (- level 1) (read-char stream)))
+		   (aux level c))))
+	    (else (aux level (read-char stream)))))))
+
+(define-hash-macro-char #\T
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    #t))
+
+(define-hash-macro-char #\F
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    nil))
+
+;;; For some T compatibility, this code deals with #[symbol "..."], and could
+;;; be augmented to understand similar constructs like #57[code-vector ...].
+
+(define-hash-macro-char #\[
+  (lambda (stream char arg)
+    (let ((selector (read stream)))
+      (cond ((hash-bracket-option selector)
+	     =>
+	     (lambda (op)
+	       (op char arg selector stream)))
+	    (else
+	     (block0
+	      (cerror "Return a value."
+		      "The #~A~A~A construct is unknown."
+		      (or arg "") char selector)
+	      (read-until #\] #f stream)))))))
+
+(let ((hash-bracket-option-alist '()))
+
+  (define-instance hash-bracket-option settable-operation)
+
+  (add-method (hash-bracket-option (object) x)
+    (cond ((assq x hash-bracket-option-alist) => cdr)
+	  (else #f)))
+
+  (add-method ((setter hash-bracket-option) (object) x op)
+    (cond ((assq x hash-bracket-option-alist)
+	   => (lambda (p) (set! (cdr p) op)))
+	  (else
+	   (push hash-bracket-option-alist (cons x op))
+	   op))))
+
+(set! (hash-bracket-option 'symbol)
+      (lambda (char arg selector stream)
+	(when arg
+	  (cerror "Ignore the argument."
+		  "The #~D~A~S construct is malformed; no argument is taken."
+		  arg char selector))
+	(let ((l (read-until #\] #f stream)))
+	  (when (not (null? (cdr l)))
+	    (cerror "Ignore the extra stuff."
+		    "This contruct takes only one thing to coerce."))
+	  (symbol (car l)))))
+
+(set! (hash-bracket-option 'delay)
+      (lambda (char arg selector stream)
+	(when arg
+	  (cerror "Ignore the argument."
+		  "The #~D~A~S construct is malformed; no argument is taken."
+		  arg char selector))
+	(destructure* (val num) (read-until #\] #f stream)
+	  (delay val))))
+
+(define-hash-macro-char #\E
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    (let ((x (read stream)))
+      ;; (make-exact x)
+      x)))
+
+(define-hash-macro-char #\I
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    (let ((x (read stream)))
+      (cerror "Return the corresponding exact number."
+	      "Inexact numbers are not supported.")
+      x)))
+
+;;; eof

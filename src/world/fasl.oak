@@ -1,0 +1,120 @@
+;;; Copyright (C) Barak A. Pearlmutter & Kevin J. Lang. Fall 1986.
+
+;;; Define the stuff to link in fasl format code segments, and to load files.
+
+(define-instance %ivar-map locatable-operation)
+
+(add-method ((locater %ivar-map) (%code-vector ivar-map) self)
+  (make-locative ivar-map))
+
+;;; Codes used in the resolution list to mark different clause types.
+
+(define-constant variable-key 0)
+(define-constant code-key 1)
+(define-constant constant-key 2)
+
+
+(define (link-code-segment locale segment)
+  (let ((already-warned #f))
+    (iterate aux0 ((inputs segment) (outputs '()) (code-resolution-lists '()))
+      (cond
+       ((null? inputs)
+	(when already-warned (format #t ".~%"))
+	(let ((outputs (reverse outputs)))
+	  (dolist (crl (reverse code-resolution-lists) (car outputs))
+	    (dolist (clause crl)
+	      (set! (contents (cdr clause)) (nth outputs (car clause)))))))
+       (else
+	(destructure ((resolution-list ('0 '0 . code)) . #t) inputs
+	  (let* ((instruction-count (length code))
+		 (word-count (quotient (+ instruction-count 1) 2))
+		 (v (make %code-vector word-count)))
+	    (iterate aux ((c code) (i 0))
+	      (cond
+	       ((not (null? c))
+		;;(destructure (xi xj . rest) c       )
+		(let* ((xi (car c))
+		       (xj   (if (null? (cdr c))  0  (cadr c)))
+		       (rest (if (null? (cdr c)) nil (cddr c))))
+		  (set! (%vref v i)
+		       (if (%big-endian?)
+			   (%crunch (bit-or (ash-left xi 14)
+					    (ash-right xj 2))
+				    (bit-and xj #x3))
+			   ;(bit-or (ash-left xi 14) xj)
+			   (%crunch (bit-or (ash-left xj 14)
+					    (ash-right xi 2))
+				    (bit-and xi #x3))
+			   ;(bit-or xi (ash-left xj 14))
+			   ))
+		  (aux rest (+ i 1))))
+	       ;;((not (null? c))
+	       ;; (set! (nth v i) (car c))
+	       ;; (aux (cdr c) (+ i 1)))
+	       (else
+		(iterate aux ((resolution-list resolution-list)
+			      (code-number-to-locs-alist '()))
+		  (cond
+		   ((null? resolution-list)
+		    (aux0 (cdr inputs) (cons v outputs)
+			  (cons code-number-to-locs-alist
+				code-resolution-lists)))
+		   (else
+		    (let ((clause (car resolution-list)))
+		      (destructure (which where what) clause
+			(cond
+			 ((eq? where 0)
+			  (cond
+			   ((eq? which constant-key)
+			    (set! (%ivar-map v) what)
+			    (aux (cdr resolution-list)
+				 code-number-to-locs-alist))
+			   (else
+			    (error
+			     "Bad FASL patch clause ~S, only constants may be placed in the IVAR-MAP slot."
+			     clause))))
+			 (else
+			  (let ((where-loc
+				 (make-locative
+				  (%vref v (- (quotient where 2) 1)))))
+			    (cond
+			     ((eq? which constant-key)
+			      (set! (contents where-loc) what)
+			      (aux (cdr resolution-list)
+				   code-number-to-locs-alist))
+			     ((eq? which variable-key)
+			      (set! (contents where-loc)
+				    (or (variable? locale what)
+					(let* ((y (%make-cell
+						   (make-undefined-variable-value
+						    what))))
+					  (cond ((not already-warned)
+						 (format #t "~&Variables installed in ~S: ~S"
+							 locale what)
+						 (set! already-warned #t))
+						(else
+						 (format #t ", ~S" what)))
+					  (set! (variable? locale what) y)
+					  y)))
+			      (aux (cdr resolution-list)
+				   code-number-to-locs-alist))
+			     ((eq? which code-key)
+			      (aux (cdr resolution-list)
+				   (cons (cons what where-loc)
+					 code-number-to-locs-alist)))
+			     (else (error "Weird FASL resolution clause ~S.~%"
+					  clause)))))))))))))))))))))
+
+(define (load-code-segment locale segment)
+  (bind (((fluid current-locale) locale))
+     ((%install-method-with-env object
+				(make operation)
+				(link-code-segment locale segment)
+				%empty-environment)
+      ;; Code segments don't have CHECK-NARGS, so the operation isn't
+      ;; going to get popped, so we don't pass anything extra:
+      ;'loaded
+      ))
+  'loaded)
+
+;;; eof

@@ -1,0 +1,110 @@
+;;; This is borrowed from the T 2.8 sources, courtesy of Olin Grigsby
+;;; Shivers III.
+
+;;; Oaklisp Modifications are
+;;; Copyright 1986,7,8 (C) Barak A. Pearlmutter and Kevin J. Lang.
+
+;;; Oaklisp Mods:
+;;; 
+;;; More-than-two arg append clause removed
+;;; Appropriate (macro? system-locale X).
+
+;;; Copyright (c) 1984 Yale University
+
+;;;; Backquote
+
+;;; BACKQUOTE: Support for the amazing ` read macro character.
+
+(define *BACKQUOTE*    'QUASIQUOTE)
+(define *COMMA*        'UNQUOTE)
+(define *COMMA-ATSIGN* 'UNQUOTE-SPLICING)
+(define *QUOTE*        'QUOTE)
+
+(DEFINE (QUOTATION? X)		; Crash your T compiler if this is integrable
+  (AND (PAIR? X)
+       (EQ? (CAR X) *QUOTE*)
+       (PAIR? (CDR X))
+       (NULL? (CDDR X))))
+
+(define (commation? x)
+  (and (pair? x)
+       (eq? (car x) *comma*)
+       (pair? (cdr x))
+       (null? (cddr x))))
+
+(define (comma-atsignation? x)
+  (and (pair? x)
+       (eq? (car x) *comma-atsign*)
+       (pair? (cdr x))
+       (null? (cddr x))))
+
+
+
+;;; Seems to me that with appropriate continuation-passing and/or
+;;; multi-value returns, the following could be rewritten to do much
+;;; less list consing, e.g. none in the case of `(X Y Z).  KMP claims
+;;; it's not worth it, and I tend to believe him.  -JAR
+
+(DEFINE (EXPAND-BACKQUOTE X)
+  (COND ((NULL? X) ''())
+	((vector? x)
+	 (let ((l ((coercer list-type) x)))
+	   (cond ((any? comma-atsignation? l)
+		  (list '(coercer simple-vector) (expand-backquote l)))
+		 (else
+		  (let ((l1 (map expand-backquote l)))
+		    (if (every? quotation? l1)
+			(list 'quote x)
+			(cons 'vector l1)))))))
+	((ATOM? X) (LIST 'QUOTE X))
+	((eq? (CAR X) *BACKQUOTE*)
+	 (EXPAND-BACKQUOTE (EXPAND-BACKQUOTE (CADR X))))
+	((eq? (CAR X) *COMMA*) (CADR X)) ;  ,mumble
+	((AND (PAIR? (CAR X)) (eq? (CAAR X) *COMMA-ATSIGN*))
+	 ;; (,@mumble ...)
+	 (LET ((SPLICE-IN (CADAR X))
+	       (TAIL (EXPAND-BACKQUOTE (CDR X))))
+	   (COND ((AND (QUOTATION? TAIL)
+		       (null? (CADR TAIL)))
+		  ;; Use FOO rather than (APPEND FOO '())
+		  SPLICE-IN)
+		 ;; ;;Removed this clause for Oaklisp, since APPEND takes 2 args only.
+		 ;;((AND (PAIR? TAIL) (EQ? (CAR TAIL) 'APPEND))
+		 ;; ;; (APPEND FOO (APPEND BAR BAZ)) => (APPEND FOO BAR BAZ)
+		 ;; (list* 'APPEND SPLICE-IN (CDR TAIL)))
+		 (else (LIST 'APPEND SPLICE-IN TAIL)))))
+	(else
+	 (let ((car-x (car x))
+	       (cdr-x (cdr x)))
+	   (LET ((A (EXPAND-BACKQUOTE car-x))
+		 (D (EXPAND-BACKQUOTE cdr-x)))
+	     (COND ((QUOTATION? D)
+		    (let ((cadr-d (cadr d)))
+		      (COND ((QUOTATION? A)
+			     ;; (CONS 'FOO 'BAR) => '(FOO . BAR)
+			     (let ((cadr-a (cadr a)))
+			       (LIST 'QUOTE
+				     ;; Share structure if possible.
+				     (if (and (eq? car-x cadr-a)
+					      (eq? cdr-x cadr-d))
+					 x
+					 (CONS cadr-a cadr-d)))))
+			    ((null? cadr-d)
+			     ;; (CONS FOO '()) => (LIST FOO)
+			     (LIST 'LIST A))
+			    (else
+			     ;; (CONS FOO 'BAR) => (list* FOO 'BAR)
+			     (LIST 'list* A D)))))
+		   ((AND (PAIR? D) (MEMQ (CAR D) '(LIST list*)))  
+		    ;; (CONS FOO (LIST . BAR)) => (LIST FOO . BAR)
+		    (list* (CAR D) A (CDR D)))
+		   (else (LIST 'list* A D))))))))
+
+(define quasiquote-expander
+  (lambda (form)
+    (destructure* (#t x) form
+      (expand-backquote x))))
+
+(define-syntax quasiquote quasiquote-expander)
+
+;;; eof

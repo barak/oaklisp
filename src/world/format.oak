@@ -1,0 +1,227 @@
+;;; Copyright (C) Barak A. Pearlmutter and Kevin J. Lang. Fall '86.
+
+;;; Formatted output.  Fancy version with modularity and lots of features.
+
+;;; Format directive syntax:
+;;;
+;;; <directive> ::= '~' LISTOF( { <char> | <number> | '' } ) [':'] ['@'] <control-char>
+;;; LISTOF(x) ::= { '' | { x ',' }* x }
+;;; <char> ::= ''' <character>
+;;; <number> ::= [ '+' | '-' ] <digit>+
+;;;
+
+(let ((formats (lambda (arglist)
+		 (apply format arglist)
+		 (string (car arglist)))))
+
+  (define (format stream control-string . args)
+    (if (null? stream)
+	(let ((s (make string-output-stream)))
+	  (listify-args formats s control-string . args))
+	(formati (if (eq? stream #t) standard-output stream)
+		 control-string 0 (length control-string) . args))))
+
+
+(define (formati stream control-string index limit . args)
+  (iterate aux ((index index))
+    (if (< index limit)
+	(let ((char (nth control-string index)))
+	  (cond ((eq? char #\~)
+		 (format-parse-directive stream control-string
+					 (+ index 1) limit . args))
+		(else (write-char stream char)
+		      (aux (+ index 1)))))
+	(if (zero? (rest-length args))
+	    #f
+	    (listify-args format-arg-count-error stream control-string . args)))))
+
+(define (format-arg-count-error arglist)
+  (destructure (stream control-string . arglist) arglist
+    (cerror
+     "Ignore the excess arguments."
+     "After processing ~S to ~A, ~D argument~P ~S remained unconsumed."
+     control-string stream (length arglist) (length arglist) arglist)))
+
+
+(define (format-parse-directive stream control-string index limit . args)
+  (labels ((parse-list
+	    (lambda (char index the-list)
+	      (cond ((eq? char #\,)
+		     (parse-list (nth control-string index)
+				 (+ index 1)
+				 (cons nil the-list)))
+		    ((eq? char #\')
+		     (let ((quoted-char (nth control-string index)))
+		       (eat-comma (nth control-string (+ index 1))
+				  (+ index 2) (cons quoted-char the-list))))
+		    ((number-starter? char)
+		     (labels ((parse-number
+			       (lambda (char index num neg?)
+				 (let ((cn (number char)))
+				   (cond ((and (<= (number #\0) cn)
+					       (<= cn (number #\9)))
+					  (parse-number
+					   (nth control-string index)
+					   (+ index 1)
+					   (+ (* num 10) (- cn (number #\0)))
+					   neg?))
+					 (else
+					  (eat-comma
+					   char index
+					   (cons (if neg? (- num) num)
+						 the-list))))))))
+			     (cond ((eq? char #\-)
+				    (parse-number (nth control-string index)
+						  (+ index 1) 0 #t))
+				   ((eq? char #\+)
+				    (parse-number (nth control-string index)
+						  (+ index 1) 0 #f))
+				   (else
+				    (parse-number char index 0 #f)))))
+		    (else (find-colon char index the-list)))))
+	   (eat-comma (lambda (char index the-list)
+			(if (eq? char #\,)
+			    (parse-list (nth control-string index)
+					(+ index 1) the-list)
+			    (parse-list char index the-list))))
+	   (find-colon (lambda (char index the-list)
+			 (if (eq? char #\:)
+			     (find-atsign (nth control-string index)
+					  (+ index 1) the-list #t)
+			     (find-atsign char index the-list #f))))
+	   (find-atsign (lambda (char index the-list colon?)
+			  (if (eq? char #\@)
+			      (terminate (nth control-string index)
+					 (+ index 1) the-list colon? #t)
+			      (terminate char index the-list colon? #f))))
+	   (terminate
+	    (lambda (char index the-list colon? atsign?)
+	      (destructure (arg-count op) (nth format-control-table
+					       (number (upcase char)))
+		(cond ((eq? 0 arg-count)
+		       (op the-list colon? atsign? char stream)
+		       (formati stream control-string index limit . args))
+		      ((eq? 1 arg-count)
+		       (formati1 stream control-string index limit
+				 the-list colon? atsign? char op . args))
+		      (else
+		       (error "Format control arg may be only 0 or 1.")))))))
+
+       (parse-list (nth control-string index) (+ index 1) '())))
+
+(define (formati1 stream control-string index limit
+		  the-list colon? atsign? char op arg . args)
+  (op the-list colon? atsign? char stream arg)
+  (formati stream control-string index limit . args))
+
+(define (number-starter? c)
+  (or (eq? c #\+)
+      (eq? c #\-)
+      (eq? c #\0)
+      (eq? c #\1)
+      (eq? c #\2)
+      (eq? c #\3)
+      (eq? c #\4)
+      (eq? c #\5)
+      (eq? c #\6)
+      (eq? c #\7)
+      (eq? c #\8)
+      (eq? c #\9)))
+
+
+;;; A general way to define format control thingies:
+
+(define-instance format-control-table simple-vector 128)
+
+(let ((x (list 1
+	       (lambda (the-list colon? atsign? char stream arg)
+		 (error "Unknown format control character ~C, argument ~S."
+			char arg)))))
+	 
+  (dotimes (i 128)
+    (set! (nth format-control-table i) x)))
+
+(define (define-format-control char arg-count lamb)
+  (set! (nth format-control-table (number (upcase char)))
+       (list arg-count lamb)))
+
+;;; The way they work:
+
+(define-format-control #\A 1
+  (lambda (the-list colon? atsign? char stream arg)
+    (bind ((print-escape #f))
+      (print arg stream))))
+
+(define-format-control #\~ 0
+  (lambda (the-list colon? atsign? char stream)
+    (write-char stream #\~)))
+
+(define-format-control #\% 0
+  (lambda (the-list colon? atsign? char stream)
+    (newline stream)))
+
+(define-format-control #\& 0
+  (lambda (the-list colon? atsign? char stream)
+    (freshline stream)))
+
+(define-format-control #\S 1
+  (lambda (the-list colon? atsign? char stream arg)
+    (bind ((print-escape #t))
+      (print arg stream))))
+
+(define-format-control #\B 1
+  (lambda (the-list colon? atsign? char stream arg)
+    (bind ((print-radix 2))
+      (print arg stream))))
+
+(define-format-control #\D 1
+  (lambda (the-list colon? atsign? char stream arg)
+    (bind ((print-radix 10))
+      (print arg stream))))
+
+(define-format-control #\O 1
+  (lambda (the-list colon? atsign? char stream arg)
+    (bind ((print-radix 8))
+      (print arg stream))))
+
+(define-format-control #\X 1
+  (lambda (the-list colon? atsign? char stream arg)
+    (bind ((print-radix 16))
+      (print arg stream))))
+
+(define-format-control #\R 1
+  (lambda (the-list colon? atsign? char stream arg)
+    (cond ((null? the-list)
+	   (error "Roman numerals are not yet implemented."))
+	  (else
+	   (bind ((print-radix (last the-list)))
+	     (print arg stream))))))
+
+(define-format-control #\C 1
+  (lambda (the-list colon? atsign? char stream arg)
+    (print arg stream)))
+
+(define-format-control #\P 1
+  (lambda (the-list colon? atsign? char stream arg)
+    (if (!= arg 1)
+	(write-char stream #\s))))
+
+(define-format-control #\! 1
+  (lambda (the-list colon? atsign? char stream arg)
+    (cond ((and fancy-references
+		(reasonable-expression current-locale arg))
+	   => (lambda (expr)
+		(format stream "~S " expr))))
+    (bind ((print-radix 10))
+      (print (object-hash arg) stream))))
+
+;;; This can't be CL compatible, because it has no way to communicate a new
+;;; index back to the main routine.
+;;;
+;;; Ultimately, this should ignore whitespace following the newline.
+
+(define-format-control #\newline 0
+  (lambda (the-list colon? atsign? char stream)
+    ))
+
+;;; eof

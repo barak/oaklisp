@@ -1,0 +1,35 @@
+;;; Copyright (C) 1986,7,8,9 Barak A. Pearlmutter & Kevin J. Lang.
+
+;;; Oddly enough, here we do NOT define the OS specific ways to
+;;; manipulate file descriptors.  Rather, in this file we do the
+;;; standard sexpr level filesystem interface: READ-FILE and WRITE-FILE, which
+;;; read all the forms out of a file into a list and write a form to a
+;;; file, respectively.
+
+(define (read-file file)
+  (with-open-file (s file in)
+    (read-until the-eof-token #f s)))
+
+(define (write-file file obj)
+  (error-restart
+      (format #f "Try writing ~S again (optionally under another name)." file)
+      ((file file))
+    (with-open-file (s file out ugly)
+      (bind ((print-level #f)
+	     (print-length #f)
+	     (print-radix 10)
+	     (print-escape #t)
+	     (symbol-slashification-style 't-compatible)
+	     (fraction-display-style 'normal))
+	(print obj s))))
+  #f)
+
+(define (dofile file op)
+  (with-open-file (s file in)
+    (iterate aux ()
+      (let ((x (read s)))
+	(unless (eq? x the-eof-token)
+	  (op x)
+	  (aux))))))
+
+;;; eof

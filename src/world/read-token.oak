@@ -1,0 +1,233 @@
+;;; Copyright (C) 1987, 1998, 1992 Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; Stuff to do token reading and parsing.
+
+
+;;; This seems as nice a place as any:
+
+(set! input-base 10)
+
+;;; Read tokens: NFA.  Recognizes number with either the format
+;;; ['-']<digit>+['/'<digit>+] or ['-']<digit>+'.'<digit>* or
+;;; ['-']'.'<digit>+ Anything else except "." and "..." is a symbol.
+;;; At some point this must be augmented to include general floats:
+;;; ['-']{ <digit>*.<digit>+ | <digit>+['.'<digit>*] }[{'e'|'d'|'s'}<digit>*]
+
+(define (read-token stream)
+  (let ((base input-base))
+    (labels (( (intern-it c r-charlist escaped?)
+	       ;; We're finished with this token, and it is a symbol.
+	       (unread-char stream c)
+	       (cond ((and (not escaped?)
+			   (eq? (car r-charlist) #\.)
+			   (null? (cdr r-charlist)))
+		      the-dot-token)
+		     (else
+		      (when (and (not escaped?)
+				 ;; For efficiency,
+				 ;; (equal r-charlist '(#\. #\. #\.))
+				 ;; is expanded inline.  Could this be a
+				 ;; compiler optimization?
+				 (eq? (car r-charlist) #\.)
+				 (let ((d1 (cdr r-charlist)))
+				   (and d1 (eq? (car d1) #\.)
+					(let ((d2 (cdr d1)))
+					  (and d2 (eq? (car d2) #\.)
+					       (null? (cdr d2))))))
+				 #||
+				 (destructure** r-charlist
+				   (('#\. '#\. '#\.)
+				    (cerror "Treat the '...' as if it were escaped."
+					    "The token '...' can not be read unescaped."))
+				   (otherwise ))
+				 ||#
+				 )
+			(cerror "Treat the '...' as if it were escaped."
+				"The token '...' can not be read unescaped."))
+		      (intern (string (reverse r-charlist))))) )
+
+	     ( (digits1 c r-charlist n neg? first?)
+	       ;; We are in the first block of digits following the start of
+	       ;; the token.  Preceded by an optional sign.
+	       ;; NEG? is whether a '-' started this token.
+	       ;; FIRST? is whether at least one digit has been read.
+	       (if (eq? c the-eof-token)
+		   (if first?
+		       (intern-it c r-charlist nil)
+		       (block (unread-char stream c)
+			      (if neg? (- n) n)))
+		   (let ((c-syntax (%vref/ci standard-read-table c)))
+		     (cond ((or (eq? c-syntax 'constituent)
+				(and (not (eq? c-syntax 'whitespace))
+				     (not (eq? c-syntax 'single-escape))
+				     (not (eq? c-syntax 'illegal))
+				     (eq? (car c-syntax) 'nonterminating-macro)))
+			    (cond ((digit? c base)
+				   (digits1 (read-char stream)
+					    (cons (upcase c) r-charlist)
+					    (+ (* n base) (digit-value c))
+					    neg? #f))
+				  ((and (not first?) (eq? c #\/))
+				   (digits2 (read-char stream)
+					    (cons c r-charlist)
+					    0 (if neg? (- n) n)))
+				  ((eq? c #\.)
+				   (digits3 (read-char stream)
+					    (cons c r-charlist)
+					    n 1 neg? first?))
+				  (else (simple-symbol c r-charlist nil))))
+			   ((eq? c-syntax 'single-escape)
+			    (read-escaped (read-char stream) r-charlist))
+			   ((eq? c-syntax 'illegal)
+			    (simple-symbol c r-charlist nil))
+			   ((or (eq? c-syntax 'whitespace)
+				(eq? (car c-syntax) 'terminating-macro))
+			    (if first?
+				(intern-it c r-charlist nil)
+				(block (unread-char stream c)
+				       (if neg? (- n) n))))
+			   (else
+			    (signal bad-syntax-table-entry c c-syntax))))) )
+
+	     ( (simple-symbol c r-charlist escaped?)
+	       ;; Reading something that appears to not be a number,
+	       ;; but that doesn't have any escaped characters yet.
+	       (if (eq? c the-eof-token)
+		   (intern-it c r-charlist escaped?)
+		   (let ((c-syntax (%vref/ci standard-read-table c)))
+		     (cond ((or (eq? c-syntax 'constituent)
+				(and (not (eq? c-syntax 'whitespace))
+				     (not (eq? c-syntax 'single-escape))
+				     (not (eq? c-syntax 'illegal))
+				     (eq? (car c-syntax) 'nonterminating-macro)))
+			    (simple-symbol (read-char stream)
+					   (cons (upcase c) r-charlist)
+					   escaped?))
+			   ((eq? c-syntax 'illegal)
+			    (cerror
+			     "Ignore the illegal character"
+			     "Illegal char ~C encountered while reading token."
+			     c)
+			    (simple-symbol (read-char stream)
+					   r-charlist
+					   escaped?))
+			   ((eq? c-syntax 'single-escape)
+			    (read-escaped (read-char stream) r-charlist))
+			   ((or (eq? c-syntax 'whitespace)
+				(eq? (car c-syntax) 'terminating-macro))
+			    (intern-it c r-charlist escaped?))
+			   (else 
+			    (signal bad-syntax-table-entry c c-syntax))))) )
+
+	     ( (read-escaped c r-charlist)
+	       ;; We just read an escape character, so the next one is
+	       ;; accepted literally.
+	       (when (eq? c the-eof-token)
+		 (signal eof-after-slash (string (reverse r-charlist))))
+	       (simple-symbol (read-char stream) (cons c r-charlist) #t) )
+
+	     ( (digits2 c r-charlist n numerator)
+	       ;; We're reading the block of digits following the '/' in
+	       ;; a fraction.
+	       (if (eq? c the-eof-token)
+		   (if (eq? (car r-charlist) #\/)
+		       (intern-it c r-charlist nil)
+		       (block (unread-char stream c)
+			      (/ numerator n)))
+		   (let ((c-syntax (%vref/ci standard-read-table c)))
+		     (cond ((or (eq? c-syntax 'constituent)
+				(and (not (eq? c-syntax 'whitespace))
+				     (not (eq? c-syntax 'single-escape))
+				     (not (eq? c-syntax 'illegal))
+				     (eq? (car c-syntax) 'nonterminating-macro)))
+			    (cond ((digit? c base)
+				   (digits2 (read-char stream) (cons (upcase c) r-charlist)
+					    (+ (* n base) (digit-value c))
+					    numerator))
+				  (else (simple-symbol c r-charlist #f))))
+			   ((eq? c-syntax 'single-escape)
+			    (read-escaped (read-char stream) r-charlist))
+			   ((eq? c-syntax 'illegal)
+			    (simple-symbol c r-charlist #f))
+			   ((or (eq? c-syntax 'whitespace)
+				(eq? (car c-syntax) 'terminating-macro))
+			    (if (eq? (car r-charlist) #\/)
+				(intern-it c r-charlist nil)
+				(block (unread-char stream c)
+				       (/ numerator n))))
+			   (else
+			    (signal bad-syntax-table-entry c c-syntax))))) )
+
+	     ( (digits3 c r-charlist num denom neg? first?)
+	       ;; Reading digits after decimal point.
+	       ;; num is what numerator will be (except sign) if ends now.
+	       ;; denom is what denominator will be if ends now.
+	       ;; neg? is leading minus on number.
+	       ;; first? is true iff starting post-dot and there were no pre-dot digits.
+	       (if (eq? c the-eof-token)
+		   (if first?
+		       (intern-it c r-charlist nil)
+		       (form-decimal c num denom neg?))
+		   (let ((c-syntax (%vref/ci standard-read-table c)))
+		     (cond ((or (eq? c-syntax 'constituent)
+				(and (not (eq? c-syntax 'whitespace))
+				     (not (eq? c-syntax 'single-escape))
+				     (not (eq? c-syntax 'illegal))
+				     (eq? (car c-syntax) 'nonterminating-macro)))
+			    (cond ((digit? c base)
+				   (digits3 (read-char stream) (cons (upcase c) r-charlist)
+					    (+ (* num base) (digit-value c))
+					    (* denom base) neg? #f))
+				  (else (simple-symbol c r-charlist #f))))
+			   ((eq? c-syntax 'single-escape)
+			    (read-escaped (read-char stream) r-charlist))
+			   ((eq? c-syntax 'illegal)
+			    (simple-symbol c r-charlist #f))
+			   ((or (eq? c-syntax 'whitespace)
+				(eq? (car c-syntax) 'terminating-macro))
+			    (if first?
+				(intern-it c r-charlist nil)
+				(form-decimal c num denom neg?)))
+			   (else
+			    (signal bad-syntax-table-entry c c-syntax))))) )
+
+	     ( (form-decimal c num denom neg?)
+	       (unread-char stream c)
+	       (let ((x (/ num denom)))
+		 (if neg? (- x) x)) )
+	     )
+
+	    (let* ((c (read-char stream))
+		   (c-syntax (%vref/ci standard-read-table c)))
+	      (cond ((eq? c-syntax 'constituent)
+		     (cond ((eq? c #\-)
+			    (digits1 (read-char stream) (list c) 0 #t #t))
+			   ((eq? c #\.)
+			    (digits3 (read-char stream) (list c) 0 1 #f #t))
+			   (else (digits1 c nil 0 #f #t))))
+		    ((eq? c-syntax 'single-escape)
+		     (read-escaped (read-char stream) nil))
+		    (else
+		     (error "Internal error in reader: ~C of class ~A starts a token."
+			    c c-syntax)))))))
+
+(define (digit? c base)
+  (let ((cn (number c)))
+    (cond ((<= base 10)
+	   (and (<= (number #\0) cn)
+		(< cn (+ (number #\0) base))))
+	  (else
+	   (or (and (<= (number #\0) cn)
+		    (<= cn (number #\9)))
+	       (and (<= (number #\A) cn)
+		    (< cn (+ (number #\A) (- base 10))))
+	       (and (<= (number #\a) cn)
+		    (< cn (+ (number #\a) (- base 10)))))))))
+
+(define (digit-value c)
+  (let ((c (number c)))
+    (cond ((<= c (number #\9)) (- c (number #\0)))
+	  ((<= c (number  #\Z)) (- c (- (number #\A) 10)))
+	  (else (- c (- (number #\a) 10))))))
+
+;;; eof

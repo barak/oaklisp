@@ -1,0 +1,174 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;;; Reader character macros.
+
+(define (define-macro-char char func)
+  (set! (nth standard-read-table char)
+       (cons 'terminating-macro func)))
+
+(define (define-nonterminating-macro-char char func)
+  (set! (nth standard-read-table char)
+       (cons 'nonterminating-macro func)))
+
+;;; A facility for keeping track of "quotelike" reader macros so the printer
+;;; can utilize them.
+
+(let ((quotelike-prefixes '()))
+
+  (define (quotelike-prefix? prefix)
+    (let ((p (assq prefix quotelike-prefixes)))
+      (if p (cdr p) nil)))
+
+  (define (register-quotelike-prefix char prefix)
+    (let ((p (assq prefix quotelike-prefixes)))
+      (if p (set! (cdr p) char)
+	  (set! quotelike-prefixes
+	       (cons (cons prefix char) quotelike-prefixes))))))
+
+(define (define-quotelike-macro-char char prefix)
+  (register-quotelike-prefix char prefix)
+  (define-macro-char char (lambda (stream char) (list prefix (read stream)))))
+
+;;; Use the above facilities to define some useful stuff.
+
+(define-quotelike-macro-char #\' 'quote)
+(define-quotelike-macro-char #\` 'quasiquote)
+(define-quotelike-macro-char #\ 'fluid)       ; ascii 22, blob.
+(define-quotelike-macro-char #\ 'coercer)	; ascii 25, ->.
+
+;;;
+
+(define (errorful-macro-reader stream char)
+  (warning "a '~A' in an illegal context was ignored.~%" char)
+  the-unread-object)
+
+;;; Let there be readable lists:
+
+(define-macro-char #\(
+  (lambda (stream char)
+    (let ((e (read-until #\) #t stream)))
+      e)))
+
+(define-macro-char #\) errorful-macro-reader)
+
+;;; Let programs written at Indiana be readable as well:
+
+(define-macro-char #\[
+  (lambda (stream char)
+    (let ((e (read-until #\] #t stream)))
+      e)))
+
+(define-macro-char #\] errorful-macro-reader)
+
+;;; "Reserved for the user."
+(define-macro-char #\{ errorful-macro-reader)
+(define-macro-char #\} errorful-macro-reader)
+
+
+
+(define-macro-char #\"
+  (lambda (stream char)
+    (string (read-charlist-until stream char))))
+
+(define-macro-char #\|
+  (lambda (stream char)
+    (symbol (string (read-charlist-until stream char)))))
+
+
+(define-macro-char #\;
+  (lambda (stream char)
+    (iterate aux ()
+      (let ((c (read-char stream)))
+	(cond ((or (eq? c the-eof-token)
+		   (eq? c #\return)
+		   (eq? c #\nl))
+	       the-unread-object)
+	      (else (aux)))))))
+
+(define-macro-char #\,
+  (lambda (stream char)
+    (let ((n (peek-char stream)))
+      (cond ((eq? n #\@)
+	     (read-char stream)
+	     (list 'unquote-splicing (read stream)))
+	    (else (list 'unquote (read stream)))))))
+
+;;; Read characters up to and including the terminator.
+
+#||
+
+;;; This old code has been replaced by the non-recursive version below
+;;; which is more efficient and gives better error messages as well.
+
+(define (read-charlist-until stream char)
+  (let ((c (read-char stream)))
+    (cond ((eq? c char)
+	   nil)
+	  ((eq? c the-eof-token)
+	   (error "EOF encountered while reading characters until a ~C." char))
+	  (else
+	   (let ((c (if (not (eq? (nth standard-read-table c) 'single-escape))
+			c
+			(let ((c (read-char stream)))
+			  (if (eq? c the-eof-token)
+			      (error "EOF encountered after a single escape while reading characters until a ~C." char))
+			  c))))
+	     (cons c (read-charlist-until stream char)))))))
+||#
+
+(define (read-charlist-until stream char)
+  (iterate aux ((list-top nil)(list-ending nil))
+    (let ((c (read-char stream)))
+      (cond
+       ((eq? c char) list-top)
+       ((eq? c the-eof-token)
+	(signal eof-reading-chars-until (string list-top) char))
+       (else
+	(let* ((c
+		(if (not (eq? (nth standard-read-table c)
+			      'single-escape))
+		    c
+		    (let ((c (read-char stream)))
+		      (when (eq? c the-eof-token)
+			(signal eof-after-slash (string list-top)))
+		      c)))
+	       (nl (cons c nil)))
+	  (cond ((null? list-top)
+		 (aux nl nl))
+		(else
+		 (set! (cdr list-ending) nl)
+		 (aux list-top nl)))))))))
+
+;;; This can replace the above if we ever feel like it.  Read-charlist-until2
+;;; reads until the passed function is true of the next character read.
+;;; Should be benchmarked.
+
+#||
+(define (read-charlist-until stream char)
+  (read-charlist-until2 stream (lambda (c) (eq? char c))))
+||#
+
+(define (read-charlist-until2 stream func)
+  (iterate aux ((list-top nil)(list-ending nil))
+    (let ((c (read-char stream)))
+      (cond
+       ((func c) list-top)
+       ((eq? c the-eof-token)
+	(signal eof-reading-chars-until (string list-top)))
+       (else
+	(let* ((c
+		(if (not (eq? (nth standard-read-table c)
+			      'single-escape))
+		    c
+		    (let ((c (read-char stream)))
+		      (when (eq? c the-eof-token)
+			(signal eof-after-slash (string list-top)))
+		      c)))
+	       (nl (cons c nil)))
+	  (cond ((null? list-top)
+		 (aux nl nl))
+		(else
+		 (set! (cdr list-ending) nl)
+		 (aux list-top nl)))))))))
+
+;;; eof

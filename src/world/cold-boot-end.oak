@@ -1,0 +1,62 @@
+;;; Copyright (C) 1987,8, Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; This file goes at the end of the cold boot.
+
+
+;;; Turn off the annoying alliterative ampersands.
+
+(set! monitor-for-bruce #f)
+
+;;; Turn off the cold load streams so the whole concept will get GCed.
+
+(set! standard-input 0)
+(set! standard-output 0)
+
+(%write-char #\newline)
+(%write-char #\C)
+(%write-char #\o)
+(%write-char #\l)
+(%write-char #\d)
+(%write-char #\space)
+(%write-char #\b)
+(%write-char #\o)
+(%write-char #\o)
+(%write-char #\t)
+(%write-char #\e)
+(%write-char #\d)
+(%write-char #\.)
+(%write-char #\newline)
+(%write-char #\newline)
+(%write-char #\O)
+(%write-char #\a)
+(%write-char #\k)
+(%write-char #\l)
+(%write-char #\i)
+(%write-char #\s)
+(%write-char #\p)
+(%write-char #\space)
+(%write-char #\s)
+(%write-char #\t)
+(%write-char #\o)
+(%write-char #\p)
+(%write-char #\p)
+(%write-char #\e)
+(%write-char #\d)
+(%write-char #\space)
+(%write-char #\i)
+(%write-char #\t)
+(%write-char #\s)
+(%write-char #\e)
+(%write-char #\l)
+(%write-char #\f)
+(%write-char #\.)
+(%write-char #\.)
+(%write-char #\.)
+(%write-char #\newline)
+
+;;; Halt so the world will dump.
+
+((%halt 0))
+
+
+;;; eof

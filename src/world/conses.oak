@@ -1,0 +1,189 @@
+;;; Copyright (C) 1987, Barak A. Pearlmutter & Kevin J. Lang.
+
+(local-syntax (define-cxr cxr op-list)
+  (labels
+      ((nestify (lambda (l a)
+		  (if (null? l) a
+		      (list (car l)
+			    (nestify (cdr l) a))))))
+
+    (let ((nestified (nestify op-list 'x)))
+
+      `(block (define-constant ,cxr (make-cxr ',op-list))
+
+	      (add-method (,cxr (pair) x)
+		,nestified)
+
+	      (add-method ((setter ,cxr) (pair) x y)
+		(set! ,nestified y))
+
+	      (add-method ((locater ,cxr) (pair) x)
+		(make-locative ,nestified))))))
+
+(let* ((opencodtypes (list open-coded-mixin operation))
+       (opencodop (mix-types oc-mixer opencodtypes))
+       (foldableopencodop
+	(mix-types oc-mixer (cons foldable-mixin opencodtypes))))
+
+  (define (make-open-coded-operation code in-count out-count)
+    (make opencodop code in-count out-count))
+
+  (define (make-foldable-open-coded-operation code in-count out-count)
+    (make foldableopencodop code in-count out-count))
+
+  (define (make-fancy-open-coded-operation other-types code in-count out-count)
+    (make (mix-types oc-mixer (%append other-types opencodtypes))
+	  code in-count out-count)))
+
+;; note:  %append is used here because append isn't defined until later
+
+;; Cons-pair is initialized properly in the kernel files.
+
+(define-constant cons
+  (add-method ((make-open-coded-operation '((cons)) 2 1)
+	       (object) x y)
+    (cons x y)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(labels
+    ((map-list (lambda (x)
+		 (if (null? x) x
+		     (cons (list (car x)) (map-list (cdr x))))))
+     (reverse-aux (lambda (x y)
+		    (if (null? x) y
+			(reverse-aux (cdr x) (cons (car x) y)))))
+     (setify (lambda (x)
+	       (cond ((eq? x 'car) 'set-car)
+		     ((eq? x 'cdr) 'set-cdr)
+		     (else (error "~A isn't CAR or CDR." x)))))
+
+     (locify (lambda (x)
+	       (cond ((eq? x 'car) 'locate-car)
+		     ((eq? x 'cdr) 'locate-cdr)
+		     (else (error "~A isn't CAR or CDR." x)))))
+
+     (make-cxr
+      (lambda (sequence)
+	(let ((cxr (make (mix-types oc-mixer
+				    (list open-coded-mixin
+					  locatable-operation))
+			 (reverse-aux (map-list sequence) '())
+			 1 1)))
+	  (set! (setter cxr)
+	       (make (mix-types oc-mixer (list open-coded-mixin operation))
+		     (reverse-aux (map-list
+				   (cons (setify (car sequence))
+					 (cdr sequence))) '())
+		     2 1))
+	  (set! (locater cxr)
+	       (make (mix-types oc-mixer (list open-coded-mixin operation))
+		     (reverse-aux (map-list
+				   (cons (locify (car sequence))
+					 (cdr sequence))) '())
+		     1 1))
+	  cxr))))
+
+
+  (define-constant car (make-cxr '(car)))
+  (add-method (car (cons-pair the-car) self) the-car)
+  (add-method ((setter car) (cons-pair the-car) self y) (set! the-car y))
+  (add-method ((locater car) (cons-pair the-car) self) (make-locative the-car))
+
+  (define-constant cdr (make-cxr '(cdr)))
+  (add-method (cdr (cons-pair the-cdr) self) the-cdr)
+  (add-method ((setter cdr) (cons-pair the-cdr) self y) (set! the-cdr y))
+  (add-method ((locater cdr) (cons-pair the-cdr) self) (make-locative the-cdr))
+
+  (define-cxr caar (car car))
+  (define-cxr cadr (car cdr))
+  (define-cxr cdar (cdr car))
+  (define-cxr cddr (cdr cdr))
+
+  (define-cxr caaar (car car car))
+  (define-cxr caadr (car car cdr))
+  (define-cxr cadar (car cdr car))
+  (define-cxr caddr (car cdr cdr))
+  (define-cxr cdaar (cdr car car))
+  (define-cxr cdadr (cdr car cdr))
+  (define-cxr cddar (cdr cdr car))
+  (define-cxr cdddr (cdr cdr cdr))
+
+  (define-cxr caaaar (car car car car))
+  (define-cxr caaadr (car car car cdr))
+  (define-cxr caadar (car car cdr car))
+  (define-cxr caaddr (car car cdr cdr))
+  (define-cxr cadaar (car cdr car car))
+  (define-cxr cadadr (car cdr car cdr))
+  (define-cxr caddar (car cdr cdr car))
+  (define-cxr cadddr (car cdr cdr cdr))
+  (define-cxr cdaaar (cdr car car car))
+  (define-cxr cdaadr (cdr car car cdr))
+  (define-cxr cdadar (cdr car cdr car))
+  (define-cxr cdaddr (cdr car cdr cdr))
+  (define-cxr cddaar (cdr cdr car car))
+  (define-cxr cddadr (cdr cdr car cdr))
+  (define-cxr cdddar (cdr cdr cdr car))
+  (define-cxr cddddr (cdr cdr cdr cdr))
+
+  )
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(define first 	(lambda (x) (nth x 0)))
+(define second 	(lambda (x) (nth x 1)))
+(define third 	(lambda (x) (nth x 2)))
+(define fourth 	(lambda (x) (nth x 3)))
+(define fifth 	(lambda (x) (nth x 4)))
+(define sixth 	(lambda (x) (nth x 5)))
+(define seventh (lambda (x) (nth x 6)))
+(define eighth 	(lambda (x) (nth x 7)))
+(define ninth 	(lambda (x) (nth x 8)))
+(define tenth 	(lambda (x) (nth x 9)))
+
+
+
+
+
+
+
+(add-method (length (list-type) inlist)
+
+  (labels (
+	   ((loop7 remaining count)
+	    (if (null? remaining) (+ 7 count)
+		(loop0 (cdr remaining) (+ 8 count))))
+	   ((loop6 remaining count)
+	    (if (null? remaining) (+ 6 count) (loop7 (cdr remaining) count)))
+	   ((loop5 remaining count)
+	    (if (null? remaining) (+ 5 count) (loop6 (cdr remaining) count)))
+	   ((loop4 remaining count)
+	    (if (null? remaining) (+ 4 count) (loop5 (cdr remaining) count)))
+	   ((loop3 remaining count)
+	    (if (null? remaining) (+ 3 count) (loop4 (cdr remaining) count)))
+	   ((loop2 remaining count)
+	    (if (null? remaining) (+ 2 count) (loop3 (cdr remaining) count)))
+	   ((loop1 remaining count)
+	    (if (null? remaining) (+ 1 count) (loop2 (cdr remaining) count)))
+	   ((loop0 remaining count)
+	    (if (null? remaining) count (loop1 (cdr remaining) count)))
+	   )
+
+    (loop0 inlist 0)))
+
+
+
+
+
+#|
+(add-method (length (list-type) l)
+  (iterate aux ((l l)(n 0))
+    (if l (aux (cdr l) (+ n 1))
+	n)))
+|#
+
+
+
+;;; eof

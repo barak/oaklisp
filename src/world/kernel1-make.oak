@@ -1,0 +1,44 @@
+;;;; Copyright (C) 1987, Kevin J. Lang and Barak A. Pearlmutter.
+
+;;; how to make things
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Make MAKE
+
+(set! make (%allocate operation %simple-operation-length))
+(set! %varlen-make (%allocate operation %simple-operation-length))
+
+(set! ((%slot 1) make) 0)
+(set! ((%slot 1) %varlen-make) 0)
+
+
+(set! variable-length-mixin 'not-really-varlen-mixin)
+
+(add-method (make (type instance-length) self . args)
+   (if (subtype? self variable-length-mixin)
+       (%varlen-make self . args)
+       (let ((new-guy (%allocate self instance-length)))
+	 (initialize new-guy . args))))
+
+;;; This %varlen-allocate instruction exists to close a tiny GC
+;;; window.
+
+(add-method (%varlen-make (type instance-length) self ncells . args)
+  (let* ((guylen (+ instance-length ncells))
+	 (new-guy (%varlen-allocate self guylen)))
+    (initialize new-guy ncells . args)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Make INITIALIZE
+
+(set! initialize  (%allocate operation %simple-operation-length))
+(set! ((%slot 1) initialize) 0)
+
+
+;;; This took (self . more) and check if more was empty; no more.
+
+(add-method (initialize (object) self)
+  self)
+
+;;; eof

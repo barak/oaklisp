@@ -1,0 +1,153 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. 1987
+
+
+(set! (fluid fancy-references) nil)
+
+(define expression-table (make-eq-hash-table))
+
+(define (reasonable-expression a-locale obj)
+  (let ((ref (present? expression-table obj)))
+    (cond ((and ref
+		(let* ((expr (cdr ref))
+		       (curval (dumb-but-safe-eval expr a-locale)))
+		  (if (eq? obj curval)
+		      expr
+		      nil)))
+	   => identity)
+	  (else
+	   (let ((expr (create-accessor-expression a-locale obj)))
+	     (cond (ref (set! (cdr ref) expr))
+		   (else (set! (present? expression-table obj) expr)
+			 expr)))))))
+
+
+(define-instance create-accessor-expression operation)
+
+(add-method (create-accessor-expression (locale variable-table superiors) self value)
+  (native-catch done
+    (block
+      (for-each-r variable-table
+		  (lambda (sym cell)
+		    (let ((guy (contents cell)))
+		      (when (eq? guy value)
+			(throw done sym))
+		      (let ((try (create-compound-accessor-expression self guy value)))
+			(when try
+			  (throw done try))))))
+      (any? (lambda (sup)
+	      (create-accessor-expression sup value))
+	    superiors))))
+
+
+(define (create-compound-accessor-expression locale guy value)
+  (let ((getter (could-you-get-this-value? guy value)))
+    (and getter
+	 (let ((expr (map (lambda (z)
+			    (reasonable-expression locale z))
+			  getter)))
+	   (and (not (any? null? expr))
+		expr)))))
+
+
+
+(set! fancy-accessor-guards '())
+(set! fancy-accessor-operations '())
+
+
+(define (could-you-get-this-value? guy val)
+  (iterate next ((guards fancy-accessor-guards)(ops fancy-accessor-operations))
+    (cond ((null? guards)
+	   nil)
+	  ((and ((car guards) guy)
+		(eq? ((car ops) guy) val))
+	   (list (car ops) guy))
+	  (else
+	   (next (cdr guards)(cdr ops))))))
+
+(define (how-to-get-val ag ao)
+  (push fancy-accessor-guards ag)
+  (push fancy-accessor-operations ao))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;Here is the extension mechanism.
+
+
+(how-to-get-val (lambda (x) (is-a? x coercable-type)) coercer)
+(how-to-get-val (lambda (x) (is-a? x settable-operation)) setter)
+(how-to-get-val (lambda (x) (is-a? x locatable-operation)) locater)
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (dumb-but-safe-eval expr locale)
+  (cond ((and (symbol? expr)
+	      (variable? locale expr))
+	 => contents)
+	((is-a? expr self-evaluatory-mixin)
+	 expr)
+	((pair? expr)
+	 (let ((evexpr (map (lambda (x) (dumb-but-safe-eval x locale))
+			    expr)))
+	   (if (and
+		(>= (length evexpr) 2)
+		(is-a? (first evexpr) operation)
+		(got-a-method? (get-type (second evexpr)) (first evexpr)))
+	       (apply (first evexpr) (cdr evexpr))
+	       nil)))
+	(else nil)))
+
+
+(define-instance got-a-method? operation)
+
+(add-method (got-a-method? (type supertype-list operation-method-alist) ty op)
+  (or (assq op operation-method-alist)
+      (%get-an-ivar operation op 'lambda?)
+      (any? (lambda (t) (got-a-method? t op)) supertype-list)))
+
+      
+		
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;Here is the old version of this.
+
+
+#|
+(define reference-table (make-eq-hash-table))
+
+(define (reasonable-expression a-locale obj)
+  (if (eq? (fluid fancy-references) 'really-fancy)
+      (accessor-expression a-locale obj)
+      (let ((ref (present? reference-table obj)))
+	(cond ((and ref
+		    (let* ((expr (cdr ref))
+			   (loc (variable? a-locale expr)))
+		      (cond ((and loc (eq? obj (contents loc))) expr)
+			    (else nil))))
+	       => identity)
+	      (else
+	       (let ((expr (create-reasonable-expression a-locale obj)))
+		 (cond (ref (set! (cdr ref) expr))
+		       (else (set! (present? reference-table obj) expr)
+			     expr))))))))
+
+(define (create-reasonable-expression a-locale obj)
+  (let ((vars (bound-var-list a-locale obj)))
+    (cond (vars (car vars))
+	  (else nil))))
+
+(define-instance bound-var-list operation)
+
+(add-method (bound-var-list (locale variable-table) self val)
+  (let ((vars '()))
+    (for-each-r variable-table
+		(lambda (sym cell)
+		  (when (eq? (contents cell) val)
+		    (set! vars (cons sym vars)))))
+    vars))
+
+|#

@@ -1,0 +1,95 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+
+;(define-instance backwards-args-mixin type '() '())
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                   handy list utilities                              ;;; 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(define (iota n)
+  (iterate step ((i n)(l '()))
+    (if (zero? i) l (step (- i 1) (cons i l)))))
+
+(define (iota0 n)
+  (iterate step ((i (- n 1)) (l '()))
+    (if (< i 0) l (step (- i 1) (cons i l)))))
+
+
+(define (splice inlist)	;this performs ((a)(b c)(d)) --> (a b c d)
+  (iterate step ((in (reverse inlist)) (out '()))
+    (if (not (null? in))
+	(step (cdr in) (append (car in) out))
+	out)))
+
+;;;;;;;;;;;;;;;;
+
+(define-constant-instance list
+  (mix-types oc-mixer (list backwards-args-mixin open-coded-mixin operation))
+  (lambda (n)
+    (cons '(load-reg nil)
+	  (make list-type n '(reverse-cons))))
+  nil 1)
+
+
+(labels (((list-aux1 a) (list a))
+	 ((list-aux2 a b) (list a b))
+	 ((list-aux3 a b c) (list a b c))
+	 ((list-aux4 a b c d) (list a b c d))
+	 ((list-aux5 a b c d e) (list a b c d e)))
+
+  (add-method (list (object) . rest)
+    (cond ((= 0 (rest-length rest)) '())
+	  ((= 1 (rest-length rest)) (list-aux1 . rest))
+	  ((= 2 (rest-length rest)) (list-aux2 . rest))
+	  ((= 3 (rest-length rest)) (list-aux3 . rest))
+	  ((= 4 (rest-length rest)) (list-aux4 . rest))
+	  ((= 5 (rest-length rest)) (list-aux5 . rest))
+	  (else (listify-args identity . rest)))))
+
+
+
+;   listify-args now gets the arguments 
+;   off the stack more cheaply than this older code
+; 	 ((list-aux-gen listsofar guy . rest)
+; 	  (if (zero? (rest-length rest))
+; 	      (reverse! (cons guy listsofar))
+; 	      (list-aux-gen (cons guy listsofar) . rest))))
+
+;	  (else (list-aux-gen '() . rest)))))
+
+;;;;;;;;;;;;;;;;
+
+(define-constant-instance list*
+  (mix-types oc-mixer (list backwards-args-mixin open-coded-mixin operation))
+  (lambda (n)
+    (cond ((zero? n)
+	   (error "Attempt to open code LIST* with no args."))
+	  (else (make list-type (- n 1) '(reverse-cons)))))
+  nil 1)
+
+(labels (((list*-aux1 a) (list* a))
+	 ((list*-aux2 a b) (list* a b))
+	 ((list*-aux3 a b c) (list* a b c))
+
+	 ((list*-aux-gen listsofar guy . rest)
+	  (if (zero? (rest-length rest))
+	      (reverse!* listsofar guy)
+	      (list*-aux-gen (cons guy listsofar) . rest)))
+
+	 ((reverse!* l dot-part)
+	    (iterate aux ((old l) (new dot-part))
+	      (cond (old (let ((o (cdr old)))
+			   (set! (cdr old) new)
+			   (aux o old)))
+		    (else new)))))
+
+  (add-method (list* (object) one . rest)
+    (cond ((= 0 (rest-length rest)) (list*-aux1 one . rest))
+	  ((= 1 (rest-length rest)) (list*-aux2 one . rest))
+	  ((= 2 (rest-length rest)) (list*-aux3 one . rest))
+	  (else (list*-aux-gen '() one . rest)))))
+
+;;; eof

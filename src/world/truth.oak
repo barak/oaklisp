@@ -1,0 +1,15 @@
+;;; Copyright (C) 1986,7,8,9 Kevin J. Lang & Barak A. Pearlmutter
+
+;;; Define the canonical truth value, that has a print syntax #T.  The
+;;; world builder has it made already, so we patch the reference.
+
+(define-instance truths type '() (list self-evaluatory-mixin object))
+
+(set! ((%slot 0) t) truths)
+
+(define-constant else t)
+
+(add-method (print (truths) self stream)
+  (format stream "#T"))
+
+;;; eof

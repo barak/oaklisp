@@ -1,0 +1,260 @@
+;;; Copyright (C) 1987,8,9, Kevin J. Lang and Barak A. Pearlmutter.
+
+;;; This file goes in the cold load.  It gets macros that absolutely must
+;;; be in the cold load, or we'd get too mad.
+
+(define-syntax (make-locative place)
+  (cond ((symbol? place) `(%make-locative ,place))
+	(else
+	 (let ((place (expand-groveling current-locale place)))
+	   (cond ((symbol? place) `(%make-locative ,place))
+		 (else `((locater ,(car place)) ,@(cdr place))))))))
+
+
+(define-syntax set
+
+  (define-syntax set!
+
+    (lambda (form)
+      (destructure* (#t place value) form
+	(labels ((normal
+		  (lambda (place)
+		    `((setter contents) (make-locative ,place) ,value))))
+
+	  (if (symbol? place)
+	      (normal place)
+	      (let ((place (expand-groveling current-locale place)))
+		(if (symbol? place)
+		    (normal place)
+		    `((setter ,(car place)) ,@(cdr place) ,value)))))))))
+
+
+
+
+(define-syntax (or . clauses)
+  (if (null? clauses) ''#f
+      (if (null? (cdr clauses)) (car clauses)
+	  (let ((var (genvar)))
+	    `(let ((,var ,(car clauses)))
+	       (if ,var ,var (or ,@(cdr clauses))))))))
+
+(define-syntax (and . clauses)
+  (cond ((null? clauses) 't)
+	((null? (cdr clauses)) (car clauses))
+	(else `(if ,(car clauses) (and ,@(cdr clauses)) '#f))))
+
+
+(define-syntax if
+  (lambda (form)
+    (destructure** form
+      ((#t test then-form) `(%if ,test ,then-form if-undefined-value))
+      ((#t test then-form else-form) `(%if ,test ,then-form ,else-form)))))
+
+
+;;; Fancy COND that hacks =>'s.
+
+(define-syntax cond
+  (lambda (form)
+    (destructure** form
+      ((#t)			 `cond-undefined-value)
+      ((#t (guard) . clauses)	 `(or ,guard (cond ,@clauses)))
+      ((#t (guard '=> op) . clauses) (let ((v (genvar)))
+				       `(let ((,v ,guard))
+					  (if ,v (,op ,v)
+					      (cond ,@clauses)))))
+      ((#t (guard . body) . clauses) `(if ,guard (block ,@body)
+					  (cond ,@clauses))))))
+
+
+(let* ((make-add-method-expander
+       (lambda (what)
+	 (lambda (form)
+	   (destructure* (#t (op . cdr-info-part) . body) form
+	     (let* ((bit (and cdr-info-part
+			      (pair? cdr-info-part)
+			      (list? (car cdr-info-part))))
+		    (type-info (if bit
+				   (car cdr-info-part)
+				   ;; This hack makes (ADD-METHOD (X Y) ...)
+				   ;; put #<Type OBJECT> in the .oa file.
+				   `(',object)))
+		    (args (if bit
+			      (cdr cdr-info-part)
+			      cdr-info-part))
+		    (typ (car type-info))
+		    (ivars (cdr type-info)))
+	       `(,what (,op (,typ ,@ivars) ,@args)
+		       (block ,@body)))))))
+
+       (regular-expander (make-add-method-expander '%add-method)))
+
+  (define-syntax native-add-method regular-expander)
+  (define-syntax add-method        regular-expander)
+  (define-syntax _add-method (make-add-method-expander '_%add-method)))
+
+
+
+
+
+(define-syntax (lambda varlist . body)
+  (let ((improper-part (improper-list? varlist)))
+    (cond ((if improper-part
+	       (or (not (every? symbol? (make-proper varlist)))
+		   (not (symbol? improper-part)))
+	       (not (every? symbol? varlist)))
+	   (error "Malformed formal parameter list ~S." varlist))
+	  (else `(add-method ((',make ',operation)  ,@varlist)
+		   ,@body)))))
+
+
+
+#|
+(let ((f (lambda (form)
+	   (destructure* (#t rawclauses . body) form
+	     `(%labels ,(map (lambda (clause)
+			       (if (symbol? (car clause))
+				   clause
+				   (destructure* ((var . args) . body) clause
+				     `(,var (lambda ,args ,@body)))))
+			     rawclauses)
+		       (block ,@body))))))
+
+  (define-syntax labels f)
+  (define-syntax letrec f))
+|#
+
+
+
+
+
+(let ((f (lambda (form)
+	   (destructure* (#t raw-clauses . body) form
+	     (let* ((canonical-clauses
+		     (map (lambda (clause)
+			    (if (symbol? (car clause))
+				clause
+				(destructure* ((var . args) . body) clause
+				  `(,var (lambda ,args ,@body)))))
+			  raw-clauses))
+		    (label-list (map first canonical-clauses))
+		    (value-list (map second canonical-clauses))
+		    (expanded-value-list
+		     (map (lambda (form)
+			    (expand-groveling current-locale form))
+			  value-list)))
+
+	       (if (any? (lambda (x)
+			   (or (not (list? x)) (null? x)
+			       (not (eq? '%add-method (car x)))))
+			 expanded-value-list)
+
+		   `(let ,(map (lambda (lab) (list lab ''()))
+			       label-list)
+		      ,@(map (lambda (lab val) `(set! ,lab ,val))
+			     label-list expanded-value-list)
+		      ,@body)
+
+
+		   `(%labels
+		     ,(map list label-list expanded-value-list)
+		     (block ,@body))
+
+
+		   ))))))
+
+  (define-syntax labels f)
+  (define-syntax letrec f))
+
+
+
+
+
+
+
+(define-syntax (let clauses . body)
+  ;; For R3RS compatibility, make the LET into an ITERATE if it
+  ;; starts with a symbol.
+  (cond ((symbol? clauses)
+	 `(iterate ,clauses . ,body))
+	(else
+	 (dolist (clause clauses)
+	   (when (cddr clause)
+	     (cerror "Ignore it and proceed."
+		     "malformed clause ~S." clause)))
+	 `((lambda ,(map-and-reverse car clauses) ,@body)
+	   ,@(map-and-reverse cadr clauses)))))
+
+
+(define-syntax (iterate label clauses . body)
+  (cond ((not (symbol? label))
+	 (error "Illegal syntax in ITERATE; ~S must be a symbol." label))
+	(else `(labels (((,label ,@(map car clauses))
+			 ,@body))
+		 (,label ,@(map cadr clauses))))))
+
+
+
+;;;;;;;;;;;;;;;;;
+
+
+(define-syntax (the-runtime the-var)
+  `(contents (identity (make-locative ,the-var))))
+
+(define-syntax (fluid x)
+  `(%fluid ',x))
+
+(define-syntax (bind clauses . body)
+  (let ((place1 (genvar)) (place2 (genvar)))
+    `(let* ((,place1 (make-locative fluid-binding-list))
+	    (,place2 (contents ,place1)))
+       ,(if (null? clauses)
+	    'nil
+	    `(set! (contents ,place1)
+		   (list* ,@(map (lambda (clause)
+				   (destructure* (('fluid var) val) clause
+				     `(cons ',var ,val)))
+				 clauses)
+			  ,place2)))
+       (block0 (block ,@body)
+	       (set! (contents ,place1) ,place2)))))
+
+
+
+(define-syntax (block0 form0 . body)
+  (let ((v (genvar)))
+    `(let ((,v ,form0))
+       ,@body
+       ,v)))
+
+
+
+(define-syntax (block . body)
+  `(%block ,@body))
+
+
+
+;;; DOLIST, again just like in Common Lisp, except that the variable isn't
+;;; bound when the (optional) result form is evaluated.
+
+(define-syntax (dolist (var l . exit-body) . body)
+  (let ((itt-var (genvar))
+	(v-label (genvar)))
+    `(labels (( (,v-label ,itt-var)
+		(if (null? ,itt-var) (block ,@exit-body)
+		    (let ((,var (car ,itt-var)))
+		      ,@body
+		      (,v-label (cdr ,itt-var)))) ))
+       (,v-label ,l))))
+
+(define-syntax (dolist-count (var l vari . exit-body) . body)
+  (let ((itt-var (genvar))
+	(v-label (genvar)))
+    `(labels (( (,v-label ,itt-var ,vari)
+		(if (not (null? ,itt-var))
+		    (let ((,var (car ,itt-var)))
+		      ,@body
+		      (,v-label (cdr ,itt-var) (+ 1 ,vari)))
+		    (block ,@exit-body)) ))
+       (,v-label ,l 0))))
+
+;;; eof

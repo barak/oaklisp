@@ -1,0 +1,147 @@
+\chapter{Introduction}
+
+{\em This is the introduction to the original Oaklisp proposal which
+we wrote in January 1985.  Although the core language hasn't changed
+since then, some of the periperal ideas in the proposal have been
+modified or abandoned.}
+
+One of the most interesting language ideas to emerge from the 1970's
+was the object-oriented programming model.  Although this model has
+been incorporated to some extent in a number of recent Lisps, these
+implementations have not had the generality and power that
+characterize a true object-based system like Smalltalk.  The most
+significant trend in the contemporary Lisp world is the move toward
+lexical scoping, which was initiated by Steele and Sussman with their
+Scheme papers and continued most faithfully by the designers of T.
+
+The major goal of Oaklisp was to combine the ideas of Smalltalk and
+Scheme in a simple but expressive language that inherits their
+exemplary properties of modularity and consistency.  Unlike T, which
+adds an object-based capability to Scheme by constructing objects out
+of closures, Oaklisp builds a lexically scoped Lisp system on top of a
+general message-passing system that allows for full inheritance of
+methods from multiple superclasses.
+
+The first design choice for Oaklisp was the extent to which we should
+push the object-based model.  We agreed with the designers of ADA that
+the packaging of state and procedures into new types can be a
+significant modularity tool for users of the language.  We also agreed
+with the designers of the Lisp Machine that single-user Lisp systems
+should be open, with no clear line between system and user code.
+Therefore, both to allow the system implementors to use powerful
+user-level tools and to allow users to easily manipulate the system,
+we decided that absolutely everything should be a full-fledged object
+in Oaklisp.  There is no reason why user-defined types should be any
+different from the types used to build the system.  Oaklisp stands in
+marked contrast to other object-oriented Lisp systems which have magic
+data types that are not part of the user-level type
+hierarchy.\footnote{For example, ZetaLisp flavors are not themselves
+instances of flavors.} Our current Oaklisp implementation takes this
+idea to such an extreme that there are no magic objects anywhere in
+the system, no matter how deep you go.  This meant not only that the
+vast majority of the system could be written in Lisp, but that the
+construction of the debugger and garbage collector was greatly
+simplified.
+
+As a corollary to the previous decision, we decided that all
+computation should be performed by methods that are invoked after a
+search up the type hierarchy.  Functions can be thought of as methods
+attached to the top of the hierarchy, since they are methods that can
+perform an operation on any type.  This leads to the interesting
+result that after a function has been defined, a new method can be
+added to take over that operation for a special case.
+
+The power of the method-invocation model of computation is derived
+from the generality of the inheritance mechanism.\footnote{It is
+primarily the lack of inheritance that weakens the T object facility.}
+A simple type-tree would have provided Oaklisp with the ability to
+define shadowable system-wide defaults for \df{print} and so forth.
+However, we felt that the mixin concept of flavors was such a valuable
+tool for factoring object functionality that inheritance from multiple
+supertypes was essential.  This idea of inheriting from several
+mixins, each of which knows how to do something and encapsulates its
+own state, led to the following inheritance rule: a new type inherits
+all of the methods of its supertypes, but methods for the new type
+cannot refer to instance variables from the supertypes (even though
+those variables do exist in the new composite object.) This does not
+cause problems, because when operations for the supertypes are passed
+to the object, the methods which handle them {\it can} reference the
+appropriate instance variables.  Since the names of instance variables
+are never inherited, conflicts cannot occur between names in the
+various supertypes.
+
+This treatment of instance variable names was also motivated by our
+decision to follow Scheme and make Oaklisp lexically scoped.  Oaklisp
+not only benefits from the conceptual correctness which results from
+being able to close methods at compile time, but takes full advantage
+of tail-recursion and the lack of search associated with variable
+references.  Once again, we decided to carry a principle to its
+extreme, and say that {\it all} variable references must be resolved
+at compile time, which results in both a simpler compiler and faster
+execution of code.  Although this decision sounds intolerable for
+users, it actually represents a shift of functionality from the
+compiler to the error-handling system and user-interface, both of
+which we decided to make unusually powerful in our Oaklisp
+implementation.
+
+Another principle which we borrowed from Scheme is anonymity.  The
+lack of coupling between names and objects gives the system a degree
+of modularity and flexibility that would otherwise be difficult to
+achieve.  For example, if a type is redefined, old instances of that
+type will still have pointers to the old type descriptor.  Operations
+on both kinds of object will be handled by the correct methods, and
+when the last instance of the old type goes away, the old type
+descriptor will also be garbage collected.
+
+The portion of Oaklisp that has been described so far can be
+considered its kernel.  The portion that follows can mostly be
+implemented as methods at the user level.  It is interesting to note
+that the dynamic variables and mutable binding contours which are
+described below can be built on top of a bare lexical Lisp kernel.
+However, the Oaklisp kernel is not a usable system, since we
+intentionally stripped it down knowing that the lost facilities would
+be replaced at a higher level.
+
+The first addition is a mutable binding contour facility based the
+locale structures of T.\footnote{In place of locales we could have
+implemented a simple top-level binding environment.} Oaklisp locales
+are objects that accept messages which install and look up names.
+Locales can have multiple superiors which are recursively searched if
+a name can't be found.  Unlike T locales, Oaklisp locales are not
+associated with textual binding contours that can interact with
+\df{let}'s and generate ambiguities.  Moreover, a reference to an
+undefined name creates an error, which means that forward references
+to uninstalled names are impossible.
+
+The second addition is a dynamic scoping facility that knows how to
+deal with \df{catch} and \df{throw}.  The new dynamic variables are
+entirely separate from the static variables, and are always textually
+distinguishible from static variables to avoid confusion.  Dynamic
+variables use deep-binding in our implementation so that they will
+behave correctly when there is more than one process.  The
+implementation of dynamic variables is an issue since we decided to
+follow the Lisp Machine and implement light-weight processes that
+share the same address space to expedite data sharing and fast context
+switching.
+
+Our final design decision was also influenced by the Lisp Machine.
+Error handling in Oaklisp is designed to take maximum advantage of the
+type inheritance mechanism that is built into the language.  A
+complete hierarchy exists of all the types of system errors.  When an
+error occurs, an instance of that error type is created, and a message
+is sent to the error object asking for a handler to take control.  The
+default message causes the debugger to be invoked.  However, each
+process has some dynamic state which can be modified with the
+\df{condition-bind} construct to cause a different handler to be
+invoked when a particular error occurs at a particular time.  This
+mechanism brings the full power of the language to bear on the problem
+of resolving errors, and is the reason that we felt we could make the
+language itself so strict with respect to variable references.  Since
+our implementation of Oaklisp runs on the Lisp Machine and the
+Macintosh, it was no problem to delegate authority for reporting and
+resolving unbound variable references to the user-interface, which
+uses menus and dialog boxes to determine the user's intentions.  If
+the user sets a switch that indicates that he wants unbound names to
+be automatically installed in the innermost locale, then the interface
+merely creates an error-handler to perform that function, and the user
+is not bothered again.

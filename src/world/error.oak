@@ -1,0 +1,19 @@
+;;; Copyright (C) 1987, Barak A. Pearlmutter and Kevin J. Lang.
+
+;;; This file defines a simple interface to the error system.  Like Common
+;;; Lisp, use ERROR if it's fatal and CERROR if it could be corrected and
+;;; proceded from.
+
+;;; This holds how many recursive debuggers we're inside.
+(set! debug-level 0)
+
+(define (warning format-string . format-args)
+  (format standard-error "~&Warning: ")
+  (format standard-error format-string . format-args))
+
+(define (poison . args)
+  (listify-args (lambda (args)
+		  (error "The poison function was called with args ~S." args))
+		. args))
+
+;;; eof

@@ -1,0 +1,250 @@
+;;; Copyright (C) 1988 Barak A. Pearlmutter & Kevin J. Lang.
+
+;;; Define some types of errors to be signaled by the reader.
+
+(define-instance read-error type '() (list general-error))
+
+(define-instance proceedable-read-error type '() (list proceedable-error read-error))
+
+(define-instance unknown-construct type '() (list proceedable-read-error))
+
+(define-instance error-in-# type '(char arg description) (list proceedable-read-error))
+
+(define-instance unknown-#-macro type '() (list error-in-# unknown-construct object))
+(define-instance cant-have-#-arg type '() (list error-in-# object))
+(define-instance must-have-#-arg type '() (list error-in-# object))
+(define-instance illegal-#-arg type '(reason) (list error-in-# object))
+
+(define-instance list-end-error type '(list-so-far stuff-after-dot) '())
+
+(define-instance unexpected-eof type '() (list read-error))
+
+(define-instance eof-in-#pipe type '(level) (list error-in-# unexpected-eof object))
+(define-instance eof-reading-until type '(list-so-far terminator) (list unexpected-eof object))
+(define-instance eof-reading-chars-until type '(list-so-far terminator) (list unexpected-eof object))
+(define-instance eof-after-slash type '(token-so-far) (list unexpected-eof object))
+(define-instance eof-in-list-end type '() (list list-end-error unexpected-eof object))
+
+(define-instance dot-in-list-end type '() (list list-end-error proceedable-read-error object))
+(define-instance extra-object-in-list-end type '(thing) (list list-end-error proceedable-read-error object))
+
+(define-instance illegal-dot-in-list type '(list-so-far terminator) (list proceedable-read-error object))
+
+(define-instance dot-outside-list type '() (list proceedable-read-error object))
+
+
+
+
+(add-method (initialize (dot-outside-list) self)
+  (^super proceedable-read-error initialize self "Ignore the '.' token."))
+
+(add-method (report (dot-outside-list) self stream)
+  (format stream "A dot token (.) was read outside of a list.~%"))
+
+
+
+
+
+(add-method (initialize (list-end-error list-so-far stuff-after-dot)
+			self the-lsf the-sad)
+  (set! list-so-far the-lsf)
+  (set! stuff-after-dot the-sad) 
+  self)
+
+(add-method (report (list-end-error list-so-far stuff-after-dot) self stream)
+  (format stream "within the dotted ending of the list beginning ~S"
+	  list-so-far)
+  (if stuff-after-dot
+      (format stream " [ . ~S].~%" (car stuff-after-dot))
+      (format stream ".~%")))
+
+
+
+
+
+(add-method (initialize (error-in-# char arg) self the-char the-arg)
+  (set! char the-char)
+  (set! arg the-arg)
+  (^super proceedable-read-error initialize self
+	  (compose-proceed-message self)))
+
+(define-instance compose-proceed-message operation)
+
+(add-method (compose-proceed-message (error-in-# char arg) self)
+  (format #f "the #~A~A construct." (or arg "") char))
+
+
+(add-method (report (error-in-# char arg) self stream)
+  (format stream "#~A~A construct" (if arg arg "") char))
+
+
+
+
+(add-method (report (unknown-#-macro) self stream)
+  (format stream "The ")
+  (^super error-in-# report self stream)
+  (format stream " is unknown.~%"))
+
+(add-method (compose-proceed-message (unknown-#-macro) self)
+  (format #f "Ignore the ~A."
+	  (^super error-in-# compose-proceed-message self)))
+
+(add-method (report (cant-have-#-arg) self stream)
+  (format stream "The ")
+  (^super error-in-# report self stream)
+  (format stream " is malformed; no argument is taken.~%"))
+
+(add-method (compose-proceed-message (cant-have-#-arg) self)
+  (format #f "Ignore the illegal argument in the ~A."
+	  (^super error-in-# compose-proceed-message self)))
+
+(add-method (report (must-have-#-arg) self stream)
+  (format stream "The ")
+  (^super error-in-# report self stream)
+  (format stream " requires an argument.~%"))
+
+(add-method (compose-proceed-message (must-have-#-arg) self)
+  (format #f "Supply the required argument to the ~A."
+	  (^super error-in-# compose-proceed-message self)))
+
+(add-method (initialize (illegal-#-arg reason) self the-reason . args)
+  (set! reason the-reason)
+  (^super error-in-# initialize self . args))
+
+(add-method (report (illegal-#-arg reason) self stream)
+  (format stream "The contruct ")
+  (^super error-in-# report self stream)
+  (format stream "~A.~%" reason))
+
+(add-method (compose-proceed-message (illegal-#-arg) self)
+  (format #f "Supply an appropriate argument to the ~A."
+	  (^super error-in-# compose-proceed-message self)))
+
+
+
+
+
+
+
+(add-method (initialize (eof-in-#pipe level) self the-level)
+  (set! level the-level)
+  (^super unexpected-eof initialize self))
+
+(add-method (report (eof-in-#pipe level) self stream)
+  (if (= level 1)
+      (format stream "EOF encountered within a #| ... |# construct.~%")
+      (format stream
+	      "EOF encounted within ~D levels of #| ... |# constructs.~%"
+	      level)))
+
+
+
+(add-method (initialize (eof-reading-until list-so-far terminator)
+			self the-list-so-far the-terminator)
+  (set! list-so-far the-list-so-far)
+  (set! terminator the-terminator)
+  (^super unexpected-eof initialize self))
+
+(add-method (report (eof-reading-until list-so-far terminator) self stream)
+  (format stream
+	  "EOF reading a list to be terminated by a '~A' that began ~S.~%"
+	  terminator list-so-far))
+
+
+
+
+(add-method (initialize (eof-reading-chars-until list-so-far terminator)
+			self the-list-so-far the-terminator)
+  (set! list-so-far the-list-so-far)
+  (set! terminator the-terminator)
+  (^super unexpected-eof initialize self))
+
+(add-method (report (eof-reading-chars-until list-so-far terminator) self stream)
+  (format stream
+	  "EOF reading a token to be terminated by a '~A' that began ~S~%"
+	  terminator list-so-far))
+
+
+
+(add-method (initialize (eof-after-slash token-so-far)
+			self the-token-so-far)
+  (set! token-so-far the-token-so-far)
+  (^super unexpected-eof initialize self))
+
+(add-method (report (eof-after-slash token-so-far) self stream)
+  (format stream "EOF after a '\\'; the token began ~S.~%" token-so-far))
+
+
+
+
+
+
+(add-method (initialize (eof-in-list-end) self a b)
+  (^super list-end-error initialize self a b)
+  (^super unexpected-eof initialize self))
+
+(add-method (report (eof-in-list-end) self stream)
+  (format stream "EOF encountered ")
+  (^super list-end-error report self stream))
+
+
+
+
+
+(add-method (initialize (dot-in-list-end) self a b)
+  (^super list-end-error initialize self a b)
+  (^super proceedable-read-error initialize self "Ignore the extra dot."))
+
+(add-method (report (dot-in-list-end) self stream)
+  (format stream "Extra '.' encountered ")
+  (^super list-end-error report self stream))
+
+
+
+
+
+(add-method (initialize (extra-object-in-list-end thing) self the-thing a b)
+  (set! thing the-thing)
+  (^super list-end-error initialize self a b)
+  (^super proceedable-read-error initialize self
+	  (format #f "Ignore the ~S." thing)))
+
+(add-method (report (extra-object-in-list-end thing) self stream)
+  (format stream "Extra object (~S) encountered " thing)
+  (^super list-end-error report self stream))
+
+
+
+
+
+
+
+(add-method (initialize (illegal-dot-in-list list-so-far terminator)
+			self the-list-so-far the-terminator)
+  (set! list-so-far the-list-so-far)
+  (set! terminator the-terminator)
+  (^super proceedable-read-error initialize self
+	  "Ignore the dot token."))
+
+(add-method (report (illegal-dot-in-list list-so-far terminator) self stream)
+  (format stream "The '.' token was read in a list to be terminated with a '~A'
+that began ~S~%"
+	  terminator list-so-far))
+
+
+
+(define-instance bad-syntax-table-entry type '(char entry) (list proceedable-read-error object))
+
+(add-method (initialize (bad-syntax-table-entry char entry)
+			self the-char the-entry)
+  (set! char the-char)
+  (set! entry the-entry)
+  (^super proceedable-read-error initialize self
+	  (format #f "Ignore the unreadable character.")))
+
+(add-method (report (bad-syntax-table-entry char entry) self stream)
+  (format stream
+	  "Malformed syntax table entry ~S encountered when reading a ~C.~%"
+	  entry char))
+
+;;; eof

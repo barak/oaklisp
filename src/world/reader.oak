@@ -1,0 +1,232 @@
+;;; Copyright (C) 1987,8, Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; Code to read character sequences and produce Oaklisp objects.  Common Lisp
+;;; compatible where convenient.
+
+;;; Reader syntax table:
+
+(define-instance read-table type '() (list simple-vector))
+
+;;; The nth method for read tables is pretty inner loopy, so the call
+;;; to number has been removed in favor of open code.
+
+(add-method (nth (read-table) self char)
+  (%vref-nocheck self (ash-left (%data char) -6) ; (number char)
+	 ))
+
+(add-method ((setter nth) (read-table) self char val)
+  (set! (%vref self (number char)) val))
+
+
+; this name is short for "vref with character index"
+
+(define-constant-instance %vref/ci operation)
+
+(add-method (%vref/ci (variable-length-mixin) self char)
+  (%load-bp-i (ash-left (%data char) -6)))
+
+
+
+
+(define-instance standard-read-table read-table 256)
+
+
+;;; Read table entries are:
+;;;  WHITESPACE
+;;;  CONSTITUENT
+;;;  SINGLE-ESCAPE
+;;;  ILLEGAL
+;;;  (TERMINATING-MACRO . operation)
+;;;  (NONTERMINATING-MACRO . operation)
+;;; The MULTIPLE-ESCAPE type entry is not needed, as in the absence of
+;;; packages '|' can be a simple terminating reader macro.
+
+(dotimes (c 256)
+  (set! (nth standard-read-table c)
+       (cond ((= c (number #\\)) 'single-escape)
+	     ((<= c (number #\space)) 'whitespace)
+	     ((<= c (number #\~)) 'constituent)
+	     (else 'illegal))))
+
+
+;;; A switch for turning off most computation while in a #- thing:
+
+(set! read-suppress nil)
+
+
+;;; The canonical unread object, for being returned by things that
+;;; were supposed to read something but read a nothing instead, like
+;;; the #\; reader macro.
+
+(define-instance unread-type type '() (list object))
+(define-simple-print-method unread-type "Unread")
+(define-instance the-unread-object unread-type)
+
+
+;;; Blow off whitespace
+(define (skip-whitespace stream)
+  (iterate aux ()
+    (let ((c (peek-char stream)))
+      ;; The first three eq? clauses in the or is for speed,
+      ;; and of dubious correctness, and should be benchmarked.
+      (cond ((or (eq? c #\space)
+		 (eq? c #\tab)
+		 (eq? c #\newline)
+		 (and (not (eq? c the-eof-token))
+		      (eq? (%vref/ci standard-read-table c) 'whitespace)))
+	     (read-char stream) (aux))
+	    (else nil)))))
+
+;;; Read expressions until the closing delimiter is hit, consuming it.
+;;; CLOSING-DOT? tells whether improper dotted syntax is allowed.
+
+(define (read-until closing-delimiter closing-dot? stream)
+  (iterate aux ((list-top nil)(list-ending nil))
+    (skip-whitespace stream)
+    (cond ((eq? (peek-char stream) closing-delimiter)
+	   (read-char stream)
+	   list-top)
+	  (else
+	   (let ((x (subread stream)))
+	     (cond
+	      ((eq? x the-unread-object)
+	       (aux list-top list-ending))
+	      ((eq? x the-dot-token)
+	       (cond
+		(closing-dot?
+		 (iterate aux ()
+		   (let ((x (subread stream)))
+		     (cond ((eq? x the-unread-object) (aux))
+			   ((eq? x the-dot-token)
+			    (signal dot-in-list-end list-top '())
+			    (aux))
+			   ((eq? x the-eof-token)
+			    (signal eof-in-list-end list-top '())
+			    (aux))
+			   (else
+			    (iterate aux ()
+			      (skip-whitespace stream)
+			      (cond ((eq? (peek-char stream) closing-delimiter)
+				     (read-char stream)
+				     (cond ((null? list-top) x)
+					   (else (set! (cdr list-ending) x)
+						 list-top)))
+				    (else
+				     (let ((y (subread stream)))
+				       (cond ((eq? y the-unread-object) (aux))
+					     (else
+					      (signal extra-object-in-list-end
+						      y list-top (list x))
+					      (aux))))))))))))
+		(else
+		 (signal illegal-dot-in-list list-top closing-delimiter)
+		 (aux list-top list-ending))))
+	      ((eq? x the-eof-token)
+	       (signal eof-reading-until list-top closing-delimiter)
+	       (aux list-top list-ending))
+	      (else
+	       (let ((nl (cons x nil)))
+		 (cond ((null? list-top)
+			(aux nl nl))
+		       (else
+			(set! (cdr list-ending) nl)
+			(aux list-top nl)))))))))))
+
+#||
+;;; The following definition has been obsoleted by the above more
+;; complex but non-recursive version with better error messages.
+
+(define (read-until closing-delimiter closing-dot? stream)
+  (iterate aux ()
+    (skip-whitespace stream)
+    (cond ((eq? (peek-char stream) closing-delimiter) (read-char stream) '())
+	  (else
+	   (let ((x (subread stream)))
+	     (cond ((eq? x the-unread-object)
+		    (aux))
+		   ((eq? x the-dot-token)
+		    (cond (closing-dot?
+			   (iterate aux ()
+			     (let ((x (subread stream)))
+			       (cond ((eq? x the-unread-object) (aux))
+				     ((eq? x the-dot-token)
+				      (cerror
+				       "Ignore the dot."
+				       "Read a second '.' inside a list construct closed by ~C."
+				       closing-delimiter)
+				      (aux))
+				     ((eq? x the-eof-token)
+				      (error "EOF reading the dotted ending of a list that was to be terminated with ~C."
+					     closing-delimiter))
+				     (else
+				      (iterate aux ()
+					(skip-whitespace stream)
+					(cond ((eq? (peek-char stream) closing-delimiter)
+					       (read-char stream)
+					       x)
+					      (else
+					       (let ((y (read stream)))
+						 (cond ((eq? y the-unread-object) (aux))
+						       (else
+							(error "Second object read after dot of a list to be terminated with ~C."
+							       closing-delimiter))))))))))))
+			  (else
+			   (cerror
+			    "Ignore the dot."
+			    "Read a '.' inside a list construct closed by ~C ~
+ not allowing one."
+			    closing-delimiter)
+			   (aux))))
+		   ((eq? c the-eof-token)
+		    (error "EOF encountered while reading a list that was to be terminated with ~C."
+			   closing-delimiter))
+		   (else
+		    (cons x (read-until closing-delimiter closing-dot? stream)))))))))
+||#
+
+;;; And now for READ.
+
+(define (read stream)
+  (iterate aux ()
+    (let ((obj (subread stream)))
+      (cond ((eq? obj the-eof-token)
+	     the-eof-token)
+	    ((eq? obj the-unread-object)
+	     (aux))
+	    ((eq? obj the-dot-token)
+	     (signal dot-outside-list)
+	     (aux))
+	    (else obj)))))
+
+;;; This is like READ, except that it returns the unread object or the
+;;; dot token when it sees them.  The functionality here was seperated
+;;; out from READ to make reading list type syntax easier.
+
+(define (subread stream)
+  (iterate aux ()
+    (let ((c (peek-char stream)))
+      (if (eq? c the-eof-token)
+	  (read-char stream)
+	  (let ((c-syntax (%vref/ci standard-read-table c)))
+	    (cond ((eq? c-syntax 'whitespace)
+		   (read-char stream)
+		   (aux))
+		  ((eq? c-syntax 'illegal)
+		   (error "The character ~C is illegal." (read-char stream)))
+		  ((or (eq? c-syntax 'constituent)
+		       (eq? c-syntax 'single-escape))
+		   (read-token stream))
+		  (else
+		   (read-char stream)
+		   ((cdr c-syntax) stream c))))))))
+
+;;; In order to read dotted lists correctly, the right thing to do it
+;;; to return a magic thing, THE-DOT-TOKEN, when a '.' is read as a
+;;; single, unescaped token.  Like the unread object, this is never
+;;; returned by READ.
+
+(define-instance dot-token type '() (list object))
+(define-simple-print-method dot-token "dot")
+(define-instance the-dot-token dot-token)
+
+;;; eof

@@ -1,0 +1,848 @@
+;;; Copyright (C) 1986,7,8 Kevin J. Lang & Barak A. Pearlmutter.
+
+
+;;;;;;;;;;;;;;;;;;;;;; create the type ;;;;;;;;;;;;;;;;;;
+
+
+(define-instance bignum coercable-type '(sign digits) (list integer object))
+
+(create-accessors bignum bignum- sign digits)
+
+(add-method (bignum-sign (fixnum) x) (if (negative? x) -1 1))
+(add-method (bignum-digits (fixnum) x)
+  (normalize-digitlist (cond ((negative? x) (list (- x)))
+			     ((zero? x) '())
+			     (else (list x)))
+		       0))
+
+(define (bignum-digit-count x) (length (bignum-digits x)))
+
+(add-method (initialize (bignum sign digits) self sgn digs)
+  (set! sign sgn)
+  (set! digits digs)
+  self)
+
+(add-method (bignum (fixnum) x)
+  (make bignum (bignum-sign x) (bignum-digits x)))
+
+;;; Make a bignum unless the thing will fit in a fixnum.
+(define (maybe-make-bignum sign digits)
+  (if (or (and (= sign 1)
+	       (digitlist-< digits (bignum-digits least-positive-bignum)))
+	  (and (= sign -1)
+	       (digitlist-< digits (bignum-digits least-negative-bignum))))
+
+      (if (null? digits) 0
+	  (iterate aux ((l digits) (place sign) (total 0))
+	       (let ((total (fx-plus total (fx-times (car l) place)))
+		     (cdrl (cdr l)))
+		 (if (null? cdrl) total
+		     (aux cdrl (fx-times place bignum-base) total)))))
+
+      (make bignum sign digits)))
+
+
+;;; Base 10,000, little endian, signed magnitude.
+
+;;; If you change this you have to change PRINT-4-BIGNUM-DECIMAL-DIGITS
+(define decimal-digits-per-bignum-chunk 4)
+
+(define-constant bignum-base (expt 10 decimal-digits-per-bignum-chunk))
+
+(set! (fluid bignum-debug) #f)
+
+(add-method (print (bignum sign digits) self stream)
+  (cond ((fluid bignum-debug)
+	 (format stream "#<BIGNUM ~A~S>" sign digits)
+	 self)
+
+	;; Special case base 10:
+	((= 10 (fluid print-radix))
+	 (when (= sign -1)
+	   (write-char stream #\-))
+	 (let ((rdigs (reverse digits)))
+	   (print (car rdigs) stream)
+	   (dolist (d (cdr rdigs) self)
+	     (print-4-bignum-decimal-digits d stream))))
+
+	(else
+	 (^super integer print self stream))))
+
+(define (print-4-bignum-decimal-digits q stream)
+  (let* ((q (print-place q 1000 stream))
+	 (q (print-place q 100 stream))
+	 (q (print-place q 10 stream)))
+    (write-char stream (digit->char q))))
+
+
+
+
+;;;;;;;;;;;;;;;; interface functions ;;;;;;;;;;;;;;;;
+
+
+(add-method (minus (bignum sign digits) x)
+  (maybe-make-bignum (- sign) digits))
+
+
+(add-method (= (bignum sign digits) x y)
+  (fselect-type y
+    ((bignum) (and (= sign (bignum-sign y))
+		   (equal? digits (bignum-digits y))))
+    ((number) #f)
+    (otherwise (error "Domain error in second arg (= ~D ~D)." x y))))
+
+
+(add-method (negative? (bignum sign) x)
+  (= sign -1))
+
+
+
+
+(add-method (< (bignum sign digits) x y)
+  (let ((ytype (get-type y))
+	(xneg (= sign -1)))
+    (if (eq? ytype fixnum) xneg
+	(let ((yneg (negative? y)))
+	  (cond ((and xneg (not yneg)) #t)
+		((and (not xneg) yneg) #f)
+		((eq? ytype bignum)
+		 (xor xneg
+		      (let ((ydigits (bignum-digits y)))
+			(iterate aux ((xd digits) (yd ydigits))
+			  (cond ((null? xd)
+				 (if (null? yd)
+				     (samelen-digitlist-< digits ydigits)
+				     #t))
+				((null? yd) #f)
+				(else (aux (cdr xd) (cdr yd))))))))
+		((subtype? ytype rational)
+		 (< (* x (denominator y)) (numerator y)))
+		(else
+		 (error "Domain error in second argument (< ~S ~S)." x y)))))))
+
+
+
+(add-method (plus/2 (bignum sign digits) x y)
+  (fselect-type y
+    ((integer)
+     (let ((ydigits (bignum-digits y))
+	   (ysign (bignum-sign y)))
+       (cond ((= sign ysign)
+	      (maybe-make-bignum sign (sum-digitlists digits ydigits)))
+	     ((digitlist-< ydigits digits)
+	      (maybe-make-bignum sign (diff-digitlists digits ydigits)))
+	     (else
+	      (maybe-make-bignum ysign (diff-digitlists ydigits digits))))))
+    ((number) (plus/2 y x))
+    (otherwise (error "Nonnumeric addition (plus/2 ~S ~S)" x y))))
+
+
+
+
+
+(add-method (times/2 (bignum sign digits) x y)
+  (if (zero? y)
+      0
+      (fselect-type y
+	((fixnum)
+	 (let ((ydigits (bignum-digits y))
+	       (ysign (bignum-sign y)))
+	   (maybe-make-bignum (fx-times sign ysign)
+			      (if (< (if (negative? y) (- y) y) bignum-base)
+				  (simple-multiply-step (car ydigits) digits)
+				  (multiply-digitlists digits ydigits)
+				  ))))
+	((integer)
+	 (let ((ydigits (bignum-digits y))
+	       (ysign (bignum-sign y)))
+	   (maybe-make-bignum (fx-times sign ysign)
+			      ;;(mult-digitlists digits ydigits)
+			      (multiply-digitlists digits ydigits)
+			      )))
+	((number) (times/2 y x))
+	(otherwise (error "Nonnumeric argument (TIMES/2 ~S ~S)" x y)))))
+
+
+
+(add-method (quotient (bignum sign digits) x y)
+  (fselect-type y
+    ((integer)
+     (let ((ydigits (bignum-digits y))
+	   (ysign (bignum-sign y)))
+       (maybe-make-bignum
+	(fx-times sign ysign)
+	(first (quorem-digitlists digits ydigits))
+	)))
+    (otherwise (error "bad second argument (QUOTIENT ~S ~S)" x y))))
+
+
+
+(add-method (remainder (bignum sign digits) x y)
+  (fselect-type y
+    ((integer)
+     (let ((ydigits (bignum-digits y))
+	   (ysign (bignum-sign y)))
+       (maybe-make-bignum
+	sign
+	(second (quorem-digitlists digits ydigits))
+	)))
+    (otherwise
+     ;;(error "bad second argument (REMAINDER ~S ~S)" x y)
+     (^super integer remainder x y)
+     )))
+
+
+
+
+;;; For quotientm and modulo we copy the code from the emulator.
+
+(add-method (quotientm (bignum) x y)
+  (let ((a (quotient x y)))
+    (if (or (and (negative? x) (not (negative? y)) (> (* a y) x))
+	    (and (negative? y) (not (negative? x)) (< (* a y) x)))
+	(- a 1)
+	a)))
+
+(add-method (modulo (bignum) x y)
+  (let ((a (remainder x y)))
+    (if (or (and (negative? a) (not (negative? y)))
+	    (and (negative? y) (not (negative? x)) (not (negative? a))))
+	(+ a y)
+	a)))
+
+
+
+
+
+
+;;;;;;;;;;;;;;;; addition ;;;;;;;;;;;;;;;;
+
+
+
+;bignum-speed-test time: 22 msec
+
+
+(define (sum-digitlists l1 l2)
+
+  (let ((root (cons 'root '())))
+
+    (labels (((step-both in1 in2 carry prevpair)
+
+	      (if (null? in1)
+		  (if (null? in2) 
+
+		      (block		;both empty
+		       (when (not (= 0 carry))
+			 (set (cdr prevpair) (list carry)))
+		       (cdr root))
+					;in1 empty
+		      (let ((x (fx-plus carry (car in2))))
+			(step-one (cdr in2)
+				  (quotient x bignum-base)
+				  (set! (cdr prevpair) (cons (remainder x bignum-base) '())))))
+
+		  (if (null? in2) 
+					;in2 empty
+		      (let ((x (fx-plus carry (car in1))))
+			(step-one (cdr in1)
+				  (quotient x bignum-base)
+				  (set! (cdr prevpair) (cons (remainder x bignum-base) '()))))
+
+					;neither empty
+		      (let ((x (fx-plus (fx-plus carry (car in1))(car in2))))
+			(step-both (cdr in1)
+				   (cdr in2)
+				   (quotient x bignum-base)
+				   (set! (cdr prevpair) (cons (remainder x bignum-base) '())))))))
+
+
+	     ((step-one in1 carry prevpair)
+	      (cond ((null? in1)	;done 
+		     (when (not (= 0 carry))
+		       (set (cdr prevpair) (list carry)))
+		     (cdr root))
+
+		    ((zero? carry)	;done
+		     (set! (cdr prevpair) in1)
+		     (cdr root))
+
+		    (else		;iterate
+		     (let ((x (fx-plus carry (car in1))))
+		       (step-one (cdr in1)
+				 (quotient x bignum-base)
+				 (set! (cdr prevpair) (cons (remainder x bignum-base) '()))))))))
+
+      (step-both l1 l2 0 root))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;  subtraction  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;bignum-speed-test time: 64 msec
+
+
+(define (diff-digitlists l1 l2)
+
+  (let ((root (cons 'root '())))
+
+    (labels (((step-both in1 in2 carry prevpair last-nonzero-pair)
+
+	      (if (null? in2)
+
+		  (if (null? in1) 
+					;both empty
+		      (if (not (= 0 carry))
+			  (error "negative result in diff-digitlist")
+			  (block
+			   (set (cdr last-nonzero-pair) '())
+			   (cdr root)))
+
+					;in2 empty
+		      (let* ((x (fx-plus carry (car in1)))
+			     (xmb (modulo x bignum-base))
+			     (newpair (cons xmb '())))
+			(step-one (cdr in1)
+				  (quotientm x bignum-base)
+				  (set! (cdr prevpair) newpair)
+				  (if (not (= 0 xmb))
+				      newpair
+				      last-nonzero-pair))))
+
+
+					;neither empty
+		  (let* ((x (fx-plus carry (- (car in1)(car in2))))
+			 (xmb (modulo x bignum-base))
+			 (newpair (cons xmb '())))
+		    (step-both (cdr in1)
+			       (cdr in2)
+			       (quotientm x bignum-base)
+			       (set! (cdr prevpair) newpair)
+			       (if (not (= 0 xmb))
+				   newpair
+				   last-nonzero-pair)))))
+
+	     ((step-one in1 carry prevpair last-nonzero-pair)
+
+	      (cond ((null? in1)	;done
+		     (when (not (zero? carry)) (error "negative result in diff-digitlist"))
+		     (set (cdr last-nonzero-pair) '())
+		     (cdr root))
+
+		    ((zero? carry)	;done
+		     (set! (cdr prevpair) in1)
+		     (cdr root))
+
+		    (else		;iterate
+		     (let* ((x (fx-plus carry (car in1)))
+			    (xmb (modulo x bignum-base))
+			    (newpair (cons xmb '())))
+		       (step-one (cdr in1)
+				 (quotientm x bignum-base)
+				 (set! (cdr prevpair) newpair)
+				 (if (not (= 0 xmb))
+				     newpair
+				     last-nonzero-pair)))))))
+
+
+      (step-both l1 l2 0 root root))))
+
+
+
+
+
+
+
+;;;;;;;;;;;;;;;multiplication;;;;;;;;;;;;;;;;;;;;
+
+
+; This uses the Strassen divide and conquer algorithm for long lists,
+; and the regular n-squared algorithm for short lists.
+
+
+
+(define multiplication-tradeoff-point 16) ; Seems like a decent value, but not proven optimal.
+                                          ; The value must be at least 2 to terminate recursion.
+
+
+;bignum-speed-test time: 392 msec
+
+(define (multiply-digitlists x y)
+  (if (or (null? x)(null? y))
+      '()
+      (let* ((lenx (length x))
+	     (leny (length y)))
+	(labels (((guts x y lenx leny)	;enforce lenx >= leny
+
+		  (cond ((< leny multiplication-tradeoff-point);; N^2 algorithm
+
+			 (let ((accumulator (make list-type (- (+ lenx leny) 1) 0)))
+
+			   (iterate next2 ((digs y)(acc accumulator))
+
+			     (when digs
+			       (let ((dig (car digs)))
+
+				 (when (not (zero? dig))
+				   (iterate next1 ((accleft acc)(listleft x)(carry 0)(i lenx))
+
+				     (if (= 1 i)
+
+					 (let* ((d (fx-plus (fx-plus carry (car accleft))
+							    (fx-times (car listleft) dig)))
+						(d/b (quotient d bignum-base))
+						(dmb (remainder d bignum-base)))
+					   (set (car accleft) dmb)
+					   (when (not (= 0 d/b))
+					     (set (cadr
+						   (block
+						    (when (null? (cdr accleft))
+						      (set (cdr accleft) (cons '() '())))
+						    accleft))
+						  d/b))
+					   acc)
+	    
+					 (let ((d (fx-plus (fx-plus carry (car accleft))
+							   (fx-times (car listleft) dig))))
+					   (set! (car accleft) (remainder d bignum-base))
+					   (next1 (cdr accleft)
+						  (cdr listleft)
+						  (quotient d bignum-base)
+						  (- i 1)))))
+				   ))
+
+			       (next2 (cdr digs) (cdr acc))))
+			   accumulator)
+
+			 )
+
+
+			(else;; N^1.59 algorithm
+			 (let* ((lenx/2 (quotient lenx 2))
+				(ab (extract-subdigitlists x lenx lenx/2))
+				(a (cdr ab))
+				(b (car ab))
+				(cd (extract-subdigitlists y leny lenx/2))
+				(c (cdr cd))
+				(d (car cd))
+				(w (multiply-digitlists b d)))
+
+			   (if (not (null? c))
+
+			       ;;regular case
+			       (let* ((u (multiply-digitlists (sum-digitlists a b) (sum-digitlists c d)))
+				      (v (multiply-digitlists a c)))
+				 (shift-sum-digitlists 
+				  (shift-sum-digitlists v (diff-digitlists u (sum-digitlists v w)) lenx/2)
+				  w
+				  lenx/2))
+			   
+			       ;;simplified case where c=0.
+			       (shift-sum-digitlists 
+				(diff-digitlists (multiply-digitlists (sum-digitlists a b) d) w)
+				w
+				lenx/2)))))))
+			   
+	  (if (> leny lenx)
+	      (guts y x leny lenx)
+	      (guts x y lenx leny))))))
+
+
+
+  ;(ex-sdl '(0 1 2 3 4 5) 6 2) -> '((0 1) . (2 3 4 5))
+  ;(ex-sdl '(1 0 0 3 4 5) 6 3) -> '((1)   . (3 4 5))
+  ;(ex-sdl '(0 1 2 3 4 5) 6 7) -> '((0 1 2 3 4 5) . '())
+
+(define (extract-subdigitlists l len part1-len)
+  (if (> len part1-len)
+      (let ((root (cons 'root '())))
+	(iterate next ((left l)(i part1-len)(prevpair root)(last-nonzero-pair root))
+	  (if (= 0 i)
+	      (block (set (cdr last-nonzero-pair) '())
+		     (cons (cdr root) left))
+	      (let* ((carleft (car left))
+		     (newpair (cons carleft '())))
+		(next (cdr left)
+		      (- i 1)
+		      (set (cdr prevpair) newpair)
+		      (if (= 0 carleft)
+			  last-nonzero-pair
+			  newpair))))))
+      (cons l '())))
+
+
+
+(define (shift-sum-digitlists x y d) ;shifts x by d before summing
+  (let ((root (cons 'root '())))
+    (iterate next ((y y)(d d)(prev-pair root))
+      (cond ((= 0 d)
+	     (set (cdr prev-pair) (sum-digitlists x y))
+	     (cdr root))
+	    ((null? y)
+	     (next y (- d 1) (set (cdr prev-pair) (cons 0 '()))))
+	    (else
+	     (next (cdr y) (- d 1) (set (cdr prev-pair) (cons (car y) '()))))))))
+
+
+
+
+; this is used by times/2 and quorem-digitlists-to-get-digit.
+
+(define (simple-multiply-step dig l)
+  (if (= 0 dig) 
+      '()
+      (let ((root (cons 'root '())))
+
+	(labels (((step-one in1 carry prevpair)
+		  (cond ((null? in1)	;done 
+			 (when (not (= 0 carry))
+			   (set (cdr prevpair) (list carry)))
+			 (cdr root))
+
+			(else		;iterate
+			 (let ((x (fx-plus carry (fx-times dig (car in1)))))
+			   (step-one (cdr in1)
+				     (quotient x bignum-base)
+				     (set! (cdr prevpair) (cons (remainder x bignum-base) '()))))))))
+
+	  (step-one l 0 root)))))
+
+
+
+
+;;;;;;;;;;;;;;;division;;;;;;;;;;;;;;;;;;;;
+
+; Warning; this code assumes that two 
+; bignum digits fit into a fixnum.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;bignum-speed-test time: 2680 msec
+
+   ; Diglist and divisor are digit-lists.
+   ; Returns (list quotient remainder)
+
+
+(let ((last-inlist #t)
+      (last-divisor #t)
+      (last-quorem #t))    ;cache for last values computed
+
+  (define (quorem-digitlists inlist divisor)
+
+    (if (and (eq? inlist last-inlist)
+	     (eq? divisor last-divisor))
+
+	last-quorem
+
+	(let ((lenin (length inlist))
+	      (lendiv (length divisor)))
+
+	  (if (if (= lenin lendiv)	;this expression is (digitlist-< inlist divisor)	
+		  (samelen-digitlist-< inlist divisor)
+		  (< lenin lendiv))
+
+	      (list (list 0) inlist)	;quotient is 0
+
+	      (iterate next ((todo (reverse (subseq inlist 0 (- lenin lendiv))))
+			     (quotient-remainder
+			      (accumulating-quorem-digitlists-to-get-digit
+			       '()
+			       (subseq inlist (- lenin lendiv) lendiv)
+			       divisor)))
+
+		(if (not (null? todo))
+
+		    (next (cdr todo)
+			  (accumulating-quorem-digitlists-to-get-digit
+			   (first quotient-remainder)
+			   (let ((newdividend (cons (car todo) (second quotient-remainder))))
+			     (if (equal? newdividend '(0))
+				 '()
+				 newdividend))
+			   divisor))
+
+		    (block
+		     (set last-inlist inlist)
+		     (set last-divisor divisor)
+		     (set last-quorem quotient-remainder)))))))))
+
+
+
+
+  ;;
+
+  ;Returns (list (digit . old-digs) remainder)
+
+(define (accumulating-quorem-digitlists-to-get-digit old-digs inlist divisor)
+  (let* ((quorem (quorem-digitlists-to-get-digit inlist divisor))
+	 (quo (car quorem))
+	 (rem (cdr quorem)))
+    (list (if (and (= 0 quo)(null? old-digs))
+	      '()
+	      (cons quo old-digs))
+	  rem)))
+
+
+
+  ; Call the following helper function only when you are sure 
+  ; that the quotient can be expressed by a single digit.
+
+  ; all arguments are digit lists
+  ;returns (digit . remainder)
+
+
+(let ((last-short-divisor #t)		;cache some internal info
+      (fix-divisor #t)   
+      (last-long-divisor #t)
+      (rev-divisor #t))  
+
+  (define (quorem-digitlists-to-get-digit inlist divisor)
+
+					;   (when (fluid bignum-debug) (%write-char #\|))
+
+    (let ((lenin (length inlist))
+	  (lendiv (length divisor)))
+
+      (cond ((if (= lenin lendiv)	;special case when answer is 0
+		 (samelen-digitlist-< inlist divisor)
+		 (< lenin lendiv))
+	     (cons 0 inlist))
+
+	    ((< (+ lenin lendiv) 5)	;   special cases for short digitlists
+
+	     (when (not (eq? last-short-divisor divisor))
+	       (set! last-short-divisor divisor)
+	       (set! fix-divisor (if (= lendiv 2)
+				     (fx-plus (fx-times bignum-base (cadr divisor)) (car divisor))
+				     (car divisor))))
+
+	     (cond ((= lendiv 2)
+		    (let ((fix-dividend (fx-plus (fx-times bignum-base (cadr inlist)) (car inlist))))
+		      (cons (quotient fix-dividend fix-divisor)
+			    (bignum-digits (remainder fix-dividend fix-divisor)))))
+
+		   ((= lenin 2)
+		    (let ((fix-dividend (fx-plus (fx-times bignum-base (cadr inlist)) (car inlist))))
+		      (cons (quotient fix-dividend fix-divisor)
+			    (bignum-digits (remainder fix-dividend fix-divisor)))))
+
+		   (else
+		    (let ((fix-dividend (car inlist)))
+		      (cons (quotient fix-dividend fix-divisor)
+			    (bignum-digits (remainder fix-dividend fix-divisor)))))))
+
+
+	    (else			;general case: 3+ digits in inlist, and 2+ or 3+ digits in divisor
+
+	     (when (not (eq? last-long-divisor divisor))
+	       (set! last-long-divisor divisor)
+	       (set! rev-divisor (reverse divisor)))
+
+	     (let* ((rev-inlist (reverse inlist))
+		    (inlist-hi  (car rev-inlist))
+		    (divisor-hi (car rev-divisor))
+		    (guessdig
+		     (cond ((> inlist-hi 999)
+			    (quotient (fx-plus (fx-times 10000 inlist-hi)
+					       (cadr rev-inlist))
+				      (if (= lenin lendiv)
+					  (fx-plus (fx-times 10000 divisor-hi)
+						   (cadr rev-divisor))
+					  divisor-hi)))
+
+			   ((> inlist-hi 99)
+			    (quotient (fx-plus (fx-times 100000 inlist-hi)
+					       (fx-plus (fx-times 10 (cadr rev-inlist))
+							(quotient (caddr rev-inlist) 1000)))
+				      (if (= lenin lendiv) 
+					  (fx-plus (fx-times 100000 divisor-hi)
+						   (fx-plus (fx-times 10 (cadr rev-divisor))
+							    (quotient (caddr rev-divisor) 1000)))
+					  (fx-plus (fx-times 10 divisor-hi)
+						   (quotient (cadr rev-divisor) 1000)))))
+
+			   ((> inlist-hi 9)
+			    (quotient (fx-plus (fx-times 1000000 inlist-hi)
+					       (fx-plus (fx-times 100 (cadr rev-inlist))
+							(quotient (caddr rev-inlist) 100)))
+				      (if (= lenin lendiv) 
+					  (fx-plus (fx-times 1000000 divisor-hi)
+						   (fx-plus (fx-times 100 (cadr rev-divisor))
+							    (quotient (caddr rev-divisor) 100)))
+					  (fx-plus (fx-times 100 divisor-hi)
+						   (quotient (cadr rev-divisor) 100)))))
+			   (else
+			    (quotient (fx-plus (fx-times 10000000 inlist-hi)
+					       (fx-plus (fx-times 1000 (cadr rev-inlist))
+							(quotient (caddr rev-inlist) 10)))
+				      (if (= lenin lendiv) 
+					  (fx-plus (fx-times 10000000 divisor-hi)
+						   (fx-plus (fx-times 1000 (cadr rev-divisor))
+							    (quotient (caddr rev-divisor) 10)))
+					  (fx-plus (fx-times 1000 divisor-hi)
+						   (quotient (cadr rev-divisor) 10)))))))
+
+		    (guessdig		; adjust in case rounding threw us out of bounds
+		     (cond ((< guessdig 1)
+			    1)
+			   ((>= guessdig bignum-base)
+			    (- bignum-base 1))
+			   (else
+			    guessdig)))
+
+		    (guessprod (simple-multiply-step guessdig divisor))
+
+		    (lowbound (diff-digitlists inlist divisor)))
+
+
+	       (iterate next ((dig guessdig)(prod guessprod)(first-try #t)) ;iterate to fix guess
+
+		 (cond ((digitlist-< inlist prod)
+					; (when (fluid bignum-debug) (%write-char #\-))
+			(if first-try
+
+			    (next (- dig 1) (diff-digitlists prod divisor) #f)
+
+			    (let* ((distance (diff-digitlists prod inlist)) ;recurse
+				   (quorem   (quorem-digitlists-to-get-digit distance divisor)))
+			      (if (null? (cdr quorem))
+				  (cons (- dig (car quorem))
+					'())
+				  (cons (- dig (car quorem) 1)
+					(diff-digitlists divisor (cdr quorem)))))))
+
+		       ((digitlist-< lowbound prod)
+			(cons dig (diff-digitlists inlist prod)))
+
+		       (else
+			(%write-char #\+) ;this case never happens
+			(next (1+ dig) (sum-digitlists prod divisor) #f))))
+	       ))))))
+
+
+
+
+
+;;;;;;;;;;;; assorted stuff ;;;;;;;;;;;;;;;;;;
+
+
+(define (normalize-digitlist l carry)
+  (if (null? l)
+      (if (= carry 0) '()
+	  (normalize-digitlist (list carry) 0))
+      (let* ((x (+ carry (car l)))
+	     (x/b (quotientm x bignum-base))
+	     (xmb (modulo x bignum-base)))
+	(cons xmb (normalize-digitlist (cdr l) x/b)))))
+
+
+
+(define (digitlist-< l1 l2)
+  (let ((len1 (length l1))
+	(len2 (length l2)))
+    (if (= len1 len2)
+	(samelen-digitlist-< l1 l2)
+	(< len1 len2))))
+
+(define (samelen-digitlist-< l1 l2)
+  (iterate next ((l1 (reverse l1))(l2 (reverse l2)))
+    (cond ((null? l1) #f)
+	  ((= (car l1)(car l2))
+	   (next (cdr l1)(cdr l2)))
+	  (else
+	   (< (car l1)(car l2))))))
+
+;;; NOTE: bignum-speed-test, balanced tree fact, etc. moved to bignum2.oak.
+
+
+;;; Convoluted code defeats constant folding.  No big numbers in bignum.oa!
+(define most-negative-fixnum (ash-left (let ((x 1)) x) 29))
+(define most-positive-fixnum (- (+ most-negative-fixnum 1)))
+
+(let* ((l0 (list most-positive-fixnum))
+       (l1 (normalize-digitlist l0 0))
+       (l2 (normalize-digitlist l1 1))
+       (l3 (normalize-digitlist l2 1)))
+
+  (define least-positive-bignum (make bignum 1 l2))
+
+  (define least-negative-bignum (make bignum -1 l3)))
+ 
+
+
+#|
+
+;  The following version of sum-digitlists might be useful
+;  on a machine that lacks integer division instructions.
+
+(define-syntax (iterative-positive-quorem (number divisor quotient-name
+						  remainder-name) . body)
+  (let ((labsym (genvar)))
+    `(iterate ,labsym ((,quotient-name 0) (,remainder-name ,number))
+       (cond ((< ,remainder-name ,divisor)
+	      ,@body)
+	     (else
+	      (,labsym (1+ ,quotient-name)(- ,remainder-name ,divisor)))))))
+
+
+  
+(define (sum-digitlists l1 l2)
+  (let ((root (cons 'root '())))
+    (labels (((step-both in1 in2 carry prevpair)
+
+	      (if (null? in1)
+		  (if (null? in2) 
+
+		      (block		;both empty
+		       (when (not (= 0 carry))
+			 (set (cdr prevpair) (list carry)))
+		       (cdr root))
+					;in1 empty
+		      (iterative-positive-quorem ((+ carry (car in2)) bignum-base quo rem)
+						 (step-one (cdr in2)
+							   quo
+							   (set! (cdr prevpair) (cons rem '())))))
+
+		  (if (null? in2) 
+					;in2 empty
+		      (iterative-positive-quorem ((+ carry (car in1)) bignum-base quo rem)
+						 (step-one (cdr in1)
+							   quo
+							   (set! (cdr prevpair) (cons rem '()))))
+
+					;neither empty
+		      (iterative-positive-quorem ((+ carry (car in1)(car in2)) bignum-base quo rem)
+						 (step-both (cdr in1)
+							    (cdr in2)
+							    quo
+							    (set! (cdr prevpair) (cons rem '())))))))
+
+	     ((step-one in1 carry prevpair)
+	      (cond ((null? in1)	;done 
+		     (when (not (= 0 carry))
+		       (set (cdr prevpair) (list carry)))
+		     (cdr root))
+
+		    ((zero? carry)	;done
+		     (set! (cdr prevpair) in1)
+		     (cdr root))
+
+		    (else		;iterate
+		     (iterative-positive-quorem ((+ carry (car in1)) bignum-base quo rem)
+						(step-one (cdr in1)
+							  quo
+							  (set! (cdr prevpair) (cons rem '()))))))))
+
+      (step-both l1 l2 0 root))))
+
+|#
+
+
+
+
+(add-method (bit-not (bignum) x)
+  (- (+ 1 x)))
+
+
+;;; eof

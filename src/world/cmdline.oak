@@ -1,0 +1,25 @@
+;;; Copyright (C) 1999 Barak A. Pearlmutter.
+
+(define (get-argv i)
+  (let aux ((rchars '())
+	    (j 0))
+    (let ((c (get-argline-char i j)))
+      (cond ((eqv? c #\nul)
+	     ((coercer string) (reverse rchars)))
+	    ((eqv? c #f) #f)
+	    (else (aux (cons c rchars) (+ j 1)))))))
+
+(define (get-argline)
+  (let aux ((rargv '()) (i 0))
+    (let ((a (get-argv i)))
+      (if a
+	  (aux (cons a rargv)
+	       (+ i 1))
+	  (reverse rargv)))))
+
+(define argline '())
+
+(define (fetch-argline)
+  (set! argline (get-argline))) 
+
+(add-warm-boot-action fetch-argline)

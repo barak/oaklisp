@@ -1,0 +1,9 @@
+;;; Copyright (C) 1989 Kevin J. Lang & Barak A. Pearlmutter.
+
+(iterate go ((curloc %%symloc)(count 0))
+  (when (< count %%nsyms)
+    (let ((this-one (%crunch (%data curloc) %pointer-tag)))
+      (set! ((%slot 0) this-one) symbol)
+      (go (%increment-locative curloc %%symsize) (+ 1 count)))))
+
+;;; eof

@@ -1,0 +1,120 @@
+;;; Copyright (C) Barak A. Pearlmutter & Kevin J. Lang. Fall 1986.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; define install-method
+
+;;; Bugs:
+;;;	all offsets in this file of the form (%SLOT x) should be symbolic.
+;;;
+;;;	ADD-METHOD should bomb on non-operations, or at least on undefineds.
+
+(set! %install-method-with-env (%allocate operation %simple-operation-length))
+(set! ((%slot 1) %install-method-with-env) 0)
+
+(_add-method (%install-method-with-env (type operation-method-alist ivar-list)
+				       self op code-body env)
+  (when (eq? op 0)
+    (error "ADD-METHOD with operation 0!  Type: ~A, Code-body: ~A, Env: ~A." self code-body env))
+  ;; Check the ivar maps for consistency
+  (let ((code-ivar-map ((%slot 2) code-body)))
+    (iterate aux ((real-ivar-map ivar-list) (check-ivar-map code-ivar-map))
+      (cond ((null? check-ivar-map) nil)
+	    (t (let ((x (car check-ivar-map)))
+		 (cond ((or (null? x) (eq? x (car real-ivar-map)))
+			(aux (cdr real-ivar-map) (cdr check-ivar-map)))
+		       (t (error "Too early to remap ivars in code"
+				 x (car real-ivar-map)))))))))
+  ;; flush the method cache
+  (set! ((%slot 2) op) 0)
+  ;; create and install the method
+  (let ((the-method (%allocate %method 3)))
+    (set! ((%slot 1) the-method) code-body)
+    (set! ((%slot 2) the-method) env)
+    (cond ((and (eq? self object) ((%slot 1) op))
+	   (set! ((%slot 1) op) the-method))
+	  (else
+	   (when (and ((%slot 1) op)
+		      (not (eq? ((%slot 1) op) 0)))
+	     ;; Toss it on to OBJECT's OPERATION-METHOD-ALIST:
+	     (set! ((%slot 7) object)
+		  (cons (cons op ((%slot 1) op))
+			((%slot 7) object))))
+	   (let ((the-ass (%assq op operation-method-alist)))
+		  (set! ((%slot 1) op) nil)
+		  (if the-ass
+		      (set! (cdr the-ass) the-method)
+		      (set! operation-method-alist
+			   (cons (cons op the-method) operation-method-alist)))))))
+  op)
+
+
+(set! %install-method (%allocate operation %simple-operation-length))
+(set! %install-lambda-with-env (%allocate operation %simple-operation-length))
+(set! %install-lambda (%allocate operation %simple-operation-length))
+
+(set! ((%slot 1) %install-method) 0)
+(set! ((%slot 1) %install-lambda-with-env) 0)
+(set! ((%slot 1) %install-lambda) 0)
+
+(_add-method (%install-method (object) self op code-body)
+  (%install-method-with-env self op code-body %empty-environment))
+
+#|
+(add-method (%install-lambda (object) code-body)
+  (%install-method-with-env object (make operation) code-body %empty-environment))
+(add-method (%install-lambda-with-env (object) code-body env)
+  (%install-method-with-env object (make operation) code-body env))
+|#
+
+
+
+; note : calls to the following operations are no longer emitted by the compiler
+; instead, the open coded operation %make-lambda-with-env is used.
+; this new operation is defined in code-vector.oak
+
+; also, the compiler has been changed to only use the "with-env" version
+; of %install-method
+
+(add-method (%install-lambda (object) code-body)
+  (let ((the-op (%allocate operation %simple-operation-length))
+	(the-method (%allocate %method 3)))
+    (set! ((%slot 1) the-method) code-body)
+    (set! ((%slot 2) the-method) %empty-environment)
+    (set! ((%slot 1) the-op) the-method)
+    the-op))
+
+(add-method (%install-lambda-with-env (object) code-body env)
+  (let ((the-op (%allocate operation %simple-operation-length))
+	(the-method (%allocate %method 3)))
+    (set! ((%slot 1) the-method) code-body)
+    (set! ((%slot 2) the-method) env)
+    (set! ((%slot 1) the-op) the-method)
+    the-op))
+
+
+
+(set! error (%allocate operation %simple-operation-length))
+(set! ((%slot 1) error) 0)
+
+(add-method (error (object) arg . rest)
+  (%write-char #\F)
+  (%write-char #\a)
+  (%write-char #\t)
+  (%write-char #\a)
+  (%write-char #\l)
+  (%write-char #\space)
+  (%write-char #\b)
+  (%write-char #\o)
+  (%write-char #\o)
+  (%write-char #\t)
+  (%write-char #\space)
+  (%write-char #\e)
+  (%write-char #\r)
+  (%write-char #\r)
+  (%write-char #\o)
+  (%write-char #\r)
+  (%write-char #\.)
+  (%write-char #\newline)
+  ((%halt 69) arg))
+
+;;; eof

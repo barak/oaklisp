@@ -1,0 +1,18 @@
+;;; Copyright (C)  Kevin J. Lang and Barak A. Pearlmutter. Fall 1986.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; time to back patch some types
+
+(set! variable-length-mixin (make type '() '()))
+
+(initialize %closed-environment '() (list variable-length-mixin object))
+     (%your-top-wired %closed-environment) ;this provides no protection
+
+(initialize %code-vector '(ivar-map) (list variable-length-mixin object))
+     (%your-top-wired %code-vector) ;this provides no protection
+
+(initialize %method '(the-code the-environment) (list object))
+(add-method (initialize (%method the-code the-environment) self c e)
+    (set! the-code c)
+    (set! the-environment e)
+    self)

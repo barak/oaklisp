@@ -1,0 +1,186 @@
+;;; Copyright (C) 1988, Barak A. Pearlmutter & Kevin J. Lang.
+
+;;; Keep the loader from printing the in-between dot files:
+
+
+;;; The files that a cold world is made of:
+
+(define between-files '(st da pl do))
+
+(define kernel-files
+  '(
+    cold-booting
+    kernel0 do
+    kernel0types do
+    kernel1-install do
+    kernel1-funs do
+    kernel1-make do
+    kernel1-freeze do
+    kernel1-maketype pl
+    kernel1-inittypes pl
+    kernel1-segments pl
+    super pl
+    kernel pl
+    patch0symbols pl
+    ))
+(define layer1
+  '(
+    mix-types st
+    operations st
+    ops st
+    truth st
+    logops st
+    consume st
+    conses st
+    coerce st
+    ))
+(define layer2
+  '(
+    eqv pl
+    mapping pl
+    fastmap pl
+    fluid pl
+    vector-type pl
+    vl-mixin pl
+    numbers pl
+    subtypes pl
+    weak pl
+    strings pl
+    sequences pl
+    ))
+(define layer3
+  '(
+    undefined da
+    subprimitive da
+    gc da
+    tag-trap da
+    code-vector da
+    hash-table da
+    format da
+    signal pl
+    error da
+    symbols da
+    print-noise da
+    patch-symbols da
+    predicates da
+    ))
+(define layer4
+  '(
+    print do
+    print-integer do
+    print-list do
+    reader-errors do
+    reader do
+    read-token do
+    reader-macros do
+    hash-reader pl
+    read-char pl
+    locales do
+    expand do
+    make-locales do
+    patch-locales do
+    freeze do
+    bp-alist do
+    describe do
+    warm do
+    interpreter pl
+    top-level pl
+    booted st
+    dump-stack do
+    file-errors do
+    streams do
+    cold do				;cold load streams
+    nargs pl
+    has-method pl
+    op-error pl
+    error2 pl
+    error3 pl
+    backquote pl
+    file-io pl
+    fasl pl
+    load-oaf pl
+    load-file pl
+    string-stream pl
+    list pl
+    catch da
+    continuation da
+    unwind-protect da
+    ))
+(define layer5
+  '(
+    bounders do
+    anonymous pl
+    sort pl
+    exit pl
+    ))
+(define layer6
+  '(
+    cmdline da
+    cmdline-getopt da
+    ;; This should come last so its warm boot action will be last
+    cmdline-options da
+    ))
+(define layer7
+  '(
+    export
+    st st st cold-boot-end
+    ))
+
+
+(define all-the-layers
+  `(,@kernel-files ,@layer1 ,@layer2 ,@layer3 ,@layer4 ,@layer5 ,@layer6 ,@layer7))
+
+
+;;; The following are not in the cold world, but are loaded later:
+
+(define misc-files
+  '(
+    macros0
+    obsolese
+
+    destructure
+    macros1
+    macros2
+    icky-macros
+    define
+    del
+    promise
+    ;; autoload
+    bignum
+    bignum2
+    rational
+    complex
+    rounding
+    lazy-cons
+    math
+    trace
+    apropos
+    time
+    ;; pretty-print
+    ))
+
+(define compiler-files
+  '(
+    crunch
+    mac-comp-stuff
+    mac-compiler-nodes 
+    mac-compiler1 
+    mac-compiler2 
+    mac-compiler3 
+    mac-code 
+    assembler
+    peephole 
+    file-compiler
+    compiler-exports
+    ))
+
+(define batch-compiler-files '(batch-compiler))
+
+(define scheme-files '(;;scheme-upgrade
+		       scheme scheme-macros))
+
+;; On machines that make programs handle backspace, load "streams-bs"
+;; into the world.  It depends on continuations, so don't put it into
+;; the cold world load.
+
+;;; eof

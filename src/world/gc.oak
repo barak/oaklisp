@@ -1,0 +1,17 @@
+;;; Copyright (C) 1986,7,8,9 Kevin J. Lang & Barak A. Pearlmutter.
+
+(define-constant %gc
+  (add-method ((make-open-coded-operation '((gc)) 0 1)
+	       (object))
+    (%gc)))
+
+(define-constant %full-gc
+  (add-method ((make-open-coded-operation '((full-gc)) 0 1)
+	       (object))
+    (%full-gc)))
+
+;;; Maybe there should be an interface to the next-newspace-size register
+;;; here.  And maybe RECLAIM_FRACTION should be a register with an interface
+;;; here instead of a C compile-time constant.
+
+;;; eof

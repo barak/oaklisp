@@ -1,0 +1,687 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Define some mapping functions and stuff:
+;;
+
+;;; These guys are generic; see definitions in sequences.oak.
+(define-instance head locatable-operation)
+(define-instance tail locatable-operation)
+(define-instance last locatable-operation)
+
+(define-instance last-pair operation)
+
+(add-method (last (pair) self)
+  (car (last-pair self)))
+
+(add-method ((locater nth) (pair) self n)
+  (iterate aux ((self self) (n n))
+    (cond ((zero? n) (make-locative (car self)))
+	  ((negative? n) (error "Negative index to (LOCATER NTH)."))
+	  (else (aux (cdr self) (- n 1))))))
+
+(add-method ((setter nth) (pair) self n new-value)
+  (set! (contents (make-locative (nth self n))) new-value))
+
+(add-method (nth (pair) self n)
+  (iterate aux ((self self) (n n))
+    (cond ((zero? n) (car self))
+	  ((negative? n) (error "Negative index to (LOCATER NTH)."))
+	  (else (aux (cdr self) (- n 1))))))
+
+(add-method ((locater tail) (pair) self n)
+  (cond ((< n 1) (error "Illegal index to LOCATER TAIL of a list."))
+	((= n 1) (make-locative (cdr self)))
+	(else (make-locative (tail (cdr self) (- n 1))))))
+
+(add-method ((setter tail) (pair) self n new-value)
+  (set! (contents (make-locative (tail self n))) new-value))
+
+(add-method (tail (list-type) self n)
+  (iterate aux ((self self) (n n))
+    (cond ((zero? n) self)
+	  (else (aux (cdr self) (- n 1))))))
+
+(add-method ((locater last) (pair) self)
+  (make-locative (car (last-pair self))))
+
+(add-method (last-pair (pair) self)
+  (cond ((pair? (cdr self))
+	 (last-pair (cdr self)))
+	(else self)))
+
+(add-method ((setter length) (pair) self new-len)
+  (set! (tail self new-len) nil)
+  new-len)
+
+
+;;; How to copy lists:
+;;; NOTE This is not optimal.  We could use make to make an empty list and
+;;; then fill it with an iterate, avoiding all these funcalls.
+
+(add-method (copy (pair) self)
+  (cons (car self) (copy (cdr self))))
+
+(add-method (copy (null-type) self)
+  nil)
+
+(add-method (copy (object) self)
+  self)
+
+;;; EQUAL?
+
+(add-method (equal? (pair) x y)
+  (or (eq? x y)
+      (and (pair? y)
+	   (equal? (car x) (car y))
+	   (equal? (cdr x) (cdr y)))))
+
+(add-method (equal? (object) x y)
+  (eq? x y))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(define-instance map operation)
+(define-instance map1 operation)
+(define-instance map2 operation)
+(define-instance map3 operation)
+(define-instance map4 operation)
+(define-instance map5 operation)
+(define-instance general-map operation)
+(define-instance mapcdr operation)
+(define-instance for-each operation)
+(define-instance for-each1 operation)
+(define-instance for-each2 operation)
+(define-instance for-each3 operation)
+(define-instance for-each4 operation)
+(define-instance for-each5 operation)
+(define-instance general-for-each operation)
+(define-instance for-each-cdr operation)
+(define-instance map! operation)
+
+(add-method (mapcdr (operation) op l)
+  (cond ((null? l) '())
+	(else (cons (op l) (mapcdr op (cdr l))))))
+
+(add-method (map (operation) op l . args)
+  ((cond ((= 0 (rest-length args)) map1)
+	 ((= 1 (rest-length args)) map2)
+	 ((= 2 (rest-length args)) map3)
+	 ((= 3 (rest-length args)) map4)
+	 ((= 4 (rest-length args)) map5)
+	 (else general-map))
+   op l . args))
+
+(add-method (map1 (operation) op l)
+  (cond ((null? l) '())
+	(else (let ((x (op (car l))))
+		(cons x (map1 op (cdr l)))))))
+
+(add-method (map2 (operation) op l1 l2)
+  (cond ((null? l1) '())
+	(else (let ((x (op (car l1) (car l2))))
+		(cons x (map2 op (cdr l1) (cdr l2)))))))
+
+(add-method (map3 (operation) op l1 l2 l3)
+  (cond ((null? l1) '())
+	(else (let ((x (op (car l1) (car l2) (car l3))))
+		(cons x (map3 op (cdr l1) (cdr l2) (cdr l3)))))))
+
+(add-method (map4 (operation) op l1 l2 l3 l4)
+  (cond ((null? l1) '())
+	(else (let ((x (op (car l1) (car l2) (car l3) (car l4))))
+		(cons x (map4 op (cdr l1) (cdr l2) (cdr l3) (cdr l4)))))))
+
+(add-method (map5 (operation) op l1 l2 l3 l4 l5)
+  (cond ((null? l1) '())
+	(else (let ((x (op (car l1) (car l2) (car l3) (car l4) (car l5))))
+		(cons x
+		      (map5 op
+			    (cdr l1) (cdr l2) (cdr l3) (cdr l4) (cdr l5)))))))
+
+(labels (((aux args)
+	  (destructure (op . args) args
+	    (aux1 op args)))
+
+	 ((aux1 op list-of-lists)
+	  (cond ((null? (car list-of-lists)) '())
+		(else (cons (apply op (map car list-of-lists))
+			    (aux1 op (map cdr list-of-lists)))))))
+
+	(add-method (general-map (operation) op . lists)
+	  (listify-args aux op . lists)))
+
+
+
+
+(define-instance map-and-reverse operation)
+(define-instance map-and-reverse1 operation)
+(define-instance map-and-reverse2 operation)
+(define-instance map-and-reverse3 operation)
+(define-instance map-and-reverse4 operation)
+(define-instance map-and-reverse5 operation)
+(define-instance general-map-and-reverse operation)
+
+(add-method (map-and-reverse (operation) op l . args)
+  ((cond ((= 0 (rest-length args)) map-and-reverse1)
+	 ((= 1 (rest-length args)) map-and-reverse2)
+	 ((= 2 (rest-length args)) map-and-reverse3)
+	 ((= 3 (rest-length args)) map-and-reverse4)
+	 ((= 4 (rest-length args)) map-and-reverse5)
+	 (else general-map-and-reverse))
+   op '() l . args))
+
+(add-method (map-and-reverse1 (operation) op a l)
+  (cond ((null? l) a)
+	(else (map-and-reverse1 op (cons (op (car l)) a) (cdr l)))))
+
+(add-method (map-and-reverse2 (operation) op a l1 l2)
+  (cond ((null? l1) a)
+	(else (map-and-reverse2 op (cons (op (car l1) (car l2)) a)
+				(cdr l1) (cdr l2)))))
+
+(add-method (map-and-reverse3 (operation) op a l1 l2 l3)
+  (cond ((null? l1) a)
+	(else (map-and-reverse3 op (cons (op (car l1) (car l2) (car l3)) a)
+				(cdr l1) (cdr l2) (cdr l3)))))
+
+(add-method (map-and-reverse4 (operation) op a l1 l2 l3 l4)
+  (cond ((null? l1) a)
+	(else (map-and-reverse4
+	       op (cons (op (car l1) (car l2) (car l3) (car l4)) a)
+	       (cdr l1) (cdr l2) (cdr l3) (cdr l4)))))
+
+(add-method (map-and-reverse5 (operation) op a l1 l2 l3 l4 l5)
+  (cond ((null? l1) a)
+	(else (map-and-reverse5
+	       op (cons (op (car l1) (car l2) (car l3) (car l4) (car l5)) a)
+	       (cdr l1) (cdr l2) (cdr l3) (cdr l4) (cdr l5)))))
+
+(labels (((aux args)
+	  (destructure (op a . args) args
+	    (aux1 op a args)))
+
+	 ((aux1 op a list-of-lists)
+	  (cond ((null? (car list-of-lists)) a)
+		(else 
+		 (aux1 op
+		       (cons (apply op (map-and-reverse car list-of-lists))
+			     a)
+		       (map cdr list-of-lists))))))
+
+	(add-method (general-map-and-reverse (operation) op a . lists)
+	  (listify-args aux op a . lists)))
+
+
+
+
+
+
+(add-method (for-each (operation) op l . args)
+  ((cond ((= 0 (rest-length args)) for-each1)
+	 ((= 1 (rest-length args)) for-each2)
+	 ((= 2 (rest-length args)) for-each3)
+	 ((= 3 (rest-length args)) for-each4)
+	 ((= 4 (rest-length args)) for-each5)
+	 (else general-for-each))
+   op l . args))
+
+(add-method (for-each1 (operation) op l)
+  (if l (block (op (car l))
+	       (for-each1 op (cdr l)))))
+
+(add-method (for-each2 (operation) op l1 l2)
+  (if l1 (block (op (car l1) (car l2))
+		(for-each2 op (cdr l1) (cdr l2)))))
+
+(add-method (for-each3 (operation) op l1 l2 l3)
+  (if l1 (block (op (car l1) (car l2) (car l3))
+		(for-each3 op (cdr l1) (cdr l2) (cdr l3)))))
+
+(add-method (for-each4 (operation) op l1 l2 l3 l4)
+  (if l1 (block (op (car l1) (car l2) (car l3) (car l4))
+		(for-each4 op (cdr l1) (cdr l2) (cdr l3) (cdr l4)))))
+
+(add-method (for-each5 (operation) op l1 l2 l3 l4 l5)
+  (if l1 (block (op (car l1) (car l2) (car l3) (car l4) (car l5))
+		(for-each5 op (cdr l1) (cdr l2) (cdr l3) (cdr l4) (cdr l5)))))
+
+(add-method (for-each-cdr (operation) op l)
+  (if l (block (op l)
+	       (for-each-cdr op (cdr l)))))
+
+(add-method (map! (operation) op l)
+  (cond ((null? l) '())
+	(else (set! (car l) (op (car l)))
+	      (map! op (cdr l))
+	      l)))
+
+(define-instance every? operation)
+
+(add-method (every? (operation) pred? l)
+  (iterate aux ((l l))
+    (if (null? l) #t
+	(let ((cdrl (cdr l)))
+	  (if (null? cdrl)
+	      ;; Carefully tail recurse:
+	      (pred? (car l))
+	      (and (pred? (car l))
+		   (aux cdrl)))))))
+
+;;; True if any element of l passes pred?:
+
+(define any? (make operation))
+
+(add-method (any? (operation) pred? l)
+  (cond ((null? l) nil)
+	;; Carefully tail recurse
+	((null? (cdr l)) (pred? (car l)))
+	(else (or (pred? (car l))
+		  (any? pred? (cdr l))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-instance ass operation)
+(define-instance rass operation)
+(define-instance assq operation)
+(define-instance assv operation)
+(define-instance assoc operation)
+(define-instance rassq operation)
+(define-instance mem operation)
+(define-instance del! operation)
+(define-instance del operation)
+(define-instance cdr-ass locatable-operation)
+(define-instance cdr-assq locatable-operation)
+
+(define memq (lambda (x seq) (mem eq? x seq)))
+(define memv (lambda (x seq) (mem eqv? x seq)))
+(define member (lambda (x seq) (mem equal? x seq)))
+
+(define delq (lambda (x seq) (del eq? x seq)))
+(define delq! (lambda (x seq) (del! eq? x seq)))
+
+(add-method (mem (operation) pred ob l)
+  (cond ((null? l) '())
+	((pred ob (car l)) l)
+	(else (mem pred ob (cdr l)))))
+
+(add-method (del! (operation) pred ob inlist)
+  (let ((outlist (cons 'a inlist)))
+    (iterate step ((kons outlist))
+      (if (set! (cdr kons) (mem (lambda (x y) (not (pred x y)))
+			       ob (cdr kons)))
+	  (step (cdr kons))))
+    (cdr outlist)))
+ 
+
+
+#|
+(add-method (del (operation) pred ob inlist)
+  (iterate loop ((in inlist)(out '()))
+    (if (null? in)
+	(reverse out)
+	(if (pred ob (car in))
+	    (loop (cdr in) out)
+	    (loop (cdr in) (cons (car in) out))))))
+
+|#
+
+
+(add-method (del (operation) pred ob inlist)
+  (let ((list-head (cons '() '())))
+    (iterate next ((inlist inlist)(last-newpair list-head))
+      (if (null? inlist)
+	  (cdr list-head)
+	  (if (pred ob (car inlist))
+	      (next (cdr inlist) last-newpair)
+	      (let ((newpair (cons (car inlist) '())))
+		(set! (cdr last-newpair) newpair)
+		(next (cdr inlist) newpair)))))))
+
+
+(add-method (ass (operation) pred ob l)
+  (cond ((null? l) '())
+	((pred ob (caar l)) (car l))
+	(else (ass pred ob (cdr l)))))
+
+(add-method (rass (operation) pred ob l)
+  (cond ((null? l) '())
+	((pred ob (cdar l)) (car l))
+	(else (rass pred ob (cdr l)))))
+
+(add-method (assq (object) key l)
+  (ass eq? key l))
+
+(add-method (assv (object) key l)
+  (ass eqv? key l))
+
+(add-method (assoc (object) key l)
+  (ass equal? key l))
+
+(add-method (rassq (object) key l)
+  (rass eq? key l))
+
+(add-method (cdr-ass (operation) pred ob l)
+  (cdr (ass pred ob l)))
+
+(add-method ((setter cdr-ass) (operation) pred ob l new)
+  (let ((entry (ass pred ob l)))
+    (if entry (set! (cdr entry) new)
+	(error "No association to set."))))
+
+(add-method ((locater cdr-ass) (operation) pred ob l)
+  (let ((entry (ass pred ob l)))
+    (if entry (make-locative (cdr entry))
+	(error "No association to locate."))))
+
+(add-method (cdr-assq (object) ob l)
+  (cdr-ass eq? ob l))
+
+(add-method ((setter cdr-assq) (object) ob l new)
+  ((setter cdr-ass) eq? ob l new))
+
+(add-method ((locater cdr-assq) (object) ob l)
+  ((locater cdr-ass) eq? ob l))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; List manipulation
+
+(add-method (reverse (list-type) self)
+  (iterate aux ((new '()) (old self))
+    (if (null? old) new
+	(aux (cons (car old) new) (cdr old)))))
+
+(add-method (reverse! (list-type) self)
+  (iterate aux ((old self)
+		(new nil))
+    (cond (old (let ((o (cdr old)))
+		 (set! (cdr old) new)
+		 (aux o old)))
+	  (else new))))
+
+
+(define-instance append operation)
+(define-instance append! operation)
+
+
+
+#|
+
+; replaced by new definitions that 
+; take a variable number of arguments
+
+(add-method (append (pair) a b)
+  (cons (car a) (append (cdr a) b)))
+
+(add-method (append (null-type) a b)
+  b)
+
+(add-method (append! (pair) a b)
+  (let ((x (last-pair a)))
+    (set! (cdr x) b)
+    a))
+
+(add-method (append! (null-type) a b)
+  b)
+|#
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+(labels (((append-aux1 a)
+	  a)
+
+	 ((append-aux2 oldcopy b)
+	  (cond ((null? oldcopy)
+		 b)
+		((pair? oldcopy)
+		 (let ((newcopy (cons (car oldcopy) b)))
+		   (iterate next ((oldpair (cdr oldcopy))(last-newpair newcopy))
+		     (if (not (null? oldpair))
+			 (next (cdr oldpair) (set! (cdr last-newpair)
+						   (cons (car oldpair) b)))
+			 newcopy))))
+		((subtype? (get-type oldcopy) forcible)
+		 (append-aux2 (force oldcopy) b))
+		(else
+		 (append-type-error "list" oldcopy))))
+
+
+	 ((append-aux3 a b c)
+	  (append-aux2 a (append-aux2 b c)))
+
+	 ((append-aux4 a b c d)
+	  (append-aux2 a (append-aux2 b (append-aux2 c d))))
+
+	 ((append-aux-gen inlist)
+	  (iterate step ((in (cdr inlist)) (out (car inlist)))
+	    (if (not (null? in))
+		(step (cdr in) (append-aux2 (car in) out))
+		out))))
+
+
+		; after the old definitions have been removed from the source code,
+		; the following two methods can be replaced by one for list-type
+
+
+  (add-method (append (pair) . rest)
+    (cond ((= 2 (rest-length rest)) (append-aux2 . rest))
+	  ((= 3 (rest-length rest)) (append-aux3 . rest))
+	  ((= 4 (rest-length rest)) (append-aux4 . rest))
+	  ((< 4 (rest-length rest))
+	   (backwards-listify-args append-aux-gen . rest))
+	  ((= 1 (rest-length rest)) (append-aux1 . rest))
+	  (else
+	   (error "internal error: append received ~a args"
+		  (rest-length rest)))))
+
+
+  (add-method (append (null-type) an-empty-list . rest)
+    (cond ((= 2 (rest-length rest)) (append-aux2 . rest))
+	  ((= 3 (rest-length rest)) (append-aux3 . rest))
+	  ((= 4 (rest-length rest)) (append-aux4 . rest))
+	  ((< 4 (rest-length rest))
+	   (backwards-listify-args append-aux-gen . rest))
+	  ((= 1 (rest-length rest)) (append-aux1 . rest))
+	  ((= 0 (rest-length rest)) '())
+	  (else
+	   (error "internal error: append received ~a args"
+		  (rest-length rest)))))
+
+  )
+
+
+
+(labels (((append!-aux1 a)
+	  a)
+
+	 ((append!-aux2 a b)
+	  (if (null? a)
+	      b
+	      (let ((x (last-pair a)))
+		(set! (cdr x) b)
+		a)))
+
+	 ((append!-aux3 a b c)
+	  (append!-aux2 a (append!-aux2 b c)))
+
+	 ((append!-aux-gen inlist)
+	  (iterate step ((in (cdr inlist)) (out (car inlist)))
+	    (if (not (null? in))
+		(step (cdr in) (append!-aux2 (car in) out))
+		out))))
+
+
+; after the old definitions have been removed from the source code,
+; the following two methods can be replaced by one for list-type
+
+
+  (add-method (append! (pair) . rest)
+    (cond ((= 2 (rest-length rest)) (append!-aux2 . rest))
+	  ((= 3 (rest-length rest)) (append!-aux3 . rest))
+	  ((= 1 (rest-length rest)) (append!-aux1 . rest))	    
+	  (else
+	   (backwards-listify-args append!-aux-gen . rest))))
+
+
+  (add-method (append! (null-type) an-empty-list . rest)
+    (cond ((= 2 (rest-length rest)) (append!-aux2 . rest))
+	  ((= 3 (rest-length rest)) (append!-aux3 . rest))
+	  ((= 1 (rest-length rest)) (append!-aux1 . rest))
+	  ((= 0 (rest-length rest)) '())
+	  (else
+	   (backwards-listify-args append!-aux-gen . rest))))
+  )
+
+
+
+
+; Unless there are zero arguments, calls to append that invoke 
+; the method for object will call the error handling system, which 
+; will force delayed values if necessary, or else report an error.
+
+
+
+(dolist (x (list append append!))
+  (add-method (x (object) . rest)
+    (if (zero? (rest-length rest))
+ 	'()
+ 	(listify-args
+ 	 (lambda (args)
+ 	   (bind (((fluid fancy-references) #t))
+	     (failed-funcall (cons x args))))
+ 	 . rest))))
+
+
+
+
+
+; we may remove this type checking later.
+
+(define (append-type-error type-name offending-value)
+  (bind (((fluid fancy-references) #t))
+    (error "the append method for ~as got an incorrectly typed argument ~a"
+	   type-name offending-value)))
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+;;; Lists as sets:
+
+(define-instance union operation)
+
+(add-method (union (list-type) a b)
+  (cond ((null? a) b)
+	((memq (car a) b) (union (cdr a) b))
+	(else (union (cdr a) (cons (car a) b)))))
+
+(define-instance intersection operation)
+
+(add-method (intersection (list-type) a b)
+  (iterate aux ((rest a)(answer nil))
+    (cond ((null? rest) answer)
+	  ((memq (car rest) b)
+	   (aux (cdr rest) (cons (car rest) answer)))
+	  (else (aux (cdr rest) answer)))))
+
+(define-instance setdifference operation)
+
+(add-method (setdifference (list-type) a b)
+  (cond ((null? a) nil)
+	((memq (car a) b) (setdifference (cdr a) b))
+	(else (cons (car a) (setdifference (cdr a) b)))))
+
+(define-instance setxor operation)
+
+(add-method (setxor (list-type) a b)
+  (cond ((null? a) b)
+	((null? b) a)
+	((memq (car a) b) (setxor (cdr a) (del eq? (car a) b)))
+	(else (cons (car a) (setxor (cdr a) b)))))
+
+(define-instance setequal? operation)
+
+;;; This definition is inefficient.
+(add-method (setequal? (list-type) a b)
+  (null? (setxor a b)))
+
+
+(define-instance subset? operation)
+
+(add-method (subset? (null-type) a b)
+  #t)
+
+(add-method (subset? (list-type) a b)
+  (and (memq (car a) b)
+       (subset? (cdr a) b)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; This is used by the thing that remaps the ivar references in
+;;; code blocks:
+
+(define (position-in-list x l)
+  (iterate aux ((l l) (i 0))
+    (cond ((null? l) nil)
+	  ((eq? x (car l)) i)
+	  (else (aux (cdr l) (+ i 1))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; make REMOVE-METHOD, an analogue to ADD-METHOD, in terms of
+;;; LOCAL-METHOD, an access operation for types' methods.
+;;;
+
+#||
+
+(define-instance local-method settable-operation)
+
+(let ((local-method0 (make settable-operation)))
+  
+  (add-method (local-method (operation) op typ)
+    (local-method0 typ op))
+  
+  (add-method (local-method0 (type operation-method-alist) typ op)
+    (let ((pair (%assq op operation-method-alist)))
+      (if meth (cdr meth) nil)))
+  
+  (add-method ((setter local-method) (operation) op typ new-method)
+    (set! (local-method0 typ op) new-method))
+  
+  (add-method ((setter local-method0) (type operation-method-alist)
+				      typ op new-method)
+    (cond ((null? new-method)
+	   (let ((meth (%assq op operation-method-alist)))
+	     (if meth
+		 (set! operation-method-alist
+		      (set-difference local-method (list meth))))))
+	  (else (set! local-method (cons (cons op new-method)
+					operation-method-alist))))
+    new-method)
+  )
+
+(define-instance remove-method operation)
+
+(add-method (remove-method (operation) op typ)
+  (set! (local-method op typ) nil))
+
+||#
+
+;;; eof

@@ -1,0 +1,667 @@
+;;; Copyright (C) 1986,7,8 Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; This contains definitions for all the numeric stuff.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+
+;;; The numeric type heirarchy is as follows.  Entries with *s are
+;;; instantiable.
+;;;
+;;;		       number
+;;;	     	       /    \
+;;;	     	     real  complex*
+;;;                 /    \
+;;;	       rational   float*
+;;;             /    \
+;;;        integer fraction*
+;;;        /    \
+;;;    fixnum* bignum*
+
+
+(define-constant-instance number
+  coercable-type '() (list self-evaluatory-mixin))
+
+(set! (coercer number)
+     (make (mix-types oc-mixer (list foldable-mixin operation))))
+
+(add-method (number (number) x) x)
+
+(define-constant-instance real type '() (list number))
+(define-constant-instance rational type '() (list real))
+(define-constant-instance integer type '() (list rational))
+
+;;; This gets redone when float.oak is loaded:
+(define-instance float type '() (list real))
+
+(define-constant fixnum (the-runtime fixnum))
+(initialize fixnum '() (list integer object))
+
+;;; Tell the bytecode emulator about this:
+;(set! ((%register 'fixnum-type)) (the-runtime fixnum))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-instance / operation)
+(define-instance /r operation)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; These are the operations that get trapped to when the corresponding
+;;; instruction fails.  That is the only time they should ever be called.
+;;; They should never be called directly by user code, or system code
+;;; either for that matter.
+
+(define-instance plus/2 operation)
+(define-instance times/2 operation)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(labels ((+/2 (lambda (x y) (+ x y)))
+	 (+/3 (lambda (x y z) (+ x y z)))
+	 (+/4 (lambda (x y z p) (+ x y z p)))
+	 (+/5 (lambda (x y z p d) (+ x y z p d)))
+	 (+/>5 (lambda (x y z p d q . args)
+		     (let ((z (+ x y z p d q)))
+		       (cond ((= 0 (rest-length args)) z)
+			     ((= 1 (rest-length args)) (+/2 z . args))
+			     ((= 2 (rest-length args)) (+/3 z . args))
+			     ((= 3 (rest-length args)) (+/4 z . args))
+			     ((= 4 (rest-length args)) (+/5 z . args))
+			     (else (+/>5 z . args)))))))
+
+  (define-constant +
+    (add-method ((make-fancy-open-coded-operation
+		  (list foldable-mixin)
+		  (lambda (n) (make list-type (- n 1) '(plus)))
+		  nil 1)
+		 (object) . args)
+      (cond ((= 0 (rest-length args)) 0)
+	    ((= 1 (rest-length args)) (%return))
+	    ((= 2 (rest-length args)) (+/2 . args))
+	    ((= 3 (rest-length args)) (+/3 . args))
+	    ((= 4 (rest-length args)) (+/4 . args))
+	    ((= 5 (rest-length args)) (+/5 . args))
+	    (else (+/>5 . args))))))
+
+(add-method (plus/2 (fixnum) x y)
+  (cond ((eq? (get-type y) fixnum)
+	 (plus/2 (bignum x) y))
+	(else
+	 (plus/2 y x))))
+
+(add-method (times/2 (fixnum) x y)
+  (cond ((eq? (get-type y) fixnum)
+	 (times/2 (bignum x) y))
+	(else
+	 (times/2 y x))))
+
+(define-constant 1+
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((load-imm 1)(plus)) 1 1)
+	       (number) x)
+    (+ 1 x)))
+
+(define-constant minus
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((negate)) 1 1)
+	       (fixnum) x)
+
+    (if (most-negative-fixnum? x)
+	least-positive-bignum
+	(- x))))
+
+(define-instance subtract/2 operation)
+
+(add-method (subtract/2 (number) x y)
+  (+ x (- y)))
+
+(labels ((-aux (lambda (x y . args)
+		 (if (zero? (rest-length args))
+		     (- x y)
+		     (-aux (- x y) . args)))))
+
+  (define-constant -
+    (add-method ((make-fancy-open-coded-operation
+		  (list foldable-mixin)
+		  (lambda (n)
+		    (cond ((zero? n)
+			   (error "The - operation requires at least one argument."))
+			  ((= n 1) '((negate)))
+			  (else (make list-type (- n 1) '(subtract)))))
+		  nil 1)
+		 (number) x . args)
+      (if (zero? (rest-length args))
+	  (- x)
+	  (-aux x . args)))))
+
+(labels ((*/2 (lambda (x y) (* x y)))
+	 (*/3 (lambda (x y z) (* x y z)))
+	 (*/4 (lambda (x y z p) (* x y z p)))
+	 (*/5 (lambda (x y z p d) (* x y z p d)))
+	 (*/>5 (lambda (x y z p d q . args)
+		     (let ((z (* x y z p d q)))
+		       (cond ((= 0 (rest-length args)) z)
+			     ((= 1 (rest-length args)) (*/2 z . args))
+			     ((= 2 (rest-length args)) (*/3 z . args))
+			     ((= 3 (rest-length args)) (*/4 z . args))
+			     ((= 4 (rest-length args)) (*/5 z . args))
+			     (else (*/>5 z . args)))))))
+
+  (define-constant *
+    (add-method ((make-fancy-open-coded-operation
+		  (list foldable-mixin)
+		  (lambda (n) (make list-type (- n 1) '(times)))
+		  nil 1)
+		 (object) . args)
+      (cond ((= 0 (rest-length args)) 1)
+	    ((= 1 (rest-length args)) (%return))
+	    ((= 2 (rest-length args)) (*/2 . args))
+	    ((= 3 (rest-length args)) (*/3 . args))
+	    ((= 4 (rest-length args)) (*/4 . args))
+	    ((= 5 (rest-length args)) (*/5 . args))
+	    (else (*/>5 . args))))))
+
+(define-constant remainder
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((remainder)) 2 1)
+	       (fixnum) x y)
+    (cond ((zero? y)
+	   (error "Illegal second arg: (REMAINDER ~D ~D).~%" x y))
+	  ((eq? (get-type y) fixnum)
+	   (remainder x y))
+	  ((eq? (get-type y) bignum)
+	   (remainder (bignum x) y))
+	  (else
+	   ;;(error "Illegal second arg: (REMAINDER ~D ~D).~%" x y)
+	   (^super integer remainder x y)
+	   ))))
+
+(define-constant modulo
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((modulo)) 2 1)
+	       (fixnum) x y)
+    (cond ((zero? y)
+	   (error "Illegal second arg: (MODULO ~D ~D).~%" x y))
+	  ((eq? (get-type y) fixnum)
+	   (modulo x y))
+	  ((eq? (get-type y) bignum)
+	   (modulo (bignum x) y))
+	  (else (^super integer modulo x y)))))
+
+
+(add-method (modulo (real) x y)
+  (- x (* y (floor (/ x y)))))
+
+(add-method (remainder (real) x y)
+  (- x (* y (truncate (/ x y)))))
+
+(define-old-name mod modulo)
+
+(define-constant quotient
+  (add-method ((make-fancy-open-coded-operation (list foldable-mixin) '((div)) 2 1)
+	       (fixnum) x y)
+    (cond ((zero? y)
+	   (error "Illegal second arg: (QUOTIENT ~D ~D).~%" x y))
+	  ((eq? (get-type y) bignum)
+	   0)
+	  ((eq? (get-type y) fixnum)
+	   ;; Watch it, this can cause an infinite loop.
+	   ;(warning "Call to (QUOTIENT ~D ~D).~%" x y)
+	   (quotient x y))
+	  (else (error "Illegal second arg: (QUOTIENT ~D ~D).~%" x y)))))
+
+(define-old-name div quotient)
+
+(define-constant quotientm
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((quotientm)) 2 1)
+	       (fixnum) x y)
+    (cond ((zero? y)
+	   (error "Illegal second arg: (QUOTIENTM ~D ~D).~%" x y))
+	  ((eq? (get-type y) fixnum)
+	   ;; Watch it, this can cause an infinite loop.
+	   ;(warning "Call to (QUOTIENTM ~D ~D).~%" x y)
+	   (quotientm x y))
+	  (else (error "Illegal second arg: (QUOTIENTM ~D ~D).~%" x y)))))
+
+(define-constant zero?
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((=0?)) 1 1)
+	       (fixnum) x)
+    (zero? x)))
+
+(add-method (zero? (number) x) nil)
+
+(define-constant negative?
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((<0?)) 1 1)
+	       (fixnum) x)
+    (negative? x)))
+
+(add-method (negative? (real) x)
+  (< x 0))
+
+(define-constant positive?
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((LOAD-IMM 0) (<)) 1 1)
+	       (fixnum) x)
+    (positive? x)))
+
+(add-method (positive? (real) x)
+  (< 0 x))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Comparison operators
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; NOTE: < and = must be defined for all subtypes of real; the other
+;;; comparison operators are defined in terms of these.
+
+(define-constant =
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((=)) 2 1)
+	       (fixnum) x y)
+    (fselect-type y
+      ((fixnum) (= x y))
+      ((number) #f)
+      (otherwise (error "Illegal second arg (= ~D ~D).~%" x y)))))
+
+(define-constant <
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((<)) 2 1)
+	       (fixnum) x y)
+    (fselect-type y
+      ((fixnum)   (< x y))
+      ((bignum)   (not (negative? y)))
+      ((rational) (< (* x (denominator y)) (numerator y)))
+      ((float) (if (zero? x)
+		   (< x (float-sign y))
+		   (< ((coercer float) x) y)))
+      (otherwise  (error "Illegal second arg (< ~D ~D).~%" x y)))))
+
+;;;
+
+(define-constant >
+  (make-fancy-open-coded-operation
+   (list foldable-mixin backwards-args-mixin)
+   '((<)) 2 1))
+
+(define-constant >=
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((<) (not)) 2 1))
+
+(define-constant !=
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((=) (not)) 2 1))
+
+(define-constant <=
+  (make-fancy-open-coded-operation
+   (list foldable-mixin backwards-args-mixin)
+   '((<) (not)) 2 1))
+
+(add-method (>  (object) x y) (>  x y))
+(add-method (>= (object) x y) (>= x y))
+(add-method (!= (object) x y) (!= x y))
+(add-method (<= (object) x y) (<= x y))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Rotations and shifts
+
+(define-constant rot-left
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((rot)) 2 1)
+	       (fixnum) x y)
+    (fselect-type y
+      ((fixnum) (rot-left x y))
+      (otherwise (error "Illegal second arg (ROT-LEFT ~D ~D).~%" x y)))))
+
+(define-constant rot-right
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin
+		      backwards-args-mixin)
+		'((negate)(swap 1)(rot)) 2 1)
+	       (fixnum) x y)
+    (rot-left x (- y))))
+
+(define-constant ash-left
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((ash)) 2 1)
+	       (fixnum) x y)
+    (fselect-type y
+      ((fixnum) (ash-left x y))
+      (otherwise (error "Illegal second arg (ASH-LEFT ~D ~D).~%" x y)))))
+
+(define-constant ash-right
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin
+		      backwards-args-mixin)		      
+		'((negate)(swap 1)(ash)) 2 1)
+	       (fixnum) x y)
+    (ash-left x (- y))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Bitwise operations
+
+(define-constant bit-not
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((bit-not)) 1 1)
+	       (fixnum) x)
+    (bit-not x)))
+
+(define-constant bit-and
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((bit-and)) 2 1)
+	       (fixnum) x y)
+    (fselect-type y
+      ((fixnum) (bit-and y x))
+      (otherwise (error "Bad second arg (BIT-AND ~D ~D)." x y)))))
+
+(define-constant bit-or
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((bit-or)) 2 1)
+	       (fixnum) x y)
+    (fselect-type y
+      ((fixnum) (bit-or y x))
+      (otherwise (error "Bad second arg (BIT-OR ~D ~D)." x y)))))
+
+(define-constant bit-xor
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((bit-xor)) 2 1)
+	       (fixnum) x y)
+    (fselect-type y
+      ((fixnum) (bit-xor y x))
+      (otherwise (error "Bad second arg (BIT-XOR ~D ~D)." x y)))))
+
+(define-constant bit-nand
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((bit-nand)) 2 1)
+	       (fixnum) x y)
+    (fselect-type y
+      ((fixnum) (bit-nand y x))
+      (otherwise (error "Bad second arg (BIT-NAND ~D ~D)." x y)))))
+
+(define-constant bit-andca
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((bit-andca)) 2 1)
+	       (integer) x y)
+    (bit-and x (bit-not y))))
+
+(define-constant bit-nor
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((bit-nor)) 2 1)
+	       (fixnum) x y)
+    (fselect-type y
+      ((fixnum) (bit-nor y x))
+      (otherwise (error "Bad second arg (BIT-NOR ~D ~D)." x y)))))
+
+(define-constant bit-equiv
+  (add-method ((make-fancy-open-coded-operation
+		(list foldable-mixin)
+		'((bit-equiv)) 2 1)
+	       (fixnum) x y)
+    (fselect-type y
+      ((fixnum) (bit-equiv y x))
+      (otherwise (error "Bad second arg (BIT-EQUIV ~D ~D)." x y)))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(define-constant-instance abs
+  (mix-types oc-mixer (list foldable-mixin operation)))
+
+(define-constant-instance expt
+  (mix-types oc-mixer (list foldable-mixin operation)))
+
+(define-constant-instance expt/r
+  (mix-types oc-mixer (list foldable-mixin operation)))
+
+(add-method (abs (real) x)
+  (if (negative? x) (- x) x))
+
+(add-method (expt (number) x y)
+  (expt/r y x))
+
+(add-method (expt/r (integer) n a)
+  (cond ((negative? n) (/ 1 (expt/r (- n) a)))
+	((zero? n) 1)
+	(else
+	 (let* ((rec (expt/r (quotient n 2) a))
+		(srec (* rec rec)))
+	   (if (even? n) srec (* a srec))))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+; recoded below to allow multiple arguments
+; 
+; (define-constant-instance max
+;   (mix-types oc-mixer (list foldable-mixin operation)))
+; (define-constant-instance min
+;   (mix-types oc-mixer (list foldable-mixin operation)))
+; 
+; (add-method (max (object) x y)
+;   (if (> x y) x y))
+; (add-method (min (object) x y)
+;   (if (> x y) y x))
+
+
+
+; These macros should be flushed when it becomes convenient.
+; The open coded function is faster.
+
+
+(local-syntax (max-macro2 clause1 clause2)
+  (let ((var1 (genvar))
+	(var2 (genvar)))
+    `(let* ((,var2 ,clause2)
+	    (,var1 ,clause1))
+       (if (> ,var2 ,var1) ,var2 ,var1))))
+	   
+
+(local-syntax (max-macro . clauses)
+  (let ((n-clauses (length clauses)))
+    (cond ((zero? n-clauses)
+	   (error "max requires at least one argument"))
+	  ((= 1 n-clauses)
+	   (car clauses))
+	  (else
+	   `(max-macro2 ,(car clauses) (max-macro ,@(cdr clauses)))))))
+
+
+(local-syntax (min-macro2 clause1 clause2)
+  (let ((var1 (genvar))
+	(var2 (genvar)))
+    `(let* ((,var2 ,clause2)
+	    (,var1 ,clause1))
+       (if (< ,var2 ,var1) ,var2 ,var1))))
+	   
+  
+(local-syntax (min-macro . clauses)
+  (let ((n-clauses (length clauses)))
+    (cond ((zero? n-clauses)
+	   (error "min requires at least one argument"))
+	  ((= 1 n-clauses)
+	   (car clauses))
+	  (else
+	   `(min-macro2 ,(car clauses) (min-macro ,@(cdr clauses)))))))
+
+
+
+(let* ((generate-bytecodes-for-max2
+	(lambda ()
+	  (let ((noswap (generate-symbol 'noswap)))
+	    (copy
+	     `((load-stk 1)
+	       (load-stk 1)
+	       (<)
+	       (branch-nil ,noswap)
+	       (swap 1)
+	       (label ,noswap)
+	       (blast 1)
+	       )))))
+
+       (generate-bytecodes-for-max
+	(lambda (n)
+	  (cond ((zero? n)
+		 (error "max requires at least one argument"))
+		((= 1 n)
+		 '())
+		(else
+		 (splice
+		  (map (lambda (ignore) (generate-bytecodes-for-max2))
+		       (iota (- n 1)))))))))
+
+
+  (define-constant max (make-fancy-open-coded-operation
+			(list foldable-mixin)
+			generate-bytecodes-for-max
+			nil 1)))
+
+
+
+(let* ((generate-bytecodes-for-min2
+	(lambda ()
+	  (let ((noswap (generate-symbol 'noswap)))
+	    (copy
+	     `((load-stk 1)
+	       (load-stk 1)
+	       (<)
+	       (branch-nil ,noswap)
+	       (swap 1)
+	       (label ,noswap)
+	       (blast 1)
+	       )))))
+
+       (generate-bytecodes-for-min
+	(lambda (n)
+	  (cond ((zero? n)
+		 (error "min requires at least one argument"))
+		((= 1 n)
+		 '())
+		(else
+		 (splice
+		  (map (lambda (ignore) (generate-bytecodes-for-min2))
+		       (iota (- n 1)))))))))
+
+
+  (define-constant min (make-fancy-open-coded-operation
+			    (list foldable-mixin)
+			    generate-bytecodes-for-min
+			    nil 1)))
+
+
+(labels (((max-helper-1 a) a)
+	 ((max-helper-2 a b) (max-macro a b))
+	 ((max-helper-3 a b c) (max-macro a b c))
+	 ((max-helper-4 a b c d) (max-macro a b c d))
+
+	 ((max-helper-5+ a b c d e . rest)
+	  (let ((max-so-far (max-macro a b c d e)))
+	    (cond ((> (rest-length rest) 3) (max-helper-5+ max-so-far . rest))
+		  ((= (rest-length rest) 3) (max-helper-4 max-so-far . rest))
+		  ((= (rest-length rest) 2) (max-helper-3 max-so-far . rest))
+		  ((= (rest-length rest) 1) (max-helper-2 max-so-far . rest))
+		  (else
+		   max-so-far)))))
+
+  (add-method (max (object) . rest)
+
+    (cond ((> (rest-length rest) 4) (max-helper-5+ . rest))
+	  ((= (rest-length rest) 4) (max-helper-4  . rest))
+	  ((= (rest-length rest) 3) (max-helper-3  . rest))
+	  ((= (rest-length rest) 2) (max-helper-2  . rest))
+	  ((= (rest-length rest) 1) (max-helper-1  . rest))
+	  (else (error "MAX requires at least one argument")))))
+
+
+
+
+(labels (((min-helper-1 a) a)
+	 ((min-helper-2 a b) (min-macro a b))
+	 ((min-helper-3 a b c) (min-macro a b c))
+	 ((min-helper-4 a b c d) (min-macro a b c d))
+
+	 ((min-helper-5+ a b c d e . rest)
+	  (let ((min-so-far (min-macro a b c d e)))
+	    (cond ((> (rest-length rest) 3) (min-helper-5+ min-so-far . rest))
+		  ((= (rest-length rest) 3) (min-helper-4 min-so-far . rest))
+		  ((= (rest-length rest) 2) (min-helper-3 min-so-far . rest))
+		  ((= (rest-length rest) 1) (min-helper-2 min-so-far . rest))
+		  (else
+		   min-so-far)))))
+
+  (add-method (min (object) . rest)
+
+    (cond ((> (rest-length rest) 4) (min-helper-5+ . rest))
+	  ((= (rest-length rest) 4) (min-helper-4  . rest))
+	  ((= (rest-length rest) 3) (min-helper-3  . rest))
+	  ((= (rest-length rest) 2) (min-helper-2  . rest))
+	  ((= (rest-length rest) 1) (min-helper-1  . rest))
+	  (else (error "MIN requires at least one argument")))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;(define-instance exp operation)
+
+;;; Make the usual equality tests work on numbers.
+
+(dolist (op (list eqv? equal?))
+
+  (add-method (op (number) x y)
+    (and (eq? (get-type x) (get-type y))
+	 (= x y)))
+
+  (add-method (op (fixnum) x y)
+    (eq? x y)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; Open code EVEN? and ODD? sometime in the future.
+
+(define-constant even?
+  (add-method ((make (mix-types oc-mixer (list foldable-mixin operation)))
+	       (integer) x)
+    (zero? (remainder x 2))))
+
+(define-constant odd?
+  (add-method ((make (mix-types oc-mixer (list foldable-mixin operation)))
+	       (integer) x)
+    (not (zero? (remainder x 2)))))
+
+(define-instance exact? operation)
+(define-instance inexact? operation)
+
+(add-method (exact? (number) x) #f)
+(add-method (exact? (rational) x) #t)
+(add-method (inexact? (number) x) (not (exact? x)))
+
+;;; eof

@@ -1,0 +1,57 @@
+\documentstyle[times,12pt,fullpage,epsf,makeidx]{report}
+
+\newcommand{\myepsfbox}[1]{\mbox{\epsfbox{#1}}}
+% \newcommand{\myepsfbox}[1]{\fbox{\epsfbox{#1}}}
+
+% \setlength{\textwidth}{6.75in}
+% \setlength{\oddsidemargin}{-0.125in}
+% \setlength{\evensidemargin}{-0.125in}
+% \setlength{\topmargin}{-0.475in}
+% \setlength{\textheight}{8.75in}
+
+\makeindex
+
+\begin{document}
+
+\input{../mandefs}
+
+\include{cover}
+\tableofcontents
+\include{intro}
+\include{types}
+\include{methods}
+\include{sides}
+\include{locales}
+\include{dynamic}
+\include{control}
+\include{sequences}
+\include{numbers}
+\include{io}
+\include{misc}
+\include{user}
+
+\nocite{OAKLANG88}
+\nocite{CLOOPS}
+\nocite{FLAVORS2}
+\nocite{MVC}
+\nocite{R3RS}
+\nocite{SCHEME-DECLARATIVE}
+\nocite{SCHEME-PAP}
+\nocite{SNYDER86}
+\nocite{T}
+\nocite{T-MAN}
+\nocite{OAK-PAP}
+\nocite{3LISP}
+\nocite{FLAVORS1}
+\nocite{CLtL}
+\nocite{MULTILISP85}
+\nocite{ACTORS78}
+\nocite{CITY-TRASH}
+\nocite{PEARLMUTTER-LANG90A}
+\nocite{PEARLMUTTER99}
+
+\bibliography{../oakman}
+
+\printindex
+
+\end{document}

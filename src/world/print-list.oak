@@ -1,0 +1,69 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;;; A hairy print method for lists.  With abbreviation, hooks for using this
+;;; code to print vectors, etc.
+
+(add-method (print (null-type) self stream)
+  (write-char stream #\()
+  (write-char stream #\)))
+
+;;; Print methods for lists.  The trick here is a helper function,
+;;; PRINT-LIST-END, which prints the tail of a list.  It takes a second
+;;; argument which is true if a delimiter (ie white space or "(") was
+;;; just printed, a third which is the number of elements printed so fat,
+;;; and a fourth which is a string to close the list with, normally ")".
+
+(set! print-level #f)
+(set! print-length #f)
+(set! print-escape #t)
+(set! print-radix 10)
+
+(define-instance print-list-end operation)
+
+;;; Note: the code below is duplicated to some extent in the methods for
+;;; pretty-print for pairs in print-pretty.oak, so if the code below is hacked
+;;; the hacks should be copied over.
+
+(add-method (print (pair) self stream)
+  (if (and print-level (<= print-level 0))
+      (write-char stream #\#)
+      (let ((the-car (car self)))
+	(bind ((print-level (and print-level (- print-level 1))))
+	  (cond ((and (quotelike-prefix? the-car)
+		      (pair? (cdr self))
+		      (null? (cddr self)))
+		 (write-char stream (quotelike-prefix? the-car))
+		 (print (cadr self) stream))
+		((and (eq? the-car 'unquote-splicing)
+		      (pair? (cdr self))
+		      (null? (cddr self)))
+		 (write-string ",@" stream)
+		 (print (cadr self) stream))
+		((and (eq? the-car 'unquote)
+		      (pair? (cdr self))
+		      (null? (cddr self)))
+		 (write-char stream #\,)
+		 (print (cadr self) stream))
+		(else
+		 (write-char stream #\()
+		 (print-list-end self #t print-length ")" stream)))))))
+
+(add-method (print-list-end (object) self delimiter? len ending stream)
+  (write-string " . " stream)
+  (print self stream)
+  (write-string ending stream))
+
+(add-method (print-list-end (null-type) self delimiter? len ending stream)
+  (write-string ending stream))
+
+(add-method (print-list-end (pair) self delimiter? len ending stream)
+  (when (not delimiter?)
+    (write-char stream #\space))
+  (cond ((and len (= len 0))
+	 (write-string "..." stream)
+	 (write-string ending stream))
+	(else
+	 (print (car self) stream)
+	 (print-list-end (cdr self) #f (and len (- len 1)) ending stream))))
+
+;;; eof

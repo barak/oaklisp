@@ -1,0 +1,8 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;this function uses a really evil compiler-dependent trick.
+
+(define (dump-stack arg . rest)
+  (format #t "~A~%" arg)
+  (set! rest (+ 1 rest))
+  (dump-stack . rest))

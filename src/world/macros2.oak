@@ -1,0 +1,178 @@
+;;; Copyright (C)  Kevin J. Lang and Barak A. Pearlmutter. Fall 1986.
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                macros (second chunk)                                ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+(define-syntax (create-accessors typ prefix . vars)
+  `(block
+     ,@(map (lambda (x)
+	      (let ((pre-x ((coercer symbol)
+			    (append ((coercer string) prefix)
+				    ((coercer string) x)))))
+		`(block
+		   (set! ,pre-x (make operation))
+		   (add-method (,pre-x (,typ ,x) self)
+		     ,x))))
+	    vars)))
+
+
+(define-syntax (create-setters typ prefix . vars)
+  `(block
+    ,@(map (lambda (x)
+	     (let ((pre-x ((coercer symbol)
+			   (append ((coercer string) prefix)
+				   ((coercer string) x)))))
+	       `(block (set! ,pre-x (make settable-operation))
+		       (add-method (,pre-x (,typ ,x) self)
+			 ,x)
+		       (add-method ((setter ,pre-x) (,typ ,x) self val)
+			 (set! ,x val)))))
+	   vars)))
+
+(define-syntax (create-locaters typ prefix . vars)
+  (let ((the-type (genvar)))
+    `(let ((,the-type ,typ))
+       ,@(map (lambda (x)
+		(let ((pre-x ((coercer symbol)
+			      (append ((coercer string) prefix)
+				      ((coercer string) x)))))
+		  `(block (set! ,pre-x (make locatable-operation))
+			  (add-method (,pre-x (,the-type ,x) self)
+			    ,x)
+			  (add-method ((locater ,pre-x) (,the-type ,x) self)
+			    (make-locative ,x))
+			  (add-method ((setter ,pre-x) (,the-type ,x)
+						       self val)
+			    (set! ,x val)))))
+	      vars))))
+
+(define-syntax (with-operations names . body)
+  `(let ,(map (lambda (x) `(,x (make operation)))
+	      names)
+     ,@body))
+
+
+;This makes things like frozen-here? by doing things like
+
+;(define-set-manager frozen-here? locale frozen-symbols)
+
+(define-syntax (define-set-manager pred typ ivar)
+  (let ((element (genvar))
+	(newstatus (genvar)))
+    `(block (define-instance ,pred settable-operation)
+	    (add-method (,pred (,typ ,ivar) self ,element)
+	      (memq ,element ,ivar))
+	    (add-method ((setter ,pred) (,typ ,ivar)
+					self ,element ,newstatus)
+	      (if ,newstatus
+		  (if (not (memq ,element ,ivar))
+		      (set! ,ivar (cons ,element ,ivar)))
+		  (set! ,ivar (delq ,element ,ivar)))
+	      ,newstatus))))
+
+
+(define-syntax (push location expr)
+  (if (symbol? location)
+      `(set! ,location (cons ,expr ,location))
+      `(let ((loc (make-locative ,location)))
+	 (set! (contents loc) (cons ,expr (contents loc))))))
+
+
+(define-syntax (pop location)
+  (if nil;; (symbol? location), but can't check if it's a stack var...
+      `(prog0 (car location) (set! location (cdr location)))
+      `(let* ((loc (make-locative ,location))
+	      (val (contents loc)))
+	 (set! (contents loc) (cdr val))
+	 (car val))))
+
+
+(define-syntax (swap loc1 loc2)
+  `(let ((l1 (make-locative ,loc1))
+	 (l2 (make-locative ,loc2)))
+     (let ((v1 (contents l1)))
+       (set! (contents l1) (contents l2))
+       (set! (contents l2) v1))))
+
+
+(let ((option-set-alist
+       '( ((in) . open-input-file)
+	  ((out) . open-output-file)
+	  ((append) . open-output-file-append)
+	  ((out ugly) . open-output-file-ugly)
+	  ((append ugly) . open-output-file-append-ugly) )))
+
+  (define-syntax (with-open-file (var file . options) . body)
+    `(let ((,var (,(cdr (ass setequal? options option-set-alist)) ,file)))
+       (wind-protect ()
+		     (block ,@body)
+		     (close ,var)))))
+
+(define-syntax (with-input-from-string (var str) . body)
+  `(let ((,var (make string-input-stream ,str)))
+     ,@body))
+
+
+(define-syntax (modify-location place proc)
+  (labels ((normal
+	    (lambda (place)
+	      `((setter contents) (make-locative ,place) (,proc ,place)))))
+
+    (if (symbol? place)
+	(normal place)
+	(let ((place (expand-groveling current-locale place)))
+	  (if (symbol? place)
+	      (normal place)
+
+	      (let ((varlist (map (lambda (x) (genvar)) place)))
+
+		`(let ,(map list varlist place)
+		   (set! ,varlist (,proc ,varlist)))))))))
+
+;;; Mutant BLOCK that captures nested DEFINE forms and mutates into
+;;; a big LABELS form.
+
+;;; Implementation: skim the DEFINEs off the top, separating the
+;;; lambda's from the non-lambdas.  Outer LET binds the non-lambda's
+;;; to their external values.  Then a LABELS sets up the lambda ones.
+;;; Then destructuve assignments give all the non-lambda ones their
+;;; new values.
+
+(define-syntax (mit-block . body)
+
+  (iterate aux ((body body) (rvdefs '()) (rldefs '()))
+
+    (destructure** body
+
+      (( ('define (func . args) . def) . body)
+       (aux body rvdefs (cons `(,func (lambda ,args ,@def)) rldefs)))
+
+      (( ('define func ('lambda args . def)) . body)
+       (aux body rvdefs (cons `(,func (lambda ,args ,@def)) rldefs)))
+
+      (( ('define var val) . body)
+       (aux body (cons `(,var ,val) rvdefs) rldefs))
+
+      (( ('define . a) . b)
+       (error "Malformed definition ~S before ~S." `(define ,@a) b))
+
+      (otherwise
+       (let* ((inner `(%block ,@(map (lambda (vdef) `(set! ,@vdef))
+				     (reverse rvdefs))
+			      ,@body))
+	      (mid (if (null? rldefs) inner `(labels ,rldefs ,inner)))
+	      (outer (if (null? rvdefs)
+			 mid
+			 `(let ,(map (lambda (vc)
+				       `(,(car vc)
+					 (make undefined ',(car vc))))
+				     rvdefs)
+			    ,mid))))
+	 outer)))))
+
+;;; eof

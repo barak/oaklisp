@@ -1,0 +1,77 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;;; This is a stopgap error handling system.  It defines the following
+;;; macros:
+;;;
+;;; (error-return "Specify a value to be returned from this construct."
+;;;   . body)
+;;;
+;;; (error-restart "Specify some new values for these variables."
+;;;                ((var1 val1)(var2 val2))
+;;;   . body)
+;;;
+;;; The implementation involves making catch tags and stashing them in a
+;;; data structure bound to a fluid variable.
+
+(set! restart-handlers '())
+
+(define-syntax (error-return message . body)
+  (let ((tag (genvar)))
+    `(native-catch ,tag
+       (bind ((restart-handlers
+	       (cons (list ,message
+			   (lambda (x) (throw ,tag (and x (car x))))
+			   1)
+		     restart-handlers)))
+	 ,@body))))
+
+;;; This utility function is used below for rebinding only the supplied vars.
+
+(define (subst-vals-in old new)
+  (cond ((null? new) old)
+	(else (cons (car new)
+		    (subst-vals-in (cdr old) (cdr new))))))
+
+(define-syntax (error-restart message variables . body)
+  (let ((aux (genvar))
+	(tag (genvar))
+	(tag0 (genvar))
+	(messvar (genvar))
+	(temps (map (lambda (x) (genvar)) variables)))
+    `(native-catch ,tag0
+       (let ((,messvar ,message))
+	 (iterate ,aux ,variables
+	   (destructure ,temps
+	       (subst-vals-in
+		(list ,@(map car variables))
+		(catch ,tag
+		  (throw
+		   ,tag0
+		   (bind ((restart-handlers
+			   (cons (list ,messvar ,tag ,(length variables))
+				 restart-handlers)))
+		     ,@body))))
+	     (,aux ,@temps)))))))
+
+(define (show-handlers)
+  (format #t "~&  Active handlers:~%")
+  (iterate aux ((i 0)(l (reverse restart-handlers)))
+    (when (not (null? l))
+      (format #t "  ~D: ~A~%" i (caar l))
+      (aux (+ i 1) (cdr l)))))
+
+(define (ret n . args)
+  (listify-args
+   (lambda (args)
+     (let* ((handlers restart-handlers)
+	    (nhandlers (length handlers))
+	    (handler (nth handlers (- nhandlers (1+ n)))))
+       (destructure (message tag arg-count) handler
+	 (format standard-error "~&Invoking handler \"~A\"~%" message)
+	 (cond ((< arg-count (length args))
+		(error "Handler \"~A\" was passed ~D args but takes only ~D.~%"
+		       message (length args) arg-count))
+	       (else (tag args))))))
+   . args))
+
+;;; eof

@@ -1,0 +1,19 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+
+(define (patch-locales)
+  (iterate go ((varloc %%varloc)(symloc %%symloc)(count 0))
+    (print-noise #\&)
+    (when (< count %%nvars)
+      (set! (variable-here? system-locale (%set-tag symloc %pointer-tag))
+	   varloc)
+      (go (%increment-locative varloc 1)
+	  (%increment-locative symloc %%symsize)
+	  (+ 1 count)))))
+
+(patch-locales)
+
+
+
+
+

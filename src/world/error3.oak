@@ -1,0 +1,51 @@
+;;; Copyright (C) 1988 Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; This file contains nice macros and functions for doing typical things
+;;; with the error system.
+
+
+;;; This binds a handler to some class of errors.  When such an error
+;;; occurs, an appropriate error object is created and the given handler
+;;; is then applied to it.  Invoke-debugger is a useful handler when
+;;; within some other context which is trying to handle a class
+;;; of errors that shouldn't be so handled in a limited dynamic context.
+
+(define-syntax (bind-error-handler (error-type handler) . body)
+  `(bind ((error-handlers (cons (cons ,error-type ,handler)
+				  error-handlers)))
+     ,@body))
+
+
+;;; This construct has a number of different variations, depending on how
+;;; much stuff you pass in after the error-type, if any.  The simplest form
+;;; simply returns #f from the construct if the given type of error occurs.
+;;; In more complex forms, if the error occurs the first operation after
+;;; the error-type is invoked on the error, and if no error occurs
+;;; the other lambda is invoked on the result of the computation.
+
+;;; Syntax: (CATCH-ERRORS (error-type [error-lambda [non-error-lambda]])
+;;;		. body)
+
+(define-syntax (catch-errors (error-type . more-stuff) . body)
+  (let ((v (genvar)))
+    (destructure** more-stuff
+      (() `(native-catch ,v
+	     (bind-error-handler
+		 (,error-type (lambda (err) (throw ,v #f)))
+	       ,@body)))
+      ((error-lambda)
+       `(native-catch ,v
+	  (bind-error-handler
+	      (,error-type
+	       (lambda (err) (throw ,v (,error-lambda err))))
+	    ,@body)))
+      ((error-lambda noerror-lambda)
+       `(native-catch ,v
+	  (,noerror-lambda
+	   (bind-error-handler
+	       (,error-type
+		(lambda (err)
+		  (throw ,v (,error-lambda err))))
+	     ,@body)))))))
+
+;;; eof

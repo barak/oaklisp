@@ -1,0 +1,166 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;(initialize %code-vector '(ivar-map) (list variable-length-mixin object))
+
+;;; Define NTH properly for %CODE-VECTORs.
+
+;;; We conditionalize on whether we're under a big-endian regime at load
+;;; time, thus avoiding the check repeatedly at runtime.
+
+(cond
+
+ ((%big-endian?)
+
+  (add-method (nth (%code-vector) self n)
+    (let* ((n2 (quotient n 2))
+	   (x (%vref self n2)))
+      (if (not (zero? (modulo n 2)))
+	  ;; Low 16 bits:
+	  (bit-or (ash-left (bit-and (%pointer x) #x3FFF) 2) (%tag x))
+	  ;; High 16 bits:
+	  (bit-and #xFFFF (ash-right (%pointer x) 14)))))
+
+  (add-method ((setter nth) (%code-vector) self n x)
+    (let* ((n2 (quotient n 2))
+	   (x0 (%vref self n2))
+	   (x1 (if (not (zero? (modulo n 2)))
+		   ;; Low 16 bits:
+		   (%crunch (bit-or (bit-and (%pointer x0) (bit-not #x3FFF))
+				    (ash-right x 2))
+			    (bit-and x #x3))
+		   ;; High 16 bits:
+		   (%crunch (bit-or (bit-and (%pointer x0) #x3FFF)
+				    (ash-left x 14))
+			    (%tag x0)))))
+      (set! (%vref self n2) x1))))
+
+ (else
+
+  (add-method (nth (%code-vector) self n)
+    (let* ((n2 (quotient n 2))
+	   (x (%vref self n2)))
+      (if (zero? (modulo n 2))
+	  ;; Low 16 bits:
+	  (bit-or (ash-left (bit-and (%pointer x) #x3FFF) 2) (%tag x))
+	  ;; High 16 bits:
+	  (bit-and #xFFFF (ash-right (%pointer x) 14)))))
+
+  (add-method ((setter nth) (%code-vector) self n x)
+    (let* ((n2 (quotient n 2))
+	   (x0 (%vref self n2))
+	   (x1 (if (zero? (modulo n 2))
+		   ;; Low 16 bits:
+		   (%crunch (bit-or (bit-and (%pointer x0) (bit-not #x3FFF))
+				    (ash-right x 2))
+			    (bit-and x #x3))
+		   ;; High 16 bits:
+		   (%crunch (bit-or (bit-and (%pointer x0) #x3FFF) (ash-left x 14))
+			    (%tag x0)))))
+      (set! (%vref self n2) x1)))))
+
+(define-instance remap-your-ivars operation)
+
+(add-method (remap-your-ivars (%code-vector) self remap-alist real-ivar-map)
+  (let* ((len (length self))
+	 (new-code-vector (make %code-vector len))
+	 (limit (* len 2)))
+    (set! ((%slot 2) new-code-vector) real-ivar-map)
+    (iterate aux ((i 0))
+      (cond ((< i len)
+	     (set! (%vref new-code-vector i)
+		  (%vref self i))
+	     (aux (+ i 1)))
+	    (else
+	     (iterate aux ((i 0))
+	       (cond ((<= limit i) new-code-vector)
+		     (t (let ((x (nth new-code-vector i)))
+			  (cond ((= x #x600)
+				 ;; LOAD-IMM, op=0 and arg=6.
+				 (aux (+ i (if (odd? i) 3 4))))
+				(t (let ((op (bit-and #x3F (ash-right x 2))))
+				     (if (or (= op 12) ;load-bp
+					     (= op 13) ;store-bp
+					     (= op 17))	;make-bp-loc
+					 (let* ((arg (ash-right x 8))
+						(xlate (assq arg remap-alist)))
+					   (if xlate
+					       (set! (nth new-code-vector i)
+						    (bit-or (ash-left op 2) (ash-left (cdr xlate) 8)))))))
+				   (aux (+ i 1)))))))))))))
+
+;;; Redefine %INSTALL-METHOD-WITH-ENV so it creates new code bodies when
+;;; there's an ivar mismatch.
+
+(add-method (%install-method-with-env (type operation-method-alist ivar-list)
+				      self op code-body env)
+  (let ((code-ivar-map ((%slot 2) code-body)))
+    (iterate aux ((real-ivar-map ivar-list)
+		  (check-ivar-map code-ivar-map)
+		  (i 0)
+		  (remap-alist '()))
+      (cond ((not (null? check-ivar-map))
+	     (let ((x (car check-ivar-map)))
+	       (cond ((or (null? x) (eq? x (car real-ivar-map)))
+		      (aux (cdr real-ivar-map) (cdr check-ivar-map)
+			   (+ 1 i) remap-alist))
+		     (t (let ((p (position-in-list x ivar-list)))
+			  (cond ((null? p)
+				 (error "Variable ~A declared in ADD-METHOD isn't in ~A, the ivars of ~A."
+					x ivar-list self))
+				(t (aux (cdr real-ivar-map)
+					(cdr check-ivar-map)
+					(+ i 1)
+					(cons (cons i p) remap-alist)))))))))
+	    (else
+	     (let ((the-method (%allocate %method 3))
+		   (the-code-body (if (null? remap-alist)
+				      code-body
+				      (remap-your-ivars code-body remap-alist
+							ivar-list))))
+	       (set! ((%slot 1) the-method) the-code-body)
+	       (set! ((%slot 2) the-method) env)
+	       (cond ((and (eq? self object) ((%slot 1) op))
+		      (set! ((%slot 1) op) the-method))
+		     (else
+		      (when (and ((%slot 1) op)
+				 (not (eq? ((%slot 1) op) 0)))
+			;; Toss it on to OBJECT's OPERATION-METHOD-ALIST:
+			(set! ((%slot 7) object)
+			     (cons (cons op ((%slot 1) op))
+				   ((%slot 7) object))))
+		      ;; Flush the method cache
+		      (set! ((%slot 2) op) 0)
+		      ;; install the newly created method
+		      (let ((the-ass (%assq op operation-method-alist)))
+			(set! ((%slot 1) op) nil)
+			(if the-ass
+			    (set! (cdr the-ass) the-method)
+			    (set! operation-method-alist
+				 (cons (cons op the-method)
+				       operation-method-alist))))))
+	       op))))))
+
+
+
+
+
+
+(define-constant %make-lambda-with-env
+  (add-method ((make-open-coded-operation '((make-lambda)) 2 1)
+	       (%code-vector) some-code an-environment)
+    (%make-lambda-with-env some-code an-environment)))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;;; eof

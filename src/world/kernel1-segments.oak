@@ -1,0 +1,8 @@
+;;; Copyright (C) 1987, Barak A. Pearlmutter & Kevin J. Lang.
+
+(define-instance stack-segment type
+  '(previous-segment) (list variable-length-mixin object))
+
+(set! ((%register 'segment-type)) (the-runtime stack-segment))
+
+;;; eof

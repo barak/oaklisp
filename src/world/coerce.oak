@@ -1,0 +1,21 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; Define a kind of type that can be coerced to.  Such types have a
+;;; coercer operation, which can be applied to an instance of some other
+;;; type in order to coerce it to this type.  For example, to coerce a
+;;; number X to floating point, write ((COERCER FLOAT) X) or, with read
+;;; macros, (FLOAT X).
+
+;;; This definition goes in "KERNEL" so primitive types can be coercable.
+;(define-instance coercable-type type '(co-op) (list type))
+
+(define-constant-instance coercer
+  (mix-types oc-mixer (list foldable-mixin settable-operation)))
+
+(add-method (coercer (coercable-type co-op) self)
+  co-op)
+
+(add-method ((setter coercer) (coercable-type co-op) self new-op)
+  (set! co-op new-op))
+
+;;; eof

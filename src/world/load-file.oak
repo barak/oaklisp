@@ -1,0 +1,149 @@
+;;; Copyright (C) 1986,7,8 Barak A. Pearlmutter&Kevin J. Lang.
+
+;;; This defines the main interface for loading files, LOAD, which
+;;; loads the most processed version of the file it can find, unless given
+;;; an explicit extension.  Can also be given an explicit locale as an
+;;; optional second argument.
+
+(let* ((load-with-ext
+	;; Return file if found and loaded, #f or error if not found
+	;; depending on not-found-okay.
+	(lambda (file ext locale not-found-okay)
+
+	  (let ((op (cond ((equal? ext ".oak") load-oak-file)
+			  ((equal? ext ".omac") load-omac-file)
+			  ;;((equal? ext ".ou") ...)
+			  ;;((equal? ext ".oc") ...)
+			  ((equal? ext ".oa") load-oa-file)
+			  (else (error "File type ~S unloadable.~%" ext)))))
+
+	    (if not-found-okay
+		(catch-errors (error-opening-read)
+		  (op locale file)
+		  ext)
+		(block
+		  (op locale file)
+		  ext)))))
+
+       (load-aux
+	(lambda (args)
+	  (destructure (file . args) args
+	    (let ((locale (cond ((null? args) current-locale)
+				(else
+				 (when (cdr args)
+				   (cerror "Ignore the extra arguments."
+					   "Extra args to load: ~S."
+					   (cdr args)))
+				 (car args)))))
+
+	      (cond ((file-extension file)
+		     =>
+		     (lambda (ext)
+		       (load-with-ext (file-base file) ext locale #f)))
+
+		    ;; Try lots of different filetypes.
+		    ((any? (lambda (ext)
+			     (load-with-ext file ext locale #t))
+			   '(".oa" ".oak" ".omac"))
+		     =>
+		     (lambda (ext)
+		       (format #t "~&Loaded ~A~A.~%" file ext)))
+		    (else
+		     (error "No loadable file ~S found.~%" file))))))))
+
+
+  (define (load file . args)
+    (listify-args load-aux
+		  ((if (symbol? file) downcase identity)
+		   (string file))
+		  . args)))
+
+
+
+
+;;; These utility functions belong elsewhere:
+
+;;; This includes the "." as part of the extension.
+
+(define (file-extension file)
+  (let ((len (length file)))
+    (iterate aux ((i (- len 1)))
+      (if (= i -1) #f
+	  (let ((c (nth file i)))
+	    (cond ((eq? c #\.) (tail file i))
+		  ((eq? c #\/) #f)
+		  (else (aux (- i 1)))))))))
+
+(define (file-base file)
+  (cond ((file-extension file)
+	 => (lambda (ext)
+	      (head file (- (length file) (length ext)))))
+	(else file)))
+
+;;;
+
+
+
+(define (load-oa-file locale file)
+  (load-code-segment
+   locale
+   (with-open-file (s (append file ".oa") in)
+      (make-oa-list (read-oaf-list s)))))
+		   
+
+#||
+(define (load-oa-file locale file)
+  (load-code-segment
+   locale
+   (with-open-file (s (append ((coercer string) file) ".oa") in)
+      (let ((red (read s)))
+	(if (and (pair? (car red))
+		 (pair? (caar red)))
+	    red
+	    (make-oa-list red))))))
+
+(define (load-oa-file locale file)
+  (load-code-segment locale
+		     (let ((s (open-input-file (append (string file) ".oa"))))
+		       (block0 (read s) (close s)))))
+
+(define (load-oak-file locale file)
+  (bind ((current-locale locale)
+	 (print-length 3)
+	 (print-level 2))
+    (dofile (append file ".oak")
+	    (lambda (expr)
+	      (format #t "~A...~%" expr)
+	      (eval expr locale)))))
+
+||#
+
+
+
+(define (load-oak-file the-locale file-name)
+  (let* ((raw-forms (read-file (append file-name ".oak")))
+	 (sub-locale (make locale (list the-locale))))
+
+    (bind (((fluid current-locale) the-locale)
+	   ((fluid print-length) 3)
+	   ((fluid print-level) 2))
+
+      (dolist (raw-form raw-forms)
+
+	(format #t "~A...~%" raw-form)
+
+	(let ((expanded-form
+	       (bind (((fluid current-locale) sub-locale))
+		 (expand-groveling sub-locale raw-form))))
+	  (subeval expanded-form the-locale))))
+
+    'loaded))
+
+
+       
+
+(define (load-omac-file locale file)
+  (dofile (append file ".omac")
+	  (lambda (expr) (subeval expr locale))))
+
+;;; eof

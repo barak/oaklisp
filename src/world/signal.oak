@@ -1,0 +1,378 @@
+;;; Copyright (C) 1988, Barak A. Pearlmutter and Kevin J. Lang.
+
+;;; This file defines the error system, which is based on error types
+;;; and objects and signaling them, similar to the ZetaLisp mechanisms.
+
+;;; When an error occurs the appropriate type of error object is
+;;; created, then the appropriate message to send to that guy is
+;;; looked up on the (fluid error-handlers) list, and then that
+;;; message is sent to the error tail recursively, so if the method
+;;; for that returns a value that's what the signal call returns.
+
+;;; This is an alist of error types and operations.
+(set! error-handlers '())
+
+
+
+
+(define-instance condition type '(continuation) '())
+
+(define-instance general-error type '() (list condition))
+
+(add-method (initialize (condition continuation) self)
+  (set! continuation #f)
+  self)
+
+
+
+
+(define-instance proceedable-mixin type '(message) '())
+
+(add-method (initialize (proceedable-mixin message) self the-mess)
+  (set! message the-mess)
+  self)
+
+
+
+
+(define-instance proceedable-error type
+  '() (list proceedable-mixin general-error))
+
+(add-method (initialize (proceedable-error) self the-mess)
+  (^super proceedable-mixin initialize self the-mess)
+  (^super general-error initialize self))
+
+
+
+
+(define-instance proceedable-condition type
+  '() (list proceedable-mixin condition))
+
+(add-method (initialize (proceedable-condition) self the-mess)
+  (^super proceedable-mixin initialize self the-mess)
+  (^super condition initialize self))
+
+
+
+;;; Call remember-context on an error with an argument that takes the error
+;;; and stashes it away somewhere, and then returns to the nearest top
+;;; level or something like that.  You can look at the error object, ask
+;;; it to report, and stuff like that; but if you call invoke-debugger or
+;;; proceed on it, it will bop into the error context and then do it.
+
+(define-instance remember-context operation)
+
+(add-method (remember-context (condition continuation) self after)
+  (when continuation
+    (error "Context already stored for this error."))
+  (let ((op (call/cc (lambda (k)
+		       (set! continuation k)
+		       (after self)
+		       (error "The arg to remember-context returned.")))))
+    (set! continuation #f)
+    (op self)))
+
+;;;
+
+(define-instance invoke-in-error-context operation)
+
+(add-method (invoke-in-error-context (condition continuation) self op)
+  (if continuation
+      (continuation op)
+      (op self)))
+
+
+
+
+;;; Invoke the debugger at the given error.
+
+(define-instance invoke-debugger operation)
+
+;;; Write a description of the error to the given stream.  Return the
+;;; description as a string if passed nil.
+
+(define-instance report operation)
+
+(add-method (invoke-debugger (condition continuation) self)
+  (invoke-in-error-context self really-invoke-debugger))
+
+;;;
+
+(define-instance really-invoke-debugger operation)
+
+(define nested-error-limit 20)
+
+(add-method (really-invoke-debugger (condition) self)
+  (bind ((debug-level (+ debug-level 1)))
+    (when (and nested-error-limit (> debug-level nested-error-limit))
+      (exit 1 "Too many nested debuggers!~%"))
+    (format standard-error "~&Error: ")
+    (report self standard-error)
+    (read-eval-print-loop)))
+
+(add-method (really-invoke-debugger (proceedable-mixin message) self)
+  (error-return message
+    (^super condition really-invoke-debugger self)))
+
+
+
+
+
+;;; This is what to do with an error that has no other handler.
+
+(push error-handlers (cons general-error invoke-debugger))
+
+
+
+
+
+
+
+;;; Some errors can be proceeded from.
+
+(define-instance proceed operation)
+
+(add-method (proceed (proceedable-error) self value)
+  (invoke-in-error-context self (lambda (self) value)))
+
+
+
+
+
+
+
+
+
+;;; This is the big interface: signal.
+
+(let ((signal-aux
+
+       (lambda (args)
+	 (destructure (error-type . args) args
+	   (let ((the-error (apply make error-type args)))
+
+	     (iterate aux ((l error-handlers))
+	       (cond ((null? l)
+		      ;; No handler found, ignore the signal.
+		      #f)
+
+		     ((subtype? error-type (caar l))
+		      ;; Found one, invoke it.
+		      ((cdar l) the-error))
+
+		     (else
+		      ;; Keep looking.
+		      (aux (cdr l))))))))))
+
+  (define (signal error-type . args)
+    (listify-args signal-aux error-type . args)))
+
+
+
+
+
+
+
+;;; The error type to signal when something that isn't an operation is
+;;; called as if it were one.
+
+
+(define-instance not-an-operation type
+  '(op arglist) (list proceedable-error object))
+
+(add-method (initialize (not-an-operation op arglist)
+			self the-op the-arglist)
+  (set! op the-op)
+  (set! arglist the-arglist)
+  (^super proceedable-error initialize self
+	  (format #f "Return a value from the call to ~S." the-op)))
+
+(add-method (report (not-an-operation op arglist) self stream)
+  (let ((count (length arglist)))
+    (format stream "call to ~S, which isn't an operation, with ~D arg~P"
+	    op count count)
+    (when arglist
+      (format stream ": "))
+    (print-comma-separated-list arglist stream)
+    (format stream ".~%")))
+
+(add-method (really-invoke-debugger (not-an-operation op arglist) self)
+  (^super proceedable-error really-invoke-debugger self))
+
+
+
+
+
+
+
+;;; The error type to signal when an operation on some object has no
+;;; handler.
+
+(define-instance operation-not-found type
+  '(op arglist) (list proceedable-error object))
+
+(add-method (initialize (operation-not-found op arglist)
+			self the-op the-arglist)
+  (set! op the-op)
+  (set! arglist the-arglist)
+  (^super proceedable-error initialize self
+	  (format #f "Return a value from the call to ~S." the-op)))
+
+(add-method (report (operation-not-found op arglist) self stream)
+  (let ((count (length arglist)))
+    (format stream "no method for ~S with ~D arg~P" op count count)
+    (when arglist
+      (format stream ": "))
+    (print-comma-separated-list arglist stream)
+    (format stream ".~%")))
+
+(add-method (really-invoke-debugger (operation-not-found op arglist) self)
+  ;; I'm a little dubious about this code:
+  (native-catch return-value
+    (error-return (format #f "Retry applying ~A to ~S." op arglist)
+      (throw return-value
+	     (^super proceedable-error really-invoke-debugger self)))
+    (apply op arglist)))
+
+
+
+;;; The error type to signal when an operation on some object has no
+;;; handler when called using ^super.
+
+(define-instance ^super-not-found type
+  '(typ op arglist) (list proceedable-error object))
+
+(add-method (initialize (^super-not-found typ op arglist)
+			self the-typ the-op the-arglist)
+  (set! typ the-typ)
+  (set! op the-op)
+  (set! arglist the-arglist)
+  (^super proceedable-error initialize self
+	  (format #f "Return a value from the call to ~S." the-op)))
+
+(add-method (report (^super-not-found typ op arglist) self stream)
+  (let ((count (length arglist)))
+    (format stream "no ^SUPER method above ~S for ~S with ~D arg~P"
+	    typ op count count)
+    (when arglist
+      (format stream ": "))
+    (print-comma-separated-list arglist stream)
+    (format stream ".~%")))
+
+(add-method (really-invoke-debugger (^super-not-found typ op arglist) self)
+  ;; I'm a little dubious about this code:
+  (native-catch return-value
+    (error-return (format #f "Retry applying ^SUPER ~S ~A to ~S."
+			  typ op arglist)
+      (throw return-value
+	     (^super proceedable-error really-invoke-debugger self)))
+    (apply ^super typ op arglist)))
+
+
+
+
+;;; Similarly, something to signal when you get the incorrect number
+;;; of arguments:
+
+(define-instance nargs-error type
+  '(op args wanted) (list proceedable-error))
+
+(add-method (initialize (nargs-error op args wanted) self top targs twanted)
+  (set! op top)
+  (set! args targs)
+  (set! wanted twanted)
+  (^super proceedable-error initialize self
+	  (format #f "Return a value from the call to ~S." op)))
+
+(add-method (report (nargs-error op args wanted) self stream)
+  (format stream "~D argument~P required by ~A, ~D received"
+	  wanted wanted op (length args))
+  (when args
+    (format stream ": "))
+  (print-comma-separated-list args stream)
+  (format stream ".~%"))
+
+(add-method (really-invoke-debugger (nargs-error op args) self)
+  (native-catch return-value
+    (error-return (format #f "Retry applying ~A to ~S." op args)
+      (throw return-value
+	     (^super proceedable-error really-invoke-debugger self)))
+    (apply op args)))
+
+
+(define-instance nargs-exact-error type '() (list nargs-error object))
+(define-instance nargs-gte-error type '() (list nargs-error object))
+
+(add-method (report (nargs-gte-error) self stream)
+  (format stream "at least ")
+  (^super nargs-error report self stream))
+
+
+
+
+;;; Maybe this should really go in format.oak and some control directive
+;;; should use it?
+
+(define (print-comma-separated-list l stream)
+  (cond ((null? l))
+	((null? (cdr l))
+	 (format stream "~S" (car l)))
+	(else
+	 (format stream "~S, " (car l))
+	 (print-comma-separated-list (cdr l) stream))))
+
+
+
+
+;;; The ERROR function:
+
+(define (error format-string . format-args)
+  (signal generic-fatal-error format-string . format-args))
+
+(define-instance generic-fatal-error type
+  '(message) (list general-error object))
+
+(add-method (initialize (generic-fatal-error message)
+			self format-string . args)
+  (listify-args (lambda (args)
+		  (set! message (apply format nil format-string args))
+		  (^super general-error initialize self))
+		. args))
+
+(add-method (report (generic-fatal-error message) self stream)
+  (write-string message stream))
+
+
+
+
+;;; The CERROR function:
+
+(define (cerror format-string . format-args)
+  (signal generic-proceedable-error format-string . format-args))
+
+(define-instance generic-proceedable-error type
+  '(message) (list proceedable-error object))
+
+(add-method (initialize (generic-proceedable-error message)
+			self proceed-message format-string . args)
+  (listify-args (lambda (args)
+		  (set! message (apply format nil format-string args))
+		  (^super proceedable-error initialize self proceed-message))
+		. args))
+
+(add-method (report (generic-proceedable-error message) self stream)
+  (cond ((not stream) message)
+	(else (write-string message stream))))
+
+
+
+
+
+;;; Something to signal whenever an infinite loop is encountered.
+
+(define-instance infinite-loop type '() (list generic-fatal-error))
+
+(add-method (initialize (infinite-loop) self)
+  (^super generic-fatal-error initialize self "infinite loop encountered."))
+
+;;; eof

@@ -1,0 +1,117 @@
+;;; Copyright (C) 1988, Kevin J. Lang & Barak A. Pearlmutter.
+
+
+;;; The global %WINDINGS holds a list of items of the form
+;;; (UNWIND-LANBDA WIND-LAMBDA . FLUID-BINDING-LIST), and the global
+;;; %WIND-COUNT holds the length of %WINDINGS.  Continuations store
+;;; the values of these two variables for use when they're continued,
+;;; and catch tags hold just the value of %WIND-COUNT which suffices.
+
+;;; When continuing a continuation, the caller unwinds to the join
+;;; point and then the callee winds back up to the destination point.
+
+
+;;; Set up the necessary globals used for holding the winding stack.
+
+(define (unset-windings)
+  (set! %windings '())
+  (set! %wind-count 0))
+
+(unset-windings)
+
+(add-warm-boot-action unset-windings)
+
+
+
+;;; This routine returns the height of the join point.
+
+(define (find-join-point windings0 count0 windings1 count1)
+
+  (labels ((aux (lambda (windings0 windings1 count)
+		  (cond ((eq? windings0 windings1)
+			 count)
+			(else
+			 (aux (cdr windings0) (cdr windings1) (- count 1)))))))
+
+    (cond ((= count0 count1)
+	   (aux windings0 windings1 count0))
+	  ((< count0 count1)
+	   (aux windings0 (tail windings1 (- count1 count0)) count0))
+	  (else
+	   (aux (tail windings0 (- count0 count1)) windings1 count1)))))
+
+;;; Usage: (rewind join-point new-%windings new-%wind-count)
+
+(labels ((rewind-aux
+	  (lambda (from-count to to-count)
+	    (unless (= from-count to-count)
+	      (rewind-aux from-count (cdr to) (- to-count 1))
+	      (set! %windings to)
+	      (set! %wind-count to-count)
+	      (let ((item (car to)))
+		(set! fluid-binding-list (cddr item))
+		((cadr item)))))))
+
+  (define (rewind from-count to to-count)
+    (unless (= from-count to-count)
+      (rewind-aux from-count to to-count)
+      (set! %windings to)
+      (set! %wind-count to-count))))
+
+;;; Usage as above.
+
+(define (unwind from from-count to-count)
+  (iterate aux ((w from)(c from-count))
+    (set! %windings w)
+    (set! %wind-count c)
+    (unless (= c to-count)
+      (let ((item (car w)))
+	(set! fluid-binding-list (cddr item))
+	((car item)))
+      (aux (cdr w)(- c 1)))))
+
+;;; The standard interface to this facility:
+
+(define (dynamic-wind before during after)
+  (before)
+  (push %windings (list* after before fluid-binding-list))
+  (set! %wind-count (+ %wind-count 1))
+  (block0 (during)
+	  (pop %windings)
+	  (set! %wind-count (- %wind-count 1))
+	  (after)))
+
+;;; And now some fancy interfaces:
+
+;;; This one keeps you from having to do lambda wrapping:
+
+(define-syntax (wind-protect before during after)
+  ;; `(dynamic-wind (lambda () ,before) (lambda () ,during) (lambda () ,after))
+  (let ((a (genvar))(b (genvar)))
+    `(let ((,b (lambda () ,before)) (,a (lambda () ,after)))
+       (,b)
+       (push %windings (list* ,a ,b fluid-binding-list))
+       (set! %wind-count (+ %wind-count 1))
+       (block0 ,during
+	       (pop %windings)
+	       (set! %wind-count (- %wind-count 1))
+	       (,a)))))
+
+;;; This one does different things depending on whether the entries
+;;; and exists are normal or abnormal.
+
+(define-syntax (funny-wind-protect normal-before abnormal-before
+				   during
+				   normal-after abnormal-after)
+  `(block
+     ,normal-before
+     (push %windings (list* (lambda () ,abnormal-after)
+			    (lambda () ,abnormal-before)
+			    fluid-binding-list))
+     (set! %wind-count (+ %wind-count 1))
+     (block0 ,during
+	     (pop %windings)
+	     (set! %wind-count (- %wind-count 1))
+	     ,normal-after)))
+
+;;; eof

@@ -1,0 +1,82 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; This file defines a native, extremely primitive trace facility.  It works
+;;; by encapsulating operations and setting the new capsule back into the
+;;; variable where the original came from.
+
+(define-instance encapsulated-operation type '(the-real-op) (list operation))
+
+(add-method (setter (encapsulated-operation the-real-op) self)
+  (setter the-real-op))
+
+(add-method (locater (encapsulated-operation the-real-op) self)
+  (locater the-real-op))
+
+(add-method (print (encapsulated-operation the-real-op) self stream)
+  (format stream "#<Traced ~S>" (real-op self)))
+
+(add-method (initialize (encapsulated-operation the-real-op) self op)
+  (set! the-real-op op)
+  self)
+
+(define-instance real-op locatable-operation)
+
+(add-method ((locater real-op) (encapsulated-operation the-real-op) self)
+  (make-locative the-real-op))
+
+(add-method (real-op (encapsulated-operation the-real-op) self)
+  (real-op the-real-op))
+
+(add-method (real-op (operation) self)
+  self)
+
+;;; Some listification targets, to avoid making a lambda every time.
+
+(define (in-message args)
+  (let ((op (car args))
+	(args (cdr args)))
+    (format standard-error "~&Enter ~A with ~A~%" op args)
+    (apply op args)))
+
+(define (out-message args)
+  (let ((op (car args))
+	(args (cdr args)))
+    (let ((ans (apply op args)))
+      (format standard-error "~&Exit ~A with ~A.~%" op ans)
+      ans)))
+
+(define (in-out-message args)
+  (let ((op (car args))
+	(args (cdr args)))
+    (format standard-error "~&Enter ~A with ~A.~%" op args)
+    (let ((ans (apply op args)))
+      (format standard-error "~&Exit ~A with ~A.~%" op ans)
+      ans)))
+
+;;; The encapsulation operators.
+
+(define (encapsulate-in op)
+  (add-method ((make encapsulated-operation op) (object) . args)
+    (listify-args in-message op . args)))
+
+(define (encapsulate-out op)
+  (add-method ((make encapsulated-operation op) (object) . args)
+    (listify-args out-message op . args)))
+
+(define (encapsulate-in-out op)
+  (add-method ((make encapsulated-operation op) (object) . args)
+    (listify-args in-out-message op . args)))
+
+;;; A miniature interface.
+
+(define-syntax (trace-variable-in v)
+  `(set! ,v (encapsulate-in (real-op ,v))))
+
+(define-syntax (trace-variable-out v)
+  `(set! ,v (encapsulate-out (real-op ,v))))
+
+(define-syntax (trace-variable-in-out v)
+  `(set! ,v (encapsulate-in-out (real-op ,v))))
+
+(define-syntax (untrace-variable v)
+  `(set! ,v (real-op ,v)))

@@ -1,0 +1,436 @@
+
+
+;;;;;;; Copyright (C) 1990,1993 Barak A. Pearlmutter & Kevin J. Lang ;;;;;;;;;;;;;;;
+
+
+
+(define p-member
+  (relation
+   ((a) (p-member ,a (,a . ,_)))
+   ((a x) (p-member ,a (,_ . ,x)) :- (p-member ,a ,x))))
+
+
+
+(define p-append
+  (relation
+   ((x) (p-append () ,x ,x))
+   ((a x y z) (p-append (,a . ,x) ,y (,a . ,z)) :- (p-append ,x ,y ,z))))
+
+
+
+(define p-length
+  (relation
+   (()
+    (p-length () 0))
+   ((a x j i)
+    (p-length (,a . ,x) ,i) :- (p-length ,x ,j) (is ,i ,(+ j 1)))))
+    
+
+
+(labels ((p-reverse3
+	  (relation
+	   ((a)   (p-reverse3 () ,a ,a) :- !)
+	   ((a x y z) (p-reverse3 (,a . ,x) ,y ,z) :-
+		      (p-reverse3 ,x (,a . ,y) ,z)))))
+
+  (define p-reverse
+    (relation
+     ((a b) (p-reverse ,a ,b) :- (p-reverse3 ,a () ,b)))))
+
+
+
+
+(define p-delete
+  (relation
+   ((x l)
+    (p-delete ,x (,x . ,l) ,l))
+   ((x y z l)
+    (p-delete ,x (,y . ,l) (,y . ,z)) :- (p-delete ,x ,l ,z))))
+   
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+(define parent
+  (relation
+   ((x y) (parent ,x ,y) :- (father ,x ,y))
+   ((x y) (parent ,x ,y) :- (mother ,x ,y))))
+
+
+(define ancestor
+  (relation
+   ((x y) (ancestor ,x ,y) :- (parent ,x ,y))
+   ((x y z) (ancestor ,x ,z) :- (parent ,y ,z) (ancestor ,x ,y))))
+
+
+(define father
+  (relation
+   (() (father sam julie))
+   (() (father ted sam))))
+
+
+(define mother
+  (relation
+   (() (mother julie dave))
+   (() (mother anna julie))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+(define pfact
+  (relation
+   (() (pfact 0 1) :- !)
+   ((n m l) (pfact ,n ,m) :- (pfact ,(- n 1) ,l) (is ,m ,(* l n)))))
+
+;; munch([],[],[]).
+;; munch([A|X],[B|Y],[[A,B]|Z]) :- munch(X,Y,Z).
+
+(define munch
+  (relation
+   (() (munch () () ()))
+   ((a b x y z)
+    (munch (,a . ,x) (,b . ,y) ((,a . ,b) . ,z)) :- (munch ,x ,y ,z))))
+
+;; noah([],[]).
+;; noah([A,B|X],[[A,B]|Y]) :- noah(X,Y).
+
+(define noah
+  (relation
+   (() (noah () ()))
+   ((a b x y) (noah (,a ,b . ,x) ((,a ,b) . ,y)) :- (noah ,x ,y))))
+
+;; my_member1(A,L) :- append(_,[A|_],L).
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+(define p-member2
+  (relation
+   ((a l) (p-member2 ,a ,l) :- (p-append ,_ (,a . ,_) ,l))))
+
+
+;; my_times(0,B,0) :- !.
+;; my_times(A,B,C) :- D is A-1, my_times(D,B,E), C is E+B.
+
+
+(define ptimes
+  (relation
+   (() (ptimes 0 ,_ 0) :- !)
+   ((a b c d e) (ptimes ,a ,b ,c)
+		:- ,(set! d (- a 1)) (ptimes ,d ,b ,e) (is ,c ,(+ e b)))))
+
+;; take_out_n(X,0,L,L) :- !.
+;; take_out_n(X,N,[X|L],L1) :- M is N-1, take_out_n(X,M,L,L1).
+;; take_out_n(X,N,[Y|L],[Y|L1]) :- take_out_n(X,N,L,L1).
+
+;; splice_in_for(X,S,[],[]).
+;; splice_in_for(X,S,[X|L],L1) :- splice_in_for(X,S,L,L2), append(S,L2,L1).
+;; splice_in_for(X,S,[Y|L],[Y|L1]) :- splice_in_for(X,S,L,L1).
+
+;; count_fringe([],0) :- !.
+;; count_fringe([A|B],N) :- !, count_fringe(A,N1), count_fringe(B,N2), N is N1+N2.
+;; count_fringe(_,1).
+
+
+(define count-fringe
+  (relation
+   (() (count-fringe () 0) :- !)
+   ((a b n n1 n2)
+    (count-fringe (,a . ,b) ,n) :- !
+    (count-fringe ,a ,n1) (count-fringe ,b ,n2) (is ,n ,(+ n1 n2)))
+   (() (count-fringe ,_ 1))))
+
+
+;; every_third([],[]).
+;; every_third([A],[A]).
+;; every_third([A,_],[A]).
+;; every_third([A,_,_|X],[A|Y]) :- every_third(X,Y).
+
+
+(define every-third
+  (relation
+   (() (every-third () ()))
+   ((a) (every-third (,a) (,a)))
+   ((a) (every-third (,a ,_) (,a)))
+   ((a x y) (every-third (,a ,_ ,_ . ,x) (,a . ,y)) :- (every-third ,x ,y))))
+
+
+
+;; count_down(0,[blast_off]) :- !.
+;; count_down(N,[N|X]) :- M is N-1, count_down(M,X).
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+; This loops after finding one solution when used in right-to-left mode.
+; Putting a cut in the first clause would cause it to find no solutions. 
+; This behavior is consistent with quintus prolog.
+
+
+; By the way, this is a standard benchmark for prolog systems, and
+; and we appear to be about 1000 times slower than quintus prolog.
+
+
+;; naive_reverse([],[]).
+;; naive_reverse([A|X],Y) :- naive_reverse(X,X1), append(X1,[A],Y).
+
+
+(define naive-reverse
+  (relation
+   (() (naive-reverse () ()))
+   ((a x x1 y) (naive-reverse (,a . ,x) ,y)
+	       :- (naive-reverse ,x ,x1) (p-append ,x1 (,a) ,y))))
+
+
+(define weird-reverse
+  (relation
+   (() (weird-reverse () ()))
+   ((a x x1 y) (weird-reverse (,a . ,x) ,y)
+	       :- (weird-reverse ,x ,x1) (oak-append ,y ,x1 (,a)))))
+	       
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+; this version works in both directions
+
+
+;; good-reverse(A,B) :- good-reverse(A,[],B).
+;; good-reverse([],A,A) :- !.
+;; good-reverse([A|X],Y,Z) :- good-reverse(X,[A|Y],Z).
+
+
+
+(define good-reverse
+  (relation
+   ((a b) (good-reverse ,a ,b) :- (good-reverse3 ,a () ,b))))
+
+
+(define good-reverse3
+  (relation
+   ((a)   (good-reverse3 () ,a ,a) :- !)
+   ((a x y z) (good-reverse3 (,a . ,x) ,y ,z) :-
+	      (good-reverse3 ,x (,a . ,y) ,z))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+; this code doesn't work from right to left, even with quintus prolog
+
+
+;; bad_reverse(A,B) :- bad_reverse(A,[],B).
+;; bad_reverse([],A,A).
+;; bad_reverse([A|X],Y,Z) :- !, bad_reverse(A,B), bad_reverse(X,[B|Y],Z).
+;; bad_reverse(X,[],X).
+
+
+(define bad-reverse
+  (relation ((a b) (bad-reverse ,a ,b) :- (bad-reverse3 ,a () ,b))))
+
+
+(define bad-reverse3
+  (relation
+   ((a) (bad-reverse3 () ,a ,a))
+   ((a b x y z)
+    (bad-reverse3 (,a . ,x) ,y ,z)
+    :- ! (bad-reverse ,a ,b) (bad-reverse3 ,x (,b . ,y) ,z))
+   ((x) (bad-reverse3 ,x () ,x))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+;; ordered([]).
+;; ordered([_]).
+;; ordered([A,B|X]) :- not(B<A), ordered([B|X]).
+
+
+
+(define p-ordered
+  (relation
+   (() (p-ordered ()))
+   (() (p-ordered (,_)))
+   ((a b x) (p-ordered (,a ,b . ,x)) :- ,(<= a b) (p-ordered (,b . ,x)))))
+
+
+;; This has some bug that makes it work right-to-left but not left-to-right.
+;; Actually, left-to-right gets one correct permutation, and then loops.
+;; This behavior matches that of Quintus prolog.
+
+
+; perm([],[]).
+; perm([A|X],Y) :- append(U,[A|V],Y), append(U,V,YmA), perm(X,YmA).
+
+
+(define perm
+  (relation
+   (() (perm () ()))
+   ((a x y u v y-a)
+    (perm (,a . ,x) ,y) :-
+          (p-append ,u (,a . ,v) ,y) (p-append ,u ,v ,y-a) (perm ,x ,y-a))))
+
+
+(define perm4
+  (relation
+   (()
+    (perm4 () ()))
+   ((a x y u v y-a)
+    (perm4 (,a . ,x) ,y) :-
+          (p-append ,u (,a . ,v) ,y) (oak-append ,y-a ,u ,v) (perm4 ,x ,y-a))))
+
+
+
+; This version of perm is the fastest.
+; It only works from left to right.
+
+
+(define perm3
+  (relation
+   (()
+    (perm3 () ()))
+   ((l x y l2)
+    (perm3 ,l (,x . ,y)) :- (p-delete ,x ,l ,l2) (perm3 ,l2 ,y))))
+
+
+
+
+
+
+;;; The world's slowest, but most obviously correct, sorting program.
+
+
+(define slow-sort
+  (relation
+   ((x y) (sorted ,x ,y) :- (perm3 ,x ,y) (p-ordered ,y))))
+
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+(define p-length3
+  (relation
+   ((l x)
+    (p-length3 ,l ,x) :- (p-length3b ,l 0 ,x))))
+
+
+
+(define p-length3b
+  (relation
+   ((r)
+    (p-length3b () ,r ,r))
+   ((a x j i r)
+    (p-length3b (,a . ,x) ,i ,r) :- ,(set! j (+ i 1)) (p-length3b ,x ,j ,r))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+; This creates a prolog relation of arity N+1 from an oaklisp function of arity N.
+; The prolog relation applies the oaklisp function to its LAST N arguments,
+; and then returns the result by unifying it with its FIRST argument.
+; This facility currently doesn't work very well, since not all functions 
+; in oaklisp have been written to accept delayed objects.  
+
+
+(define (relationify op)
+  (lambda (k lval . args)
+    (listify-args (lambda (args) (unify lval (apply op args) k))
+		  . args)))
+
+
+(let ((deep-copying-append2
+       (lambda (x y)
+	 (let ((x (deep-copy x))
+	       (y (deep-copy y)))
+	   (append x y)))))
+
+  (define oak-append
+     (relationify deep-copying-append2)))
+
+
+(define oak+
+  (relationify +))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+; This procedure seems a bit muddled.  
+; Try using the collect-solutions macro instead.
+
+; (define (bagof k thing-to-bag bag-for-em rel arglist)
+;   (let ((x '()))
+;     (apply rel
+; 	   (lambda () (set! x (cons (deep-copy thing-to-bag) x))))
+;    (unify bag-for-em x k)))
+
+
+
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+; this defines a complete balanced tree whose leaves are all X's
+
+; (complete-tree ,the-tree ,depth ,branching-factor)
+
+
+(define complete-tree
+  (relation
+   ((t)
+    (complete-tree x 0 ,_) :- !)
+   ((t d b)
+    (complete-tree ,t ,d ,b) :- (list-of-trees ,t ,(- d 1) ,b ,b))))
+
+
+(define list-of-trees
+  (relation
+   (()
+    (list-of-trees () ,_ ,_ 0) :- !)
+   ((t r n b d)
+    (list-of-trees (,t . ,r) ,d ,b ,n) :-
+    	(complete-tree ,t ,d ,b)
+    	(list-of-trees ,r ,d ,b ,(- n 1)))))
+
+
+

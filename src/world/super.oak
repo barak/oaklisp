@@ -1,0 +1,12 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; Define the ^super operation, which is basically written in
+;;; microcode.  One day ^super should be open coded everywhere.
+
+(define (^super the-type the-op self . args)
+  ;; Hack NARGS and tail off to the ^SUPER opcode.
+  ;; This leaves an unnecessary (RETURN) in the object file.
+  (set! ((%register 'nargs)) (- ((%register 'nargs)) 2))
+  (%^super-tail the-type the-op self))
+
+;;; eof

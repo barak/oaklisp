@@ -1,0 +1,47 @@
+;;; Copyright (C) 1986,7,8 Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; This file creates undefined values.  INITIALIZE and PRINT methods
+;;; are provided for them, but you shouldn't be able to do much else
+;;; to them.
+
+;;; When making an undefined value pass one argument, a description of
+;;; where the undefined value came from.
+
+(define-instance undefined type '(origin) (list object))
+
+(add-method (initialize (undefined origin) self the-origin)
+  (set! origin the-origin)
+  self)
+
+(add-method (print (undefined origin) self stream)
+  (format stream "#<Undefined ~A ~!>" origin self))
+
+;;; Some canonical undefined values:
+
+(define-instance variable-undefined-value undefined 'variable)
+(define-instance ivar-undefined-value     undefined 'ivar)
+(define-instance if-undefined-value       undefined 'if)
+(define-instance cond-undefined-value     undefined 'cond)
+(define-instance when-undefined-value     undefined 'when)
+(define-instance unless-undefined-value   undefined 'unless)
+(define-instance while-undefined-value    undefined 'while)
+
+(define-instance generic-undefined-value  undefined 'generic)
+
+;;;
+
+(define (make-undefined-variable-value sym)
+  (make undefined (append "variable " ((coercer string) sym))))
+
+;;; 
+
+(define (setup-undefined-ivar)
+  (set! ((%register 'uninitialized)) ivar-undefined-value)
+  nil)
+
+(setup-undefined-ivar)
+
+;;; Defered until warm.oak:
+;;(add-warm-boot-action setup-undefined-ivar)
+
+;;; eof

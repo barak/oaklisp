@@ -1,0 +1,34 @@
+\documentstyle[times,12pt,fullpage,makeidx]{report}
+
+% \includeonly{cover,intro,language,dataform,bytecode,stack,oaklevel}
+
+% \setlength{\textwidth}{6.75in}
+% \setlength{\oddsidemargin}{-0.125in}
+% \setlength{\evensidemargin}{-0.125in}
+% \setlength{\topmargin}{-0.475in}
+% \setlength{\textheight}{8.75in}
+
+\makeindex
+
+\begin{document}
+
+\input{../mandefs}
+
+\include{cover}
+\tableofcontents
+\include{intro}
+\include{language}
+\include{dataform}
+\include{bytecode}
+\include{stack}
+\include{methods}
+\include{oaklevel}
+\include{compiler}
+\include{boot}
+\include{admin}
+
+\bibliography{../oakman}
+
+\printindex
+
+\end{document}

@@ -1,0 +1,74 @@
+\chapter{Miscellaneous} \label{misc}
+
+\section{Tables}
+
+The types are \df{generic-hash-table} and \df{eq-hash-table}.  The
+access interface is \df{present?}, which returns a \df{pair} whose
+\df{car} is the key and whose \df{cdr} is the associated value.  A
+different interface to hash tables is provided by the T-style
+\df{table-entry} operation which returns the associated value or
+\df{\#f} if the key isn't in the table.  The setter of either
+operation can be used to add, modify, and remove associations.
+
+\makin{generic-hash-table}{key-hash-op equal-op}
+\makin{eq-hash-table}{}
+
+\so{present?}{table key}
+\doc{Returns {\tt (\em key \dt val\tt)} pair, or \df{\#f} if not present.}
+
+\so{table-entry}{table key}
+\doc{Returns value indexed by {\em key} or \df{\#f} if not present.}
+
+
+
+
+\section{Delays}
+
+Oaklisp's delays are compatible with the facility defined in R3RS, but
+extend those primitive facilities in two ways.  First, the system will
+automatically force promises when appropriate.  For instance, {\tt (+
+2 (delay 3))} does not signal an error; it returns {\tt 5}.
+Similarly, delays are printed transparently, slightly violating
+read/print consistency.  Secondly, the delay facility is user
+extensible.  Users can create new kinds of delays that have special
+protocols, for instance numeric delays that do not force themselves
+upon arithmetic operations, but instead make more and more complicated
+delays.
+
+
+\sform{delay}{expression}
+\doc{This immediately returns a {\em promise} for {\em expression},
+without actually computing {\em expression}.  This promise does not
+compute {\em expression} until it is forced, at which point it
+returns the value of {\em expression}, computing it if it hasn't
+already done so.}
+
+\op{force}{x}
+\doc{If {\em x} is a promise, it is forced to compute its value, which
+is returned.  If {\em x} is not a promise, it itself is returned.}
+
+\ty{promise}
+\doc{This is the type of the objects returned by \df{delay}.}
+
+\ty{forcible}
+\doc{This is an abstract type, of which \df{promise} is a concrete
+subtype.  Subtypes of \df{forcible} are expected to respond to the
+\df{force} operation in a sensible fashion.  Oaklisp's system
+internals sometimes force instances of \df{forcible} automatically,
+for instance when sending them messages for which no appropriate
+method can otherwise be found.}
+
+\fv{forcible-print-magic}
+\doc{Controls how delays are printed.  This is how {\tt (delay 'foo)}
+would print under various settings of {\tt forcible-print-magic}.
+\begin{center}
+\begin{tabular}{|l|l|}\hline
+value             & print style             \\ \hline
+{\tt\#f}          & {\tt\#<DELAY 3462>}     \\
+{\tt indicate}    & {\tt\#[DELAY FOO 3462]} \\
+{\tt transparent} & {\tt FOO}               \\ \hline
+\end{tabular}
+\end{center}
+The default is \df{transparent}.  A setting of \df{indicate} is more
+instructive if you encounter odd behavior that might be due to
+delays.}

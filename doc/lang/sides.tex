@@ -1,0 +1,80 @@
+\chapter{Side Effects} \label{sides}
+
+The treatment of side effects in Oaklisp is modelled on that
+of T.  The salient feature of this approach is the use of reversible
+access procedures to perform side effects on composite data structures
+and anonymous storage cells.
+
+\section{Assignment}
+
+Side effects on variables and objects are performed with the
+\df{set\protect\bang} special form, which combines the functionality of the
+\df{setq} and \df{setf} forms found in other Lisps.
+
+\sform{set\protect\bang}{location new-value}
+\doc{Changes the value of {\em location} to {\em new-value}, which is then
+returned as the value of the expression.
+
+If {\em location} is a symbol, then it is interpreted as a variable
+name.  The variable must have been previously defined in some lexical binding
+contour or locale.
+
+If {\em location} is a list, then it is interpreted as a reference to
+a settable access operation.  For example, {\tt (set! (car foo) 'bar)}
+means the same thing as {\tt (rplaca foo 'bar)} in Common Lisp.}
+
+\lo{setter}{operation}
+\doc{Takes a settable access operation and returns the corresponding
+alteration operation.}
+
+\section{Locatives}
+
+\df{locative} is an Oaklisp type that is similar to the pointer types
+found in procedural languages such as C or Pascal.  Locatives are
+created and dereferenced by the following constructs.
+
+\sform{make-locative}{location}
+\doc{Returns a locative that points to {\em location}, which must be
+a variable or a list with the form of a call on a locatable access
+operation.}
+
+\lo{locater}{operation}
+\doc{Takes a locatable access operation and returns the corresponding
+locative-making operation.}
+
+\lo{contents}{locative}
+\doc{Returns the contents of the location which is referenced by {\em
+locative}.  Since \df{contents} is a settable operation, side effects
+can be performed on locations through locatives.  For example, {\tt
+(set! (contents (make-locative (car {\em foo}))) '{\em bar})} has the
+same effect as {\tt (set! (car {\em foo}) '{\em bar})}.}
+
+
+\section{Operation Types}
+
+Since operations are objects, they are classified into types
+according to the operations which can be performed on them.  The types
+discussed here can generate side-effecting operations from access
+operations.
+
+\ty{operation}
+\doc{This is the generic operation type that is a component of all other
+operation types.}
+
+\ty{settable-operation}
+\doc{An access operation is settable if side effects can be performed
+through it.  Settable operations respond to \df{setter}.}
+
+\ty{locatable-operation}
+\doc{An access operation is locatable if it retrieves information
+from a single physical location.  Locatable operations respond to
+\df{setter} and \df{locater}.}
+
+\section{Modification Forms}
+
+See chapter 6 of {\it The T Manual} for a description of the
+following forms.
+
+\sform{swap}{location new-value}
+\sform{modify}{location procedure}
+\sform{modify-location}{location continuation}

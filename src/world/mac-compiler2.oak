@@ -1,0 +1,424 @@
+;;;; Copyright (C)  Kevin J. Lang and Barak A. Pearlmutter. Fall 1986.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                   top-level compiler sequencer                      ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(define-instance compile operation)
+(define-instance expand-compile operation)
+
+
+(labels (((annotate-the-tree astree)
+	  (block
+	   (when contour-nodes?
+	     (mark-inline-lambdas astree)
+	     (if (> labels-count 0)
+		 (mark-tail-nodes astree)))
+	   (top-level-resolve-variables astree))))
+
+  
+	(add-method (expand-compile (locale) self form)
+	  (compile self (block0 (expand-groveling self form)
+				(print-sp 'mac))))
+  
+
+	(add-method (compile (locale) self form)
+	  (bind ((labels-count 0)
+		 (contour-nodes? #f)
+		 (barrier-node #f)
+		 (worry-about-constants #f))
+	    (let ((astree (bind ((worry-about-constants #t))
+			    (code->ast form))))
+	      (print-sp 'tree)
+	      (annotate-the-tree astree)
+	      (print-sp 'ann)
+	      (iterate step ((pre-count labels-count))
+		(print-sp labels-count)
+		(when (> labels-count 0)
+		  (set! astree (rewrite-labels-v astree))
+		  (when (not (= pre-count labels-count))
+		    (annotate-the-tree astree)
+		    (print-sp 'ann)
+		    (step labels-count))))
+	      (set! astree (fold-constants-v astree self)) 
+	      (print-sp 'fold)
+	      (when contour-nodes?
+		(set! astree (insert-method-maker-v astree)))
+	      (print-sp 'insert)
+	      (set! astree (heapify-variables-v astree))
+	      (print-sp 'heap)
+	      (when contour-nodes?
+		(stash-stack-map astree nil))
+	      (print-sp 'stack)
+	      (set! dog2 astree)
+	      astree))))
+
+
+
+; NAMING CONVENTION:
+
+ ;All of the AST-walking operations defined below perform side effects on
+ ;the tree. If an operation actually deletes and inserts nodes, then the value
+ ;it returns is important, so its name should end in "-v".
+ ;If the side effects are only on the internal state of the
+ ;nodes, then the name should have no suffix.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                     identify inline lambdas                         ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;This step marks methods generated from lambdas in the car position
+;by changing their status from 'method to 'inline.
+;Labels nodes already have a status of 'inline.
+
+(define-instance mark-inline-lambdas operation)
+
+
+(with-operations (you-are-in-car-pos) 
+
+  (add-method (mark-inline-lambdas (ast-node) self)
+    (walk-ast self mark-inline-lambdas))
+
+  (add-method (mark-inline-lambdas (ast-variable-node car-pos?) self)
+    (set! car-pos? nil))  ;erase previous analysis
+
+  (add-method (mark-inline-lambdas (ast-method-node status inlabels?) self)
+    (set! status 'method) ;erase previous analysis
+    (set! inlabels? nil)  ;erase previous analysis
+    (walk-ast self mark-inline-lambdas))
+
+  (add-method (mark-inline-lambdas (ast-combination-node op) self)
+    (walk-ast self mark-inline-lambdas)
+    (you-are-in-car-pos op))
+
+  (add-method (mark-inline-lambdas (ast-labels-node lambdalist) self)
+    (walk-ast self mark-inline-lambdas)      
+    ;; These guys must be marked as inline,
+    (for-each you-are-in-car-pos lambdalist)
+    ;;  and inlabels.
+    (walk-with-arg (setter methn-inlabels?) lambdalist t))
+
+
+  (add-method (you-are-in-car-pos (ast-node) self) t) ;no-op
+
+  (add-method (you-are-in-car-pos (ast-variable-node car-pos?) self)
+    (set! car-pos? t))
+
+  (add-method (you-are-in-car-pos (ast-method-node status rest-name) self)
+    (if (and (am-I-a-lambda? self)
+	     (not rest-name))
+	(set! status 'inline)))
+  )
+
+
+#|  ;old versions of the above.
+  (add-method (you-are-in-car-pos (ast-method-node status op ivarlist method-type) self)
+    (if (and (null? ivarlist)			;No ivars.
+	     (and (is-a? op ast-combination-node)
+		  (is-a? (combn-op op) ast-variable-node)
+		  (equal? (varn-name (combn-op op)) 'make)	        ;Operation is made at 
+		  (= 1 (length (combn-args op)))	                ;installation time.
+		  (is-a? (car (combn-args op)) ast-variable-node)
+		  (equal? (varn-name (car (combn-args op))) 'operation)) 
+	     (is-a? method-type ast-variable-node)	;Method is for object.
+	     (equal? 'object (varn-name method-type)))	;
+	(set! status 'inline)))
+ (add-method (you-are-in-car-pos (ast-method-node status op ivarlist method-type) self)
+   (if (and (null? ivarlist)		;No ivars.
+	    (and (is-a? op ast-combination-node)
+		 (equal? (combn-op op) make);Operation is made at 
+		 (= 1 (length (combn-args op)));installation time. 
+		 (equal? (car (combn-args op)) operation)) 
+	    (is-a? method-type ast-constant-node);Method is for object.
+	    (eq? object (constn-value method-type)))
+       (set! status 'inline)))
+|#
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;Define contour-transparency, which is the ability to search on up
+;through the contour for names, as opposed to closing over them.
+
+(define-instance contn-transparent? operation)
+
+(add-method (contn-transparent? (ast-contour-node) self)
+  nil)
+
+(add-method (contn-transparent? (ast-method-node status) self)
+  (eq? status 'inline))
+  
+(add-method (contn-transparent? (ast-labels-node) self)
+  t)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;        identify combinations in tail-recursive spots relative to labels
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(define-instance mark-tail-nodes operation)
+
+(with-operations (you-are-in-tail-pos) 
+  
+  (add-method (mark-tail-nodes (ast-node) self)
+    (walk-ast self mark-tail-nodes))
+  
+  (add-method (mark-tail-nodes (ast-labels-node) self)
+    (walk-ast self mark-tail-nodes)
+    (you-are-in-tail-pos self))
+
+  (add-method (mark-tail-nodes (ast-combination-node tail-pos?) self)
+    (set! tail-pos? nil) ;erase previous analysis
+    (walk-ast self mark-tail-nodes))
+  
+  (add-method (you-are-in-tail-pos (ast-node) self) nil)	;no-op
+  
+  (add-method (you-are-in-tail-pos (ast-if-node consequent alternate) self)
+    (you-are-in-tail-pos consequent)
+    (you-are-in-tail-pos alternate))
+  
+  (add-method (you-are-in-tail-pos (ast-labels-node) self)
+    (walk-ast self you-are-in-tail-pos))
+  
+  (add-method (you-are-in-tail-pos (ast-block-node body) self)
+    (you-are-in-tail-pos (last body)))
+  
+  (add-method (you-are-in-tail-pos (ast-combination-node op tail-pos?) self)
+    (set! tail-pos? t)
+    (if (is-a? op ast-method-node)
+	(you-are-in-tail-pos op)))		;so that LET will work.
+  
+  (add-method (you-are-in-tail-pos (ast-method-node status body) self)
+    (if (eq? status 'inline)
+	(you-are-in-tail-pos body))))
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                      resolve lexical variables                      ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;sequencer for variable resolution
+
+(define-instance top-level-resolve-variables operation)
+(define-instance resolve-variables operation)
+
+(add-method (top-level-resolve-variables (ast-node) self)
+    (let ((dummy-contour (make ast-contour-node nil nil)))
+      (resolve-variables self '() dummy-contour)))
+
+(add-method (resolve-variables (ast-node) self outerenv outermethod)
+      (stash-environment self outerenv)
+      (stash-enclosing-contour self outermethod)
+      (classify-variables self)
+      (propagate-evars self))
+
+(set! dummy-contour (make ast-contour-node nil nil))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;The environment slot of a contour node contains a list of all
+;external lexical variables that are visible in that method.
+ 
+(define-instance stash-environment operation)
+
+(add-method (stash-environment (ast-node) self outer-env)
+    (walk-ast-with-arg self stash-environment outer-env))
+
+(add-method (stash-environment (ast-contour-node localvars environment) self outer-env)
+  (set! environment outer-env)
+  (append localvars outer-env))
+  
+(add-method (stash-environment (ast-method-node method-type op body) self outer-env)
+  (let ((new-env (^super ast-contour-node stash-environment self outer-env)))
+    (stash-environment method-type outer-env)
+    (stash-environment op outer-env)
+    (stash-environment body new-env)))
+  
+(add-method (stash-environment (ast-labels-node lambdalist body) self outer-env)
+  (let ((new-env (^super ast-contour-node stash-environment self outer-env)))
+    (map-with-arg stash-environment lambdalist new-env)
+    (stash-environment body new-env)))
+
+
+#|
+(with-operations (proceed)
+  
+  (add-method (stash-environment (ast-contour-node localvars environment) self outer-env)
+    (set! environment outer-env)
+    (proceed self outer-env (append localvars outer-env)))
+  
+  (add-method (proceed (ast-method-node method-type op body) self outer-env new-env)
+    (stash-environment method-type outer-env)
+    (stash-environment op outer-env)
+    (stash-environment body new-env))
+  
+  (add-method (proceed (ast-labels-node lambdalist body) self outer-env new-env)
+    (map-with-arg stash-environment lambdalist new-env)
+    (stash-environment body new-env)))
+|#
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;The enclosing-contour slot of a node provides a pointer back to the contour
+;that contains the node. This facilitates references to the various
+;variable lists in the method.  The outermost nodes point back
+;to a dummy contour that has no arguments.
+
+(define-instance stash-enclosing-contour operation)
+
+
+(with-operations (proceed)
+  
+  (add-method (stash-enclosing-contour (ast-node enclosing-contour) self enc-cont)
+    (set! enclosing-contour enc-cont)
+    (proceed self enc-cont))
+  
+  (add-method (proceed (ast-node) self enc-cont)
+    (walk-ast-with-arg self stash-enclosing-contour enc-cont))
+  
+  (add-method (proceed (ast-method-node method-type op body) self enc-cont)
+    (stash-enclosing-contour method-type enc-cont)
+    (stash-enclosing-contour op enc-cont)
+    (stash-enclosing-contour body self))
+
+  (add-method (proceed (ast-labels-node lambdalist body) self enc-cont)
+    (map-with-arg stash-enclosing-contour lambdalist self)
+    (stash-enclosing-contour body self)))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;The classify-variables operation figures out where variables live,
+;e.g. on the stack, in the closed-environment, or wherever.
+
+(define-instance classify-variables operation)
+
+(add-method (classify-variables (ast-node) self)
+  (walk-ast self classify-variables))
+
+(add-method (classify-variables (ast-variable-node
+				 var-type name source-contour) self) 
+  (iterate step ((contour (node-enclosing-contour self)))
+
+    (cond ((memq name (contn-localvars contour))
+	   (set! source-contour contour)
+	   (set! var-type
+		(cond ((is-a? contour ast-labels-node)
+		       'label)
+		      ((memq name (methn-arglist contour)) ;it's a method
+		       'stack)
+		      (else
+		       'ivar))))
+
+	  ((contn-transparent? contour)
+	   (step (node-enclosing-contour contour)))
+
+	  ((memq name (contn-environment contour))
+	   (set! source-contour contour)
+	   (set! var-type 'evar))
+
+	  (else
+	   (set! var-type 'global)))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;This operation notices evars and records them in the envlist 
+;field of their enclosing methods.
+;If a method cannot supply a variable closed over by an
+;inner method, then the variable must be closed over by
+;the outer method too. 
+;This also fills in the nojumplist field of contours.
+
+
+(define-instance propagate-evars operation)
+
+(add-method (propagate-evars (ast-node) self)
+  (walk-ast self propagate-evars))
+
+(add-method (propagate-evars (ast-variable-node var-type name source-contour car-pos?) self)
+  (cond ((eq? var-type 'evar)
+	 (set! (evar? source-contour name) t))
+	((and (not car-pos?)
+	      (eq? var-type 'label))
+	 (set! (cant-jump? source-contour name) t))))
+
+(add-method (propagate-evars (ast-contour-node envlist closedlist nojumplist) self)
+  (set! envlist '())
+  (set! closedlist '())
+  (set! nojumplist '())
+  (walk-ast self propagate-evars)
+  (for-each (lambda (x)
+	      (iterate step ((contour (node-enclosing-contour self)))
+		(cond ((localvar? contour x)
+		       (set! (closed-over? contour x) t))
+		      ((contn-transparent? contour)
+		       (step (node-enclosing-contour contour)))
+		      (else
+		       (set! (closed-over? contour x) t)
+		       (set! (evar? contour x) t)))))
+	    envlist)
+  (set! nojumplist (append nojumplist closedlist)))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;               rewrite non-jumpable labels
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;a labels can be compiled using jumps if every reference to a label
+;is a function call in a tail recursive position.
+
+
+(define-instance rewrite-labels-v operation)
+
+(with-operations (look-for-non-tail-call your-out-of-place)
+  
+  (add-method (rewrite-labels-v (ast-node) self)
+    (map-ast! self rewrite-labels-v))
+  
+  (add-method (rewrite-labels-v (ast-labels-node labellist lambdalist body) self)
+    (map-ast! self rewrite-labels-v)
+    (look-for-non-tail-call self)
+    (if (or (contn-nojumplist self)
+	    (any? methn-rest-name lambdalist))
+	(block
+	  (set! labels-count (- labels-count 1))
+	  (code->ast
+	   `((%add-method ((',make ',operation) (',object) . ,labellist)    ;see below   
+			   (%block
+			     ,@(map2 (lambda (lab lam)
+				       `(%set ,lab ,lam))
+				     labellist
+				     lambdalist)
+			     ,body))
+	      ,@(map (lambda (x) nil)		;should really be undefined value
+		     labellist))))
+	self))
+  
+
+  (add-method (look-for-non-tail-call (ast-node) self)
+    (walk-ast self look-for-non-tail-call))
+  
+  (add-method (look-for-non-tail-call (ast-combination-node op tail-pos?) self)
+    (walk-ast self look-for-non-tail-call)
+    (if (not tail-pos?)
+	(your-out-of-place op)))
+
+  (add-method (your-out-of-place (ast-node) self)
+    nil)
+  (add-method (your-out-of-place (ast-variable-node var-type name source-contour) self)
+    (if (eq? var-type 'label)
+	(set! (cant-jump? source-contour name) t))))
+
+
+
+
+;;was    `((%add-method ((make operation) (object) . ,labellist)     
+
+

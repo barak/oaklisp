@@ -1,0 +1,71 @@
+;;; Copyright (C) 1986,7,8 Kevin J. Lang and Barak A. Pearlmutter.
+
+;;; how to make types
+
+(add-method (initialize (type instance-length variable-length? supertype-list
+			      ivar-list ivar-count type-bp-alist
+			      operation-method-alist top-wired?)
+			self the-ivar-list the-supertype-list)
+  (set! variable-length? nil)
+  (set! supertype-list the-supertype-list)
+  (set! ivar-list the-ivar-list)
+  (set! ivar-count (%length ivar-list)) 
+  (set! operation-method-alist '())
+  (set! top-wired? nil)
+  ;; Got to compute type-bp-alist and instance-length together:
+  (set! instance-length 1)
+  (set! type-bp-alist '())
+  (iterate nextsuper ((supers-to-do supertype-list)(type-table (list self))
+		      (top-wired-guy? nil)(var-len-guy? nil))
+    (if supers-to-do
+	(let ((guy (car supers-to-do)))
+	  (cond ((eq? guy variable-length-mixin)
+		 (when var-len-guy?
+		   (error "type init: can't include vl-mixin twice"))
+		 (set! variable-length? t)
+		 (set! instance-length 2)
+		 (nextsuper (cdr supers-to-do) type-table
+			    top-wired-guy? (list guy)))
+		(((%slot 8) guy)
+		 (when  top-wired-guy?
+		   (error "type init: can't combine two top-wired types"))
+		 (nextsuper (cdr supers-to-do) type-table
+			    (list guy) var-len-guy?))
+		((%memq guy type-table)
+		 (nextsuper (cdr supers-to-do) type-table
+			    top-wired-guy? var-len-guy?))
+		(else
+		 (nextsuper (%append ((%slot 3) guy) (cdr supers-to-do))
+			    (cons guy type-table)
+			    top-wired-guy? var-len-guy?))))
+	(block
+	 (when (and top-wired-guy? var-len-guy?)
+	   (error "type init: can't have both vl-mixin and a top-wired type"))
+	 (iterate layout ((guys-to-do (%append top-wired-guy?
+					       (%append type-table
+							var-len-guy?))))
+	   (if guys-to-do
+	       (let ((guy (car guys-to-do)))
+		 (set! type-bp-alist (cons (cons guy instance-length)
+					  type-bp-alist))
+		 (set! instance-length (+ instance-length ((%slot 5) guy)))
+		 (layout (cdr guys-to-do)))
+	       self))))))
+
+;;; Value is: 0 for never add-methoded, NIL for regular operation, the method
+;;; if it's a lambda.
+
+(add-method (initialize (operation lambda?) self)
+  (set! lambda? 0)
+  ;; The cache could be initialized to something innocent here, but I'm not
+  ;; going to bother, as the uninitialized value shouldn't be a type anyway.
+  self)
+
+(set! %your-top-wired  (make operation))
+(add-method (%your-top-wired (type top-wired?) self)
+    (set! top-wired? t))
+
+
+;; fix the problem with subtyping a top-wired variable-length type.
+
+

@@ -1,0 +1,12 @@
+;;; Copyright (C) 1987, Barak A. Pearlmutter and Kevin J. Lang.
+
+;;; The following two things are a hack, but they should speed up string
+;;; access by a lot, and this optimization is anything but premature.
+
+(define-syntax (%fixnum->character x)
+  `(%crunch (ash-left ,x 6) 1))
+
+(define-syntax (%character->fixnum x)
+  `(ash-left (%data ,x) -6))
+
+;;; End of icky macros that compile to tense code.

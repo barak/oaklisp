@@ -1,0 +1,30 @@
+;;;; Copyright (C) 1989, Barak A. Pearlmutter & Kevin J. Lang.
+
+;;; When a unix level DEL signal comes in, this is what gets signaled.
+
+(define-instance user-interrupt type '() (list proceedable-condition object))
+
+(add-method (report (user-interrupt) self stream)
+  (format stream "User interrupt.~%"))
+
+(add-method (initialize (user-interrupt) self)
+  (^super proceedable-condition
+	  initialize self "Resume the interrupted computation."))
+
+;;; This handles the emulator's interface to a user interrupt, which
+;;; consists of pretending that a NOOP instruction failed and passing the
+;;; old value of NARGS to be restored before returning.
+
+(define (usr-intr n)
+  (signal user-interrupt)
+  (set! ((%register 'nargs)) n)
+  (%return))
+
+(set! (nth %argless-tag-trap-table 0) usr-intr)
+
+;;; Make this condition land us in the debugger instead of being ignored:
+
+(set! error-handlers
+      (append! error-handlers (list (cons user-interrupt invoke-debugger))))
+
+;;; eof

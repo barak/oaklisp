@@ -1,0 +1,151 @@
+.TH OAKLISP 1 "1988 April 1"
+.UC 4
+
+.SH NAME
+oaklisp \- Our implementation of Oaklisp
+.br
+oakliszt \- The Oaklisp file compiler
+.br
+scheme \- Oaklisp with R3RS compatibility package
+
+.SH SYNOPSIS
+.B oaklisp
+[switches ...]
+.br
+.B oakliszt
+file [locale [switches ...]]
+.br
+.B scheme
+[switches ...]
+
+.SH DESCRIPTION
+.I Oaklisp
+is an object-oriented dialect of Scheme.  This implementation is
+highly portable, compiling to a virtual machine which is emulated by a
+C program.  Nevertheless, reasonable speed is achieved through a
+variety of sophisticated techniques.
+
+.SH SWITCHES
+.ta \w'-d -b  'u
+.br
+\fB-h x\fP	Set newspace size (in bytes) to x; default is 1Mb.
+.br
+\fB-Q\fP	Suppress all gc related output.
+.br
+\fB-d -b\fP	Dump the world when \fIoaklisp\fP stops itself.
+.br
+\fB-G\fP	Perform a full gc before dumping the world.
+
+.SH ENVIRONMENT
+If none of these are set
+.I Oaklisp
+will still work correctly.  Users compiling long files sometimes set
+OAKLISZT to "-h 2m" in their initialization files.
+
+.ta \w'OAKLISZT   'u
+OAKPATH	Parent directory of the system.  No trailing /.
+.br
+OAKLISP	Switches for
+.I oaklisp,
+.I oakliszt,
+and
+.I scheme.
+.br
+OAKLISZT	Switches for
+.I oakliszt
+alone.
+.br
+OAKSCHEME	Switches for
+.I scheme
+alone.
+
+.SH FILES
+.ta \w'  lib/oaklisp.olc   'u
+  etc/emulator	Virtual machine emulator.
+.br
+  lib/oaklisp.%%	Vanilla boot image.
+.br
+  lib/oaklisp.%%c	Boot image including compiler.
+.br
+  lib/oaklisp.%%z	Batch compiler boot image.
+.br
+  lib/oaklisp.%%s	R3RS compatible boot image.
+.br
+where %% is either
+.I ol
+or
+.I lo
+for big-endian or little-endian machines, respectively.
+
+.SH REFERENCES
+.I The Oaklisp Language and Implementation Manuals
+are available by anonymous FTP from CS.CMU.EDU in
+/afs/cs.cmu.edu/user/bap/ftpable/oaklisp/, or by AFS, or in hardcopy
+form by sending email to technical_reports@cs.cmu.edu, or physical
+mail to Documentation-Computer Science, School of Computer Science,
+Carnegie Mellon University, Pittsburgh, PA 15213-3890.
+
+.I The Implementation of Oaklisp
+is a chapter in
+.I Topics in Advanced Language Implementation
+edited by Peter Lee, MIT Press, 1991.
+
+.I Oaklisp: an Object-Oriented Dialect of Scheme
+appears in the journal
+.I Lisp and Symbolic Computation
+volume 1 number 1, published by Klewer Associates, May 1988.
+
+.I Oaklisp: an Object-Oriented Scheme
+.I with First Class Types
+appeared in the ACM conference OOPSLA-86, whose proceedings were
+published as a special issue of
+.I SIGPLAN Notices.
+
+An article on the Oaklisp garbage collector is in press at CACM.
+
+.I The Revised^n Report on Scheme
+is also a useful piece of documentation, and is widely available,
+both online, as an MIT technical report, and in SIGPLAN Notices.
+
+
+.SH DISTRIBUTION
+The
+.I Oaklisp
+copyright belongs to its authors.  It is distributed under the
+.I GNU General Public License version 2, June 1991
+a copy of which is included in the
+.I Oaklisp
+distribution in the file
+.I COPYING.
+For further information or to make alternate arrangements, contact the
+authors, who are reasonable people.
+
+
+.SH BUGS
+Floating point numbers are not supported.  Rationals can be used to
+make up for this lack, as rationals can be told to print in floating
+point format, and floating point format input can be made to read as
+rational numbers.  (There are a couple floating point implementations,
+but they are not merged into the distributed release.)
+
+In contrast to the error handling system, which is Industrial
+Strength, the debugger is virtually nonexistent.
+
+There is no foreign function interface for loading and calling C
+routines from a running Oaklisp.  (Again, there are a couple
+implementations of foreign function interfaces which are not merged
+in.)
+
+Bug reports and enhancements should be sent to
+Barak_Pearlmutter@CS.CMU.EDU or, for those without access to computer
+mail,
+.br
+.nf
+	Barak Pearlmutter
+	Siemens Corporate Research
+	755 College Road East
+	Princeton, NJ  08540
+.fi
+
+.SH AUTHORS
+Kevin Lang and Barak Pearlmutter.

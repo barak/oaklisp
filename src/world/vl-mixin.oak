@@ -1,0 +1,152 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;(initialize variable-length-mixin '() '())
+
+;; %VREF uses a magic instruction to index off the base pointer.
+
+(define-constant-instance %vref locatable-operation)
+
+(add-method (%vref (variable-length-mixin) self n)
+  (let ((len (- ((%slot 1) self)
+		((%slot 1) (get-type self)))))
+    (if (or (>= n len) (< n 0))
+	(error "%VREF index ~D into ~S out of bounds; limit is ~D." n self len)
+	(%load-bp-i n))))
+
+(add-method ((setter %vref) (variable-length-mixin) self n x)
+  (let ((len (- ((%slot 1) self)
+		((%slot 1) (get-type self)))))
+    (if (or (>= n len) (< n 0))
+	(error "SETTER %VREF index ~D into ~S out of bounds; limit is ~D." n self len)
+	(set! (%load-bp-i n) x))))
+
+(add-method ((locater %vref) (variable-length-mixin) self n)
+  (let ((len (- ((%slot 1) self)
+		((%slot 1) (get-type self)))))
+    (if (or (>= n len) (< n 0))
+	(error "LOCATE %VREF index ~D into ~S out of bounds; limit is ~D." n self len)
+	(make-locative (%load-bp-i n)))))
+
+;; We get the length by directly accessing the length field.  This isn't
+;; relative to the base pointer; it's part of the memory format of variable
+;; length objects.
+
+(add-method (length (variable-length-mixin) self)
+  (- ((%slot 1) self)			;total length of ourself in memory
+     ((%slot 1) (get-type self))))	;length of the non-variable-length part of ourself
+
+
+(add-method (initialize (variable-length-mixin) self ncells)
+  self)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+; the following operation does no bounds checking
+
+
+(define-constant-instance %vref-nocheck locatable-operation)
+
+
+(add-method (%vref-nocheck (variable-length-mixin) self n)
+  (%load-bp-i n))
+
+
+(add-method ((setter %vref-nocheck) (variable-length-mixin) self n x)
+  (set! (%load-bp-i n) x))
+
+
+(add-method ((locater %vref-nocheck) (variable-length-mixin) self n)
+  (make-locative (%load-bp-i n)))
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Define the simple vector type:
+
+(define-constant-instance simple-vector coercable-type
+  '() (list vector-type variable-length-mixin object))
+
+;;; Try to make only one empty vector.
+
+(let ((the-empty-vector (make simple-vector 0)))
+  (add-method (initialize (simple-vector) self ncells)
+    (if (zero? ncells) the-empty-vector self)))
+
+(add-method (nth (simple-vector) self n) (%vref self n))
+
+(add-method ((setter nth) (simple-vector) self n x) (set! (%vref self n) x))
+
+(add-method ((locater nth) (simple-vector) self n)
+  (make-locative (%vref self n)))
+
+(add-method (simple-vector (list-type) l)
+  (let* ((len (length l))
+	 (v (make simple-vector len)))
+    (iterate aux ((l l)(i 0))
+      (cond ((not (null? l))
+	     (set! (nth v i) (car l))
+	     (aux (cdr l) (+ i 1)))
+	    (else v)))))
+
+
+
+(add-method ((coercer list-type) (simple-vector) v)
+  (iterate aux ((i (- (length v) 1))(l '()))
+    (if (negative? i)
+	l
+	(aux (- i 1) (cons (%load-bp-i i) l)))))
+
+
+
+
+#|
+
+(add-method ((coercer simple-vector) (sequence) x)
+  (let* ((len (length x))
+	 (v (make simple-vector len)))
+    (dotimes (i len v)
+      (set! (nth v i) (nth x i)))))
+
+|#
+
+
+(let ((filler (make operation)))
+
+  (add-method (filler (variable-length-mixin) v l)
+    (iterate next ((i 0)(l l))
+      (when (not (null? l))
+	(set! (%load-bp-i i) (car l))
+	(next (1+ i)(cdr l)))))
+
+  (add-method ((coercer simple-vector) (list-type) x)
+    (let* ((len (length x))
+	   (v (make simple-vector len)))
+      (filler v x)
+      v)))
+
+
+
+(labels ((fill-it (lambda (i v a . args)
+		    (set! (nth v i) a)
+		    (if (zero? (rest-length args))
+			v
+			(fill-it (+ i 1) v . args)))))
+
+  (define (vector . args)
+    (if (zero? (rest-length args))
+	(make simple-vector 0)
+	(fill-it 0 (make simple-vector (rest-length args)) . args))))
+
+#||
+(define (vector . args)
+  (listify-args (coercer simple-vector) . args))
+||#
+
+;;; eof

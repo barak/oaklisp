@@ -1,0 +1,444 @@
+\chapter{Oaklisp Level Implementation}
+
+Once the core of the language is up, the rest of the language is
+implemented using the language core.  Some of these new language
+constructs require some support from the bytecode emulator along with
+considerable Oaklisp level support.  These include such features as
+\df{call/cc} and its simple cousin \df{catch}.  Others are implemented
+entirely in the core language without the use of special purpose
+bytecodes; in this latter class fall things like infinite precision
+integers (so called {\em bignums}), fluid variables, and the error
+system.
+
+In this chapter we describe the implementation of these constructs,
+albeit sketchily.  For more details, the source code is publicly
+available.  We do not describe the implementation of locales or other
+extremely high level features; read the source for the details, which
+are quite straightforward.
+
+
+\section{Fluid Variables} \label{fluid-impl}
+
+Our implementation of fluid variables uses deep binding.  A shallow
+bound or hybrid technology would presumably speed fluid variable
+reference considerably, but they are used rarely enough that we have
+not bothered with such optimizations.  In addition, shallow binding
+interacts poorly with multiprocessing.
+
+\gv{fluid-binding-list}
+\doc{Hold an association list which associates fluid variables to
+their values.  The \df{bind} construct simply pushes variable/value
+pairs onto this list before executing its body and pops them off
+afterwards.}
+
+It would be easy to implement fluid variables using the unwind
+protection facilities, but instead the abnormal control constructs
+(\df{native-catch} and \df{call/cc}) are careful to save and restore
+\df{fluid-binding-list} properly.  This avoids the overhead of using
+the wind facilities and makes sure that (ignoring \df{wind-protect})
+\df{fluid-binding-list} is only manipulated once for every abnormal
+exit, no matter how many \df{bind} constructs are exited and entered
+along the way.
+
+\lo{\%fluid}{symbol}
+\doc{This looks {\em symbol} up on \df{fluid-binding-list}.  If it
+is not found an error is signaled.  In contrast, {\tt (setter
+\%fluid)} silently adds new fluid variables to the end of the
+association list, thus creating new top level fluid bindings.}
+
+
+
+\section{Unwind Protection} \label{sec:oakwind}
+
+In the presence of \df{call/cc}, a simple \df{unwind-protect}
+construct a.\ la.\ Common Lisp does not suffice.  Because control can
+enter a dynamic context which has previously been exited, symmetry
+requires that if we have forms that get executed automatically when a
+context is abnormally exited, we must also have ones that get executed
+automatically when a context is abnormally entered.  For this purpose
+the system maintains some global variables that reflect the state of
+the current dynamic context with respect to these automatic actions.
+
+\gv{\%windings}
+\doc{This is a list of wind/unwind action pairs, one of which is
+pushed on each time we enter a \df{dynamic-wind} and poped off when we
+leave it.  The wind/unwind action pairs are of the form {\tt ({\em
+after} {\em before} . {\em saved-fluid-binding-list})} where {\em
+before} and {\em after} are operations, guards to be called when
+leaving and entering this dynamic context respectively, and {\em
+saved-fluid-binding-list} is the appropriate value for
+\df{fluid-binding-list} when calling these guard operations.}
+
+\gv{\%wind-count}
+\doc{To reduce \df{find-join-point}'s complexity from quadratic to
+linear, we maintain \df{\%wind-count} $=$ {\tt (length \%windings)}.}
+
+
+\section{Catch} \label{sec:oakcatch}
+
+The format of catch tags is describe in section \ref{sec:ctagform}.
+The simplest implementation of \df{native-catch} would have the
+\df{native-catch} macro expand into something that executed the
+appropriate unwind protect actions and restored the fluid binding list
+before resuming execution.  Regretably, the unwind protect actions can
+themselves potentially \df{throw}, so the stacks must not be chopped
+off until after the unwind protect actions have been completed.  For
+this reason the \df{throw} operation doesn't just call the \df{throw}
+instruction, but first performs all the appropriate unwind protect
+actions.  Along with stack heights, the catch tag contains
+\df{saved-wind-count}, which is used to compute how many elements of
+\df{\%windings} must be popped off and called, and
+\df{saved-fluid-binding-list}, which is restored immediately before
+the stacks are actually chopped off.
+
+
+\section{Call/CC}
+
+The \df{call/cc} construct is just like \df{native-catch}, except that
+the saved stack state isn't just some offsets but is an entire stack
+photo (see section \ref{sec:stackimpl}), and that not only unwinding
+but also rewinding actions might need to be done.  Because the winding
+actions might \df{throw}, it is necessary for the unwind actions to be
+executed in the stack context where the continuation is invoked, and
+similarly the rewind actions must be executed in the destination stack
+context.
+
+\gv{\%\%join-count}
+\gv{\%\%new-windings}
+\gv{\%\%new-wind-count}
+\gv{\%\%cleanup-needed}
+\doc{These global are used to pass information about which rewind
+actions need to be executed by the destination of the continuation,
+since the normal parameter passing mechanisms are not available.  This
+would have to be done on a per processor basis in a multithreaded
+implementation.}
+
+Continuations contain \df{saved-windings} and \df{saved-wind-count}
+instance variables, which have the values of \df{\%windings} and
+\df{\%wind-count} at the time the \df{\%call/cc} was entered.  Before
+the continuation is actually invoked and the destination stack photos
+restored, the highest join point between current and the destination
+winding lists is found, and all the unwind actions needed to get down
+to the join point are executed.  Then the stack photo is restored, and
+in the destination context the rewinding actions are done to get up
+from the join point to the destination point.
+
+
+\section{The Error System}
+
+The error system is pretty complete, but is actually not only easy to
+use, but also intuitive and fun, particularly at the user level.
+
+\mc{error-return}{message \dt body}
+\doc{Evaluates {\em body} in a dynamic context in which a restart
+handler is available that can force the form to return.  The handler
+is identified by {\em string} in the list of choices printed out by
+the debugger.  If the handler is invoked by calling \df{ret} with an
+argument in addition to the handler number, the \df{error-return} form
+returns this additional value; otherwise it returns \df{\#f}.  If no
+error occurs, an \df{error-return} form yields the value of {\em
+body}.}
+
+\mc{error-restart}{message let-clauses \dt body}
+\doc{Acts like a \df{let}, binding the {\em let-clauses} as you would
+expect, except that if an error occurs while evaluating {\em body},
+the user is given the option of specifying new values for the
+variables of the {\em let-clauses} and starting {\em body} again.
+This is implemented with a \df{native-catch} and some tricky restart
+handlers that get pushed onto {\tt (fluid restart-handlers)}.}
+
+\fv{restart-handlers}
+\doc{A list of actions that the user can invoke from the debugger in
+order to restart the computation at various places.  Not normally
+manipulated by user code.}
+\fv{debug-level}
+\doc{The number of recursive debuggers we're inside.  Zero for the top
+level.  Not normally manipulated by user code.}
+
+\mc{catch-errors}
+{\lpar error-type $[$error-lambda $[$non-error-lambda$]]$\rpar \dt body}
+\doc{Evaluates {\em body}.  If an error which is a subtype of {\em
+error-type} occurs, \df{\#f} is returned, unless {\em error-lambda} is
+given, in which case it is called on the error object.  If no error
+occurs then the result of evaluating {\em body} is returned, unless
+{\em non-error-lambda} is provided in which case it is called on the
+result of the evaluation of {\em body} within the context of of the
+error handler, and the resultant value returned.}
+
+\mc{bind-error-handler}{\lpar error-type handler\rpar \dt body}
+ \doc{This binds a handler to errors which are subtypes of {\em
+error-type}.  When such an error occurs, an appropriate error object
+is created and {\em handler} is applied to it.}
+
+\op{invoke-debugger}{error}
+\doc{This error handler, when sent to an error object, invokes the debugger.}
+
+\op{remember-context}{error after-op}
+\doc{Used to make an error remember the context it occured in, so that
+even after the context has been exited the error can still be
+proceeded from, or the debugger can be entered back at the error
+context.  This should always be called tail recursively from a
+handler, and after it stashes away the continuation it calls {\em
+after-op} on {\em error}.  Of course, {\em after-op} should never
+return.}
+
+\op{invoke-in-error-context}{error operation}
+\doc{Go back to the context in which {\em error} occured and invoke
+{\em operation} there.}
+
+\op{report}{error stream}
+\doc{Write a human readable account of the error to {\em stream}.
+Controlled studies have shown that error messages can never be too
+verbose.}
+
+\op{proceed}{error value}
+\doc{Proceed from {\em error}, returning {\em value}.  Of course, it
+is actually the call to \df{signal} that returns {\em value}.}
+
+
+\op{signal}{error-type \dt args}
+\doc{This signals creates an error of type {\em error-type} with
+initialization arguments {\em args}.  It then scans down {\tt (fluid
+error-handlers)} until it finds a type of error which is a supertype
+of {\em error-type}, at which point it sends the corresponding handler
+to the newly minted error object.  If the handler returns, that value
+is returned by the call to \df{signal}.  One day we'll add a way
+for a handler to refuse to handle an error, in which case the search
+for an applicable handler will proceed down the list.}
+
+\fv{error-handlers}
+\doc{An association list of mapping error types to error handlers.
+Users should not touch this directly.}
+
+Of course, there are a large number of types of errors used by the
+system.  A few of the more useful to know about are:
+
+\ty{general-error}
+\doc{The supertype of all errors.  Abstract.}
+\ty{proceedable-error}
+\doc{The supertype of all errors that can be recovered from.  Abstract.}
+\ty{fs-error}
+\doc{File system error.  Abstract.  It has all kinds of subtypes for
+all the different possible file system error conditions.}
+\ty{error-opening}
+\doc{Abstract.  Signaled when a file can't be opened for some reason.
+Proceeding from this kind of error with a string lets you try opening
+a different file.}
+\ty{operation-not-found}
+\doc{Signaled when an operation is sent to an object that can't handle
+it.  Proceeding from this kind of error will return a value from the
+failed call.}
+\ty{nargs-error}
+\doc{Signaled when there are an incorrect number of arguments passed
+to a function.  Proceeding from this will return a value from the
+failed call.  Abstract}
+\ty{nargs-exact-error}
+\doc{Signaled when there are an incorrect number of arguments passed
+to a method that expects a particular number of arguments.}
+
+\ty{nargs-gte-error}
+\doc{Signaled when there are an insufficient number of arguments
+passed to a method that can tolerate extra arguments.}
+
+\ty{infinite-loop}
+\doc{Signaled when an infinite loop is entered.  User programs may
+wish to signal this as well.}
+
+\ty{read-error}
+\doc{Some kind of reader syntax error.  Abstract.  There are about
+fifty million subtypes, corresponding to all the different constructs
+that can be malformed, and all the different ways in which they can be
+malformed.  We probably went a little overboard with these.}
+
+\ty{user-interrupt}
+\doc{Oaklisp received a DEL signal.  Through a convoluted series of
+events in which the UNIX trap handler sets the variable
+\df{\protect\_del\protect\_}, which is detected by the bytecode
+emulator which pretends that a \df{noop} instruction failed and passes
+the \df{nargs} register to the Oaklisp trap handler which salts the
+old \df{nargs} away for restoration upon return and signals this error
+type, the user usually lands in the debugger after typing Control-C.}
+
+
+
+
+\section{Numbers}
+
+Small integers (between $-2^{29}$ and $2^{29}-1$ inclusive) are
+represented as immediates of type \df{fixnum} and handled directly by
+microcode.  When arithmetic instructions trap out, due to either their
+arguments not being \df{fixnum}s or to overflow, an Oaklisp operation
+corresponding to the bytecode is called.  Most of these operations are
+written in terms of other bytecodes, and should never be shadowed.
+For instance,
+\begin{verbatim}
+(add-method (subtract/2 (number) x y)
+  (+ x (- y)))
+\end{verbatim}
+defines subtraction in terms of negation and addition.  The trap code
+also handles fixnum overflow, promoting the operands to \df{bignum}s
+and dispatching appropriately.  The only really primitive operations,
+which must handle all types of numbers, are \df{<}, \df{=},
+ \df{minus}, \df{negative?}, \df{plus/2}, \df{times/2}, \df{/},
+ \df{/r}, \df{quotient}, \df{remainder}, \df{quotientm} and
+ \df{modulo}.  Whenever a new type of number is defined, methods for
+all of the above operations should be added for it, unless the new
+type is not a subtype of \df{real}, in which case methods wouldn't
+make sense for \df{<}, \df{negative?}, and perhaps \df{quotient},
+ \df{remainder}, \df{quotientm} and \df{modulo}.
+
+
+
+\section{Vectors and Strings}
+
+Rather than being built into the emulator, vectors are defined
+entirely within Oaklisp, albeit with some rather low level constructs.
+
+\ty{variable-length-mixin}
+\doc{This type provides a variable amount of stuff at the end of its
+instances.  When a type has this mixed in, whether immediately or deep
+down in the inheritance tree, it always takes an extra initialization
+argument which says has long the variable length block at the end
+should be.  This is mixed into such system types as
+\df{\%code-vector}, \df{stack-segment}, and \df{\%closed-environment}.
+
+In general, \df{variable-length-mixin} is used at the implementation
+level only and should never appear in user code.  Typically if you
+think you want a subtype of \df{variable-length-mixin}, what you
+really want is an instance variable bound to a vector.}
+
+\lo{\%vref}{variable-length-object n}
+\doc{This is the accessor operation to get at the extra cells of
+subtypes of \df{variable-length-mixin}.  It is used in the
+implementation of variable length structures, and in things like
+\df{describe} that look at their internals.}
+
+\ty{simple-vector}
+\doc{This is a subtype of \df{vector} with \df{variable-length-mixin}
+added and an appropriate \df{nth} method defined.}
+
+\discuss{Characters are packed into strings more densely than one
+character per reference, so strings are not just vectors with odd
+print methods; they also have accessor methods which unpack characters
+from their internals.  Unfortunately, it is not possible to pack four
+eight bit characters into a single reference without violating the
+memory format conventions by putting something other than
+\framebox{\tt 0 0} in the tag field.  We could pack four seven bit
+characters into each reference, but some computers use eight bit
+fonts, and the characters within the string would not be aligned
+compatibly with C strings.  We therefore use the following somewhat
+wasteful format.}
+
+\ty{string}
+\doc{This is a subtype of \df{simple-vector} with the \df{nth} method
+shadowed by one that packs three eight bit characters into the low 24
+bits of each fixnum, in littleendian order.  The unused high bits of
+each word are set to zero to simplify equality testing and hash key
+computation.  No trailing null character is required, although one is
+present two thirds of the time due to padding.  Below is the string
+{\tt "Oaklisp Rules!"} as represented in memory.}
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|}\hline
+31 \ldots 26 & 25 \ldots 18 & 17 \ldots 10 & 9 \ldots 2 & 1 0 \\\hline\hline
+\multicolumn{5}{|c|}{\em string} \\\hline
+\multicolumn{4}{|c|}{{\em object length:} 8} & 0 0 \\\hline
+\multicolumn{4}{|c|}{{\em string length:} 14} & 0 0 \\\hline
+0 0 0 0 0 0&\tt\#\char`\\k   &\tt\#\char`\\a    &\tt\#\char`\\O&0 0 \\\hline
+0 0 0 0 0 0&\tt\#\char`\\s   &\tt\#\char`\\i    &\tt\#\char`\\l&0 0 \\\hline
+0 0 0 0 0 0&\tt\#\char`\\R   &\tt\#\char`\\space&\tt\#\char`\\p&0 0 \\\hline
+0 0 0 0 0 0&\tt\#\char`\\e   &\tt\#\char`\\l    &\tt\#\char`\\u&0 0 \\\hline
+0 0 0 0 0 0&\tt\#\char`\\null&\tt\#\char`\\!    &\tt\#\char`\\s&0 0 \\\hline
+\end{tabular}
+\end{center}
+
+
+\section{Symbols}
+
+We do not use any of the fancy techniques used by older dialects, like
+oblists or symbol buckets.  Instead, the standard hash table facility
+is used for the symbol table.
+
+\heady{symbol-table}{}{Generic Hash Table}
+\doc{Maps strings to symbols, using \df{string-hash-key} to compute
+the hash and \df{equal?} to compare strings for equality.}
+
+\op{intern}{string}
+\doc{Returns a symbol with print name {\em string} by looking it up
+in the \df{symbol-table} and making and installing a new symbol if it
+isn't found.  Strings passed to \df{intern} should never be side
+effected afterwards or the symbol table could be corrupted.}
+
+\fv{print-escape}
+\doc{This flags whether symbols with weird characters in them should
+be with the weird characters escaped.  It also applies to strings.}
+
+\fv{symbol-slashification-style}
+\doc{This flag is only relevent if {\tt (fluid print-escape)} is on.
+With the value \df{t-compatible} then the empty symbol is printed as
+{\tt \#[symbol ""]} and all other symbols requiring escaping are
+printed with a {\tt \char`\\} character preceding every character of the
+symbol.  With any other value, escaped symbols are delimited by {\tt
+|} characters and internal characters {\tt \char`\\} and {\tt |} are
+preceded by {\tt \char`\\}.}
+
+
+
+\section{Variable Numbers of Arguments} \label{sec:varargs}
+
+The formal parameter list of a method is permitted to be improper,
+with the terminal atom being a magic token representing the rest of
+the arguments.  The only legal use for this magic token is as the
+terminal member of an improper argument list of a tail recursive call,
+and as an argument to the special form \df{rest-length}.  Methods that
+accept a variable number of arguments must exit tail recursively and
+must pass along their magic token in their tail recursive call, unless
+they know that they actually received no extra arguments.
+
+\sform{rest-length}{varargs-token}
+\doc{Returns the number of trailing arguments represented by
+{\em varargs-token}.}
+
+For example, this is legal,
+\begin{verbatim}
+(define (okay x y . rest)
+  (if (zero? (rest-length rest))
+      'nanu-nanu
+      (list 'you x y 'sucker . rest)))
+\end{verbatim}
+while the following are not, the first because it has an exit when
+there might be extra arguments which does not pass the extra arguments
+along tail recursively, and the second because it tries to pass along
+the extra arguments in a non tail recursive position.
+\begin{verbatim}
+(define (not-okay x y . rest)
+  (if (eq? x y)
+      'nanu-nanu
+      (list 'you x y 'sucker . rest)))
+
+(define (also-bad x y . rest)
+  (append (list 'you x 'sucker . rest) y))
+\end{verbatim}
+
+The implementation behind this is very simple: extra arguments are
+ignored by the compiler, except that it emits a \df{check-nargs-gte}
+in place of a \df{chech-nargs} at the top of the method code body and
+does a little computation to figure out what the value to put in the
+\df{nargs} register when it sees rest argument at the tail of a call.
+When all the user wishes to do is pass the extra arguments along in
+the way that the \df{make} method passes extra args along to
+\df{initialize}, this mechanism is both convenient and efficient.
+Sometimes the user needs to actually get into the extra arguments
+though, so some operations are provided to make handling variable
+numbers of arguments easier.
+
+\op{consume-args}{value \dt extra}
+\doc{Returns {\em value}.}
+
+\op{listify-args}{operation \dt args}
+\doc{Calls {\em operation} with a single argument, a list of {\em
+args}.}
+
+There is also a macro package that implements optional and keyword
+arguments using these facilities, and the Scheme compatiblity package
+redefines \df{add-method} so that, as required by the Scheme standard
+\cite{R3RS}, extra arguments are made into a list.

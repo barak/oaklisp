@@ -1,0 +1,267 @@
+\chapter{Stack Machine Architecture}
+
+
+\section{Registers in the Emulator}
+
+This section describes the registers that make up the state of the
+bytecode emulator, called the processor below.
+
+\begin{description}
+
+\item[\tt pc:] The program counter points to a half reference
+address, and can not be accessed by register instructions.
+
+\item[\tt val\_stk:] The top of the value stack.  Can not be accessed by
+register instructions.
+
+\item[\tt cxt\_stk:] The top of the context stack.  Can not be accessed by
+register instructions.
+
+\item[\tt bp:] The base pointer points to the base of the instance variable frame
+of the current object.
+
+\item[\tt env:] The current environment object is indexed into to find
+locatives to lexically closed variables.
+
+\item[\tt current\_method:] The method whose code is currently being
+executed.  This is maintained solely to simplify garbage collection
+and debugging.
+
+\item[\tt nargs:] The number of args register is set before a function
+call and checked as the first action within each function.
+
+\item[\tt t:] Holds the cannonical truth object, {\tt \#t}.
+
+\item[\tt nil:] Holds the cannonical false object, {\tt \#f}, which is also
+used as the empty list, {\tt ()}.
+
+\item[\tt fixnum\_type:] Holds the type of objects with a tag of fixnum.
+
+\item[\tt loc\_type:] Holds the type of objects with a tag of locative.
+
+\item[\tt subtype\_table:] Holds a table of the types of all the immediate
+subtypes.  Currently only the first entry is used.
+
+\item[\tt cons\_type:] Holds the {\em cons-pair} type, the type of simple
+conses which are directly manipulated by the processor.
+
+\item[\tt env\_type:] Holds that type of environment vectors, used when
+making new environment objects.
+
+\item[\tt object\_type:] Holds the type {\em object} which is at the root
+of the type hierarchy.  Used when calling an operation with no
+parameters.  This should not be necessary in the next version.
+
+\item[\tt segment\_type:] Holds the type of stack segments, for use when
+the stack is being copied into the heap.
+
+\item[\tt argless\_tag\_trap\_table:] Holds a table of operations to be
+called when various instructions fail.
+
+\item[\tt arged\_tag\_trap\_table:] Holds a table of operations to be
+called when various instructions fail.
+
+\item[\tt boot\_code:] Holds the method to be called first thing at boot time.
+
+\item[\tt uninitialized:] Holds the value that gets stuck into newly
+allocated storage.
+
+\item[\tt free\_point:] Holds the point at which the next heap object will
+be allocated.  Not accessed directly by even the most internal Oaklisp
+code, as the processor takes care of initialization and gc itself.
+
+\item[\tt new.end:] Holds the point at which we've run out of storage.  An
+attempt to allocate past here necessitates a garbage collection.  Not
+directly accessed by even the most internal Oaklisp code.
+
+\item[\tt next\_newspace\_size:] Holds the size in references of the
+next new space to be allocated by the garbage collector.  This is
+dynamically adjusted by the garbage collector, so there is usually no
+need for it to be modified from the Oaklisp level.
+
+\end{description}
+
+
+
+
+\section{Instruction Set}
+The instructions follow the same argument order conventions as the
+language itself.  For example, {\tt (\df{store-loc} \em loc ref \tt)}
+expects to get {\em loc} on the top of the value stack and {\em ref}
+below it.  The instruction format
+\begin{center} \begin{tabular}{|c|c|c|}\hline
+ 8 bits          & 6 bits & 2 bits \\\hline
+ inline argument & opcode & 0 0    \\\hline
+\end{tabular} \end{center}
+leaves eight bits for an inline argument.  Instructions that do not
+require any inline argument actually have ``argless instruction'' in
+their instruction field and use the argument field to code for the
+actual instruction.
+
+Some instructions, eg.\ \df{load-imm}, require a complete arbitrary
+reference as an inline argument.  This in incorporated, aligned,
+directly in the instruction stream.  See section \ref{sec:codeblock}
+for details.  Other instructions, in particular the long branches,
+require more than an eight bit inline argument but do not need an
+entire reference.  These instructions get a 14 bit inline argument by
+using the space where the next instruction would normally go, with the
+last two bits set to zero in case the argument ends up in the low half
+of a word.
+
+\newenvironment{itable}[1]{
+\begin{center} \par \nopagebreak #1 \par \nopagebreak
+\begin{tabular}{|l|c|l|l|l|} \hline
+{\em instruction} & {\em inline arg} & {\em initial stack}
+ & {\em final stack} & {\em extra cell args}
+\\\hline\hline}{\hline\end{tabular}\end{center}}
+
+\newcommand{\icomment}[1]{\multicolumn{5}{|l|}{\parbox{4in}{#1}}\\\hline}
+
+\begin{itable}{Arithmetic}
+\df{plus}	& 		& 2 (fix,fix)	& 1 (fix)	& \\ \hline
+\df{minus}	&		& 1 (fix)	& 1 (fix)	& \\ \hline
+\df{subtract}	& 		& 2 (fix,fix)	& 1 (fix)	& \\ \hline
+\df{times}	& 		& 2 (fix,fix)	& 1 (fix)	& \\ \hline
+\df{mod}	& 		& 2 (fix,fix)	& 1 (fix)	& \\ \hline
+\df{div}	& 		& 2 (fix,fix)	& 1 (fix)	& \\ \hline
+\df{log-op}	& n (4 bits)	& 2 (fix,fix)	& 1 (fix)	& \\ \hline
+\df{bit-not}	& 		& 1 (fix)	& 1 (fix)	& \\ \hline
+\df{rot}	& 		& 2 (fix,fix)	& 1 (fix)	& \\ \hline
+\df{ash}	& 		& 2 (fix,fix)	& 1 (fix)	& \\ \hline
+\end{itable}
+
+\begin{itable}{Predicates}
+\df{eq?}& 		& 2 (ref,ref)	& 1 (bool)	& \\ \hline
+\df{not}& 		& 1 (ref)	& 1 (bool)	& \\ \hline
+\df{<0?}& 		& 1 (fix)	& 1 (bool)	& \\ \hline
+\df{=0?}& 		& 1 (fix)	& 1 (bool)	& \\ \hline
+\df{=}	& 		& 2 (fix,fix)	& 1 (bool)	& \\ \hline
+\df{<}	& 		& 2 (fix,fix)	& 1 (bool)	& \\ \hline
+\end{itable}
+
+\begin{itable}{Control}
+\df{branch}		& rel-addr	&		&	& \\ \hline
+\df{branch-nil}		& rel-addr	& 1 (ref)	&	& \\ \hline
+\df{branch-t}		& rel-addr	& 1 (ref)	&	& \\ \hline
+\df{long-branch}	& 		&		&	& 0.5\\ \hline
+\df{long-branch-nil}	& rel-addr	& 1 (ref)	&	& 0.5\\ \hline
+\df{long-branch-t}	& rel-addr	& 1 (ref)	&	& 0.5\\ \hline
+\df{return}		& 		&		&	& \\ \hline
+\end{itable}
+
+\begin{itable}{\df{catch} and \df{call/cc} Related}
+\df{filltag}	&	& 1 (tag)	& 1 (tag)	& \\ \hline
+\df{throw}	&	& 2 (tag,ref)	& 1 (ref)	& \\ \hline
+\df{fill-continuation}&	& 1 (photo)	& 1 (photo)	& \\ \hline
+\df{continue}	& 	& 2 (photo,ref)	& 1 (ref)	& \\ \hline
+\end{itable}
+
+\begin{itable}{Stack Manipulation}
+\icomment{All stack references are zero-based.  {\tt (swap 0)} is a
+noop.  {\tt (blast $n$)} \meq {\tt (store-stack $n$)(pop 1)}.}
+\df{pop}	& n	& n (refs)	&		& \\ \hline
+\df{swap}	& n	& n (refs)	& n (refs)	& \\ \hline
+\df{blast}	& n	& n (refs)	& n-1 (refs)	& \\ \hline
+\df{blt-stack}& n,m	& n+m (refs)	& n (refs)	& \\ \hline
+\icomment{8 bit ref splits to 4-bit n and m, which are $1 \ldots 16$.}
+\end{itable}
+
+\begin{itable}{Register Manipulation}
+\df{store-reg} & register	& 1 (ref)	& 1 (ref)	& \\ \hline
+\df{load-reg} & register	&		& 1 (ref)	& \\ \hline
+\end{itable}
+
+\begin{itable}{Addressing Modes}
+\df{store-env} & offset	& 1 (ref)	& 1 (ref)	& \\ \hline
+\df{store-stack} & offset	& 1 (ref)	& 1 (ref)	& \\ \hline
+\df{store-bp} & offset	& 1 (ref)	& 1 (ref)	& \\ \hline
+\df{store-bp-i} &  		& 2 (fix,ref)	& 1 (ref)	& \\ \hline
+\df{contents} & 		& 1 (loc)	& 1 (ref)	& \\ \hline
+\df{set-contents} &	 	& 2 (loc,ref)	& 1 (ref)	& \\ \hline
+\icomment{The next two instructions are the same.}
+\df{load-glo}& 		&		& 1 (ref)	& 1 (ref)\\ \hline
+\df{load-imm}& 		&		& 1 (ref)	& 1 (ref)\\ \hline
+\df{load-imm-fix} & n	&		& 1 (fix)	& \\ \hline
+\df{load-env} & offset	&		& 1 (ref)	& \\ \hline
+\df{load-stack} & offset	&		& 1 (ref)	& \\ \hline
+\df{load-bp}	& offset	&		& 1 (ref)	& \\ \hline
+\df{load-bp-i} & 		& 1 (fix)	& 1 (ref)	& \\ \hline
+\icomment{Make a locative to the location $offset$ in beyond the
+ \df{bp} register:}
+\df{make-bp-loc} & offset	&		& 1 (loc)	& \\ \hline
+\df{locate-bp-i} & 		& 1 (fix)	& 1 (loc)	& \\ \hline
+\end{itable}
+
+\begin{itable}{Memory Model and Tag Cleaving}
+\df{get-tag}	& 		& 1 (ref)	& 1 (fix)	& \\ \hline
+\df{get-data} & 		& 1 (ref)	& 1 (fix)	& \\ \hline
+\df{crunch}	& 		& 2 (fix,fix:tag)& 1 (ref)	& \\ \hline
+\df{load-type} & 		& 1 (ref)	& 1 (ref:type)	& \\ \hline
+\df{load-length} & 		& 1 (ref)	& 1 (fix)	& \\ \hline
+\icomment{The next two instructions are not currently used.}
+\df{peek}	& 		& 1 (fix)	& 1 (fix:16-bit) & \\ \hline
+\df{poke}	& 		& 2 (fix,fix:16-bit)&1 (fix:16-bit)&\\ \hline
+\end{itable}
+
+\begin{itable}{Misc}
+\df{check-nargs} & n		& 1 (op)	&		& \\ \hline
+\df{check-nargs-gte} & n	& 1 (op)	&		& \\ \hline
+\df{store-nargs} & n		&		&		& \\ \hline
+\df{noop}	& 		&		&		& \\ \hline
+\df{allocate}  & 		& 2 (typ,len)	& 1 (ref)	& \\ \hline
+\df{vlen-allocate}&	 	& 2 (typ,len)	& 1 (ref)	& \\ \hline
+\df{funcall-tail} &	 	& 2 (op,obj)	& 1 (op,obj)	& \\ \hline
+\df{funcall-cxt-br}& rel-addr& 2 (op,obj)	& 1 (op,obj)	& \\ \hline
+\df{push-cxt}	& rel-addr	&		&		& \\ \hline
+\df{push-cxt-long} &	 	&		&		& 0.5\\ \hline
+\df{big-endian?} &	 	&		& 1 (bool)	& \\ \hline
+\df{object-hash}&	 	& 1 (ref)	& 1 (fix)	& \\ \hline
+\df{object-unhash}&	 	& 1 (fix)	& 1 (ref)	& \\ \hline
+\df{gc}		& 		&		& 1 (ref)	& \\ \hline
+\df{full-gc}	&		&		& 1 (ref)	& \\ \hline
+\df{inc-loc}	&		& 2 (loc,fix)	& 1 (loc)	& \\ \hline
+\end{itable}
+
+\begin{itable}{List related instructions}
+\df{cons}  & 		& 2 (ref,ref)	& 1 (ref)	& \\ \hline
+\df{reverse-cons}  & 	& 2 (ref,ref)	& 1 (ref)	& \\ \hline
+\df{car}  & 			& 1 (pair) 	& 1 (ref)	& \\ \hline
+\df{cdr}  &	 		& 1 (pair)	& 1 (ref)	& \\ \hline
+\df{set-car}  & 		& 2 (pair,ref)	& 1 (ref)	& \\ \hline
+\df{set-cdr}  & 		& 2 (pair,ref)	& 1 (ref)	& \\ \hline
+\df{locate-car}  & 		& 1 (pair) 	& 1 (loc)	& \\ \hline
+\df{locate-cdr}  & 		& 1 (pair) 	& 1 (loc)	& \\ \hline
+\df{assq}	& 		& 2 (ref,alist)& 1 (ref:pair/nil)& \\ \hline
+\end{itable}
+
+
+\section{Weak Pointers} \label{sec:weak}
+
+Weak pointers allow users to maintain tenuous references to objects,
+in the following sense.  Let $\alpha$ be a weak pointer to the object
+{\em foo}, found by executing the code {\tt (object-hash {\em foo})}.
+This $\alpha$ can be dereferenced to yield a normal reference,
+\evto{(object-unhash $\alpha$)}{{\em foo}}.  However, if there is no
+other way to get a reference to {\em foo} then the system is free to
+invalidate $\alpha$, so \evto{(object-unhash $\alpha$)}{\#f}.  In
+practice, when the garbage collector sees that there are no references
+to {\em foo} except for weak pointers it reclaims {\em foo} and
+invalidates any weak pointers to it.
+
+Weak pointers are implemented directly by bytecodes because the
+emulator handles all details of storage allocation and reclamation
+directly.  Weak pointers are represented by integers.  Each time call
+call the \df{object-hash} is made the argument is looked up in the
+{\em weak pointer hash table}.  If no entry is found, a counter is
+incremented and the value of that counter is returned.  An entry is
+made in the {\em weak pointer table} at an index corresponding to the
+current value of the counter, so that the weak pointer can be used to
+get back the original reference, and an entry is make in the weak
+pointer hash table to ensure that if the weak pointer to the same
+object is requested twice, the same number will be returned both
+times.  After a garbage collection the weak pointer table is scanned
+and entries to objects which have been reclaimed are discarded, the
+weak pointer hash table is cleared, and the data in the weak pointer
+table is entered into the weak pointer hash table.  Although these
+algorithms are poor if objects with weak pointers to them are
+frequently reclaimed, in practice this has not been a problem.

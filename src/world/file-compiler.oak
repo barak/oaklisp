@@ -1,0 +1,153 @@
+;;; Copyright (C) 1987, 1988, 1989, Kevin J. Lang and Barak A. Pearlmutter.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;               file compiler                                         ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(set! canonical-extension-numbers
+      '((".oak"  . 0)
+	(".omac" . 1)
+	(".ou"   . 2)
+	(".oc"   . 3)
+	(".oa"   . 4)))
+
+(define (canexno ex)
+  (cdr (assoc ex canonical-extension-numbers)))
+
+(set! compiler-from-extension ".oak")
+(set! compiler-to-extension ".oa")
+
+;;; valid values: 0, 1 or 2.
+(define (fluid compiler-noisiness) 1)	
+
+(set! compiling-a-file? #f)
+
+
+(define (print-appropriate-noise form)
+  (when (> (fluid compiler-noisiness) 0)
+    (bind ((print-length 3)
+	   (print-level 2))
+      (format #t "~&~A" form)
+      (flush standard-output))))
+
+
+(define (print-sp x)
+  (when (> (fluid compiler-noisiness) 1)
+    (format #t " ~A" x)
+    (flush standard-output)))
+
+
+(define (include-stage? from-no to-no this)
+  (let ((this-no (canexno this)))
+    (and (< from-no this-no)
+	 (>= to-no this-no))))
+
+
+;;; The next three functions are the exported interface to the compiler.
+
+(define (compile-file the-locale file-name)
+  (let ((from-no (canexno compiler-from-extension))
+	(to-no (canexno compiler-to-extension))
+	(sub-locale (make locale (list the-locale))))
+
+;    (format t "from: ~a to: ~a~%" from-no to-no)
+
+    (let ((s1 (if (include-stage? from-no to-no ".omac")
+		  (lambda (form)
+		    (block0 (bind ((current-locale sub-locale))
+			      (expand-groveling sub-locale form))
+			    (print-sp 'macro)))
+		  identity))
+
+	  (s2 (if (include-stage? from-no to-no ".ou")
+		  (lambda (form)
+		    (block0 (append! (bind ((compiling-a-file? #t))
+				       (gen-code (compile the-locale form)
+						 'next))
+				     (list '(pop 1)))
+			    (print-sp 'code)))
+		  identity))
+
+	  (s2b (if (include-stage? from-no to-no ".ou")
+		   (lambda (forms)
+		     `(code () ,(append! (splice forms) (list '(return)))))
+		   identity))
+
+	  (after-reading (if (>= from-no (canexno ".ou"))
+			     car
+			     identity))
+
+	  (s3 (if (include-stage? from-no to-no ".oc")
+		  (lambda (form)
+		    (destructure* ('code () form) form
+		      (when (> (fluid compiler-noisiness) 1)
+			(format #t "Peephole optimizing... ")
+			(flush standard-output))
+		      `(code () ,(peephole-optimize form))))
+		  identity))
+
+	  (s4 (if (include-stage? from-no to-no ".oa")
+		  (lambda (form)
+		    (make-oaf-list (assemble form)))
+		  identity)))
+
+      (let ((s12 (if (or (not (eq? s1 identity)) (not (eq? s2 identity)))
+		     (lambda (forms)
+		       (map (lambda (form)
+			      (block (print-appropriate-noise form)
+				     (block0 (s2 (s1 form))
+					     (when (> (fluid compiler-noisiness) 0)
+					       (format #t "~%")))))
+			    forms))
+		     identity)))
+
+	(write-file
+	 (append file-name compiler-to-extension)
+	 (block0 (s4 (s3 (s2b (s12
+			       (after-reading
+				(read-file
+				 (append file-name compiler-from-extension)))))))
+		 (when (> (fluid compiler-noisiness) 1)
+		   (format #t " writing...")
+		   (flush standard-output))))
+	(when (> (fluid compiler-noisiness) 0)
+	  (format #t "~&"))
+	#f))))
+
+
+
+
+(define (compiler-eval form locale)
+  ((%install-lambda
+    (link-code-segment
+     locale
+     (assemble `(code ()
+		      ;; The (POP 1) is needed because of the check-nargs hack.
+		      ((pop 1)
+		       ,@(peephole-optimize
+			  (bind ((compiling-a-file? #f))
+			    (gen-code (compile locale form) 'tail))))))))))
+
+
+(define (cc x)
+  (peephole-optimize
+   (bind ((compiling-a-file? #f))
+     (gen-code (expand-compile (fluid current-locale) x)
+	       'tail))))
+
+
+
+(define (compile-code-fragment which-locale sexpr continuation-code)
+  (peephole-optimize
+   (gen-code (expand-compile which-locale sexpr)
+	     continuation-code)))
+
+
+
+;;; More non-exported stuff:
+
+
+(set! top-level-evaluator hybrid-eval)
+
+;;; eof

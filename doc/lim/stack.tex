@@ -1,0 +1,138 @@
+\chapter{Stack Discipline}
+
+This chapter describes how the stacks are organized at the logical
+level: how temporaries are allocated, how functions call and return
+work, how escape objects (used in the implementation of catch and
+throw) work, and how stack snapshots (used in the implementation of
+call/cc) work.
+
+\section{Stack Overview}
+
+The Oaklisp bytecode machine has a two-stack architecture.  The {\em
+value stack} contains arbitrary references and is used for storing
+temporary variables, passing arguments, and returning results.  The
+{\em context stack} is used for saving non-variable context when
+calling subroutines.  Only context frames are stored on the context
+stack.  This two stack architecture makes tail recursion particularly
+fast, and is in large part responsible for the speed of function call
+in this implementation.
+
+Most of the bytecodes are the usual sort of stack instructions, and
+use only value stack, for instance \df{plus} and {\tt (swap
+$n$)}\index{{\tt swap}}.  All arguments are passed on the value stack,
+and the value stack is {\em not} divided into frames.  Methods consume
+their arguments, returning when they have replaced their arguments
+with their result or tail recursing when they have replaced their
+arguments with the appropriate arguments to the operations they are
+tail recursing to.
+
+Under the current language definition there is no multiple value
+return, although the bytecode architecture admits such a construct.
+There are facilities for variable numbers of arguments, which are
+described in section \ref{sec:varargs}.
+
+
+\newenvironment{stackphoto}{\begin{center}\begin{tabular}{|c|}
+$\vdots$\\\hline}{\end{tabular}\end{center}}
+
+\section{Method Invocation/Return}
+
+When a method is to be invoked, the arguments and operation are
+assembled on the value stack in right to left order, ie.\ the
+rightmost argument is pushed first and the operation is pushed last.
+Let us walk through the invokation of {\tt (f x y z)}, where {\tt f}
+is on operations which is being passed three arguments.  Since we
+evaluate right to left, first we push {\tt z}, thus:
+\begin{stackphoto}
+\tt z \\\hline
+\end{stackphoto}
+continuing, we push the rest of the arguments and the operation, until
+the stack is of this form.
+\begin{stackphoto}
+\tt z \\\hline
+\tt y \\\hline
+\tt x \\\hline
+\tt f \\\hline
+\end{stackphoto}
+A \df{(store-nargs 3)} instruction is now executed to place the number
+of arguments in the \df{nargs} register, and one of the \df{funcall}
+instructions is executed, which variant depending on whether this is a
+tail recursive call.  If this is not a tail recursive call, the
+\df{funcall} instruction first pushes a frame containing the contents
+of the \df{current\protect\_method}, \df{bp} and \df{env} registers
+and a return \df{pc} onto the context stack.  The instruction then
+examines the top two values, {\tt f} and {\tt x}, and looks {\tt f} up
+in the \df{operation-method-alist} of the type of {\tt x}, potentially
+also scanning the supertypes until it finds the appropriate method to
+be invoked.  This method is placed in the \df{current\protect\_method}
+register, the method's environment is placed in the \df{env} register,
+the \df{pc} is set to the beginning of the method's code block, and
+the address of the appropriate instance variable frame within {\tt x} is
+placed in the \df{bp} register.  The \df{funcall} instruction leaves
+the value stack and {\tt nargs} register unchanged:
+\begin{stackphoto}
+\tt z \\\hline
+\tt y \\\hline
+\tt x \\\hline
+\tt f \\\hline
+\end{stackphoto}
+
+The first thing the code block of the resultant method executes is one
+of the \df{check-nargs} instructions, in this case perhaps {\tt
+(\df{check-nargs} 3)}.  A {\tt (\df{check-nargs} $n$)} instruction
+tests if \df{nargs} is $n$, trapping if not.  After that, it pops the
+operation {\tt f} off the stack.  By leaving the operation to be
+popped off by the \df{check-nargs} instruction rather than the
+\df{funcall} instruction, when an an incorrect number of arguments is
+detected the operation is still available to the error system.  The
+\df{return} instruction pops the top frame off the context stack,
+loads the popped context into the processor, and continues execution.
+Before a
+\df{return} is executed all of the arguments have been consumed and
+the result is the only thing left on the stack,
+\begin{stackphoto}
+ (f x y z) \\\hline
+\end{stackphoto}
+
+\section{The Context Stack}
+
+The only things that can be stored on the context stack are context
+frames, which each have four values, as below.  The \df{push-cxt}
+instruction pushes a context frame onto the context stack.  It takes
+an inline argument, which is the relative address of the desired
+return point.  This allows a context to be pushed whenever convenient,
+perhaps before the assembly of arguments begins.  Earlier in the
+implementation process there was only one variant of the \df{funcall}
+instruction, which was tail recursive.  Non tail recursive calls were
+compiled as a \df{push-cxt} followed by a \df{funcall-tail}, but
+because this sequence occured so frequently a combined instruction was
+implemented to improve code density.
+
+\begin{stackphoto}\hline
+  \tt \df{pc}  \\ \hline
+  \tt \df{bp}  \\ \hline
+  \tt \df{env} \\\hline
+  \tt \df{current\protect\_method} \\\hline\hline
+  \tt pc  \\ \hline
+  \tt bp  \\ \hline
+  \tt env \\\hline
+  \tt current\_method \\\hline\hline
+  \tt pc  \\ \hline
+  \tt bp  \\ \hline
+  \tt env \\\hline
+  \tt current\_method \\\hline
+\end{stackphoto}
+
+Actually, the \df{pc} stored in the context stack is not a raw pointer
+to the next instruction but rather the offset from the beginning of
+the current code block, stored as a fixnum.  This makes the
+\df{return} instruction slightly slower, as the actual return pc must
+be recomputed, but simplifies the garbage collector.  The \df{bp} is
+analogously stored with a tag of \df{locative} so that the garbage
+collector need not treat it specially.  This would cause a problem if
+the current object were reclaimed and afterwards had one of its
+instance variables refered to, as all that would be left of the object
+would be the solitary cell that the saved bp was pointing to, and the
+rest of the relevent instance variable frame would be gone.  This is
+avoided by having the compiler ensure that a reference to the object
+in question is retained long enough.

@@ -1,0 +1,12 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+(let ((count 0))
+  (define (print-noise char)
+    (if (= count 0)
+	(%write-char #\nl))
+    (%write-char char)
+    (set! count (modulo (+ 1 count) 50))))
+
+
+
+

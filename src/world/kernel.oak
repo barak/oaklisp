@@ -1,0 +1,86 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;;; This comes after kernel0 and kernel1, so ADD-METHOD should work now.
+;;; It is time to set up some standard bindings.
+
+;;; T and NIL are defined by the world builder
+
+;; This early definition of EQ? is necessary for mapping, but EQ? is redefined
+;; properly later.
+(define (eq? x y) (eq? x y))
+
+(define-instance coercable-type type '(co-op) (list type))
+
+(add-method (initialize (coercable-type co-op)
+			self the-ivar-list the-supertype-list)
+  (^super type initialize self the-ivar-list the-supertype-list)
+  (set! co-op
+       (add-method ((make operation) (self) self) self))
+  self)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Define some primitive types.
+;;
+
+;; This mixin is for the compiler's benefit:
+
+(define-instance self-evaluatory-mixin type '() '())
+
+;;; The cons heirarchy is:
+;;;
+;;;                    sequence
+;;;                        \
+;;; 			list-type
+;;; 			/       \
+;;; 		      pair     null-type (only instance is "()")
+;;; 		     /
+;;; 	    cons-pair
+
+(define-instance sequence type '() '())
+
+(define-instance list-supertype type '() (list coercable-type))
+
+(define-instance list-type list-supertype '() (list sequence))
+
+(add-method (make (list-supertype) self len initial-element)
+  (iterate aux ((l '()) (i len))
+    (if (zero? i) l
+	(aux (cons initial-element l) (- i 1)))))
+
+(define-instance pair type '() (list list-type))
+
+(initialize null-type '() (list self-evaluatory-mixin list-type object))
+
+(initialize cons-pair '(the-car the-cdr) (list pair object))
+(%your-top-wired cons-pair)
+
+(add-method (initialize (cons-pair the-car the-cdr) self new-car new-cdr)
+  (set! the-car new-car)
+  (set! the-cdr new-cdr)
+  self)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Yet more types
+
+(initialize locative '() (list object))
+
+(set! ((%slot 0) string) coercable-type)
+(initialize string '() (list self-evaluatory-mixin object))
+
+;;;;;;;;
+
+(define-instance symbol coercable-type '(print-name) (list object))
+
+;;;;;;;;;;
+
+;; This was moved here from promise.oak so system code can add methods to it.
+(define-instance forcible type '() '())
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (is-a? obj typ)			;Determine whether OBJ is-a TYP
+  (subtype? (get-type obj) typ))
+
+;;;; eof

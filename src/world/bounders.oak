@@ -1,0 +1,44 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+(define-instance find-bound-vars operation)
+
+(define-instance find-vars operation)
+
+(define-instance for-each-r operation)
+
+(add-method (for-each-r (eq-hash-table table) self op)
+  (let ((op (lambda (x)
+	      (op (car x) (cdr x)))))
+    (dotimes (i (length table))
+      (for-each op (nth table i)))))
+
+(add-method (find-bound-vars (locale variable-table) self val)
+  (for-each-r variable-table
+	      (lambda (sym cell)
+		(when (eq? (contents cell) val)
+		  (format #t "~&~A's bound to that.~%" sym)))))
+
+(add-method (find-vars (locale variable-table) self pred?)
+  (for-each-r variable-table
+	      (lambda (sym cell)
+		(when (pred? (contents cell) sym)
+		  (format #t "~&~A (~A)~%" sym (contents cell))))))
+
+
+(define-instance find-sorted-vars operation)
+
+(add-method (find-sorted-vars (locale variable-table) self pred?)
+  (let ((outlist nil))
+    (for-each-r variable-table
+		(lambda (sym cell)
+		  (when (pred? (contents cell) sym)
+		    (push outlist sym))))
+    (sort outlist (lambda (a b)
+		    (< ((coercer string) a) ((coercer string) b))))))
+
+
+(define (find-and-print-sorted-vars locale pred?)
+  (dolist (x (find-sorted-vars locale pred?))
+    (format #t "~&~A~%" x)))
+
+

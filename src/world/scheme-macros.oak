@@ -1,0 +1,69 @@
+;;; Copyright (C) 1988,7 Barak A. Pearlmutter & Kevin J. Lang.
+
+;;; The following macro definitions are different from those in
+;;; system-locale in a non-upward-compatible way.  These definitions
+;;; should NOT be loaded into system-locale.  They may be compiled
+;;; there, though.
+
+
+
+;;; Because all forms that take implicit bodies ultimately put a BLOCK
+;;; around these bodies, the above also makes ADD-METHOD, and hence
+;;; LAMBDA, as well as stuff like COND clause bodies, get the horrible
+;;; MIT Scheme define-capturing semantics.
+
+(define-syntax (block . body) `(mit-block . ,body))
+
+;;; That committee must have Algol on the brain.
+
+(define-syntax (begin . body) `(block . ,body))
+
+
+
+;;; Here, we make the dotted arglist syntax do the R3RS thing, getting
+;;; bound to a list of things.  We do this by hacking ADD-METHOD to
+;;; wrap a LABELS if appropriate.
+
+(define-syntax (add-method (op . stuff) . body)
+  (cond ((improper-list? stuff)
+	 =>
+	 (lambda (improper-part)
+	   (let ((proper-part (make-proper stuff))
+		 (auxvar (genvar)))
+
+	     (cond ((and (not (null? proper-part))
+			 (list? (car proper-part))
+			 (not (null? (cdr (car proper-part)))))
+		    ;; There are ivars, have to close over them.
+		    `(native-add-method (,op ,(car proper-part)
+					     . ,improper-part)
+		       (let ((,auxvar
+			      (lambda (,improper-part)
+				(destructure
+				    ,(cdr stuff) ,improper-part
+				  ,@body))))
+			 (listify-args ,auxvar . ,improper-part))))
+		   (else
+		    ;; No ivars, make external lambda
+
+		    `(let ((,auxvar
+			    (lambda (,improper-part)
+			      (destructure
+				  ,(if (and (not (null? proper-part))
+					    (list? (car proper-part)))
+				       ;; clause
+				       (cdr stuff)
+				       stuff) ,improper-part
+				,@body))))
+		       (native-add-method
+			   (,op ,@(if (and (not (null? proper-part))
+					   (list? (car proper-part)))
+				      (list (car proper-part))
+				      (list))
+				. ,improper-part)
+			 (listify-args
+			  ,auxvar . ,improper-part))))))))
+
+	(else `(native-add-method (,op . ,stuff) . ,body))))
+
+;;; eof

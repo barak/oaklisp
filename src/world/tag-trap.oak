@@ -1,0 +1,135 @@
+;;;; Copyright (C) 1987, Barak A. Pearlmutter & Kevin J. Lang.
+
+;;; Set up the tables needed by the tag trap mechanism.
+
+(define %argless-instructions 66)
+(define %arged-instructions 35)
+
+
+(define-instance %argless-tag-trap-table simple-vector %argless-instructions)
+(define-instance %arged-tag-trap-table simple-vector %arged-instructions)
+
+
+(let ((aux (lambda (args)
+	     (destructure (i . args) args
+	       (error "unexpected trap from argless instruction ~D, args ~S."
+		      i args)))))
+
+  (dotimes (i %argless-instructions)
+    (set! (nth %argless-tag-trap-table i)
+	  (lambda ( . args)
+	    (listify-args aux i . args)))))
+
+       
+
+(let ((aux (lambda (args)
+	     (destructure (i arg . args) args
+	       (error "unexpected trap from arged instruction ~D ~D, args ~S."
+		      i arg args)))))
+
+  (dotimes (i %arged-instructions)
+    (set! (nth %arged-tag-trap-table i)
+	  (lambda (arg . args)
+	    (listify-args aux i arg . args)))))
+
+
+;;; And these are the things that can go wrong here:
+(set! (nth %argless-tag-trap-table 1) plus/2)
+(set! (nth %argless-tag-trap-table 2) minus)
+;(set! (nth %argless-tag-trap-table 3) eq?)
+;(set! (nth %argless-tag-trap-table 4) not)
+(set! (nth %argless-tag-trap-table 5) times/2)
+(set! (nth %argless-tag-trap-table 7) quotient)
+(set! (nth %argless-tag-trap-table 8) zero?)
+(set! (nth %argless-tag-trap-table 11) %crunch)
+(set! (nth %argless-tag-trap-table 12) %read-char) ;These are for noise at
+(set! (nth %argless-tag-trap-table 13) %write-char); cold boot time.
+(set! (nth %argless-tag-trap-table 14) contents)
+(set! (nth %argless-tag-trap-table 15) (setter contents))
+;(set! (nth %argless-tag-trap-table 16) get-type)
+(set! (nth %argless-tag-trap-table 18) negative?)
+(set! (nth %argless-tag-trap-table 19) modulo)
+(set! (nth %argless-tag-trap-table 20) ash-left)
+(set! (nth %argless-tag-trap-table 21) rot-left)
+;(set! (nth %argless-tag-trap-table 22) (setter %load-bp-i))
+;(set! (nth %argless-tag-trap-table 23) %load-bp-i)
+;(set! (nth %argless-tag-trap-table 25) %allocate)
+(set! (nth %argless-tag-trap-table 26) %assq)
+;(set! (nth %argless-tag-trap-table 28) %peek)
+;(set! (nth %argless-tag-trap-table 29) (setter %peek))
+(set! (nth %argless-tag-trap-table 31) subtract/2)
+(set! (nth %argless-tag-trap-table 32) =)
+(set! (nth %argless-tag-trap-table 33) <)
+(set! (nth %argless-tag-trap-table 34) bit-not)
+(set! (nth %argless-tag-trap-table 39) contents)
+(set! (nth %argless-tag-trap-table 40) car)
+(set! (nth %argless-tag-trap-table 41) cdr)
+(set! (nth %argless-tag-trap-table 42) (setter car))
+(set! (nth %argless-tag-trap-table 43) (setter cdr))
+(set! (nth %argless-tag-trap-table 44) (locater car))
+(set! (nth %argless-tag-trap-table 45) (locater cdr))
+
+(set! (nth %argless-tag-trap-table 48) throw)
+(set! (nth %argless-tag-trap-table 50) object-unhash)
+;(set! (nth %argless-tag-trap-table 51) %gc)
+;(set! (nth %argless-tag-trap-table 52) big-endian?)
+(set! (nth %argless-tag-trap-table 53) %varlen-allocate)
+(set! (nth %argless-tag-trap-table 54) %increment-locative)
+(set! (nth %argless-tag-trap-table 55) %fill-continuation)
+(set! (nth %argless-tag-trap-table 56) %continue)
+;(set! (nth %argless-tag-trap-table 57) reverse-cons)
+;(set! (nth %argless-tag-trap-table 58) most-negative-fixnum?)
+(set! (nth %argless-tag-trap-table 59) fx-plus)
+(set! (nth %argless-tag-trap-table 60) fx-times)
+;(set! (nth %argless-tag-trap-table 61) get-time)
+(set! (nth %argless-tag-trap-table 62) remainder)
+(set! (nth %argless-tag-trap-table 63) quotientm)
+;(set! (nth %argless-tag-trap-table 64) %full-gc)
+
+
+;;; By writing things this way we prevent open coding:
+
+(define (trap-bit-op arg x y)
+  (let ((op
+	 (cond ((= arg #b0001) bit-and)
+	       ((= arg #b1110) bit-nand)
+	       ((= arg #b0111) bit-or)
+	       ((= arg #b1000) bit-nor)
+	       ((= arg #b0110) bit-xor)
+	       ((= arg #b1001) bit-equiv)
+	       ((= arg #b0100) bit-andca)
+	       (else (error
+		      "Illegal instruction (BIT-OP #b~B) with args ~S, ~S.~%"
+		      arg x y)))))
+    (op x y)))
+
+(set! (nth %arged-tag-trap-table 2) trap-bit-op)
+
+;;; These aren't defined yet, so this stuff gets done later.
+;(set! (nth %arged-tag-trap-table 21) no-handler-for-operation)
+;(set! (nth %arged-tag-trap-table 22) no-handler-for-operation)
+;(set! (nth %arged-tag-trap-table 24) incorrect-nargs)
+;(set! (nth %arged-tag-trap-table 25) incorrect-nargs-gte)
+
+;(set! (nth %arged-tag-trap-table 26) (setter %slot))
+;(set! (nth %arged-tag-trap-table 27) %slot)
+;(set! (nth %arged-tag-trap-table 30) (locater %slot))
+;(set! (nth %arged-tag-trap-table 32) %filltag)
+
+;;; As above with no-handler-for-operation, this gets done later:
+;(set! (nth %arged-tag-trap-table 33) no-^super-handler)
+;(set! (nth %arged-tag-trap-table 34) no-^super-handler)
+
+
+
+
+;;; Plug into the emulator:
+
+(define (setup-tag-traps)
+  (set! ((%register 'argless-tag-trap-table)) %argless-tag-trap-table)
+  (set! ((%register 'arged-tag-trap-table)) %arged-tag-trap-table)
+  nil)
+
+(setup-tag-traps)
+
+;;; eof

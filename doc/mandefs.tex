@@ -1,0 +1,68 @@
+
+\bibliographystyle{plain}
+
+% \newcommand{\comment}[1]{}
+\newcommand{\df}[1]{{\tt#1}\index{{\tt#1}}}
+\newcommand{\dffl}[1]{{\tt(fluid #1)}\index{{\tt#1} ! fluid}}
+\newcommand{\dfcoer}[1]{{\tt(coercer #1)}\index{{\tt#1} ! coercer}}
+\newcommand{\dfsw}[1]{{\tt#1}\index{{\tt#1} ! switch}}
+
+\newenvironment{docenv}{\nopagebreak\vspace{-4.5ex}\nopagebreak
+\begin{quotation}\noindent}{\end{quotation}}
+
+\newcommand{\doc}[1]{\nopagebreak\vspace{-4.5ex}\nopagebreak
+\begin{quotation}\noindent#1\end{quotation}}
+
+\newcommand{\discbar}{\rule{3in}{.2mm}}
+\newenvironment{discussenv}{\begin{quote}\begin{quote}\discbar\par}{\par\discbar\end{quote}\end{quote}}
+\newcommand{\discuss}[1]{\begin{discussenv}#1\end{discussenv}}
+
+\newcommand{\macdef}[2]{{\tt#1}\ \meq\ {\tt#2}\newline}
+\newcommand{\evto}[2]{{\tt#1}\ \ra\ {\tt#2}}
+
+\newcommand{\header}[2]{\par\noindent\hspace{\leftmargini
+}{#1}\hfill{\em#2}\hspace*{\leftmargini}\newline}
+\newcommand{\heady}[3]{\index{{\tt#1} ! #3}\header{{\tt#1 \em#2}}{#3}}
+\newcommand{\headyy}[3]{\index{{\tt#1} ! #3}\header{{\tt(#1 \em#2\tt)}}{#3}}
+
+\newcommand{\sform}[2]{\headyy{#1}{#2}{Special Form}}
+\newcommand{\op}[2]{\headyy{#1}{#2}{Operation}}
+\newcommand{\so}[2]{\headyy{#1}{#2}{Settable Operation}}
+\newcommand{\lo}[2]{\headyy{#1}{#2}{Locatable Operation}}
+\newcommand{\mc}[2]{\headyy{#1}{#2}{Macro}}
+
+\newcommand{\fn}[2]{\headyy{#1}{#2}{Function}}
+\newcommand{\pr}[2]{\headyy{#1}{#2}{Predicate}}
+\newcommand{\spred}[2]{\headyy{#1}{#2}{Settable Predicate}}
+
+\newcommand{\gv}[1]{\heady{#1}{}{Global Variable}}
+\newcommand{\ob}[1]{\heady{#1}{}{Object}}
+\newcommand{\ty}[1]{\heady{#1}{}{Type}}
+\newcommand{\cty}[1]{\heady{#1}{}{Coercable Type}}
+\newcommand{\fv}[1]{\index{{\tt#1} ! Fluid Variable}\header{\tt (fluid
+#1)}{Fluid Variable}}
+
+\newcommand{\makin}[2]{\index{{\tt#1} ! Making}\header{\tt (make #1
+\em#2\tt)}{Operation}}
+\newcommand{\setter}[3]{\index{{\tt#1} ! Setter}\header{\tt(set! (#1
+\em#2\tt) \em#3\tt)}{Operation}}
+\newcommand{\coercer}[2]{\index{{\tt#1} ! Coercer}\header{\tt((coercer
+#1) \em#2\tt)}{Coarcable Type}}
+\newcommand{\oop}[1]{\index{{\tt#1} ! Operation}\header{\tt(#1)}{Operation}}
+
+
+\newcommand{\ra}{$\Rightarrow$}
+\newcommand{\meq}{$\equiv$}
+\newcommand{\upar}{$\uparrow$} %{$\bf\uparrow$} %{\char`\^} %{\verb|^|}
+
+\newcommand{\dt}{{\tt~.~}}
+\newcommand{\lpar}{{\tt(}}
+\newcommand{\rpar}{{\tt)}}
+
+% 	% These give ^ and _.  Numbers for other characters are in the font
+% 	% tables at the back of the texbook.
+% 	\newcommand{\h}{\char'136\relax}
+% 	\newcommand{\w}{\char'137\relax}
+
+\newcommand{\bang}[0]{\verb|!|}
+\newcommand{\ie}{{\em i.e.}}

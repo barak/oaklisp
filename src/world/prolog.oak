@@ -1,0 +1,754 @@
+;;;;;;; Copyright (C) 1990,1993 Barak A. Pearlmutter & Kevin J. Lang ;;;;;;;;;;;;;;;
+
+
+;;; The "relation" is the main interface between normal Oaklisp and
+;;; the logic subsystem.
+
+
+;;; Syntax: the RELATION form returns a function of n+1 variables,
+;;; where n is the arity of the relation.  This function takes a
+;;; continuation as its first argument, and the normal relational
+;;; arguments as the rest.  Each time a solution is obtained, the
+;;; continuation is called.  When all solutions have been exhausted,
+;;; the relation itself returns.
+
+
+;;; Inside the relation form is a list of clauses.  Each clause begins
+;;; with a list of logic variables used, followed by the left hand
+;;; side of the clause.  Then there is an optional :- followed by the
+;;; right hand side of the clause.  The right hand side consists of
+;;; three things: references to other relations, notated by what looks
+;;; like a function call; calls to normal Oaklisp predicates, notated
+;;; by a comma followed by the call; and Prolog style cuts, notated by
+;;; an !.  Calls to normal oaklisp predicates affect the control flow
+;;; in the same way as calls to prolog relations.  
+
+
+;;; Within calls to other relations, logic variables are preceded by
+;;; commas.  Actually, within calls to other relations, any expression
+;;; following a comma will be evaluated as an Oaklisp expression,
+;;; making arithmetic convenient.
+
+
+;;; Within calls to Oaklisp relations, the clause's logic variables
+;;; may be accessed normally.
+;;; Within any Oaklisp code, bound logic variables are transparently
+;;; and silently replaced by their values when appropriate, so no
+;;; machinations should be necessary.  
+;;; [Actually, your program will run faster if bound logic variables
+;;; are explicitly derefenced before being passed to oaklisp code. 
+;;; You can do this using using follow-chain if you know that
+;;; following the chain of variables will lead to an atomic value such as
+;;; a number, or deep-copy if the variable is bound to a more complicated
+;;; data structure containing cons cells as well as logic variables.]
+
+
+;;; As a special dispensation, Oaklisp set! forms are allowed to appear in 
+;;; the right hand side to provide a faster version of part of the 
+;;; functionality of the prolog relation "is".  A set! clause is 
+;;; performed for effect only and control is then passed to the clause to the 
+;;; right regardless of the value to which the variable has been bound.
+;;; Set! should only be used to calculate initial values for temporary RHS 
+;;; variables that will be then used in clauses that are further to the right.
+;;; It cannot be used to pass values back to the caller of the relation
+;;; through LHS variables; for that purpose, one must use the "is" relation 
+;;; to unify the LHS variable with the new value.
+
+
+
+
+
+(define-syntax (relation . clauses)
+  (let* ((k (genvar))
+	 (arity (length (cdadar clauses)))
+	 (formals (map genvar/1 (iota arity)))
+	 (cformals (map (lambda (x) (list 'unquote x)) formals))
+	 (lhs-names (map caadr clauses))
+	 (!? (has-! clauses))
+	 (!tag (if !? (genvar))))
+    (dolist (x lhs-names)
+      (unless (eq? x (car lhs-names))
+	(cerror  "ignore" "LHS relation dummy ~S when first was ~S."
+		 x (car lhs-names))))
+    (let ((body (process-clauses clauses cformals k `(throw ,!tag #f))))
+      (if !?
+	  `(lambda (,k ,@formals) (native-catch ,!tag ,body))
+	  `(lambda (,k ,@formals) ,body)))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+;;; ?- is the main user interface to the logic programming subsystem.
+;;; To use it, you go (?- query ...) where "query ..." is in the same
+;;; syntax as the right hand side of a clause.
+
+;;; The macro automatically determines a list of logic variables
+;;; scoped to the query itself, putting any variable which occurs
+;;; alone after a comma on the list.  To indicate that this isn't what
+;;; you want (e.g. you want to refer to an ordinary oaklisp variable),
+;;; you have to write something like ,(BLOCK GV).
+
+;;; Each time that a solution is found, the values of all the logic
+;;; variables scoped to the query itself are printed, and the user is
+;;; asked whether more solutions should be found or the search terminated.
+
+
+;;; Example:
+
+;;; > (?- (p-member ,a ,(iota 5)))
+;;; A=1 more?
+;;; A=2 more?
+;;; A=3 more?
+;;; A=4 more?
+;;; A=5 more?
+;;; ()
+;;; >
+
+
+
+
+(define-syntax (?- . queries)
+
+  (let ((l (logic-varlist queries))
+	(done (genvar)))
+
+    (if (null? l)
+
+	; if there are no variables in the query, we report its truth value,
+        ; but do not search for extra ways of satisying a true statement.
+
+	`(native-catch ,done
+	   ,(process-rhs queries
+			 `(lambda () (throw ,done #t))
+			 `(throw ,done #f)))
+
+
+	`(with-logic-vars ,l
+	  (native-catch ,done
+	    ,(process-rhs queries
+			  `(lambda ()
+			     ,@(map (lambda (v)
+				      `(format #t "~A=~S " ',v ,v))
+				    l)
+			     (unless (y-or-n? "more")
+				     (throw ,done #t)))
+			  `(throw ,done #f)))))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+; this is similar to the ?- macro, but instead of pausing
+; to print the satisfying assignments, it collects them in a list.
+
+
+
+(define-syntax (collect-solutions . queries)
+
+  (let ((l (logic-varlist queries))
+	(done (genvar))
+	(solutions (genvar))
+	(workvar (genvar)))
+
+    (cond ((zero? (length l))
+	   (error "collect-solutions makes no sense ~a"
+		  "when the query contains no logic variables"))
+
+	  ((= 1 (length l))
+
+	   `(with-logic-vars
+	     ,l
+	     (let ((,solutions '()))
+	       (native-catch ,done
+		 ,(process-rhs
+		   queries
+		   `(lambda ()
+		      (set! ,solutions (cons (deep-copy ,(car l)) ,solutions)))
+		   `(throw ,done #f)))
+	       (reverse! ,solutions)))
+	   )
+
+	  (else
+
+	   `(with-logic-vars
+	     ,l
+	     (let ((,solutions '()))
+	       (native-catch ,done
+		 ,(process-rhs
+		   queries
+		   `(lambda ()
+		      (let ((,workvar '()))
+			,@(map (lambda (v)
+				 `(set! ,workvar (cons (deep-copy ,v) ,workvar)))
+			       (reverse l))
+			(set ,solutions (cons ,workvar ,solutions))))
+		   `(throw ,done #f)))
+	       (reverse! ,solutions)))
+	   )
+	  )))
+
+
+
+
+
+
+(define (deep-copy x)
+  (let ((x (follow-chain x)))
+    (cond ((eq? x _) _)           
+	  ((logic-variable? x) x) ; used to be (make regular-logic-variable)
+	  ((pair? x)
+	   (let ((a (deep-copy (car x)))
+		 (d (deep-copy (cdr x))))
+	     (if (and (eq? a (car x)) (eq? d (cdr x)))
+		 x (cons a d))))
+	  (else x))))
+
+
+
+
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+; Use this macro if you want prolog to just run through the various
+; solutions without doing anything with them.  This is useful for 
+; benchmarking, or when oaklisp side effects are used inside the 
+; prolog program to record the answers.
+
+
+(define-syntax (justrun . queries)
+  (let ((l (logic-varlist queries)) (done (genvar)))
+    `(with-logic-vars ,l (native-catch ,done
+			   ,(process-rhs queries
+					 `(lambda () nil)
+					 `(throw ,done #f))))))
+
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+
+
+;;; In Oaklisp logic variables can be integrated with the rest of the
+;;; language in a principled way.  In this file we first define a new
+;;; kind of forcible object, a logic variable, and then use it to
+;;; write a general unifier with the ability to back out of
+;;; unifications.  This in turn is used to build a prolog system which
+;;; is slightly compiler-based, and which is integrated seamlessly
+;;; with the rest of Oaklisp.
+
+(define-instance logic-variable type '() (list forcible))
+
+(add-method (force (logic-variable) self)
+  (error "Attempt to force ~S, an undetermined logic variable." self))
+
+
+
+
+;;; Note: A reserved object, a special unbound logic variable value,
+;;; could be stored in the val slot, eliminating the need for the flag.
+
+(define-instance regular-logic-variable type
+  '(flag val) (list logic-variable object))
+
+(add-method (initialize (regular-logic-variable flag) self)
+  (set! flag #f)
+  self)
+
+(add-method (force (regular-logic-variable flag val) self)
+  (if flag val
+      (^super logic-variable force self)))
+
+(add-method (print (regular-logic-variable flag val) self stream)
+  (if (and flag forcible-print-magic)
+      (^super logic-variable print self stream)
+      (format stream "#_~!" self)))
+
+
+(add-method (print (regular-logic-variable flag val) self stream)
+  (if (and flag forcible-print-magic)
+      (^super logic-variable print self stream)
+      (format stream "#_~!" self)))
+
+
+(add-method (print (regular-logic-variable flag val) self stream)
+  (cond ((and flag forcible-print-magic)
+	 (^super logic-variable print self stream))
+	(else
+	 (format stream "#_~!" self))))
+
+
+(add-method (print-list-end (regular-logic-variable flag val) self . args)
+  (if (and flag forcible-print-magic)
+      (print-list-end (force self) . args)
+      (^super object print-list-end self . args)))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+;;; For convenience and efficiency, _ is bound to a magic logic
+;;; variable that doesn't really get unified to things.
+
+(define-instance anonymous-logic-variable type
+  '() (list logic-variable object))
+
+(add-method (print (anonymous-logic-variable) self stream)
+  (format stream "#_"))
+
+(define-instance _ anonymous-logic-variable)
+
+
+
+
+;;; For efficiency, this is used, once, deep inside the unifier.
+
+(define-instance follow-chain operation)
+
+(add-method (follow-chain (regular-logic-variable flag val) self)
+  (if flag (follow-chain val) self))
+
+(add-method (follow-chain (object) self) self)
+
+
+
+
+(define logic-variable? (type-pred logic-variable))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+;;; This gets passed two args and a continuation, which is called when
+;;; the args are unified.  Then the unification is backed out of, and
+;;; then unify returns.
+
+(define-instance unify operation)
+
+
+
+(add-method (unify (regular-logic-variable flag val) self other k)
+  (cond ((eq? self other) (k))
+	(flag (unify val other k))
+	(else
+	 ;; The wind-protect wouldn't have to protect the entry part
+	 ;; except for first class continuations.  The exit part is
+	 ;; protected because ! FAIL does a throw.
+	 (wind-protect (block (set! val other)
+			      (set! flag #t))
+		       (k)
+		       (block (set! flag #f)
+			      (set! val #f))))))
+
+
+(add-method (unify (object) self other k)
+  (let ((other (follow-chain other)))
+    (cond ((eq? self other) (k))
+
+	  ((logic-variable? other) (unify other self k))
+
+	  ;; ?? ;; ((equal? self other) (k))
+
+	  ((and (pair? self) (pair? other))
+	   (unify (car self) (car other)
+		  (let ((cdr-self (cdr self))
+			(cdr-other (cdr other)))
+		    (lambda () (unify cdr-self cdr-other k)))))
+
+	  ;;
+
+	  ((and (eq? (get-type self) (get-type other))
+		(= (%get-length self) (%get-length other))
+		(= (%tag self) %pointer-tag))
+	   (slotsky-unify self (%set-tag self %locative-tag)
+			  other (%set-tag other %locative-tag)
+			  1 (%get-length self) k))
+
+	  (else #f))))
+
+(add-method (unify (anonymous-logic-variable) a b k)
+  (k))
+
+(define (slotsky-unify o0 loc0 o1 loc1 i len k)
+  (if (= i len)
+      (k)
+      (unify (contents (%increment-locative loc0 i))
+	     (contents (%increment-locative loc1 i))
+	     (lambda ()
+	       (slotsky-unify o0 loc0 o1 loc1 (+ i 1) len k)))))
+
+
+
+
+
+
+;;; A macro for making some logic variables for a while.
+
+(define-syntax (with-logic-vars varlist . body)
+  `(let ,(map (lambda (v) `(,v (make regular-logic-variable))) varlist)
+     ,@body))
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+(labels (((ordered-union a b)
+	  (iterate next ((a (reverse a))(b b))
+	    (cond ((null? a) b)
+		  ((memq (car a) b) (next (cdr a) b))
+		  (else (next (cdr a) (cons (car a) b)))))))
+
+
+  (define (logic-varlist x)
+    (cond ((comma-expr? x)
+	   (cond ((pair? (cadr x)) '())
+		 ((eq? (cadr x) '_) '()) ; don't shadow global logic var _
+		 (else (list (cadr x)))))
+	  ((pair? x)
+	   (ordered-union (logic-varlist (car x))
+			  (logic-varlist (cdr x))))
+	  (else '()))))
+
+
+
+
+(define (y-or-n? prompt)
+  (iterate aux ()
+    (format #t "~A? " prompt)
+    (flush standard-output)
+    (flush standard-input)  
+    (let ((c (read-char standard-input)))
+      (cond ((eq? c #\newline) #t)
+	    ((eq? c #\y) (read-char standard-input) #t)
+	    ((eq? c #\n) (read-char standard-input) #f)
+	    (else (format #t "type ('y' or #\newline) or 'n' ... ~%") (aux))))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+
+;;; Some stuff for dealing with reader syntax and backquotes and such.
+
+;;; Is x of the form ,x ?
+
+(define (comma-expr? x)
+  (and (pair? x) (eq? (car x) 'unquote)))
+
+;;; Like putting a backquote in front of something:
+
+(define (backquotify x) (list 'quasiquote x))
+
+
+
+;;; This emits code that unifies the expressions e1 and e2, executes
+;;; the code, ununifies them, and returns.
+
+(define (sym-unify e1 e2 code)
+  (cond ((or (comma-expr? e1) (comma-expr? e2))
+	 (if (or (equal? e1 ',_) (equal? e2 ',_))
+	     code
+	     `(unify ,(backquotify e1)
+		     ,(backquotify e2)
+		     ,(lambdify code))))
+	((and (pair? e1) (pair? e2))
+	 (sym-unify (car e1) (car e2) (sym-unify (cdr e1) (cdr e2) code)))
+	((equal? e1 e2) code)
+	(else (warning "Unable to symbolically unify ~s and ~s." e1 e2)
+	      '#f)))
+
+;;; This takes a chunk of code, and makes it into a chunk of code that
+;;; returns a function which, if called, does the same thing as the
+;;; original code.
+
+(define (lambdify code)
+  (destructure** code
+    ((x) x)
+    (otherwise `(lambda () ,code))))
+
+
+(define (has-! clauses)
+  (and (not (null? clauses))
+       (or (memq '! (cddar clauses)) (has-! (cdr clauses)))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+(define (process-clauses clauses cformals k cutfail)
+  (if (null? clauses) '#f
+      (process-clause (car clauses) cformals k
+		      (process-clauses (cdr clauses) cformals k cutfail)
+		      cutfail)))
+
+
+
+
+(define (process-clause clause formals k failcode cutfail)
+  (destructure** clause
+    ((vars lhs)
+     (set save-vars vars)
+     (set save-lhs  lhs)
+     `(block (with-logic-vars ,vars
+	       ,(sym-unify formals (cdr lhs) `(,k)))
+	     ,failcode))
+    ((vars lhs ':- . rhs)
+     (set save-vars vars)
+     (set save-lhs  lhs)
+     (set save-rhs  rhs)
+     `(block (with-logic-vars ,vars
+	       ,(sym-unify formals (cdr lhs) (process-rhs rhs k cutfail)))
+	     ,failcode))))
+
+
+
+
+
+(define (process-rhs rhs k cutfail)
+  (if (null? rhs) `(,k)
+      (let ((munched-rest (process-rhs (cdr rhs) k cutfail)))
+	(cond ((eq? (car rhs) '!)
+	       `(block ,munched-rest
+		       ,cutfail))
+	      ((comma-expr? (car rhs))
+	       `(when ,(cadar rhs)
+		  ,munched-rest))
+	      (else
+	       `(,(caar rhs)
+		 ,(lambdify munched-rest)
+		 ,@(map backquotify (cdar rhs))))))))
+
+
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+(define (is k x y)  
+  (unify x y k))    
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+; Here is a more complicated version that contains a couple
+; of optimizations which improves speed on the knights-tour
+; problem by about a factor of 2.
+
+; When a variable first occurs on the left hand side as
+; a bare match with an input argument, we just use let
+; to bind an oaklisp variable to whatever value came in, rather
+; than making a new logical variable and then unifying it
+; with the incoming argument.
+
+; Also we provide a mechanism for set! so that temporary
+; RHS variables can be implemented as ordinary oaklisp variables.
+
+
+
+(define (analyse-lhs-variables input-list)
+  (let* ((vars-to-copy '())
+	 (seen-it '())
+	 (hacked-list 
+	  (map (lambda (expr expr-no)
+		 (if (comma-expr? expr)
+		     (let ((the-variable (cadr expr)))
+		       (if (memq the-variable seen-it)
+			   expr
+			   (block
+			    (set seen-it (cons the-variable seen-it))
+			    (set vars-to-copy (cons (cons the-variable expr-no)
+						    vars-to-copy))
+			    (list 'unquote 'first-reference the-variable)
+			    )))
+		     (block 
+		      (set seen-it (union seen-it (all-atoms-in expr)))
+		      expr)))
+	       input-list
+	       (iota0 (length input-list))
+	       )))
+    (list (reverse vars-to-copy) hacked-list)))
+
+
+
+(define (all-atoms-in inlist)
+  (cond ((pair? inlist)
+	 (union (all-atoms-in (car inlist))
+		(all-atoms-in (cdr inlist))))
+	((null? inlist) '())
+	(else (list inlist))))
+
+
+
+(define (sym-unify e1 e2 code)
+  (cond ((and (comma-expr? e1) (comma-expr? e2)
+	      (= 3 (length e2))
+	      (eq? 'first-reference (second e2)))
+		; the value was directly copied by hacked-with-logic-vars,
+		; so we don't need to unify here.
+	 code) 
+
+	((or (comma-expr? e1) (comma-expr? e2))
+	 (cond ((or (equal? e1 ',_) (equal? e2 ',_))
+		code)
+
+;              not always a win 
+;	       ((or (null? e2) (number? e2) (symbol? e2))
+;		`(when (unifiable-with-constant? ,(backquotify e1) ,(backquotify e2))
+;		   (unify ,(backquotify e1)
+;			  ,(backquotify e2)
+;			  ,(lambdify code))))
+
+	       (else
+		`(unify ,(backquotify e1)
+			,(backquotify e2)
+			,(lambdify code)))))
+	((and (pair? e1) (pair? e2))
+	 (sym-unify (car e1) (car e2) (sym-unify (cdr e1) (cdr e2) code)))
+	((equal? e1 e2) code)
+	(else (warning "Unable to symbolically unify ~s and ~s." e1 e2)
+	      '#f)))
+
+
+
+
+
+
+(define-syntax (hacked-with-logic-vars varlist formal-list
+				       lhs-vars-to-copy rhs-vars-to-set
+				       . body)
+  `(let ,(map (lambda (v)
+		(cond  ((assq v lhs-vars-to-copy)
+			; Copy the incoming argument now so that 
+			; we don't have to unify later.
+			`(,v ,(nth formal-list (cdr (assq v lhs-vars-to-copy)))))
+		       ((memq v rhs-vars-to-set)
+		       ; we are going to assign a value later with set!, 
+		       ; we don't need to make a logic variable now.
+			`(,v variable-undefined-value))
+		       (else
+			`(,v (make regular-logic-variable)))))
+	      varlist)
+     ,@body))
+
+
+
+
+
+
+(define (process-clause clause formals k failcode cutfail)
+  (destructure**
+   clause
+   ((vars lhs)
+    (let* ((result (analyse-lhs-variables (cdr lhs)))
+	   (vars-to-copy (car result))
+	   (hacked-lhs (second result)))
+      `(block (hacked-with-logic-vars ,vars ,(map second formals)
+				      ,vars-to-copy ()
+				      ,(sym-unify formals hacked-lhs `(,k)))
+	      ,failcode)))
+   ((vars lhs ':- . rhs)
+    (bind (((fluid rhs-vars-to-set) '()))
+      (let* ((result (analyse-lhs-variables (cdr lhs)))
+	     (vars-to-copy (car result))
+	     (hacked-lhs (second result))
+	     (processed-rhs (process-rhs rhs k cutfail)))
+	`(block (hacked-with-logic-vars ,vars ,(map second formals)
+					,vars-to-copy ,(fluid rhs-vars-to-set)
+					,(sym-unify formals hacked-lhs processed-rhs))
+		,failcode))))))
+
+
+
+
+(define (process-rhs rhs k cutfail)
+  (if (null? rhs) `(,k)
+      (let ((munched-rest (process-rhs (cdr rhs) k cutfail)))
+
+	(cond ((eq? (car rhs) '!)
+	       `(block ,munched-rest
+		       ,cutfail))
+
+	      ; this is the special hack for set! forms
+	      ((let ((x (car rhs)))
+		 (and (comma-expr? x)
+		      (pair? (second x))
+		      (= 3 (length (second x)))
+		      (memq (car (second x)) '(set set!))))
+	       (set (fluid rhs-vars-to-set)
+		    (cons (second (second (car rhs))) (fluid rhs-vars-to-set)))
+	       `(block ,(second (car rhs)) ,munched-rest))
+		   
+	      ((comma-expr? (car rhs))
+	       `(when ,(cadar rhs)
+		  ,munched-rest))
+
+	      (else
+	       `(,(caar rhs)
+		 ,(lambdify munched-rest)
+		 ,@(map backquotify (cdar rhs))))))))
+
+      
+
+
+
+; (define-instance unifiable-with-constant? operation)
+; 
+; (add-method (unifiable-with-constant? (regular-logic-variable flag val)
+;  self the-constant)
+;   (if flag
+;       (unifiable-with-constant? val the-constant)
+;       #t)) 
+;
+; (add-method (unifiable-with-constant? (object) self the-constant)
+;   (eq? self the-constant))
+
+
+
+
+
+
+;;; eof

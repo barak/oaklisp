@@ -1,0 +1,151 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+
+
+
+(labels (((consume1 val arg . args)
+	  (if (= 0 (rest-length args))
+	      val
+	      (consume1 val . args))))
+
+	(define (consume-args val . args)
+	  (if (= 0 (rest-length args))
+	      val
+	      (consume1 val . args))))
+
+
+
+
+
+
+(labels
+    (((helper1 op list-head prev-pair a)
+      (set! (cdr prev-pair) (list a))
+      (op (cdr list-head)))
+     ((helper2 op list-head prev-pair a b)
+      (set! (cdr prev-pair) (list a b))
+      (op (cdr list-head)))
+     ((helper3 op list-head prev-pair a b c)
+      (set! (cdr prev-pair) (list a b c))
+      (op (cdr list-head)))
+     ((helper4 op list-head prev-pair a b c d)
+      (set! (cdr prev-pair) (list a b c d))
+      (op (cdr list-head)))
+     ((helper5 op list-head prev-pair a b c d e)
+      (set! (cdr prev-pair) (list a b c d e))
+      (op (cdr list-head)))
+     ((helper6 op list-head prev-pair a b c d e f)
+      (set! (cdr prev-pair) (list a b c d e f))
+      (op (cdr list-head)))
+     ((helper7 op list-head prev-pair a b c d e f g)
+      (set! (cdr prev-pair) (list a b c d e f g))
+      (op (cdr list-head)))
+
+     ((helper8+ op list-head prev-pair a b c d e f g h . rest)
+
+      (let ((new-last-pair (cons h '())))
+
+	(set! (cdr prev-pair) 
+	      (cons a (cons b (cons c (cons d
+		    (cons e (cons f (cons g new-last-pair))))))))
+
+	(cond ((> (rest-length rest) 7)
+	       (helper8+ op list-head new-last-pair . rest))
+	      ((< (rest-length rest) 4)
+	       (cond ((zero? (rest-length rest))
+		      (op (cdr list-head)))
+		     ((= (rest-length rest) 1)
+		      (helper1 op list-head new-last-pair . rest))
+		     ((= (rest-length rest) 2)
+		      (helper2 op list-head new-last-pair . rest))
+		     (else
+		      (helper3 op list-head new-last-pair . rest))))
+	      (else
+	       (cond ((= (rest-length rest) 4)
+		      (helper4 op list-head new-last-pair . rest))
+		     ((= (rest-length rest) 5)
+		      (helper5 op list-head new-last-pair . rest))
+		     ((= (rest-length rest) 6)
+		      (helper6 op list-head new-last-pair . rest))
+		     (else
+		      (helper7 op list-head new-last-pair . rest))))))))
+
+
+  (define (listify-args op . rest)
+
+    (let ((list-head (cons '() '())))
+
+      (cond ((< (rest-length rest) 4)
+	     (cond ((= (rest-length rest) 1)
+		    (helper1 op list-head list-head . rest))
+		   ((= (rest-length rest) 2)
+		    (helper2 op list-head list-head . rest))
+		   ((= (rest-length rest) 3)
+		    (helper3 op list-head list-head . rest))
+		   ((zero? (rest-length rest))
+		    (op '()))))
+
+	    ((< (rest-length rest) 8)
+	     (cond ((= (rest-length rest) 4)
+		    (helper4 op list-head list-head . rest))
+		   ((= (rest-length rest) 5)
+		    (helper5 op list-head list-head . rest))
+		   ((= (rest-length rest) 6)
+		    (helper6 op list-head list-head . rest))
+		   (else
+		    (helper7 op list-head list-head . rest))))
+	    (else
+	     (helper8+ op list-head list-head . rest)))))
+
+  )
+
+     
+
+
+
+
+#|
+
+(labels (((listify-args-aux listify-argsofar op guy . rest)
+	  (if (zero? (rest-length rest))
+
+	      (iterate inline-reverse! ((old (cons guy listify-argsofar))
+					(new nil))
+		(cond ((null? old)
+		       (op new))
+		      (else (let ((o (cdr old)))
+			      (set! (cdr old) new)
+			      (inline-reverse! o old)))))
+
+	      (listify-args-aux (cons guy listify-argsofar) op . rest))))
+
+	(define (listify-args op . rest)
+	  (cond
+	   ((zero? (rest-length rest))
+	    (op '()))
+	   (else
+	    (listify-args-aux '() op . rest)))))
+|#
+
+
+
+
+
+
+
+
+
+
+(labels (((bla-aux bla-so-far op guy . rest)
+	  (if (zero? (rest-length rest))
+	      (op (cons guy bla-so-far))
+	      (bla-aux (cons guy bla-so-far) op . rest))))
+
+  (define (backwards-listify-args op . rest)
+    (cond
+     ((zero? (rest-length rest)) (op '()))
+     (else (bla-aux '() op . rest)))))
+
+
+
+

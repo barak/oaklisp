@@ -1,0 +1,137 @@
+;;; Copyright (C) Barak A. Pearlmutter & Kevin J. Lang. Fall 1986.
+
+
+(define (make-oa-list oaf-list)
+  (let ((sym-vec ((coercer simple-vector) (car oaf-list))))
+    (labels (((rewrite-syms clause)
+	      (let ((car-clause (car clause)))
+		(if (> car-clause (- 5 1))
+		    (list (- car-clause 5)
+			  (cadr clause)
+			  (nth sym-vec (caddr clause)))
+		    clause))))
+      (map! (lambda (blk)
+	      (list (map! rewrite-syms (triplify! (car blk)))
+		    (cadr blk)))
+	    (cadr oaf-list)))))
+
+
+
+(define (make-oaf-list oa-list)
+  (let* ((sym-hash (make-eq-hash-table))
+	 (counter 0)
+	 (new-list
+	  (map
+	   (lambda (blk)
+	     (list (untriplify!
+		    (map!
+		     (lambda (clause)
+		       (let ((sym (caddr clause)))
+			 (if (symbol? sym)
+			     (let ((num
+				    (or (table-entry sym-hash sym)
+					(block0
+					 (set! (table-entry sym-hash sym)
+					      counter)
+					 (set! counter (1+ counter))))))
+			       (list (+ 5 (car clause)) (cadr clause) num))
+			     clause)))
+		     (car blk)))
+		   (cadr blk)))
+	   oa-list)))
+    (list
+     (map! car
+	   (sort ((coercer list-type) sym-hash)
+		 (lambda (a b) (< (cdr a)(cdr b)))))
+     new-list)))
+
+
+
+; these functions reverse the order of the triples
+; also, they are extremely side-effecting, so watch out.
+
+(define (untriplify! inlist)
+  (iterate step ((in inlist) (out '()))
+    (if in
+	(step (cdr in)
+	      (let ((carin (car in)))
+		(set! (cdr (cdr (cdr carin))) out)
+		carin))
+	out)))
+
+
+(define (triplify! inlist)
+  (iterate step ((in inlist) (out '()))
+    (if in
+	(let* ((cddrin (cdr (cdr in)))
+	       (nxtrip (cdr cddrin)))
+	  (step nxtrip
+		(block
+		 (set! (cdr cddrin) nil)
+		 (cons in out))))
+	out)))
+
+
+
+
+(define (dumb-read-number stream)
+  (let* ((the-char (peek-char stream))
+	 (sign (if (eq? the-char #\-)
+		   (block (read-char stream) -1)
+		   1)))
+    (iterate next ((worknum 0))
+      (let* ((the-char (read-char stream))
+	     (num-val (- (%character->fixnum the-char) (number #\0))))
+	(cond ((and (>= num-val 0) (<= num-val 10))
+	       (next (+ (* worknum 10) num-val)))
+	      ((eq? the-char #\))
+	       (unread-char stream the-char)
+	       (* worknum sign))
+	      ((or (eq? the-char #\space)
+		   (eq? the-char #\tab)
+		   (eq? the-char #\newline)
+		   (nth standard-read-table the-char) 'whitespace)
+	       (* worknum sign))
+	      (else
+	       (error "~C encountered by dumb-read-number." the-char)))))))
+
+;;; This does what its name implies, going circularly through the list
+;;; of functions.
+
+(define (read-list-using-functions stream function-list)
+  (skip-whitespace stream)
+  (unless (eq? #\( (read-char stream))
+    (error "stream ~a not positioned at a list" stream))
+  (iterate next ((worklist '())(funlist function-list))
+    (skip-whitespace stream)
+    (let ((the-char (peek-char stream)))
+      (cond ((eq? #\) the-char)
+	     (read-char stream)
+	     (reverse! worklist))
+	    (else
+	     (next (cons ((car funlist) stream) worklist)
+		   (cond ((cdr funlist) => identity)
+			 (else function-list))))))))
+
+
+(define (read-oaf-list stream)
+  (read-list-using-functions
+   stream
+   (list read  
+	 (lambda (stream)		;list of body clauses
+	   (read-list-using-functions
+	    stream
+	    (list (lambda (stream)	;one body clause
+		    (read-list-using-functions
+		     stream
+		     (list
+		      (lambda (stream)	;resolution part
+			(read-list-using-functions
+			 stream
+			 (list dumb-read-number
+			       dumb-read-number
+			       read)))
+		      (lambda (stream)	;code part
+			(read-list-using-functions
+			 stream
+			 (list dumb-read-number))))))))))))

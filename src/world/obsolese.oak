@@ -1,0 +1,21 @@
+;;; Copyright (C) 1988, Kevin J. Lang and Barak A. Pearlmutter.
+
+;;; A macro for declaring an obsolescent synonym for a newly renamed operation.
+
+;;; BUGS: I doubt this works for settable operations.  Perhaps this should
+;;; operate at the locale level, so it could catch any reference.
+
+(define-syntax (define-old-name old new)
+  `(define ,old
+     (let ((already-warned #f))
+       (lambda ( . args )
+	 (unless already-warned
+	   (set! already-warned t)
+	   (format standard-error
+		   ,(format #f
+			    "~~&Warning: ~A is obsolete, use ~A instead.~~%"
+			    old new))
+	   (set! ,old ,new))
+	 (,new . args)))))
+
+;;; eof

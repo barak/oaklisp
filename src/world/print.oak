@@ -1,0 +1,23 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;;; Print methods for some standard system types that print in a simple way.
+
+(define (define-simple-print-method typ name)
+  (add-method (print (typ) self stream)
+    (format stream "#<~A ~!>" name self)
+    self))
+
+
+(define-simple-print-method object		"Object")
+(define-simple-print-method type		"Type")
+(define-simple-print-method coercable-type	"Coercable")
+(define-simple-print-method operation		"Op")
+(define-simple-print-method settable-operation	"SettableOp")
+(define-simple-print-method locatable-operation	"LocatableOp")
+(define-simple-print-method variable-length-mixin "VLmixin")
+
+(add-method (print (locative) self stream)
+  ;(format stream "#<Loc ~! [~A]>" self (contents self))
+  (format stream "#<Loc ~!>" self))
+
+;;; eof

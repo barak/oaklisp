@@ -1,0 +1,217 @@
+\chapter{Evaluation and Locales} \label{locales}
+
+Locales are the namespace structuring mechanism of Oaklisp.  Whenever
+an Oaklisp expression is evaluated, a locale must be provided in order
+to specify a particular mapping from symbols to macro-expanders and
+from symbols to storage cells.
+
+\section{Evaluation}
+
+\op{eval}{form locale}
+\doc{Evaluates {\em form} relative to {\em locale}.}
+
+Although programmers don't often need to call \df{eval} directly,
+every expression typed at the top level is passed in to \df{eval} to
+be evaluated relative to the locale specified by the fluid variable
+\df{current-locale}.  Files may be evaluated using the \df{load}
+function.
+
+\op{load}{file-name $[$locale$]$}
+\doc{Reads all of the forms in the file {\em file-name} and evaluates
+them relative to {\em locale}, which defaults to the value of
+\dffl{current-locale} if not specified.}
+
+The file compiler can be used to create an assembly language file that
+has the same effect as an Oaklisp source file.
+
+\op{compile-file}{locale file-name}
+\doc{Compiles the file {\em file-name} relative to {\em locale},
+which defaults to the value of \dffl{current-locale}.  A file must be
+compiled and loaded relative to the same locale in order to guarantee
+that the program's semantics are preserved.
+
+Oaklisp source files have a default extension of \df{.oak} while
+compiled files are given the extension \df{.oa}.  \df{compile-file}
+first tries to read the file {\em file-name}\df{.oak}, and then looks
+for {\em file-name}, while \df{load} looks first for {\em
+file-name}\df{.oa}, then for {\em file-name}\df{.oak}, and finally for
+{\em file-name}.}
+
+
+
+\section{Installing Names in a Locale}
+
+
+Oaklisp has several forms that can be used to insert global variables
+and macro definitions into a locale.  The target locale isn't
+explicitly specified by any of these forms, but is implicitly
+understood to be the locale with respect to which the form is being
+evaluated.  Thus, when a form is typed at the top level, the effect is
+on \dffl{current-locale}, and when a file is loaded, the effect is on
+the locale specified in the call to \df{load}.
+
+\sform{define}{var val}
+\doc{Installs the global variable {\em var} in the current locale with
+value {\em val}.}
+
+\sform{define-constant}{var val}
+\doc{This form is like \df{define} except that {\em var} is marked as frozen in
+the current locale so that the compiler can be free to substitute
+the value for references to {\em var}.}
+
+\sform{define-instance}{var typ \dt make-args}
+\doc{If the contents of {\em var} isn't of type {\em typ}, this is the same
+as {\tt (set! {\em var} (make {\em typ} . {\em make-args}))}. If {\em
+var} is already bound to an object of the right type, this form has no
+effect.  {\em Note:} this language feature is in flux.  Currently, it
+send an \df{initialize} message to the object with the new {\em
+make-args}.}
+
+\sform{define-syntax}{macro-name expander}
+\doc{
+Installs {\em macro-name} in the current locale.  {\em expander}
+should be a lambda that is able to translate an example of the macro
+into a form that has simpler syntax.  }
+
+As with all Oaklisp forms, the effect of a \df{define-syntax} form in
+a file is not felt until run-time when the file is loaded.  Since it
+is often convenient to be able to use a macro in the file in which it
+is defined, a special mechanism has been provided for defining
+file-local macros that are in effect at compile time.  The following
+magic forms should be used with care, since they violate the usually
+absolute dichotomy between compile time and load time.
+
+\sform{local-syntax}{macro-name expander}
+\doc{
+During the compilation of a file in which a \df{local-syntax} form
+is contained, the form augments the name space with the
+macro specified by {\em macro-name} and {\em expander}.  This form can
+only appear at top level in a file; and essentially disappears before
+load time.
+}
+
+\sform{define-local-syntax}{macro-name expander}
+\doc{
+Temporarily augments the compile-time name space with the specified
+macro, and also installs the macro in the current locale when the
+file is loaded.  This form can only appear at top level in a file.
+}
+
+
+
+\section{Structuring the Namespace}
+
+
+\discuss{
+Oaklisp locales are not associated with textual binding
+contours, nor are they particularly user-friendly objects. They were
+designed to be a powerful implementation tool, leaving the task of providing
+a convenient interactive interface to higher-level code.}
+
+\op{make}{\df{locale} superior-list}
+\doc{Returns a new locale which inherits names from the locales in
+{\em superior-list}. During recursive name lookups, the superiors are
+searched deapth first in left-to-right order.}
+
+\section{Variables} \label{variables}
+
+Locales are essentially mappings from symbols to storage cells.
+Although locales can be created on-the-fly, their main use is in
+building the structured top-level environment for global variables.
+Variable names must be installed in a locale before they can be
+referenced.  Precise control over shadowing and cross-referencing can
+be achieved using the following settable operations.
+
+\so{variable?}{locale symbol}
+\doc{Returns a locative to the appropriate storage cell if {\em symbol}
+is installed as a variable name, or \df{\#f} otherwise.  The search is
+allowed to proceed to superior locales if necessary.}
+
+\setter{variable?}{locale symbol}{locative}
+\doc{If {\em symbol} is not currently defined at any level, then it is
+installed in {\em locale}, with the location named by {\em locative}
+serving as its value cell.  If {\em symbol} is defined at some level,
+then its value cell at the highest level\footnote{\ie\ in the nearest
+locale to the one handling the operation.} is changed to be the
+location referenced by {\em locative}.}
+
+\setter{variable?}{locale symbol}{{\tt\#f}}
+\doc{If {\em symbol} is defined at some level, then its definition is removed
+from the highest level.  Otherwise an error is generated.}
+
+\so{variable-here?}{locale symbol}
+\doc{Returns a locative to the appropriate storage cell if {\em symbol}
+is installed as a variable name, or \df{\#f} otherwise.  The search is
+constrained to {\em locale} itself.}
+
+\setter{variable-here?}{locale symbol}{locative}
+\doc{If {\em symbol} is not currently defined in {\em locale}, then it is
+installed, with the location named by {\em locative} serving as its value
+cell. If {\em symbol} is defined in {\em locale}, then its value cell is
+changed to be the location referenced by {\em locative}.}
+
+\setter{variable-here?}{locale symbol}{{\tt\#f}}
+\doc{If {\em symbol} is defined in {\em locale} then its definition
+is removed.  Otherwise an error is generated.}
+
+\section{Macros}
+
+Macro definitions are also stored in locales.  These definitions are
+stored as a mapping from names to macro expanders.  A macro expander
+is simply a one-argument function that takes an S-expression as its
+input and returns a transformed S-expression.  Macro definitions are
+installed with the following settable operations, which are entirely
+analogous to the ones described in section \ref{variables}.
+
+\so{macro?}{locale symbol}
+\doc{Returns the appropriate macro expander if {\em symbol} is installed
+as a macro name and \df{\#f} otherwise. The search is allowed to proceed to
+superior locales if necessary.}
+
+\so{macro-here?}{locale symbol}
+\doc{Returns the appropriate macro expander if {\em symbol} is installed
+as a macro name, or \df{\#f} otherwise. The search is constrained to
+{\em locale} itself.}
+
+\section{Compilation}
+
+All evaluation in Oaklisp is performed with respect to some locale.
+The syntax of the language is determined by the macro tables visible
+from that locale, and free variable references are likewise resolved
+using the global variables defined in its name space.
+
+%%
+% Evaluation is
+% performed by sending a \df{compile} message to the desired locale.
+% 
+% \begin{group}
+% \op{(COMPILE locale form)}
+% \doc{Evaluates \df{form} in the name space defined by \df{locale} and
+% its ancestors.}
+% \end{group}
+% 
+% \begin{group}
+% \op{(LOAD file locale)}
+% \doc{Completes the suspended evaluation of the form that was compiled to
+% \df{file}.\  \df{locale} must be the locale within which the
+% form was originally compiled.}
+% \end{group}
+% 
+% \discuss{For improved efficiency, it is desirable for the compiler to
+% be able to open-code some functions.  This is only possible if
+% the variables bound to those functions will never change their
+% values.  The following operations may be used to inform the compiler that a
+% variable will always have the same value.}
+% 
+% 
+
+\spred{frozen?}{locale symbol}
+\doc{Returns \df{\#t} if {\em symbol} is a frozen variable, otherwise
+\df{\#f}.  The search is allowed to proceed to superior locales if
+necessary.  If {\em symbol} is not found anywhere, an error occurs.}
+
+\spred{frozen-here?}{locale symbol}
+\doc{Returns \df{\#t} if {\em symbol} is a frozen variable, otherwise
+\df{\#f}.  The search is constrained to {\em locale} itself. If
+{\em symbol} is not installed as a variable in {\em locale}, an error
+occurs.}

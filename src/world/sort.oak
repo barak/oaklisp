@@ -1,0 +1,87 @@
+;;; Copyright (C) 1986,7,8 Kevin J. Lang & Barak A. Pearlmutter.
+
+
+;;; A generic sorting facility.
+
+(define-instance sort operation)
+(define-instance sort! operation)
+
+(add-method (sort (sequence) v <=?)
+  (sort! (copy v) <=?))
+
+(add-method (sort! (sequence) v <=?)
+  ;; This does a stupid bubble sort.  Should be fixed.
+  (let ((len (length v)))
+    ;;(vsort v (make simple-vector len) 0 0 len)
+    (when (> len 0)
+      (dotimes (i (- len 1))
+	(iterate aux ((j (+ i 1)))
+	  (when (< j len)
+	    (when (<=? (nth v j) (nth v i))
+	      (swap (nth v i) (nth v j)))
+	    (aux (+ j 1))))))
+    v))
+
+
+
+
+;;; Practice run for the Indiana Parenthesis Sweepstake Open:
+
+(labels ([sort-aux
+	  ;; Sort the first LEN elements of L.  MERGER is used to
+	  ;; merge sublists.
+	  (lambda (l len <=? merger)
+	    (cond [(< len 2) l]
+		  [else
+		   (let* ([len/2 (quotient len 2)]
+			  [len/2b (- len len/2)]
+			  [lb (tail l len/2)])
+		     (merger (sort-aux l len/2 <=? merger) len/2
+			     (sort-aux lb len/2b <=? merger) len/2b
+			     <=?))]))]
+	 [merge!-aux
+	  ;; Destructively merges the first LENA guys of LA with the
+	  ;; first LENB guys of LB.
+	  (lambda (la lena lb lenb <=?)
+	    (cond [(zero? lena) lb]
+		  [(zero? lenb) la]
+		  [(not (<=? (car lb) (car la)))
+		   (set! (cdr la)
+			 (merge!-aux (cdr la) (- lena 1)
+				     lb lenb <=?))
+		   la]
+		  [else
+		   (set! (cdr lb)
+			 (merge!-aux la lena
+				     (cdr lb) (- lenb 1) <=?))
+		   lb]))]
+	 [merge-aux
+	  ;; Merge the first LENA guys of LA with the first LENB guys of LB.
+	  (lambda (la lena lb lenb <=?)
+	    (cond [(zero? lena) lb]
+		  [(zero? lenb) la]
+		  [else
+		   (let ([a (car la)]
+			 [b (car lb)])
+		     (if (<=? b a)
+			 (cons b
+			       (merge-aux la lena
+					  (cdr lb) (- lenb 1)
+					  <=?))
+			 (cons a
+			       (merge-aux (cdr la) (- lena 1)
+					  lb lenb <=?))))]))])
+
+  (add-method (sort! (list-type) l <=?)
+    (let* ([len (length l)]
+	   [l (sort-aux l len <=? merge!-aux)])
+      (unless (zero? len)
+	(set! (cdr (tail l (- len 1))) nil))
+      l))
+
+  (add-method (sort (list-type) l <=?)
+    (let* ([len (length l)]
+	   [l (sort-aux l (length l) <=? merge-aux)])
+      (head l len))))
+
+;;; eof

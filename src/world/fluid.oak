@@ -1,0 +1,51 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+;;; This file contains code that implements fluid variables.
+
+(define top-level-fluid-binding-list (list (cons nil nil)))
+
+;;; This is to be called at warm boot time:
+
+(define (revert-fluid-binding-list)
+  (set! fluid-binding-list top-level-fluid-binding-list))
+
+;;; And at cold boot time too, I suppose:
+
+(revert-fluid-binding-list)
+
+#|
+;;; This must be delayed until later in the world building process.
+(define-syntax (fluid x)
+  `(%fluid ',x))
+|#
+
+(define-constant-instance %fluid locatable-operation)
+
+(add-method (%fluid (symbol) sym)
+  (iterate aux ()
+    (let ((x (%assq sym fluid-binding-list)))
+      (cond (x => cdr)
+	    (else (cerror
+		   (format #f "Try looking up (FLUID ~S) again." sym)
+		   "(FLUID ~S) not found." sym)
+		  (aux))))))
+
+(add-method ((setter %fluid) (symbol) sym val)
+  (let ((x (%assq sym fluid-binding-list)))
+    (cond (x (set! (cdr x) val))
+	  (else (set! (cdr top-level-fluid-binding-list)
+		     (cons (cons sym val)
+			   (cdr top-level-fluid-binding-list)))
+		val))))
+
+(add-method ((locater %fluid) (symbol) sym)
+  (iterate aux ()
+    (let ((x (%assq sym fluid-binding-list)))
+      (cond (x (make-locative (cdr x)))
+	    (else
+	     (cerror
+	      (format #f "Try looking up (FLUID ~S) again." sym)
+	      "Locative to (FLUID ~S) not found." sym)
+	     (aux))))))
+
+;;; eof

@@ -1,0 +1,129 @@
+;;; Copyright (C) 1987,8,9, Barak A. Pearlmutter & Kevin J. Lang.
+
+;;; Promises.  There is an abstract type, FORCIBLE, which the really
+;;; low level system code checks for when trapping out.  Things that
+;;; actually delay their computation, or do it concurrently, or read
+;;; it off disk, or whatever, should inherit from it.
+
+;; Moved back much earlier, so system code can add methods for forcible.
+;;(define-instance forcible type '() '())
+
+(define-instance force operation)
+
+(add-method (force (object) self)
+  self)
+
+(add-method (force (forcible) self)
+  (bind ((forcible-print-magic #f))
+    (error "Attempt to force ~S, which has no FORCE method." self)))
+
+
+
+
+
+
+;;; This switch determines whether forcible things force themselves before
+;;; printing.
+
+;;; Possible values are:
+;;;
+;;;    value          style of (DELAY 'FOO)
+;;;
+;;;    #F             #<DELAY 3462>
+;;;    INDICATE       #[DELAY FOO 3462]
+;;;    TRANSPARENT    FOO
+
+(set! (fluid forcible-print-magic) 'transparent)
+
+(add-method (print (forcible) self s)
+  (let ((f forcible-print-magic))
+    (cond ((eq? f 'transparent) (print (force self) s))
+	  ((eq? f '#f) (format s "#<DELAY ~!>" self))
+	  ((eq? f 'indicate) (format s "#[DELAY ~S ~!]" (force self) self))
+	  (else (error "Unknow FORCIBLE-PRINT-MAGIC option ~S." f)))))
+	  
+
+(add-method (print-list-end (forcible) self . args)
+  (if forcible-print-magic
+      (print-list-end (force self) . args)
+      (^super object print-list-end self . args)))
+
+
+
+
+
+
+
+
+;;; Simple R3RS style promises, except they get automatically forced.
+
+(define-instance promise type '(flag val) (list forcible object))
+
+(add-method (initialize (promise flag val) self oper)
+  (set! flag #f)
+  (set! val oper)
+  self)
+
+(add-method (force (promise flag val) self)
+  (if flag val
+      (let ((newval (val)))
+	;; Critical section; would be a good idea to disable interrupts.
+	(set! flag #t)
+	(set! val newval))))
+
+(define-syntax delay
+  (lambda (form)
+    `(make promise (lambda () . ,(cdr form)))))
+
+
+
+
+
+
+;;; This switch determines whether the error system forces things
+;;; and retries operations that fail due to something being a forcible
+;;; object.  Time to turn it on...
+
+(set! forcible-magic #t)
+
+
+
+
+;;; When multiple dispatch is up, this should dispatch on the second arg
+;;; symetrically.
+
+(add-method (eqv? (forcible) self other)
+  (eqv? (force self) other))
+
+
+
+#||
+
+;;; NOTE: Neither of these are actually activated, because IS-A? is really
+;;; critical, and we don't want to actually slow down the system.  Load one
+;;; if you actually want to use promises and want things that do TYPECASE
+;;; to work on them.  All the type predicates use IS-A? (see predicates.oak)
+;;; so this should make them automatically force delays too.  On the other
+;;; hand, the type predicates could be switched to use dispatch without
+;;; warning upon suitable benchmarks.
+
+;;; A patch to do similar things to the system predicates is commented out
+;;; in predicates.oak
+
+;;; Not modular, but maybe faster:
+(define (is-a? obj typ)
+  (iterate is-a? ((obj obj))
+    (let ((typ2 (get-type obj)))
+      (if (and forcible-magic (subtype typ2 forcible))
+	  (is-a? (force obj) typ)
+	  (subtype? typ2 typ)))))
+
+;;; Modular, but maybe slower:
+(add-method (is-a? (forcible) self typ)
+  (if forcible-magic
+      (is-a? (force self) typ)
+      (^super object is-a? self typ)))
+
+||#
+
+;;; eof

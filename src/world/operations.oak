@@ -1,0 +1,160 @@
+;;; Copyright (C) 1987, Kevin J. Lang & Barak A. Pearlmutter.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Define open-codable operations.
+;;
+
+(define-instance open-coded-mixin type
+  '(byte-code-list n-arguments n-values) '())
+(define-instance fixnum-open-coded-mixin type
+  '() (list open-coded-mixin))
+(define-instance locative-open-coded-mixin type
+  '() (list open-coded-mixin))
+(define-instance object-open-coded-mixin type
+  '() (list fixnum-open-coded-mixin locative-open-coded-mixin))
+
+(define-instance foldable-mixin type '() '())
+(define-instance backwards-args-mixin type '() '())
+
+;;; Was for backward compatibility.
+;;;(define no-side-effects-mixin foldable-mixin)
+
+
+
+
+(add-method (initialize (open-coded-mixin byte-code-list n-arguments n-values)
+			self blist nargs nvals)
+  (set! byte-code-list blist)
+  (set! n-arguments nargs)
+  (set! n-values nvals)
+  ;; NOTE: this is a hack; mix-types should install an appropriate initialize
+  ;;  method, and then we'd be able to brag about mix-types more.
+  ;; Okay, now for an explanation.  Without the cond, you just ^super to
+  ;;  operation, and then settable- and locatable- operations don't get
+  ;;  initialized correctly, oops.
+  (^super (cond ((is-a? self locatable-operation)
+		 locatable-operation)
+		((is-a? self settable-operation)
+		 settable-operation)
+		(else
+		 operation))
+	  initialize self))
+
+(create-accessors open-coded-mixin
+  get- byte-code-list n-arguments n-values)
+
+(define-instance oc-mixer mixin-manager)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Define locatable operations and contents.
+;; The order of definitions here is very important.
+;;
+
+(define-instance settable-operation type '(the-setter) (list operation))
+
+
+(add-method (initialize (settable-operation the-setter) self)
+  (set! the-setter (make operation))
+  (^super operation initialize self))
+
+
+(define-instance locatable-operation
+  type '(the-locater) (list settable-operation))
+
+
+(define-constant-instance setter
+  (mix-types oc-mixer (list foldable-mixin locatable-operation)))
+
+
+(add-method (setter (settable-operation the-setter) self)
+  the-setter)
+
+(add-method ((setter setter) (settable-operation the-setter) self new-setter)
+  (set! the-setter new-setter))
+
+(define-constant-instance contents
+  (mix-types oc-mixer (list locative-open-coded-mixin locatable-operation))
+  '((contents)) 1 1)
+
+(set! #|define-instance|#
+ (setter contents)
+ (make
+  (mix-types oc-mixer (list locative-open-coded-mixin operation))
+  '((set-contents)) 2 1))
+
+
+;;; CONTENTS is open coded.
+(add-method (contents (locative) self)
+  (contents self))
+
+;; As is (SETTER CONTENTS).
+(add-method ((setter contents) (locative) self new-value)
+  (set! (contents self) new-value))
+
+
+(add-method (initialize (locatable-operation the-locater) self)
+
+  (set! the-locater (make operation))
+
+  (^super settable-operation initialize self)
+
+  ;; It's harder to jam this guy down into the error system.
+  (add-method ((setter self) (object) composite-object new-value)
+    (when monitor-for-bruce
+      (%write-char #\@))
+    (set! (contents (the-locater composite-object)) new-value))
+
+  #|
+  (add-method (self (object) composite-object)
+    (when monitor-for-bruce
+      (%write-char #\%))
+    (contents (the-locater composite-object)))
+  |#
+  self)
+
+
+
+(define-constant-instance locater
+  (mix-types oc-mixer (list foldable-mixin locatable-operation)))
+
+(add-method (locater (locatable-operation the-locater) self)
+  the-locater)
+
+(add-method ((locater locater) (locatable-operation the-locater)
+		 self)
+  (make-locative the-locater))
+
+
+
+
+(set! #|define-instance|# (locater setter) (make operation))
+
+(add-method ((locater setter) (settable-operation the-setter) self)
+  (make-locative the-setter))
+
+
+
+
+(set! #|define-instance|#
+ (locater contents)
+ (make
+  (mix-types oc-mixer (list locative-open-coded-mixin operation))
+  '() 1 1))
+
+(add-method ((locater contents) (locative) self)
+  self)
+
+
+
+
+
+(define-constant-instance identity
+  (mix-types oc-mixer (list object-open-coded-mixin operation))
+  '() 1 1)
+
+(add-method (identity (object) self)
+  self)
+
+;;; eof

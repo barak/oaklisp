@@ -1,0 +1,10 @@
+;;; Copyright (C) 1986,9 Kevin J. Lang & Barak A. Pearlmutter.
+
+(iterate go ((curloc %%symloc)(count 0))
+  (print-noise #\~)
+  (when (< count %%nsyms)
+    (let ((this-one (%set-tag curloc %pointer-tag)))
+      (intern this-one)
+      (go (%increment-locative curloc %%symsize) (+ 1 count)))))
+
+;;; eof

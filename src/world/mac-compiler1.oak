@@ -1,0 +1,240 @@
+;;; Copyright (C)  Kevin J. Lang and Barak A. Pearlmutter. Fall 1986.
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                      build the AST                                  ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;This looks at a piece of code and determines its type.
+
+(define-instance node-type-to-build operation)
+
+
+(set! worry-about-constants nil)  ;this is bound to t while parsing the user code.
+
+(add-method (node-type-to-build (object) form)
+  (if (fluid worry-about-constants)
+      (cerror
+       "Consider it a constant."
+       "~A found in evaluated position."
+       form))
+  ast-constant-node)
+
+(add-method (node-type-to-build (self-evaluatory-mixin) form)
+  ast-constant-node)
+
+(add-method (node-type-to-build (symbol) form)
+  ast-variable-node)
+
+(add-method (node-type-to-build (pair) form)
+  (let ((kar (car form)))
+    (cond ((eq? kar 'quote) ast-constant-node)
+	  ((eq? kar '%if)  ast-if-node)
+	  ((eq? kar '%set) ast-set-node)
+	  ((eq? kar '%catch) ast-catch-node)
+	  ((eq? kar 'rest-length) ast-variable-node)
+	  ((eq? kar '%add-method) ast-method-node)
+	  ((eq? kar '_%add-method) ast-method-node)
+	  ((eq? kar '%make-locative) ast-make-locative-node)
+	  ((eq? kar '%block) ast-block-node)
+	  ((eq? kar '%labels) ast-labels-node)
+	  (else ast-combination-node))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;This returns the parse tree for a piece of  code.
+
+(define (code->ast form)
+  (if (is-a? form ast-node)
+      form
+      (make (node-type-to-build form) form)))
+
+
+;this handy variant fills in the enclosing-contour slots
+;of code to be inserted in the tree. 
+(define (addedcode->ast form model-node)
+  (let ((new-ast (code->ast form)))
+    (stash-enclosing-contour new-ast (node-enclosing-contour model-node))
+    new-ast))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;The following initialize methods do the work of walking the code
+;and building the AST.
+
+
+(add-method (initialize (ast-node enclosing-contour stack-map) self)
+  (set! enclosing-contour nil)
+  (set! stack-map nil)
+  self)
+
+
+(add-method (initialize (ast-if-node predicate consequent alternate) self form)
+  (cond ((and (eq? (car form) '%if)
+	      (= (length form) 4))
+	 (set! predicate  (code->ast (second form)))
+	 (set! consequent (code->ast (third  form)))
+	 (set! alternate  (code->ast (fourth form))))
+	(else (error "Error parsing ~S as a %IF." form)))
+  (^super ast-node initialize self))
+
+
+
+(add-method (initialize (ast-constant-node value name origin) self form)
+  (set! name nil)
+  (set! origin nichevo)
+  (cond ((or (is-a? form self-evaluatory-mixin)
+	     (atom? form))
+	 (set! value form))
+	((and (eq? (car form) 'quote)
+	      (pair? (cdr form)))
+	 (set! value (cadr form)))
+	(else (error "Error parsing ~S as a constant." form)))
+  (^super ast-node initialize self))
+
+
+
+(add-method (initialize (ast-set-node variable expression) self form)
+  (cond ((and (eq? (car form) '%set)
+	      (= (length form) 3)
+	      (symbol? (second form)))
+	 (set! variable   (code->ast (second form)))
+	 (set! expression (code->ast (third  form))))
+	(else (error "Error parsing ~S as a %SET." form)))
+  (^super ast-node initialize self))
+
+
+
+(add-method (initialize (ast-variable-node name var-type source-contour car-pos?)
+			self form)
+  (cond ((symbol? form)
+	 (set! var-type '())
+	 (set! source-contour '())
+	 (set! car-pos? '())
+	 (set! name form))
+	((eq? (first form) 'rest-length)
+	 (set! var-type '())
+	 (set! source-contour '())
+	 (set! car-pos? '())
+	 (set! name (second form)))
+	(else (error "Error parsing ~S as a variable." form)))
+  (^super ast-node initialize self))
+
+
+
+
+
+(add-method (initialize (ast-contour-node localvars nojumplist closedlist
+					  environment envlist)
+			self locals form)
+  (set! (fluid contour-nodes?) t)
+  (set! localvars locals)
+  (set! nojumplist nil)
+  (set! closedlist nil)
+  (set! environment nil)
+  (set! envlist nil)
+  (if (not (every? symbol? localvars))
+      (error "Variables names must be symbols in ~S." form))
+  (^super ast-node initialize self))
+
+(define (genlabel/1 x) (gensym "LABEL"))
+
+(add-method (initialize (ast-labels-node labellist gensymlist lambdalist body)
+			self form)
+  (set! labels-count (+ 1 labels-count))
+  (cond ((and (eq? (car form) '%labels)
+	      (= (length form) 3)
+	      (list? (second form)))
+	 (set! labellist (map first (second form)))
+	 (set! gensymlist (map genlabel/1 labellist))
+	 (set! lambdalist (map (lambda (x)
+				 (let ((the-code (code->ast (second x))))
+				   (if (is-a? the-code ast-method-node)
+				       the-code
+				       (error "~S is not a lambda" (second x)))))
+			       (second form)))
+	 (set! body (code->ast (third form))))
+	(else (error "Error parsing ~S as a %LABELS." form)))
+  (^super ast-contour-node initialize self labellist form))
+
+
+(add-method (initialize (ast-method-node method-type status op primitivep
+					 inlabels?
+					 ivarlist ivarmap arglist heaplist
+					 rest-name body)
+			self form)
+  (destructure* (kind-o-method (inop (typ . ivars) . args) bod) form
+    (unless (or (eq? kind-o-method '%add-method)
+		(eq? kind-o-method '_%add-method))
+      (error "Error parsing ~S as a %METHOD." form))
+    (set! status 'method)
+    (set! inlabels? nil)
+    (set! ivarlist ivars)
+    (set! ivarmap nil)
+    (set! heaplist nil)
+    (set! primitivep (eq? kind-o-method '_%add-method))
+    (set! rest-name (improper-list? args))
+    ;; rest-name goes on front of arglist:
+    (set! arglist (if rest-name (cons rest-name (make-proper args))
+		     args))
+    (set! op (code->ast inop))		;see below
+    (set! method-type (code->ast typ))
+    (set! body (code->ast bod))
+    (^super ast-contour-node initialize self (union ivarlist arglist) form)))
+
+
+
+
+
+(add-method (initialize (ast-make-locative-node variable) self form)
+  (cond ((and (eq? (car form) '%make-locative)
+	      (= (length form) 2)
+	      (symbol? (second form)))
+	 (set! variable   (code->ast (second form))))
+	(else (error "Error parsing ~S as a %MAKE-LOCATIVE." form)))
+  (^super ast-node initialize self))
+
+
+(add-method (initialize (ast-block-node body) self form)
+  (if (not (eq? (car form) '%block))
+      (error "Error parsing ~S as a BLOCK." form))
+  (cond ((> (length form) 1)
+	 (set! body (map code->ast (cdr form))))
+	((= (length form) 1)
+	 (set! body (list (code->ast '())))))
+  (^super ast-node initialize self))
+
+
+
+(add-method (initialize (ast-combination-node op args tail-pos? rest-name)
+			self form)
+  (set! tail-pos? nil)
+  (set! rest-name (improper-list? form))
+  (let ((proper-form (if rest-name (make-proper form) form)))
+    (cond ((> (length proper-form) 0)
+	   (set! op (code->ast (car proper-form)))
+	   (set! args (map code->ast (cdr proper-form))))
+	  (else (error "Error parsing ~S as a combination." form))))
+  (if rest-name
+      (set! rest-name (code->ast rest-name))
+      (set! rest-name nichevo))
+  (^super ast-node initialize self))
+
+
+
+
+(add-method (initialize (ast-catch-node expression) self form)
+  (cond ((and (eq? (car form) '%catch)
+	      (= (length form) 2))
+        (set! expression (code->ast (second  form))))
+	(else (error "Error parsing ~S as a %CATCH." form)))
+  (^super ast-node initialize self))
+
+
+
+
+;;; eof

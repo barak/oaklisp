@@ -1,0 +1,426 @@
+;;;; Copyright (C)  Kevin J. Lang and Barak A. Pearlmutter. Fall 1986.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;      do some constant folding when appropriate                      ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;some of these use eq? get-type instead of is-a?
+
+
+(define-instance fold-constants-v operation)
+
+(add-method (fold-constants-v (ast-node) self locale)
+    (map-ast-with-arg! self fold-constants-v locale))
+
+(add-method (fold-constants-v (ast-variable-node var-type name) self locale)
+  ; (format #t "folding ... ~a ~a ~%" self locale)
+  (if (and (eq? var-type 'global) 
+	   (variable? locale name)
+	   (frozen? locale name))
+      (let ((new-node
+	     (addedcode->ast `(quote ,(contents (variable? locale name)))
+			     self)))
+	(set! (constn-name new-node) name)
+	(set! (constn-origin new-node) self)
+	new-node)
+      self))
+
+
+(let ((constant-pred (lambda (x) (eq? ast-constant-node (get-type x)))))
+  (add-method (fold-constants-v (ast-combination-node op args rest-name)
+				self locale)
+    (map-ast-with-arg! self fold-constants-v locale)
+    (cond ((and (every? constant-pred (cons op args))
+		(side-effect-free? (constn-value op))
+		(eq? nichevo rest-name))
+	   (catch-errors (general-error
+			  (lambda (err)
+			    (format standard-error
+				    "~&Error applying ~S to ~S while constant folding ignored.~%"
+				    (constn-value op) (map constn-value args))
+			    (report err standard-error)
+			    self)
+			  (lambda (result)
+			    (let ((new-node
+				   (addedcode->ast
+				    `(quote ,result) self)))
+			      (set! (constn-name new-node) 'folded)
+			      (set! (constn-origin new-node) self)
+			      new-node)))
+	     (apply (constn-value op) (map constn-value args))))
+	  (else self))))
+
+(add-method (fold-constants-v (ast-if-node predicate consequent alternate) self locale)
+  (map-ast-with-arg! self fold-constants-v locale)
+  (if (eq? ast-constant-node (get-type predicate))
+      (if (constn-value predicate)
+	  consequent
+	  alternate)
+      self))
+
+
+(add-method (fold-constants-v (ast-method-node ivarlist ivarmap primitivep method-type
+						   status arglist body) self locale)
+  (map-ast-with-arg! self fold-constants-v locale)
+  (set! ivarmap '())                                                     
+  (when ivarlist
+    (cond ((ivar-heuristic method-type ivarlist locale)
+	   =>
+	   (lambda (heurmap)
+	     (set! ivarmap heurmap)))
+	  (primitivep
+	   (error "Couldn't generate heuristic map for ~S~%" (listify self)))
+	  (else
+	   (set! ivarmap ivarlist))))
+  (cond ((and (eq? 'inline status)
+	      (= 1 (length arglist))
+	      (eq? ast-variable-node (get-type body))
+	      (eq? self (varn-source-contour body)))
+	 (let ((new-node (addedcode->ast `(quote ,identity) self)))
+	   (set! (constn-name new-node) 'identity)
+	   new-node))
+	(else
+	 self)))
+
+
+;The next two methods insure that no frozen substitutions
+;will occur in l-value positions.
+
+(add-method (fold-constants-v (ast-set-node expression) self locale)
+  (set! expression (fold-constants-v expression locale))
+  self)
+
+(add-method (fold-constants-v (ast-make-locative-node) self locale)
+  self)
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                  attempt to determine the ivar map                  ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;The true layout of the ivars in the type for which a method is being compiled
+;cannot be determined until load-time.  However, the following heuristic
+;guesses the layout and the rest of the compilation proceeds accordingly.
+;The code object which is produced has a slot which contains the presumed
+;ivar map.  When the loader calls the %install-method routine, the guess
+;is compared with the correct map, and the code is patched if necessary.
+
+
+(define-instance ivar-heuristic operation)
+
+(add-method (ivar-heuristic (object)
+			    self ivarlist locale)
+  nil)
+
+(add-method (ivar-heuristic (ast-variable-node var-type name)
+			    self ivarlist locale)
+  (and (eq? var-type 'global)
+       (let ((v (variable? locale name))) 
+	 (and v (ivar-heuristic (contents v) ivarlist locale)))))
+
+
+(add-method (ivar-heuristic (ast-constant-node value)
+			    self ivarlist locale)
+  (ivar-heuristic value ivarlist locale))
+
+
+(add-method (ivar-heuristic (type ivar-list)
+			    self ivarlist locale)
+  (if (subset? ivarlist ivar-list)
+      (munch-together ivarlist ivar-list)
+      #f))
+
+(define (munch-together ivarlist ivar-list)
+  ;; ivarlist is the requested one, ivar-list the real one.
+  (cond ((null? ivar-list) '())
+	((memq (car ivar-list) ivarlist)
+	 (cons (car ivar-list)
+	       (munch-together ivarlist (cdr ivar-list))))
+	(else
+	 (let ((x (munch-together ivarlist (cdr ivar-list))))
+	   (if (not (null? x))
+	       (cons #f x)
+	       '())))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(define (guarded-value-probe thing required-type accessor value)
+  (and (is-a? thing required-type)
+       (eq? value (accessor thing))))
+
+
+;This predicate only works after constant folding has occurred, or if
+;lambda is macro expanded with make, operation, etc., inserted as constants.
+
+(define-instance am-I-a-lambda? operation)
+
+(add-method (am-I-a-lambda? (ast-method-node op ivarlist method-type) self)
+  (and (null? ivarlist)
+       (and (is-a? op ast-combination-node)
+	    (guarded-value-probe (combn-op op) ast-constant-node constn-value make)
+	    (= 1 (length (combn-args op)))
+	    (guarded-value-probe (car (combn-args op)) ast-constant-node constn-value operation))
+       (guarded-value-probe method-type ast-constant-node constn-value object)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                 add code to generate closures                       ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;This operation inserts the code that makes closures and methods
+;at run time. The method node is left in the tree, but
+;its status is downgraded from 'method to 'code.
+
+;After this point in the compilation, it is no longer necessary to
+;mess around with the op and method-type fields in method nodes,
+;so for efficiency, they are erased.
+
+;the following open-codable operations must be defined in flat-compiler-locale
+; _%install-method-with-env, %make-closed-environment, %make-cell
+
+
+(define-instance insert-method-maker-v operation)
+
+(add-method (insert-method-maker-v (ast-node) self)
+  (map-ast! self insert-method-maker-v))
+
+(add-method (insert-method-maker-v (ast-method-node status op method-type body primitivep) self)
+  (let ((envlist (contn-envlist self)))
+    (map-ast! self insert-method-maker-v)
+    (cond ((eq? status 'method)
+	   (set! status 'code)
+	   (let* ((lambda-p (am-I-a-lambda? self))
+		  (wrapping
+		   (if primitivep
+		       (addedcode->ast `(,_%install-method-with-env
+					 ,method-type ,op ,self
+					 ,(if envlist
+					      `(,%make-closed-environment
+						,@(map (lambda (x) `(%make-locative ,x))
+						       envlist))
+					      `%empty-environment))
+				       self)
+		       (addedcode->ast
+			(splice
+			 (list
+			  (list
+			   (if lambda-p
+;		       (if envlist '%install-lambda-with-env '%install-lambda)
+			       %make-lambda-with-env
+;		       (if envlist '%install-method-with-env '%install-method)
+			       '%install-method-with-env
+			       ))
+			  (if lambda-p
+			      '() (list method-type))
+			  (if lambda-p
+			      '() (list op))
+			  (list self)
+			  (if envlist
+			      (list `(,%make-closed-environment
+				      ,@(map (lambda (x) `(%make-locative ,x))
+					     envlist)))
+			      (list `%empty-environment)
+;		      '()
+)))
+			self))))
+	     (classify-variables wrapping)  
+	     (set! op nichevo)		;these have been plugged
+	     (set! method-type nichevo)	;into the wrapping	
+	     wrapping))
+	  (else 
+	   (set! op nichevo)
+	   (set! method-type nichevo)
+	   self))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                  compile heap variables                             ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;sequencer for heap variable operations
+
+(define-instance heapify-variables-v operation)
+
+(add-method (heapify-variables-v (ast-node) astree)
+      (determine-heap-vars astree)
+      (set! astree (indirect-to-heap-v astree))
+      (set! astree (fold-contents-v astree))
+      (insert-heap-prologue astree)
+      astree)
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;Stack variables must be moved to the heap if they are closed
+;over or locatives are made to them.  This operation records
+;in the heaplist field of a method which of its arguments must
+;be moved to the heap.  Checking for %MAKE-LOCATIVEs suffices
+;to find closed-over variables, since the closure-building code
+;already inserted generates locatives to such variables.
+
+
+(define-instance determine-heap-vars operation)
+
+(with-operations (you-are-being-located)
+
+  (add-method (determine-heap-vars (ast-node) self)
+    (walk-ast self determine-heap-vars))
+
+  (add-method (determine-heap-vars (ast-method-node heaplist) self)
+    (set! heaplist '())
+    (walk-ast self determine-heap-vars))
+
+  (add-method (determine-heap-vars (ast-make-locative-node variable) self)
+    (you-are-being-located variable))
+
+  (add-method (you-are-being-located (ast-variable-node name var-type source-contour) self)
+    (if (eq? var-type 'stack)
+	(set! (heap? source-contour name) t))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;This operation replaces references to environment, heap, and 
+;global variables with indirect references.
+
+(define-instance indirect-to-heap-v operation)
+
+(add-method (indirect-to-heap-v (ast-node ) self) (map-ast! self indirect-to-heap-v))
+
+(add-method (indirect-to-heap-v (ast-variable-node var-type name source-contour) self)
+    (if (or (eq? var-type 'evar)
+	    (eq? var-type 'global)
+	    (and (eq? var-type 'stack)
+		 (heap? source-contour name)))
+	(addedcode->ast (list contents self) self)
+	self))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;This operation folds (%set (contents x) y) to ((setter contents) x y)
+;and (%make-locative (contents x)) to x.
+;This is necessary because indirect-to-heap-v inserts indirections
+;after the macro expansion phase.
+
+;;; Hey, Kevin, since %SET is no longer in the language, could this pass
+;;; be flushed?
+
+(define-instance fold-contents-v operation)
+
+(add-method (fold-contents-v (ast-node) self)
+  (map-ast! self fold-contents-v))
+
+(labels (((contents-node? node)
+	  (and (is-a? node ast-combination-node)
+	       (is-a? (combn-op node) ast-constant-node)
+	       (eq? contents (constn-value (combn-op node))))))
+  
+  (add-method (fold-contents-v (ast-set-node variable expression) self)
+    (map-ast! self fold-contents-v)
+      (if (contents-node? variable)
+	  (addedcode->ast (list (setter contents)
+				(car (combn-args variable))
+				expression)
+			  self)
+	  self))
+  
+  (add-method (fold-contents-v (ast-make-locative-node variable) self)
+    (map-ast! self fold-contents-v)
+      (if (contents-node? variable)
+	  (car (combn-args variable))
+	  self)))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;This operation adds to a method the prologue code
+;for moving arguments from the stack to the heap.
+
+(define-instance insert-heap-prologue operation)
+
+(add-method (insert-heap-prologue (ast-node) self)
+  (walk-ast self insert-heap-prologue))
+
+(add-method (insert-heap-prologue (ast-method-node heaplist body) self)
+    (walk-ast self insert-heap-prologue)
+    (when heaplist
+      (if (not (is-a? body ast-block-node))
+	  (set! body (addedcode->ast `(%block ,body) body)))
+      (let ((prologue (map (lambda (var)
+			     (addedcode->ast `(%set ,var (,%make-cell ,var))
+					     body))
+			   heaplist)))
+	(for-each classify-variables prologue)
+	(set! (blkn-body body) (append prologue (blkn-body body))))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;            determine the stack map at every node                    ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;; The stack-map slot of a node contains a map of the stack at the
+;;; moment the code for that node executes.  These maps have the
+;;; format '(a b c 0 0 d e f), where a is the variable on the top of
+;;; the stack, and the zeros represent anonymous junk from the point
+;;; of view of the node.
+
+;;; Note: the following code assumes that every form leaves exactly
+;;; one result on the stack.
+
+
+(define-instance stash-stack-map operation)
+
+
+(with-operations (proceed)
+  
+  (add-method (stash-stack-map (ast-node stack-map) self outer-map)
+    (set! stack-map outer-map)
+    (proceed self outer-map))
+    
+  (add-method (proceed (ast-node stack-map) self outer-map)
+    (walk-ast-with-arg self stash-stack-map outer-map))
+   
+  (add-method (proceed (ast-method-node arglist body
+					status inlabels?) self outer-map)
+					;beware hack: if it's a real inline lambda , (a b)+(0 0 x y)->(a b x y)
+					;             but if it's in a labels,           (a b)+(x y)->(a b x y)
+    (let ((newmap (if (eq? status 'inline)
+		      (append arglist
+			      (if inlabels?
+				  outer-map
+				  (tail outer-map (length arglist))))
+		      arglist)))
+      (stash-stack-map body newmap)))
+    
+  (add-method (proceed (ast-set-node variable expression) self outer-map)
+    (stash-stack-map expression outer-map)
+    (stash-stack-map variable (cons 0 outer-map)))
+    
+  (add-method (proceed (ast-combination-node op args rest-name) self outer-map)
+    (let ((backwards? (and (is-a? op ast-constant-node)
+			   (is-a? (constn-value op) open-coded-mixin)
+			   (is-a? (constn-value op) backwards-args-mixin)
+			   (eq? rest-name nichevo))))
+		       
+      (iterate step ((stack-map outer-map)
+		     (arglist (if backwards? args (reverse args))))
+	(cond ((null? arglist)
+	       (stash-stack-map op stack-map)
+	       (or (eq? rest-name nichevo)
+		   (stash-stack-map rest-name (cons 0 stack-map))))
+	      (else
+	       (stash-stack-map (car arglist) stack-map)
+	       (step (cons 0 stack-map) (cdr arglist))))))))
+
+(set! nichevo (make ast-node))
+

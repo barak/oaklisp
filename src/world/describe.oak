@@ -1,0 +1,52 @@
+;;; Copyright (C) 1987,8, Barak A. Pearlmutter&Kevin J. Lang.
+
+;;; A simple describe facility.
+
+;;; You can define your own DESCRIBE methods to shadow this one.
+
+(define-instance describe operation)
+
+(add-method (describe (object) x)
+  (deep-describe x))
+
+(add-method (describe (fixnum) x)
+  (if (negative? x)
+      (^super object describe x)
+      (let ((o (object-unhash x)))
+	(if o
+	    (deep-describe o)
+	    (^super object describe x)))))
+
+(let ((describe-frame (make operation)))
+
+  (add-method (describe-frame (type ivar-list) self frame obj)
+    (cond ((eq? self variable-length-mixin)
+	   (format #t "~& from ~A:~%" self)
+	   (dotimes (i (- ((%slot 1) obj)
+			  ((%slot 1) (get-type obj))))
+	     (format #t "    ~D : ~S~%" i (%vref obj i))))
+	  ((not (null? ivar-list))
+	   (format #t "~& from ~A:~%" self)
+	   (iterate aux ((vars ivar-list)(fp frame))
+	     (when vars
+	       (format #t "    ~A : ~S~%" (car vars) (contents fp))
+	       (aux (cdr vars) (%increment-locative fp 1)))))))
+
+  (define (deep-describe x)
+    (bind ((forcible-print-magic #f))
+      (let ((ty (get-type x)))
+	(bind ((fancy-references #t))
+	  (format #t "~&~S is of type ~S.~%" x ty))
+	(when (= (%tag x) %pointer-tag)
+	  (let ((loc-x (%set-tag x %locative-tag)))
+	    (iterate aux ((alist (get-bp-alist ty)))
+	      (when alist
+		(describe-frame (caar alist)
+				(%increment-locative loc-x (cdar alist))
+				x)
+		(aux (cdr alist))))))))
+    x)
+
+  )
+
+;;; eof

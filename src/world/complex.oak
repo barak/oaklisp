@@ -1,0 +1,212 @@
+;;; Copyright (C) Kevin J. Lang & Barak A. Pearlmutter. Fall 1986.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+
+;;;
+;;; Complex numbers!  Oh boy!
+;;; 
+
+(define-instance complex type
+  '(the-real-part the-imag-part) (list number object))
+
+(add-method (initialize (complex the-real-part the-imag-part) self x y)
+  (set! the-real-part x)
+  (set! the-imag-part y)
+  self)
+
+(define (make-complex i j)
+  (if (eq? j 0) i (make complex i j)))
+
+;;; This controls how complex numbers are printed.
+;;;
+;;; Possible values are STRUCTURE, I-NOTATION, and (some day) POLAR
+;;; which will cause 3+4i to print as #C(3 4), 3+4i, and (some day)
+;;; 5@0.92729521.
+
+(set! complex-display-style 'structure)
+
+(add-method (print (complex the-real-part the-imag-part) self stream)
+  (case complex-display-style
+
+    ((structure)
+     (format stream "#C(~A ~A)" the-real-part the-imag-part))
+
+    ((i-notation)
+     (unless (zero? the-real-part)
+       (format stream "~A" the-real-part))
+
+     (let ((im (cond ((negative? the-imag-part)
+		      (write-char stream #\-)
+		      (- the-imag-part))
+		     (else
+		      (write-char stream #\+)
+		      the-imag-part))))
+       (unless (= im 1)
+	 (format stream "~A" im))
+       (write-char stream #\i)))
+
+    ;; trig stuff is unimplemented:
+    ;((polar)
+    ; (format stream "~A@~A" (abs self) (phase self)))
+
+    (else
+     (error "Unknown complex printing style ~S." complex-display-style))))
+
+(add-method (exact? (complex the-real-part the-imag-part) self)
+  (and (exact? the-real-part) (exact? the-imag-part)))
+
+(define-instance real-part operation)
+(define-instance imag-part operation)
+
+(add-method (real-part (complex the-real-part) self) the-real-part)
+(add-method (imag-part (complex the-imag-part) self) the-imag-part)
+
+(add-method (real-part (number) self) self)
+(add-method (imag-part (number) self) 0)
+
+(define-instance abs-squared operation)
+(add-method (abs-squared (complex the-real-part the-imag-part) self)
+  (+ (* the-real-part the-real-part) (* the-imag-part the-imag-part)))
+(add-method (abs-squared (number) x) (* x x))
+
+(add-method (abs (complex) self)
+  (sqrt (abs-squared self)))
+
+(add-method (plus/2 (complex the-real-part the-imag-part) x y)
+  (make-complex (+ the-real-part (real-part y))
+		(+ the-imag-part (imag-part y))))
+
+(add-method (minus (complex the-real-part the-imag-part) self)
+  (make complex (- the-real-part) (- the-imag-part)))
+
+(define-instance conjugate operation)
+(add-method (conjugate (complex the-real-part the-imag-part) self)
+  (make complex the-real-part (- the-imag-part)))
+(add-method (conjugate (number) self) self)
+
+(add-method (times/2 (complex the-real-part the-imag-part) x y)
+  (efselect-type y
+    ((complex)
+     (let ((y-real (real-part y))
+	   (y-imag (imag-part y)))
+       (make-complex (- (* the-real-part y-real)
+			(* the-imag-part y-imag))
+		     (+ (* the-real-part y-imag)
+			(* the-imag-part y-real)))))
+    ((number)
+     (make-complex (* the-real-part y) (* the-imag-part y)))))
+
+(add-method (/ (complex the-real-part the-imag-part) x y)
+  (efselect-type y
+    ((complex) (* (/ x (abs-squared y)) (conjugate y)))
+    ((number) (make-complex (/ the-real-part y)
+			    (/ the-imag-part y)))))
+
+(add-method (/r (complex the-real-part the-imag-part) x y)
+  (efselect-type y
+    ((complex) (/ x y))
+    ((number) (* (/ y (abs-squared x)) (conjugate x)))))
+
+(add-method (= (complex the-real-part the-imag-part) x y)
+  (and (= the-imag-part (imag-part y))
+       (= the-real-part (real-part y))))
+
+
+#||
+(add-method (sqrt (complex) z)
+  (* (sqrt (abs z)) (cis (/ (phase z) 2))))
+||#
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Try defining some new generic arithmetic operators:
+
+(define-instance signum operation)
+(add-method (signum (real) x)
+  (cond ((= x 0) 0)
+	((> x 0) 1)
+	(else -1)))
+(add-method (signum (complex) x)
+  (/ x (abs x)))
+
+#||
+
+(define pi 3.141592653589793d0)
+
+(define-instance phase operation)
+(add-method (phase (real) x)
+  (cond ((= x 0) 0)
+	((> x 0) pi)
+	(else (- pi))))
+(add-method (phase (complex the-real-part the-imag-part) x)
+  (atan2 the-imag-part the-real-part))
+
+(add-method (^ (number) x y)
+  (^r y x))
+
+(define-instance ^r operation)
+
+(add-method (^r (float) y x)
+  (exp (* (ln x) y)))
+
+(add-method (^r (integer) y x)
+  (cond ((= y 1) x)
+	((= y 0) 1)
+	((< y 0) (/ 1 (^r (- y) x)))
+	(else
+	 (let* ((y2 (quotient y 2))
+		(p (^r y2 x))
+		(p2 (* p p)))
+	   (* p2 (^r (- (- y y2) y2) x))))))
+
+(add-method (^r (fraction) y x)
+  (^r (float y) x))
+
+(add-method (^r (complex the-real-part the-imag-part) y x)
+  (* (^ x the-real-part)
+     (cis (* the-imag-part (ln x)))))
+
+(define-instance exp operation)
+
+;(add-method (exp (float) x)
+;  (z:exp x))
+
+;(add-method (exp (real) x)
+;  (z:exp (float x)))
+
+(add-method (exp (complex the-real-part the-imag-part) x)
+  (* (exp the-real-part) (cis the-imag-part)))
+
+(define-instance cis operation)
+(add-method (cis (number) x)
+  (make-complex (cos x) (sin x)))
+(add-method (cis (complex the-real-part the-imag-part) z)
+  ;; cis(a+bi) = exp(i*(a+bi)) = exp(-b+ai)
+  (* (cis the-real-part)
+     (exp (- the-imag-part))))
+
+(define-instance cos operation)
+
+(define-instance sin operation)
+
+(define-instance atan2 operation)
+
+(add-method (atan2 (real) y x)
+  (efselect-type x
+    ((real) (cl:atan (float y) (float x)))
+    ((complex) (error "Arc Tangent in Complex case unimplemented"))))
+
+(define-instance ln operation)
+
+(add-method (ln (real) x)
+  (cond ((> x 0) ...)
+	((< x 0) (make complex (ln (- x)) pi))
+	(else (error "Natural Log of Zero."))))
+
+(add-method (ln (complex the-real-part the-imag-part) z)
+  (make complex (ln (abs z)) (phase z)))
+
+||#
+
+;;; eof

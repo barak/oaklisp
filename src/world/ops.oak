@@ -1,0 +1,25 @@
+;;;; Copyright (C) 1987, Kevin J. Lang and Barak A. Pearlmutter.
+
+;;; make some operations before their definition files
+
+(define-instance print operation)
+(define-instance fill! operation)
+(define-instance equal? operation)
+(define-instance reverse operation)
+(define-instance reverse! operation)
+(define-instance copy operation)
+(define-instance remove operation)
+(define-instance remove-if operation)
+
+(define-instance subseq operation)
+(define-instance subsequence? operation)
+
+(define-constant-instance length settable-operation)
+(define-constant-instance nth locatable-operation)
+(define-constant-instance present? locatable-operation)
+
+;early error messages shouldn't die.
+(add-method (print (object) self stream)
+  (write-char stream #\&))
+
+;;; eof
