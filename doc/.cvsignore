@@ -1,0 +1,9 @@
+*.log
+*.idx
+*.aux
+*.dvi
+*.toc
+*.bbl
+*.blg
+*.ilg
+*.ind
