@@ -13,12 +13,11 @@ ALLOAFILES = $(TOOLFILES) $(MAKEFILES) $(FILESFILES) $(COLDFILES) \
 
 SOURCE = $(ALLOAFILES:.oa=.oak) Makefile
 
-# The Oaklisp emulator executable
-#OAK=oaklisp
+# The Oaklisp emulator executable.  Use "OAK=oaklisp" if not developing emulator.
 OAK=../emulator/oaklisp
 
-# Flags for the emulator
-OAKFLAGS=--trace-gc=1 --predump-gc 0
+# Flags for the emulator.  Add "--world .../oakworld.bin" for bootstrapping.
+OAKFLAGS=--trace-gc=1
 
 # How to compile oaklisp source files into oaklisp bytecode object files:
 .SUFFIXES: .oa .oak
@@ -37,7 +36,7 @@ new.cold: $(COLDFILES) $(TOOLFILES)
 # How to boot cold world into warm world:
 
 oakworld-1.bin: new.cold
-	 $(OAK) $(OAKFLAGS) --trace-gc 3 --world new.cold --dump $@
+	 $(OAK) $(OAKFLAGS) --world new.cold --dump $@
 
 # load successive layers of functionality onto the world
 
