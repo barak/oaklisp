@@ -30,10 +30,10 @@ and debugging.
 \item[\tt nargs:] The number of args register is set before a function
 call and checked as the first action within each function.
 
-\item[\tt t:] Holds the cannonical truth object, {\tt \#t}.
+\item[\tt t:] Holds the cannonical truth object, \texttt{\#t}.
 
-\item[\tt nil:] Holds the cannonical false object, {\tt \#f}, which is also
-used as the empty list, {\tt ()}.
+\item[\tt nil:] Holds the cannonical false object, \texttt{\#f}, which is also
+used as the empty list, \texttt{()}.
 
 \item[\tt fixnum\_type:] Holds the type of objects with a tag of fixnum.
 
@@ -42,13 +42,13 @@ used as the empty list, {\tt ()}.
 \item[\tt subtype\_table:] Holds a table of the types of all the immediate
 subtypes.  Currently only the first entry is used.
 
-\item[\tt cons\_type:] Holds the {\em cons-pair} type, the type of simple
+\item[\tt cons\_type:] Holds the \emph{cons-pair} type, the type of simple
 conses which are directly manipulated by the processor.
 
 \item[\tt env\_type:] Holds that type of environment vectors, used when
 making new environment objects.
 
-\item[\tt object\_type:] Holds the type {\em object} which is at the root
+\item[\tt object\_type:] Holds the type \emph{object} which is at the root
 of the type hierarchy.  Used when calling an operation with no
 parameters.  This should not be necessary in the next version.
 
@@ -86,8 +86,8 @@ need for it to be modified from the Oaklisp level.
 
 \section{Instruction Set}
 The instructions follow the same argument order conventions as the
-language itself.  For example, {\tt (\df{store-loc} \em loc ref \tt)}
-expects to get {\em loc} on the top of the value stack and {\em ref}
+language itself.  For example, \texttt{(\df{store-loc} \emph{loc ref})}
+expects to get \emph{loc} on the top of the value stack and \emph{ref}
 below it.  The instruction format
 \begin{center} \begin{tabular}{|c|c|c|}\hline
  8 bits          & 6 bits & 2 bits \\\hline
@@ -111,8 +111,8 @@ of a word.
 \newenvironment{itable}[1]{
 \begin{center} \par \nopagebreak #1 \par \nopagebreak
 \begin{tabular}{|l|c|l|l|l|} \hline
-{\em instruction} & {\em inline arg} & {\em initial stack}
- & {\em final stack} & {\em extra cell args}
+\emph{instruction} & \emph{inline arg} & \emph{initial stack}
+ & \emph{final stack} & \emph{extra cell args}
 \\\hline\hline}{\hline\end{tabular}\end{center}}
 
 \newcommand{\icomment}[1]{\multicolumn{5}{|l|}{\parbox{4in}{#1}}\\\hline}
@@ -157,8 +157,8 @@ of a word.
 \end{itable}
 
 \begin{itable}{Stack Manipulation}
-\icomment{All stack references are zero-based.  {\tt (swap 0)} is a
-noop.  {\tt (blast $n$)} \meq {\tt (store-stack $n$)(pop 1)}.}
+\icomment{All stack references are zero-based.  \texttt{(swap 0)} is a
+noop.  \texttt{(blast $n$)} \meq \texttt{(store-stack $n$)(pop 1)}.}
 \df{pop}	& n	& n (refs)	&		& \\ \hline
 \df{swap}	& n	& n (refs)	& n (refs)	& \\ \hline
 \df{blast}	& n	& n (refs)	& n-1 (refs)	& \\ \hline
@@ -239,22 +239,22 @@ noop.  {\tt (blast $n$)} \meq {\tt (store-stack $n$)(pop 1)}.}
 
 Weak pointers allow users to maintain tenuous references to objects,
 in the following sense.  Let $\alpha$ be a weak pointer to the object
-{\em foo}, found by executing the code {\tt (object-hash {\em foo})}.
+\emph{foo}, found by executing the code \texttt{(object-hash \emph{foo})}.
 This $\alpha$ can be dereferenced to yield a normal reference,
-\evto{(object-unhash $\alpha$)}{{\em foo}}.  However, if there is no
-other way to get a reference to {\em foo} then the system is free to
+\evto{(object-unhash $\alpha$)}{\emph{foo}}.  However, if there is no
+other way to get a reference to \emph{foo} then the system is free to
 invalidate $\alpha$, so \evto{(object-unhash $\alpha$)}{\#f}.  In
 practice, when the garbage collector sees that there are no references
-to {\em foo} except for weak pointers it reclaims {\em foo} and
+to \emph{foo} except for weak pointers it reclaims \emph{foo} and
 invalidates any weak pointers to it.
 
 Weak pointers are implemented directly by bytecodes because the
 emulator handles all details of storage allocation and reclamation
 directly.  Weak pointers are represented by integers.  Each time call
 call the \df{object-hash} is made the argument is looked up in the
-{\em weak pointer hash table}.  If no entry is found, a counter is
+\emph{weak pointer hash table}.  If no entry is found, a counter is
 incremented and the value of that counter is returned.  An entry is
-made in the {\em weak pointer table} at an index corresponding to the
+made in the \emph{weak pointer table} at an index corresponding to the
 current value of the counter, so that the weak pointer can be used to
 get back the original reference, and an entry is make in the weak
 pointer hash table to ensure that if the weak pointer to the same

@@ -3,7 +3,7 @@
 In this chapter we describe new versions of Oaklisp are created.
 Essentially, the process is quite similar to the way in which a C
 program is created.  First the Oaklisp source files which make up the
-{\em cold world load} are compiled to produce object files.  Then a
+\emph{cold world load} are compiled to produce object files.  Then a
 linker, originally written in T but now an Oaklisp program, takes
 these object files and lays them all out in memory, resolving
 references to global variables and laying out quoted constants refered
@@ -29,7 +29,7 @@ pointer table.
 The cold world is in a hexidecimal format, with each reference
 represented as a space followed by a sequence of hexidecimal digits.
 Carriage returns may optionally preceed spaces.  Actually, the space
-refered to above can be either a space character or the \verb|^|
+referred to above can be either a space character or the \upar\
 character.  The later indicates that the following reference contains
 bytecodes.  Since bytecodes are ordered differently depending on the
 endianity of the machine, the hex format world loader swaps the two
@@ -39,14 +39,14 @@ This keeps the cold load file independent of endianity.
 The warm world loads are in a binary format and are not independent
 of endianity.  For this reason, warm world extensions start with
 \df{.ol} for big endian versions and \df{.lo} for little endian
-versions.  The emulator replaces the characters {\tt \%\%} in the
+versions.  The emulator replaces the characters \texttt{\%\%} in the
 command line file argument (or the default world in \df{config.h})
-with either {\tt ol} or {\tt lo}, depending on whether
+with either \texttt{ol} or \texttt{lo}, depending on whether
 \df{BIG\protect\_ENDIAN} is defined.
 
 To make Oaklisp dump itself upon exiting use the \dfsw{-d} \dfsw{-b}
 switches when invoking Oaklisp.  After Oaklisp has exited, the
 emulator will prompt for a filename to dump the world image to, unless
-this filename has been provided with the \dfsw{-f}~{\em filename}
+this filename has been provided with the \dfsw{-f}~\emph{filename}
 switch.  Usually the \dfsw{-G} switch is also given when the world is
 being dumped.
