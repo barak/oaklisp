@@ -33,6 +33,12 @@
     (dotimes (i n) (set! (nth v i) initial-element))
     v))
 
+(define-syntax (until test . body)
+  `(labels ((fn (lambda ()
+	       ,@body
+	       (if ,test #t (fn)))))
+     (fn)))
+
 (define-syntax (without-interrupts . body)
   `(wind-protect (%disable-alarms)
 		 (progn ,@body)
