@@ -37,6 +37,10 @@ int create_thread(ref_t start_operation)
     int index;
     start_info_t *info_p = (start_info_t *)malloc(sizeof(start_info_t));
     index = get_next_index();
+    if (index == -1) {
+	fprintf (stderr, "Max thread count of %d has been exceeded.  No thread created\n", MAX_THREAD_COUNT);
+	return 0;
+    }
     gc_ready[index] = 0;
     info_p->start_operation = start_operation;
     info_p->parent_index = *((int *)pthread_getspecific(index_key));
@@ -137,8 +141,12 @@ int get_next_index ()
   int ret = -1;
 #ifdef THREADS
   pthread_mutex_lock (&index_lock);
-  ret = next_index;
-  next_index++;
+  if (next_index >= MAX_THREAD_COUNT) {
+      ret = -1;
+  } else {
+      ret = next_index;
+      next_index++;
+  }
   pthread_mutex_unlock (&index_lock);
 #endif
   return (ret);
