@@ -1,0 +1,10 @@
+This package was released by Barak Pearlmutter bap@cs.unm.edu on
+Fri,  7 Jan 2000 04:29:57 -0500.
+
+This package was debian-helper-ized by tony mancill <tmancill@debian.org> on
+Tue, 15 Feb 2000 21:03:25 -0700.
+
+Upstream sources (which include Debian packaging files) are available at
+http://www.oaklisp.cx/ or http://www.cs.unm.edu/~bap/oaklisp/
+
+Copyright: GPL (see /usr/doc/copyright/GPL)

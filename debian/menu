@@ -1,0 +1,4 @@
+?package(oaklisp): needs="text" \
+        section="Apps/Programming" \
+        title="Oaklisp" \
+        command="/usr/bin/oaklisp"

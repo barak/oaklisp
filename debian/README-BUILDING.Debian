@@ -1,0 +1,36 @@
+Because Oaklisp uses itself to build itself, there is a bootstrap problem
+with trying to build it completely "from scratch."
+Therefore, the package has a build dependency upon it itself - i.e. you have
+to have the binary package installed to be able to build the package. 
+
+Actually the situation is not as bad as for, say, gcc, which requires
+heroic effort to compile for a machine without a working C compiler.
+This is because the oaklisp compiler produces architecture-neutral
+bytecode as its output.  However, the "binary world" loaded by the
+bytecode emulator is endianity-dependent.
+
+
+Basically, to port to a new architecture Y with *the same endianity* as
+a machine X of a different architecture which has a working oaklisp,
+do the following:
+
+ rebuild everything on X
+ move the entire source tree to Y
+ cd src/emulator; make clean
+
+now go ahead and build and package, everything should be okay
+
+
+If X and Y have different endianities, you're still okay.  Do
+everything as above, except after you copy the tree do the following
+additional steps
+
+ cd src/emulator; make clean
+ cd src/world; rm *.bin
+
+In a pinch, you only need the following file to be able to do the build:
+	/usr/lib/oaklisp/oakworld.bin
+
+However, the file must be for the correct "endian-ness" of your machine.
+Please contact either the upstream author or the maintainer if you need this
+file or have questions.
