@@ -12,7 +12,7 @@ progs=$(psrc:.c=)
 pobj=$(psrc:.c=.o)
 oobj=$(osrc:.c=.o)
 
-all: $(progs) TAGS
+all: $(progs)
 
 CFLAGS=-O2 -g -Wall
 LOADLIBES=-lpthread
