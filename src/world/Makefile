@@ -75,11 +75,15 @@ install: oakworld.bin
 
 .PHONY: clean
 clean: clean-oa-files
-	-rm -f oakworld{-1,-2,-3,}.bin new.cold new.sym
+	-rm -f oakworld{-1,-2,-3}.bin new.cold new.sym
 
 .PHONY: clean-oa-files
 clean-oa-files:
 	-rm -f $(ALLOAFILES)
+
+.PHONY: reallyclean
+reallyclean: clean
+	-rm -f oakworld.bin
 
 ## What goes in an official release:
 
