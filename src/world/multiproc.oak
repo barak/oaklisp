@@ -88,6 +88,12 @@ action). See process2.oak for more code.
      (if (eq? z 0) (set! fluid-binding-list new-binding-list)
 	 (set-fluid-bindings z new-binding-list)))))
 
+(define add-to-current-fluid-bindings (add-method ((make operation) c-cell)
+   (let ((z (%load-process)))
+     (if (eq? z 0) (set! (cdr top-level-fluid-binding-list)
+			 (cons c-cell (cdr top-level-fluid-binding-list)))
+	 (append! (get-fluid-bindings z) (cons c-cell nil))))))
+
 (add-method (copy-fluid-bindings (process process-fluid-binding-list) self)
   (map (lambda (z)(cons (car z)(cdr z)))
        process-fluid-binding-list))
