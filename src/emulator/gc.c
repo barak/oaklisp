@@ -408,6 +408,7 @@ gc (bool pre_dump, bool full_gc, char *reason, size_t amount)
   bool ready=false;
 #ifdef THREADS
   int my_index;
+  int i;
   int *my_index_p;
   my_index_p = pthread_getspecific (index_key);
   my_index = *my_index_p;
@@ -423,10 +424,11 @@ gc (bool pre_dump, bool full_gc, char *reason, size_t amount)
     while someone else is gc'ing*/
   while (ready == false) {
     ready = true;
-    for (my_index = 0; my_index< next_index; my_index++) {
-      if (gc_ready[my_index] == 0) {
+    for (i = 0; i < next_index; i++) {
+      if (gc_ready[i] == 0) {
           ready = false;
-          my_index = next_index;
+          i = next_index;
+          sleep (0);
       }
     }
   }
@@ -499,6 +501,7 @@ gc_top:
 #endif
 	GC_TOUCH (e_code_segment);
 	GC_TOUCH (e_current_method);
+        GC_TOUCH (e_process);
 #ifdef THREADS
 	}
 #endif
@@ -634,6 +637,7 @@ gc_top:
 #endif
 	GGC_CHECK (e_code_segment);
 	GGC_CHECK (e_current_method);
+        GGC_CHECK (e_process);
 #ifdef THREADS
 	}
 #endif
@@ -798,6 +802,11 @@ gc_top:
     if (trace_gc)
       fflush(stdout);
   }
+#ifdef THREADS
+    my_index_p = pthread_getspecific (index_key);
+    my_index = *my_index_p;
+    gc_ready[my_index] = 0;
+#endif 
     set_gc_flag (false);
 }
 
