@@ -84,9 +84,3 @@ clean-oa-files:
 .PHONY: reallyclean
 reallyclean: clean
 	-rm -f oakworld.bin
-
-## What goes in an official release:
-
-.PHONY: release
-release: $(SOURCE) $(GRAVY) Makefile-vars oakworld.bin
-	cp -a $^ $(RTARGET)/

@@ -19,10 +19,6 @@ lang.ps: lang.dvi $(OSRC)
 #lang.ind: lang.idx
 #	makeindex lang
 
-.PHONY: release
-release: Makefile $(SRC) $(OSRC)
-	cp -a $^ $(RTARGET)/
-
 .PHONY: clean
 clean:
 	-rm -f lang.{bbl,blg,dvi,ps,idx,ilg,ind,log,toc} *.aux

@@ -14,11 +14,6 @@ oobj=$(osrc:.c=.o)
 
 all: $(progs) TAGS
 
-# automatically update #include dependencies
-dfiles = $(psrc:.c=.d) $(osrc:.c=.d)
--include $(dfiles)
-override CPPFLAGS+=-MMD
-
 CFLAGS=-O2 -g -Wall
 LOADLIBES=-lpthread
 
@@ -29,9 +24,10 @@ OAK=oaklisp
 
 instr-data.c: instruction-table.oak
 	$(OAK) $(OAKFLAGS) -- \
-		-locale compiler-locale -load instruction-table \
-		-eval '(dump-instruction-table "$@")' \
-		-exit
+		--locale compiler-locale \
+		--load instruction-table \
+		--eval '(dump-instruction-table "$@")' \
+		--exit
 	-indent $@
 
 # Things you might want to modify and uncomment:
@@ -42,6 +38,11 @@ instr-data.c: instruction-table.oak
 CPPFLAGS+=-DDEFAULT_WORLD=\"$(prefix)/lib/oaklisp/oakworld.bin\"
 
 $(progs): $(pobj) $(oobj)
+
+# automatically update #include dependencies
+dfiles = $(psrc:.c=.d) $(osrc:.c=.d)
+-include $(dfiles)
+override CPPFLAGS+=-MMD
 
 TAGS: $(psrc) $(osrc) $(hsrc)
 	etags $^ > $@
@@ -54,10 +55,6 @@ install: $(progs)
 .PHONY: clean
 clean:
 	-rm -f $(progs) $(psrc:.c=.o) $(osrc:.c=.o) $(dfiles) TAGS
-
-.PHONY: release
-release: $(psrc) $(osrc) $(hsrc) Makefile instruction-table.oak
-	cp -a $^ $(RTARGET)/
 
 .PHONY: indent
 indent: $(psrc) $(osrc) $(hsrc) 

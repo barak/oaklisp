@@ -10,11 +10,3 @@ all clean:
 install:
 	$(MAKE) -C emulator CPPFLAGS=-DFAST install
 	$(MAKE) -C world    install
-
-.PHONY: release
-release: COPYING Makefile CREDITS
-	cp -a $^ $(RTARGET)/
-	mkdir $(RTARGET)/emulator
-	$(MAKE) -C emulator RTARGET=../$(RTARGET)/emulator release
-	mkdir $(RTARGET)/world
-	$(MAKE) -C world    RTARGET=../$(RTARGET)/world    release

@@ -14,10 +14,6 @@ lim.dvi: $(SRC) ../mandefs.tex
 lim.ps: lim.dvi
 	dvips -o lim.ps lim
 
-.PHONY: release
-release: Makefile $(SRC)
-	cp -a $^ $(RTARGET)/
-
 .PHONY: clean
 clean:
 	-rm -f lim.{bbl,blg,dvi,ps,idx,ilg,ind,log,toc} *.aux
