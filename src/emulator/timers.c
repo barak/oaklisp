@@ -96,7 +96,7 @@ get_user_time(void)
 unsigned long
 get_real_time(void)
 {
-#ifdef HAVE_LONG_LONG
+#ifdef __GLIBC_HAVE_LONG_LONG
   unsigned long long temp;
   temp = (unsigned long long)clock()
     * (1000ull / CLOCKS_PER_SEC);

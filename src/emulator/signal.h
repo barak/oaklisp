@@ -8,12 +8,9 @@
 #ifndef _SIGNAL_H_INCLUDED
 #define _SIGNAL_H_INCLUDED
 
-#ifndef _ICC
-
 void enable_signal_polling(void);
 void disable_signal_polling(void);
 void clear_signal(void);
 extern int signal_poll_flag;
 
-#endif
 #endif

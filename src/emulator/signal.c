@@ -23,15 +23,12 @@
 #include "signal.h"
 
 
-#ifndef _ICC
-
 
 int signal_poll_flag = 0;
 
 static void
 intr_proc(int sig)
 {
-  sig = sig;			/* Keep the compiler from complaining */
   signal_poll_flag++;
 }
 
@@ -60,5 +57,3 @@ clear_signal(void)
   signal_poll_flag = 0;
 }
 #endif /* commented out */
-
-#endif

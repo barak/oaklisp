@@ -18,19 +18,19 @@
 int max_segment_size = 256;
 
 ref_t
-stack_top(stack_t *stack_p)
+stack_top(oakstack *stack_p)
 {
   return *stack_p->sp;
 }
 
 void
-stack_newtos(stack_t *stack_p, ref_t x)
+stack_newtos(oakstack *stack_p, ref_t x)
 {
   *stack_p->sp = x;
 }
 
 ref_t
-stack_pop(stack_t *stack_p)
+stack_pop(oakstack *stack_p)
 {
   if (stack_p->sp <= stack_p->bp) {
     stack_unflush(stack_p, stack_p->filltarget);
@@ -39,7 +39,7 @@ stack_pop(stack_t *stack_p)
 }
 
 void
-stack_push(stack_t *stack_p, ref_t x)
+stack_push(oakstack *stack_p, ref_t x)
 {
   if (stack_p->sp == stack_p->bp + stack_p->size)
     stack_flush(stack_p, stack_p->filltarget);
@@ -48,7 +48,7 @@ stack_push(stack_t *stack_p, ref_t x)
 
 
 void
-stack_flush(stack_t * stack_p, int amount_to_leave)
+stack_flush(oakstack * stack_p, int amount_to_leave)
 {
   /* flushes out the value stack buffer, leaving amount_to_leave */
   segment_t *s;
@@ -119,7 +119,7 @@ stack_flush(stack_t * stack_p, int amount_to_leave)
    be popped off without underflow. */
 
 void
-stack_unflush(stack_t * stack_p, int n)
+stack_unflush(oakstack * stack_p, int n)
 {
   long i, number_to_pull = 0;
   long count = stack_p->sp - stack_p->bp + 1;
@@ -181,7 +181,7 @@ stack_unflush(stack_t * stack_p, int n)
 
 
 void
-dump_stack(stack_t * stack_p)
+dump_stack(oakstack * stack_p)
 {
   /* dump part of stack, which is not segmented */
   ref_t *p;

@@ -20,20 +20,6 @@
 #include "loop.h"
 #include "xmalloc.h"
 
-int
-get_byte_gender(void)
-{
-  /* Byte Gender Detection Routine */
-  unsigned long a = 0x04030201ul;
-  unsigned char *cp = (unsigned char *)&a;
-
-  if (cp[0] == 0x01)
-    return little_endian;
-  else
-    return big_endian;
-}
-
-
 
 int
 main(int argc, char **argv)
@@ -44,8 +30,6 @@ main(int argc, char **argv)
   pthread_key_create (&index_key, (void*)free_registers);
 #endif
  
-  byte_gender = get_byte_gender ();
- 
 #ifdef THREADS
   my_index_p = (int *)malloc (sizeof (int));
   *my_index_p = get_next_index();
@@ -54,16 +38,14 @@ main(int argc, char **argv)
   my_index = *my_index_p;
   gc_ready[my_index] = 0;
   /* inc_next_index();*/
-  value_stack_array[my_index] = (stack_t*)malloc (sizeof (stack_t));
-  cntxt_stack_array[my_index] = (stack_t*)malloc(sizeof (stack_t));
+  value_stack_array[my_index] = (oakstack*)malloc (sizeof (oakstack));
+  cntxt_stack_array[my_index] = (oakstack*)malloc(sizeof (oakstack));
   value_stack.size = 1024;
   value_stack.filltarget = 1024/2;
   context_stack.size = 512;
   context_stack.filltarget = 512/2;
   gc_examine_ptr = gc_examine_buffer;
 #endif
-
-  byte_gender = get_byte_gender();
 
   parse_cmd_line(argc, argv);
 
@@ -80,7 +62,7 @@ main(int argc, char **argv)
 #ifdef THREADS
   register_array[my_index] = (register_set_t*)malloc(sizeof(register_set_t));
 #else
-  reg_set = (register_set_t*)malloc (sizeof(register_set_t));
+  reg_set = (register_set_t*)malloc(sizeof(register_set_t));
 #endif
    
   /* Set the registers to the boot code */

@@ -34,19 +34,19 @@ typedef struct {
   ref_t *sp;			/* pointer to top element in stack */
   ref_t segment;		/* head of linked list of flushed segments */
   int pushed_count;		/* number of ref's in flushed segment list */
-} stack_t;
+} oakstack;
 
 #ifdef THREADS
-extern stack_t *value_stack_array[];
-extern stack_t *cntxt_stack_array[];
+extern oakstack *value_stack_array[];
+extern oakstack *cntxt_stack_array[];
 #else
-extern stack_t value_stack;
-extern stack_t context_stack;
+extern oakstack value_stack;
+extern oakstack context_stack;
 #endif
 
 extern void init_stacks(void);
-extern void stack_flush(stack_t * stack_p, int amount_to_leave);
-extern void stack_unflush(stack_t * stack_p, int n);
-extern void dump_stack(stack_t * stack_p);
+extern void stack_flush(oakstack * stack_p, int amount_to_leave);
+extern void stack_unflush(oakstack * stack_p, int n);
+extern void dump_stack(oakstack * stack_p);
 
 #endif

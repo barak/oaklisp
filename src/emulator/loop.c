@@ -31,13 +31,7 @@
 #include "instr.h"
 #endif
 
-
-#ifdef _ICC
-#pragma IMS_linkage ("section%loop")
-#endif
-
 #define ENABLE_TIMER	1
-
 
 bool trace_traps = false;	/* trace tag traps */
 bool trace_files = false;	/* trace file opening */
@@ -355,17 +349,14 @@ loop(ref_t initial_tos)
     TRAP1_IF( (((X0)|(X1)) & TAG_MASK) != 0, (N))
 
 
-#ifndef _ICC
-#define POLL_USER_SIGNALS()	if ((signal_poll_flag) && (my_index == 0))   \
+#define POLL_USER_SIGNALS()	if ((signal_poll_flag)			\
+					THREADY( && (my_index == 0)))   \
 					{goto intr_trap;}
+
 #if ENABLE_TIMER
 #define TIMEOUT	1000
 #define POLL_TIMER_SIGNALS()	if (timer_counter > TIMEOUT) {goto intr_trap;}
 #else /* not ENABLE_TIMER */
-#define POLL_TIMER_SIGNALS()
-#endif
-#else /* _ICC */
-#define POLL_USER_SIGNALS()
 #define POLL_TIMER_SIGNALS()
 #endif
 
@@ -388,20 +379,9 @@ loop(ref_t initial_tos)
 
   /* This is the big instruction fetch/execute loop. */
 
-#ifndef _ICC
   enable_signal_polling();
-#endif
 
-#ifndef _ICC
 #define GOTO_TOP	goto top_of_loop;
-#elif defined __GNUC__
-#define GOTO_TOP        break;
-#else
-  /* this is a compiler bug in the Inmos compiler */
-#define GOTO_TOP    break;
-#endif
-
-
 
  top_of_loop:
   while (1)			/* forever */
@@ -505,10 +485,10 @@ loop(ref_t initial_tos)
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
-#ifdef HAVE_LONG_LONG
+#ifdef __GLIBC_HAVE_LONG_LONG
 	      {
 		int64_t a = (int64_t)REF_TO_INT(x) * (int64_t)REF_TO_INT(y);
-		int highcrap = a >> (WORDSIZE - (TAGSIZE+1));
+		int highcrap = a >> (__WORDSIZE - (TAGSIZE+1));
 		if (highcrap && highcrap+1)
 		  TRAP1(2);
 		PEEKVAL() = INT_TO_REF(a);
@@ -756,13 +736,13 @@ loop(ref_t initial_tos)
 		if (b < 0)
 		  {
 		    PEEKVAL()
-		      = (a >> -b | a << (WORDSIZE - 2 + b)) & ~TAG_MASKL;
+		      = (a >> -b | a << (__WORDSIZE - 2 + b)) & ~TAG_MASKL;
 		    GOTO_TOP;
 		  }
 		else
 		  {
 		    PEEKVAL()
-		      = (a << b | a >> (WORDSIZE - 2 - b)) & ~TAG_MASKL;
+		      = (a << b | a >> (__WORDSIZE - 2 - b)) & ~TAG_MASKL;
 		    GOTO_TOP;
 		  }
 	      }
@@ -1004,7 +984,7 @@ loop(ref_t initial_tos)
 	      GOTO_TOP;
 
 	    case 52:		/* BIG-ENDIAN? */
-	      x = BOOL_TO_REF(byte_gender == big_endian);
+	      x = BOOL_TO_REF(__BYTE_ORDER == __BIG_ENDIAN);
 	      PUSHVAL(x);
 	      GOTO_TOP;
 
@@ -1229,7 +1209,12 @@ loop(ref_t initial_tos)
 	      GOTO_TOP;
 
 	    case 70:		/* HEAVYWEIGHT-THREAD */
+#ifdef THREADS
 	      PEEKVAL() = BOOL_TO_REF( create_thread(PEEKVAL()) );
+#else
+	      PEEKVAL() = e_nil;
+#endif
+	      GOTO_TOP;
 
 	    case 71:		/* TEST-AND-SET-CAR */
 	      CONSINSTR(1);
@@ -1238,10 +1223,12 @@ loop(ref_t initial_tos)
 		PEEKVAL() = e_false;
 		GOTO_TOP;
 	      }
+#ifdef THREADS
 	      if (pthread_mutex_trylock(&testandsetcar_lock) != 0) {
 		PEEKVAL() = e_nil;	/* Can't aquire lock. */
 		GOTO_TOP;
 	      }
+#endif
 	      /* In Critical Section.  Don't GOTO_TOP. */
 	      if (y == e_nil) {
 		*(pcar(x)) = e_t;
@@ -1249,21 +1236,12 @@ loop(ref_t initial_tos)
 	      } else {
 		PEEKVAL() = e_nil;
 	      }
+#ifdef THREADS
 	      pthread_mutex_unlock(&testandsetcar_lock);
+#endif
 	      /* Out of Critical Section. */
-	      GOTO_TOP;
 
-	    case 75:		/* TEST-INSTRUCTION */
-	      printf("This is my stupid test instruction\n");
-	      /*
-		PUSHVAL(e_nil);
-		GOTO_TOP;
-	      */
-	      instr = (22 << 2);
-	      op_field = 22;
-	      arg_field = 0;
-	      e_nargs = e_nargs - 1;
-	      goto funcall_tail;
+	      GOTO_TOP;
 
 #ifndef FAST
 	    default:
@@ -1525,9 +1503,6 @@ loop(ref_t initial_tos)
 		  printf("STORE-REG %d, unknown .\n", arg_field);
 		  GOTO_TOP;
 		}
-#ifdef _ICC
-	      break;
-#endif
 
 	    case 20:		/* LOAD-REG reg */
 	      switch (arg_field)
@@ -1607,10 +1582,6 @@ loop(ref_t initial_tos)
 		  PUSHVAL(e_false);
 		  GOTO_TOP;
 		}
-#ifdef _ICC
-	      break;
-#endif
-
 
 	    case 21:		/* FUNCALL-CXT, FUNCALL-CXT-BR distance */
 	      /* NOTE: (FUNCALL-CXT) == (FUNCALL-CXT-BR 0) */
@@ -1908,9 +1879,6 @@ loop(ref_t initial_tos)
 		  exit(EXIT_FAILURE);
 		  GOTO_TOP;
 		}
-#ifdef _ICC
-	      break;
-#endif
 
 	    case 32:		/* FILLTAG n */
 	      /* This implements CATCH/THROW */
@@ -2002,7 +1970,6 @@ loop(ref_t initial_tos)
 	}
     }
 
-#ifndef _ICC
   /* The above loop is infinite.  We branch down to here when instructions
      fail, normally from tag traps, and then branch back. */
   /*************/
@@ -2049,7 +2016,6 @@ loop(ref_t initial_tos)
   /* Pass the trap code the current NARGS. */
   x = INT_TO_REF(e_nargs);
   trap_nargs = 1;
-#endif
 
   /**************/
  arg1_tt:

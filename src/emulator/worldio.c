@@ -76,7 +76,7 @@ read_ref(FILE * d)
     }
   else
     {
-      if (byte_gender == little_endian)
+      if (__BYTE_ORDER == __LITTLE_ENDIAN)
 	{
 	  while (isspace(c = getc(d)))
 	    if (c == EOF)
@@ -111,7 +111,7 @@ read_ref(FILE * d)
 	  return a;
 	}
       else
-	{			/* byte_gender == big_endian */
+	{			/* __BYTE_ORDER == __BIG_ENDIAN */
 	  while (isspace(c = getc(d)) || c == '^')
 	    if (c == EOF)
 	      {
@@ -130,7 +130,7 @@ read_ref(FILE * d)
 	      c = getc(d);
 	    }
 	  return a;
-	}			/* byte_gender */
+	}			/* __BYTE_ORDER */
     }				/* input_is_binary */
 }
 
@@ -338,7 +338,7 @@ read_world(char *str)
     {
       ungetc(magichar, d);
       input_is_binary = 0;
-      if (byte_gender == little_endian)
+      if (__BYTE_ORDER == __LITTLE_ENDIAN)
 	printf("Little Endian.\n");
       else
 	printf("Big Endian.\n");

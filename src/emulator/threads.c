@@ -20,11 +20,13 @@ pthread_mutex_t testandsetcar_lock = PTHREAD_MUTEX_INITIALIZER;
 bool gc_pending = false;
 int gc_ready[MAX_THREAD_COUNT];
 register_set_t* register_array[MAX_THREAD_COUNT];
-stack_t *value_stack_array[MAX_THREAD_COUNT];
-stack_t *cntxt_stack_array[MAX_THREAD_COUNT];
+oakstack *value_stack_array[MAX_THREAD_COUNT];
+oakstack *cntxt_stack_array[MAX_THREAD_COUNT];
 #endif
 
+#ifdef THREADS
 static u_int16_t tail_recurse_instruction = (22 << 2);
+#endif
 
 typedef struct {
   ref_t start_operation;
@@ -32,7 +34,9 @@ typedef struct {
   int my_index;
 } start_info_t;
 
+#ifdef THREADS
 static void *init_thread(void *info_p);
+#endif
 
 int create_thread(ref_t start_operation)
 {
@@ -49,18 +53,20 @@ int create_thread(ref_t start_operation)
   info_p->start_operation = start_operation;
   info_p->parent_index = *((int *)pthread_getspecific(index_key));
   info_p->my_index = index;
-  /* TODO: Check if thread is actually created !!! */
-  pthread_create(&new_thread, NULL,
-		 (void *)init_thread, (void *)info_p);
-  return 1;
+  if (pthread_create(&new_thread, NULL,
+		     (void *)init_thread, (void *)info_p))
+    // Error creating --- need to add some clean up code here !!!
+    return 0;
+  else
+    return 1;
 #else
   return 0;
 #endif
 }
 
+#ifdef THREADS
 static void *init_thread (void *info_p)
 {
-#ifdef THREADS
   int my_index;
   int *my_index_p;
   start_info_t info;
@@ -81,8 +87,8 @@ static void *init_thread (void *info_p)
      created.  This is below here in the vm not checking intterupts
      until after we get to the loop */
    
-  value_stack_array[my_index] = (stack_t*)malloc (sizeof (stack_t));
-  cntxt_stack_array[my_index] = (stack_t*)malloc(sizeof (stack_t));
+  value_stack_array[my_index] = (oakstack*)malloc (sizeof (oakstack));
+  cntxt_stack_array[my_index] = (oakstack*)malloc(sizeof (oakstack));
 
   value_stack_array[my_index]->size = value_stack_array[0]->size;
   value_stack_array[my_index]->filltarget = value_stack_array[0]->filltarget;
@@ -103,11 +109,10 @@ static void *init_thread (void *info_p)
 
   /* Big virtual machine interpreter loop */
   loop(info.start_operation);
-
-#endif
   
   return 0;
 }
+#endif
 
 void set_gc_flag (bool flag) 
 {

@@ -28,14 +28,6 @@ typedef int bool;
 #define true	1
 #endif
 
-
-/* byte gender */
-
-#define little_endian 0
-#define big_endian    1
-
-extern int byte_gender;
-
 /* reference type */
 
 typedef u_int32_t ref_t;
@@ -227,7 +219,7 @@ extern bool trace_files;
    positive fixnum, an asymmetry inherent in a twos complement
    representation. */
 
-#define MIN_REF     ((ref_t)(1<<(WORDSIZE-1)))
+#define MIN_REF     ((ref_t)(1<<(__WORDSIZE-1)))
 #define MAX_REF     ((ref_t)-((int32_t)MIN_REF+1))
 
 /* Check if high three bits are equal. */
@@ -235,7 +227,7 @@ extern bool trace_files;
 /*
 #define OVERFLOWN_INT(i,code)					\
 { register int highcrap						\
-	= ((u_int32_t)(i)) >> (WORDSIZE-(TAGSIZE+1));		\
+	= ((u_int32_t)(i)) >> (__WORDSIZE-(TAGSIZE+1));		\
 if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 */
 
@@ -373,24 +365,17 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 #define context_stack (*cntxt_stack_array[my_index])
 #define value_stack_address value_stack_array[my_index]
 #define context_stack_address cntxt_stack_array[my_index]
-#define e_code_segment \
-  (  (reg_set->e_code_segment) )
-#define e_current_method \
-  (  (reg_set->e_current_method)  )
-#define e_pc \
-  (  (reg_set->e_pc)  )
-#define e_bp \
-  (  (reg_set->e_bp)  )
-#define e_env \
-  (  (reg_set->e_env)  )
-#define e_nargs \
-  (  (reg_set->e_nargs)  )
-#define e_process \
-  (  (reg_set->e_process)  )
+#define e_code_segment     ( (reg_set->e_code_segment) )
+#define e_current_method   ( (reg_set->e_current_method) )
+#define e_pc               ( (reg_set->e_pc) )
+#define e_bp               ( (reg_set->e_bp) )
+#define e_env              ( (reg_set->e_env) )
+#define e_nargs            ( (reg_set->e_nargs) )
+#define e_process          ( (reg_set->e_process) )
 
 #else
 
-extern register_set_t* reg_set;
+extern register_set_t *reg_set;
 #define value_stack_address &value_stack
 #define context_stack_address &context_stack
 
