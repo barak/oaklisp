@@ -1,3 +1,5 @@
+
+
 ;;; Copyright (C) 1986,1987,1988,1989 Kevin J. Lang & Barak A. Pearlmutter.
 
 ;;; Read eval print loop for Oaklisp.
@@ -96,7 +98,7 @@
 	(format #t
 		"
 Welcome to Oaklisp 1.3.3
-  Distributed under GNU General Public License v2 or later.
+  Distributed under the GNU General Public License v2 or later.
   See http://www.cs.unm.edu/~~bap/oaklisp/ for details.
 ")
 	(read-eval-print-loop)))
