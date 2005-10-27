@@ -61,7 +61,18 @@
 #endif
 #include <unistd.h>		/* for the chdir() and isatty() functions */
 
-#else
+#elif defined(linux) && defined(__arm__)
+/*** Linux on Arm target ***/
+
+#define WORDSIZE 32
+#define HAVE_LONG_LONG
+#define ASHR2(x) ((x)>>2)
+#define BYTE_GENDER little_endian
+#define HAVE_GETRUSAGE
+
+#include <unistd.h>            /* for the chdir() and isatty() functions */
+
+else
 /*** no machine specified ***/
 
 #error must edit config.h
