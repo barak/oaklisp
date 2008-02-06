@@ -96,4 +96,12 @@ else
 #define OP_TYPE_METH_CACHE
 #endif
 
+typedef unsigned long  u_int32_t;
+typedef unsigned short u_int16_t;
+typedef	int	int32_t;
+typedef	unsigned char u_int8_t;
+typedef signed char int8_t;
+typedef	short	int16_t;
+#define	inline
+
 #endif

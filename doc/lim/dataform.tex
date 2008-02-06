@@ -81,12 +81,12 @@ memory, a garbage collection is performed.
 The allocated portion of memory is divided into \emph{aggregate
 objects} and \emph{solitary cells}.  Each aggregate object is a
 contiguous chunk of cells.  The first cell of an object is a reference
-to its type; if the type is \emph{variable length}, the second is
-stores the length of the object, including the first two cells.  The
-remainder of the cells of hold the instance variables.  Solitary cells
+to its type; if the type is \emph{variable length}, the second cell
+holds the length of the object, including the first two cells.  The
+remainder of the cells hold the instance variables.  Solitary cells
 are cells that are not part of any object, but are the targets of
 locatives.  Solitary cells are used heavily in the implementation of
-variables.
+mutable variables.
 
 A reference to an object consists of a pointer to that object with a
 tag of \emph{boxed-object}.  References to solitary cells are locatives.

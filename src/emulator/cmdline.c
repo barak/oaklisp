@@ -64,7 +64,7 @@ usage(char *prog)
 	  "\t--world file         file is world to load\n"
 	  "\t--dump file          dump world to file upon exit\n"
 	  "\t--d file             synonym for --dump\n"
-	  "\t--dump-base b        0=ascii, 2=binary; default=2\n"
+	  "\t--dump-base b        10 or 16=ascii, 2=binary; default=2\n"
 	  "\t--predump-gc b       0=no, 1=yes; default=1\n"
 	  "\n"
 	  "\t--size-heap n        n is in kilo-refs, default %d\n"

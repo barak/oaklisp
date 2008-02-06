@@ -1,0 +1,44 @@
+# MS Visual C 6.0 nmake makefile
+# by Blake McBride <blake@mcbride.name>
+
+
+
+CFLAGS = -nologo -DFAST -I../getopt -O2 -DDEFAULT_WORLD=\"oakworld.bin\"
+
+
+oaklisp.exe : \
+		cmdline.obj \
+		data.obj \
+		gc.obj \
+		getopt.obj \
+		getopt1.obj \
+		instr.obj \
+		loop.obj \
+		oaklisp.obj \
+		signal.obj \
+		stacks.obj \
+		timers.obj \
+		weak.obj \
+		worldio.obj \
+		xmalloc.obj
+	cl -nologo -Fe$@ $**
+
+
+getopt.obj : ../getopt/getopt.c
+	cl $(CFLAGS) -c $**
+
+getopt1.obj : ../getopt/getopt1.c
+	cl $(CFLAGS) -c $**
+
+instr-data.c: instruction-table.oak oaklisp.exe
+	oaklisp $(OAKFLAGS) -- \
+		-locale compiler-locale -load instruction-table \
+		-eval "(dump-instruction-table \"$@\")" \
+		-exit
+	-indent $@
+
+clean :
+	-del *.obj
+
+realclean : clean
+	-del oaklisp.exe

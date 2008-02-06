@@ -14,7 +14,7 @@
 % or from the Free Software Foundation, 59 Temple Place - Suite 330,
 % Boston, MA 02111-1307, USA
 
-\documentclass[12pt]{report}
+\documentclass[12pt]{report} % Blake McBride suggests [...,twoside]{book}
 \usepackage{times}
 \usepackage{fullpage}
 \usepackage{graphicx}
@@ -31,6 +31,8 @@
 
 \include{cover}
 \tableofcontents
+\newpage
+\pagenumbering{arabic}
 \include{intro}
 \include{types}
 \include{methods}

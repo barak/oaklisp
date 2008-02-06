@@ -1,0 +1,100 @@
+# MS Visual C 6.0 nmake makefile
+# by Blake McBride <blake@mcbride.name>
+
+
+# Bigendian machines need bigendian binary oaklisp worlds, so non-cold
+# worlds are only compatible across machines of the same endianity.
+
+all: oakworld.bin
+
+# The Oaklisp emulator executable
+OAK=oaklisp
+
+# Flags for the emulator
+OAKFLAGS=-trace-gc=1
+
+# How to compile oaklisp source files into oaklisp bytecode object files:
+.SUFFIXES: .oa .oak
+
+.oak.oa:
+	$(OAK) $(OAKFLAGS) -- --compile $* --exit
+
+!include Makefile-vars
+
+ALLOAFILES = $(TOOLFILES) $(MAKEFILES) $(FILESFILES) $(COLDFILES) \
+		$(MISCFILES) $(COMPFILES) $(RNRSFILES)
+
+SOURCE = $(ALLOAFILES:.oa=.oak) Makefile
+
+# How to build a new cold world using the world builder tool:
+new.cold: $(COLDFILES) $(TOOLFILES)
+	-del new.cold
+	-del new.sym
+	$(OAK) $(OAKFLAGS) \
+	   -- \
+	   --load tool \
+	   --eval "(tool-files '($(COLDFILESD:.oa=)) 'new)" \
+	   --exit
+
+# How to boot cold world into warm world:
+
+oakworld-1.bin: new.cold
+	 $(OAK) $(OAKFLAGS) --world new.cold --dump $@
+
+# load successive layers of functionality onto the world
+
+MISCFILES2 = $(MISCFILES:.oa=)
+
+oakworld-2.bin: oakworld-1.bin $(MISCFILES)
+	$(OAK) $(OAKFLAGS) --world oakworld-1.bin --dump $@ \
+	   -- \
+#	   $(foreach f, $(MISCFILES:.oa=), --load $(f)) \
+	   --load $(MISCFILES2: = --load ) \
+	   --exit
+
+COMPFILES2 = $(COMPFILES:.oa=)
+
+oakworld-3.bin: oakworld-2.bin $(COMPFILES)
+	 $(OAK) $(OAKFLAGS) --world oakworld-2.bin --dump $@ \
+	   -- \
+	   --locale compiler-locale \
+#	   $(foreach f, $(COMPFILES:.oa=), --load $(f)) \
+	   --load $(COMPFILES2: = --load ) \
+	   --locale system-locale --exit
+
+RNRSFILES2 = $(RNRSFILES:.oa=)
+
+oakworld.bin: oakworld-3.bin $(RNRSFILES)
+	$(OAK) $(OAKFLAGS) --world oakworld-3.bin --dump $@ \
+	-- \
+	-eval "(define-instance scheme-locale locale (list system-locale))"\
+	-locale scheme-locale \
+#	$(foreach f, $(RNRSFILES:.oa=), --load $(f)) \
+	--load $(RNRSFILES2: = --load ) \
+	-locale system-locale --exit
+
+# How to rebuild variables included by this Makefile itself:
+
+Makefile-vars: $(MAKEFILES) $(FILESFILES)
+	$(OAK) $(OAKFLAGS) \
+	   -- \
+	   --load files --load make-makefile --eval "(make-makefile \"$@\")" \
+	   --exit
+
+.PHONY: install
+install: oakworld.bin
+	copy $** $(DESTDIR)$(prefix)/lib/oaklisp/
+
+.PHONY: clean
+clean: clean-oa-files
+	-del oakworld-?.bin new.cold new.sym
+
+.PHONY: clean-oa-files
+clean-oa-files:
+	-del $(ALLOAFILES)
+
+## What goes in an official release:
+
+.PHONY: release
+release: $(SOURCE) $(GRAVY) Makefile-vars oakworld.bin
+	copy $** $(RTARGET)/
