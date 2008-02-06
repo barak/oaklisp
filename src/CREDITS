@@ -7,29 +7,27 @@
 ----------
 
 N: Kevin J. Lang
-E: kevin@research.nj.nec.com
-W: http://www.neci.nj.nec.com/homepages/kevin/
+E: langk@yahoo-inc.com
 D: much of language design.  much of system design.
 D: much of lang & lim manuals.
 D: bytecode compiler.  list manipulation.  much of emulator.  world i/o.
 D: much of runtime system.  bignum division.  much of bignums.
-S: NEC Research Institute
-S: 4 Independence Way
-S: Princeton, NJ  08540
-S: USA
+S: Yahoo! Research
 
 N: Barak A. Pearlmutter
-E: bap@cs.unm.edu
-W: http://www.cs.unm.edu/~bap/
+E: barak+oaklisp@cs.nuim.ie
+W: http://www.bcl.hamilton.ie/~barak/
+P: pub   1024D/FEC23FB2 2000-08-21
+P:       Key fingerprint = 3755 EE8A 783F 3493 A8FF  2C8F 2F3E 069E FEC2 3FB2
 D: much of language design.  much of system design.
 D: much of lang & lim manuals.
 D: most of bytecode emulator.  call/cc.  weak pointers.  gc.  strings.
 D: much of runtime system.  I/O.  much of bignums.  rationals.  vectors.
 D: interpreter.  hash tables.  symbols.  locales.  macros.  delays.
-S: Dept of Computer Science, FEC 313
-S: University of New Mexico
-S: Albuquerque, NM  87131
-S: USA
+S: Hamilton Institute
+S: National University of Ireland Maynooth
+S: Co. Kildare
+S: Ireland
 
 N: Alexander Stuebinger
 E: stuebi@acm.org
