@@ -208,7 +208,7 @@ oak_c_string(ref_t * oakstr, int len)
      start and a length, to an equivalent C-string.
      The storage allocated by this routine must be free()-ed.
    */
-  unsigned char *const cstring = xmalloc(len + 1);
+  char *const cstring = xmalloc(len + 1);
   oak_c_string_fill(oakstr, cstring, len);
   return cstring;
 }
