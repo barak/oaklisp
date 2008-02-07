@@ -1,0 +1,289 @@
+;;; FILE	"unit-testing.oak"
+;;; IMPLEMENTS	Unit Testing for Oaklisp
+;;; AUTHOR	Ken Dickey
+;;; COPYRIGHT (c) 2004 by Kenneth A Dickey; All rights reserved.
+;;;  This is free software. Permission to use, copy, modify and
+;;;  distribute this software for non-profit purpose is granted without
+;;;  fee.  It is provided "as is" without express or implied warranty.
+;;;  The author disclaims all warranties with regard to this software.
+;;;  In no event shall the author be liable for any damages.
+
+;;;USAGE SYNOPSIS
+;;  Tests are first created and added to a global UNIT-TESTS "database".
+;;  Tests are arranged by UNIT-NAME (just a symbol naming a set of tests).
+;;
+;; SPECIAL FORMS:
+;;  (ADD-TEST unit-name expected-result form =? . message)
+;;
+;;  (ADD-EQ-TEST unit-name expected-result form . message)
+;;	=> (add-test unit-name expected-result form EQ? . message)
+;;
+;;  (ADD-EQUAL-TEST unit-name expected-result form . message)
+;;	=> (add-test unit-name expected-result form EQUAL? . message)
+;;
+;;  (ENSURE-EXCEPTION-RAISED unit exception-type form . message)
+;;      -> test that the form signals a (subtype of) exception-type
+;;
+;;  All forms are "thunkified" by being wrapped in zero argument lambdas.
+;;  Internal usage is: (=? expected (thunk))
+;;
+;;
+;; TESTING OPERATIONS:
+;;  (RUN-ALL-TESTS   unit-tests) => Run all suites of tests.
+;;
+;;  (RUN-TESTS-FOR   unit-tests 'whatever) => Run tests for unit named WHATEVER.
+;;
+;;  (REMOVE-TESTS-FOR unit-tests 'whatever) => Remove tests for unit named WHATEVER.
+;;    ..handy before rereading a test defining file.
+;;
+;; If (VERBOSE? unit-tests) is false, only failures and exceptions are
+;;  reported, else successful tests are reported as well.
+;; The default value is #f.  Settable.
+;;
+;; If (BREAK-ON-ERROR? unit-tests) is true, errors and exceptions break
+;;  into the debugger, otherwise failures are just reported.
+;; The default value is #f.  Settable.
+;;
+;; Tests are typically written as separate files containing set-up & tear-down code.
+;; @@QUESTION: Add optional set-up and tear-down forms to unit test suites?
+;;
+
+;; Note Also:
+;; (RUN-TEST <unit-test> verbose-p break-on-error-p)
+;;   Run a single <unit-test> -- typically only used for debugging tests.
+;;   If no error, don't report unless VERBOSE-P
+;;   If error or exception, break into debugger if BREAK-ON-ERROR-P, else continue
+;;
+;; (make <unit-test> unit-name expected thunk =? . message)
+
+
+;; @@QUESTION: Should <unit-tests> take an output-stream?  Currently all output
+;;   goes to (current-output-port).
+
+;;;======================================================================
+;; @@FIXME: TABLE-WALK belongs in hash-table.oak
+;;  Should define WALK for SEQUENCE as well...
+
+(define-instance table-walk operation)
+
+;; proc takes 2 args: (lambda (key val) ...)
+(add-method (table-walk (generic-hash-table table count size) self proc)
+    (dotimes (index size)
+         (let ((chain (nth table index)))
+           (for-each
+            (lambda (bucket)
+              (proc (car bucket) (cdr bucket)))
+            chain))))
+
+(add-method (table-walk (eq-hash-table table count size) self proc)
+    (dotimes (index size)
+         (let ((chain (nth table index)))
+           (for-each
+            (lambda (bucket)
+              (proc (car bucket) (cdr bucket)))
+            chain))))
+
+
+;;;======================================================================
+;; @@FIXME: Is <foo> a reasnable naming convention for type FOO?
+
+(define-instance <unit-tests>
+  type
+  '(verbose-p break-on-error-p)
+  (list eq-hash-table))  ; really a symbol-table
+
+(add-method (initialize (<unit-tests> verbose-p break-on-error-p)
+                        self)
+            (set! verbose-p        #f)
+            (set! break-on-error-p #f)
+            (^super eq-hash-table initialize self))
+
+;; @@FIXME: This should not be required.  Why not simply inherited?
+(add-method ((setter table-entry) (<unit-tests>) self key value)
+  (^super eq-hash-table (setter table-entry) self key value))
+
+(define-instance verbose? settable-operation)
+(define-instance break-on-error? settable-operation)
+
+(add-method (verbose? (<unit-tests> verbose-p) self)
+            verbose-p)
+
+(add-method ((setter verbose?) (<unit-tests> verbose-p) self bool)
+            (set! verbose-p bool))
+
+(add-method (break-on-error? (<unit-tests> break-on-error-p) self)
+            break-on-error-p)
+
+(add-method ((setter break-on-error?) (<unit-tests> break-on-error-p) self bool)
+            (set! break-on-error-p bool))
+
+(define-instance add-unit-test operation)
+
+(add-method (add-unit-test (<unit-tests>)
+                           self unit test-case)
+            (set! (table-entry self unit)
+                  (cond ((present? self unit)
+                         => (lambda (bucket) (cons test-case (cdr bucket))))
+                        (else
+                         (list test-case))))
+            test-case)
+
+(define-instance remove-tests-for operation)
+;; @@FIXME: no way to remove table entries ?!?
+(add-method (remove-tests-for (<unit-tests>) self unit)
+            (set! (table-entry self unit) #f))
+
+(define-instance tests-for operation)
+(add-method (tests-for (<unit-tests>) self unit)
+            (table-entry self unit))
+
+(define-constant unit-tests (make <unit-tests>))
+
+(define-instance <unit-test>
+  type '(expected thunk compare? message) (list object))
+
+(add-method (initialize (<unit-test> expected thunk compare? message)
+                        self expected-result the-thunk comparison-op? msg)
+            (set! expected expected-result)
+            (set! thunk    the-thunk)
+            (set! compare? comparison-op?)
+            (set! message  msg)
+            self)
+
+(define-syntax (add-test unit expect form equivalent? . message)
+  (let ((msg (if (pair? message) (car message) "")))
+    `(add-unit-test unit-tests
+                    ,unit
+                    (make <unit-test>
+                      ,expect
+                      (lambda () ,form)
+                      ,equivalent?
+                      ,msg)
+ )))
+
+(define-syntax (add-eq-test unit expect form . message)
+  `(add-test ,unit ,expect ,form eq? . ,message)) 
+
+(define-syntax (add-equal-test unit expect form . message)
+  `(add-test ,unit ,expect ,form equal? . ,message))
+
+(define-syntax (ensure-exception-raised unit exception-type form . message)
+  (let ((msg (if (pair? message) (car message) "")))
+    `(add-unit-test unit-tests
+                    ,unit
+                    (make <exception-test>
+                      ,exception-type
+                      (lambda () ,form)
+                      ,msg)
+ )))
+
+
+(define-instance <exception-test> type '() (list <unit-test>))
+
+(add-method (initialize (<exception-test>)
+                        self exception-type thunk message)
+            (unless (subtype? exception-type condition)
+              (error "An <xception-test> requires an exception type: ~a" exception-type))
+            (^super <unit-test> initialize self exception-type thunk subtype? message)
+            self)
+
+(define-instance run-test      operation)
+(define-instance run-all-tests operation)
+(define-instance run-tests-for operation)
+
+;; Run a <unit-test>
+;; If no error, don't report unless VERBOSE-P
+;; If error or exception, break into debugger if BREAK-ON-ERROR-P, else continue
+(add-method (run-test (<unit-test> expected thunk compare? message)
+                      self verbose-p break-on-error-p)
+   (let* ((caught-exception #f) 
+           (actual 
+            (bind-error-handler
+             (general-error ;; catch every type of error
+              (lambda (err-obj)
+                (set! caught-exception err-obj)
+                (format #t "~&*** EXCEPTION: ~a   ~a" err-obj message)
+                (describe err-obj)
+                #f))
+             (thunk)))
+           )
+     (cond
+      (caught-exception
+       => (lambda (err-obj)
+            (if break-on-error-p
+                (invoke-debugger err-obj)
+                err-obj)) ;; return err-obj if not breaking
+       )
+      ((compare? actual expected)
+       (if verbose-p
+           (format #t "~&PASSED: Expected: ~a Got: ~a   ~a" expected actual message)
+           #t) ;; compare => #t
+       )
+      (else
+       ((if break-on-error-p error warning)
+        "~&*** FAILED:  Expected ~a  Got ~a   ~a" expected actual message)))))
+
+(add-method (run-tests-for (<unit-tests> verbose-p break-on-error-p)
+                        self unit)
+   (let ((unit-tests (tests-for self unit)))
+     (if unit-tests
+         (for-each 
+          (lambda (test) (run-test test verbose-p break-on-error-p))
+          (reverse unit-tests))
+         ((if break-on-error-p error warning)
+          "~&HUH?  No tests found for ~A" unit))))
+
+(add-method (run-all-tests (<unit-tests> verbose-p break-on-error-p) self)
+     (table-walk self
+                 (lambda (unit tests)
+                   (if tests
+                       (block
+                        (format #t "~&===>Starting Tests for ~a" unit)
+                        (for-each 
+                         (lambda (test) (run-test test verbose-p break-on-error-p))
+                         (reverse tests))
+                        (format #t "~&===> Completed Tests for ~a~&" unit)
+                        )
+                        ((if break-on-error-p error warning)
+                         "~&HUH?  No tests found for ~A" unit)))))
+
+(add-method (run-test (<exception-test>)
+                      self verbose-p break-on-error-p)
+            ;; helper required for access to <unit-test> internals
+            (%run-exception-test self verbose-p break-on-error-p))
+
+(define-instance %run-exception-test operation)
+(add-method (%run-exception-test (<unit-test>  expected thunk compare? message)
+                                   self verbose-p break-on-error-p)
+  (unless (subtype? <exception-test> (get-type self))
+    (error "EXCEPTION TEST INVOKED ON NON-EXECEPTION: ~a" self))
+  (let* ((caught-exception #f)
+          (actual 
+           (bind-error-handler
+            (general-error ;; catch every type of error
+             (lambda (err-obj)
+               (set! caught-exception err-obj)
+               err-obj))
+            (thunk)))
+          )
+    (cond
+     ((compare? (get-type actual) expected)
+      (if verbose-p
+          (format #t "~&PASSED: Expected: ~a Got: ~a of type ~a   ~a"
+                  expected actual (get-type actual) message)
+          #t) ;; compare => #t
+      )
+     (caught-exception
+      => (lambda (err-obj)
+           (format #t "~&*** UNEXPECTED EXCEPTION: got ~a of type ~a expected ~a:  ~a"
+                   err-obj (get-type err-obj) expected message)
+           (describe err-obj)
+           (if break-on-error-p
+               (invoke-debugger err-obj)
+               err-obj)) ;; return err-obj if not breaking
+      )
+     (else
+      ((if break-on-error-p error warning)
+       "~&*** FAILED:  Expected exception of type ~a  Got ~a   ~a" expected actual message)))))
+
+;;; unit-testing.oak ends here

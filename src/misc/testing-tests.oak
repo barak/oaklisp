@@ -1,0 +1,26 @@
+;;; From: Ken Kickey <Ken.Dickey@allvantage.com>
+
+;; (require 'unit-testing) ;; (load "unit-testing.oak")
+
+(add-eq-test 'one #t (= 1 1) "equal")
+
+(add-eq-test 'one #f (< 2 1) "less")
+
+(add-eq-test 'one 'foo (intern "FOO") "eq?")  ;; interning case is UPPER
+
+(add-equal-test 'one "FOO" ((coercer string) 'foo) "equal?")
+
+(add-test 'one 37 (+ 36 1) = "addition")
+
+(add-test 'two 54 (max 32 1 54 7 23 7 21) = "max")
+
+(add-test 'two 'yes (if (> 2 1) 'yes 'no) eq? "if")
+
+;;(add-test 'two 'error-failure (if (> 2 1) 'yes 'no) eq? "if failure")
+
+(ensure-exception-raised 'two generic-fatal-error (/ 7 0) "zero divisor exception")
+
+;;(set! (verbose? unit-tests) #t)
+;;(run-all-tests unit-tests)
+
+;; EOF ;;
