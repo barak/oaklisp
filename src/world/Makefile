@@ -24,18 +24,23 @@ all: oakworld.bin
 
 -include Makefile-vars
 
-ALLOAFILES = $(TOOLFILES) $(MAKEFILES) $(FILESFILES) $(COLDFILES) \
-		$(MISCFILES) $(COMPFILES) $(RNRSFILES)
+ALLOAFILES += $(TOOLFILES)
+ALLOAFILES += $(MAKEFILES)
+ALLOAFILES += $(FILESFILES)
+ALLOAFILES += $(COLDFILES)
+ALLOAFILES += $(MISCFILES)
+ALLOAFILES += $(COMPFILES)
+ALLOAFILES += $(RNRSFILES)
 
 SOURCE = $(ALLOAFILES:.oa=.oak) Makefile
 
 # The Oaklisp emulator executable.
 # Use "OAK=oaklisp" unless compiling new emulator.
-OAK=../emulator/oaklisp
+OAK = ../emulator/oaklisp
 
 # Flags for the emulator.
 # When bootstrapping add "OAKFLAGS+=--world ...../oakworld.bin"
-OAKFLAGS=--trace-gc=1
+OAKFLAGS = --trace-gc=1
 
 # How to compile oaklisp source files into oaklisp bytecode object files:
 .SUFFIXES: .oa .oak
@@ -59,14 +64,14 @@ oakworld-1.bin: new.cold
 oakworld-2.bin: oakworld-1.bin $(MISCFILES)
 	$(OAK) $(OAKFLAGS) --world oakworld-1.bin --dump $@ \
 	   -- \
-	   $(foreach f, $(MISCFILES:.oa=), --load $(f)) \
+	   $(foreach f, $(MISCFILES:.oa=),--load $(f)) \
 	   --exit
 
 oakworld-3.bin: oakworld-2.bin $(COMPFILES)
 	 $(OAK) $(OAKFLAGS) --world oakworld-2.bin --dump $@ \
 	   -- \
 	   --locale compiler-locale \
-	   $(foreach f, $(COMPFILES:.oa=), --load $(f)) \
+	   $(foreach f, $(COMPFILES:.oa=),--load $(f)) \
 	   --locale system-locale --exit
 
 oakworld.bin: oakworld-3.bin $(RNRSFILES)
@@ -74,7 +79,7 @@ oakworld.bin: oakworld-3.bin $(RNRSFILES)
 	  -- \
 	  --eval '(define-instance scheme-locale locale (list system-locale))'\
 	  --locale scheme-locale \
-	  $(foreach f, $(RNRSFILES:.oa=), --load $(f)) \
+	  $(foreach f, $(RNRSFILES:.oa=),--load $(f)) \
 	  --locale system-locale --exit
 
 # How to rebuild variables included by this Makefile itself:
