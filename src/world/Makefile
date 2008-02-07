@@ -71,11 +71,11 @@ oakworld-3.bin: oakworld-2.bin $(COMPFILES)
 
 oakworld.bin: oakworld-3.bin $(RNRSFILES)
 	$(OAK) $(OAKFLAGS) --world oakworld-3.bin --dump $@ \
-	-- \
-	--eval '(define-instance scheme-locale locale (list system-locale))'\
-	--locale scheme-locale \
-	$(foreach f, $(RNRSFILES:.oa=), --load $(f)) \
-	--locale system-locale --exit
+	  -- \
+	  --eval '(define-instance scheme-locale locale (list system-locale))'\
+	  --locale scheme-locale \
+	  $(foreach f, $(RNRSFILES:.oa=), --load $(f)) \
+	  --locale system-locale --exit
 
 # How to rebuild variables included by this Makefile itself:
 
