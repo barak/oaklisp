@@ -35,6 +35,8 @@ Oaklisp level options.
                            compiler-locale, scheme-locale (for RnRS
                            compatibility).
 
+        --pthreads         Number of pthreads to allocate.
+
         --exit             Exit upon processing this option.
 
 Example:
@@ -63,7 +65,7 @@ Example:
 			       #*current-locale))))
     ("pthreads" 1 ,(lambda (x)
 		     (set! heavyweight-thread-count
-		       (read (make string-input-stream x)))
+			   (read (make string-input-stream x)))
 		     (unless (integer? heavyweight-thread-count)
 		       (exit 1 "-pthread option takes integer argument.~%"))))
     ("exit" 0 ,(lambda ()
