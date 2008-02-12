@@ -8,4 +8,4 @@ Upstream sources (which include Debian packaging files) are available at
 http://www.bcl.hamilton.ie/~barak/oaklisp/
 http://oaklisp.alioth.debian.org/
 
-Copyright: GPL (see /usr/share/common-licenses/GPL)
+Copyright: GPLv2+ (see /usr/share/common-licenses/GPL)
