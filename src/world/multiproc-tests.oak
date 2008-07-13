@@ -35,15 +35,15 @@
 (process-run-fn test-fn nil)
 (test-fn)
 
-(set! (fluid thing) 'adf)
-(fluid thing)	;Should return symbol ADF
+(set! #*thing 'adf)
+#*thing					; Should return symbol ADF
 
-(bind (((fluid hello) "hello")) (fluid hello))	;Returns "hello"
-(fluid hello)	;Should error
+(bind ((#*hello "hello")) #*hello)	; Returns "hello"
+#*hello					; Should error
 
-(bind (((fluid hello) "hello")) (set! (fluid world) "world"))
-(fluid world)	;Returns "world"
-(fluid hello)  	;Should error
+(bind ((#*hello "hello")) (set! #*world "world"))
+#*world					; Returns "world"
+#*hello					; Should error
 
 (set! #*forcible-print-magic #f)
 
