@@ -16,9 +16,9 @@
 
 
 /**********************************************************************
- *     Copyright (c) by Barak Pearlmutter and Kevin Lang, 1987-99.    *
- *     Copyright (c) by Alex Stuebinger, 1998-99.                     *
- *     Distributed under the GNU General Public License v2 or later   *
+ *  Copyright (c) by Barak A. Pearlmutter and Kevin J. Lang, 1987-99. *
+ *  Copyright (c) by Alex Stuebinger, 1998-99.                        *
+ *  Distributed under the GNU General Public License v2 or later      *
  **********************************************************************/
 
 
@@ -70,7 +70,7 @@
 #define BYTE_GENDER little_endian
 #define HAVE_GETRUSAGE
 
-#include <unistd.h>            /* for the chdir() and isatty() functions */
+#include <unistd.h>	       /* for the chdir() and isatty() functions */
 
 else
 /*** no machine specified ***/

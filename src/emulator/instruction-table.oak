@@ -15,7 +15,7 @@
 ;;; Boston, MA 02111-1307, USA
 
 
-;;; Copyright (C) 1988 Kevin Lang & Barak Pearlmutter, CMU Oaklisp Project.
+;;; Copyright (C) 1988 Kevin J. Lang & Barak A. Pearlmutter, CMU Oaklisp Project.
 
 ;;; Dump a table of all the instructions in a format suitable for
 ;;; compilation into the emulator.

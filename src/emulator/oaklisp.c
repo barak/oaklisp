@@ -16,9 +16,9 @@
 
 
 /**********************************************************************
- *     Copyright (c) by Barak Pearlmutter and Kevin Lang, 1987-99.    *
- *     Copyright (c) by Alex Stuebinger, 1998-99.                     *
- *     Distributed under the GNU General Public License v2 or later   *
+ *  Copyright (c) by Barak A. Pearlmutter and Kevin J. Lang, 1987-99. *
+ *  Copyright (c) by Alex Stuebinger, 1998-99.                        *
+ *  Distributed under the GNU General Public License v2 or later      *
  **********************************************************************/
 
 #define _REENTRANT
@@ -46,7 +46,7 @@ main(int argc, char **argv)
   int *my_index_p;
   pthread_key_create (&index_key, (void*)free_registers);
 #endif
- 
+
 #ifdef THREADS
   my_index_p = (int *)malloc (sizeof (int));
   *my_index_p = get_next_index();
@@ -81,7 +81,7 @@ main(int argc, char **argv)
 #else
   reg_set = (register_set_t*)malloc(sizeof(register_set_t));
 #endif
-   
+
   /* Set the registers to the boot code */
 
   e_current_method = e_boot_code;

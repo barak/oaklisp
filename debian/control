@@ -1,7 +1,7 @@
 Source: oaklisp
 Section: interpreters
 Priority: optional
-Maintainer: Barak Pearlmutter <bap@debian.org>
+Maintainer: Barak A. Pearlmutter <bap@debian.org>
 Standards-Version: 3.7.3
 Build-depends: oaklisp, debhelper (>= 5), texlive-latex-base, texlive-latex-extra
 

@@ -15,7 +15,7 @@
 ;;; Boston, MA 02111-1307, USA
 
 
-;;; Number of ways of giving change, Barak Pearlmutter, Fall 1989.
+;;; Number of ways of giving change, Barak A. Pearlmutter, Fall 1989.
 ;;; This technique is covered in Concrete Mathamatics by Graham, Knuth
 ;;; and Patashnik, page 331.
 

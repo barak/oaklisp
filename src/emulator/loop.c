@@ -15,11 +15,11 @@
 // Boston, MA 02111-1307, USA
 
 
-/*******************************************************************
- *   Copyright (c) by Barak Pearlmutter and Kevin Lang, 1987-99.   *
- *   Copyright (c) by Alex Stuebinger, 1998-99.                    *
- *   Distributed under the GNU General Public License v2 or later  *
- *******************************************************************/
+/*********************************************************************
+ * Copyright (c) by Barak A. Pearlmutter and Kevin J. Lang, 1987-99. *
+ * Copyright (c) by Alex Stuebinger, 1998-99.                        *
+ * Distributed under the GNU General Public License v2 or later      *
+ *********************************************************************/
 
 #define _REENTRANT
 
@@ -378,14 +378,14 @@ loop(ref_t initial_tos)
 
 #ifdef THREADS
 #define POLL_GC_SIGNALS()	if (gc_pending) {			     \
-                                    value_stack.sp = local_value_sp;	     \
-                                    context_stack.sp = local_context_sp;     \
-                                    e_pc = local_epc;			     \
-                                    wait_for_gc();			     \
-                                    local_epc = e_pc;			     \
-                                    local_context_sp = context_stack.sp;     \
-                                    local_value_sp = value_stack.sp;	     \
-                                }
+				    value_stack.sp = local_value_sp;	     \
+				    context_stack.sp = local_context_sp;     \
+				    e_pc = local_epc;			     \
+				    wait_for_gc();			     \
+				    local_epc = e_pc;			     \
+				    local_context_sp = context_stack.sp;     \
+				    local_value_sp = value_stack.sp;	     \
+				}
 #else
 #define POLL_GC_SIGNALS()
 #endif
@@ -415,7 +415,7 @@ loop(ref_t initial_tos)
 		 local_context_sp - context_stack_bp + 1,
 		 context_stack.pushed_count);
 	}
-      
+
       {
 	int val_buffer_count = local_value_sp - value_stack_bp + 1;
 	int cxt_buffer_count = local_context_sp - context_stack_bp + 1;
@@ -713,7 +713,8 @@ loop(ref_t initial_tos)
 		TRAP1(2);
 	      {
 		long a = REF_TO_INT(x) % REF_TO_INT(y);
-		if ((a < 0 && (long)y > 0) || ((long)y < 0 && (long)x > 0 && a > 0))
+		if ((a < 0 && (long)y > 0) ||
+		    ((long)y < 0 && (long)x > 0 && a > 0))
 		  a += REF_TO_INT(y);
 		PEEKVAL() = INT_TO_REF(a);
 	      }
@@ -1409,7 +1410,7 @@ loop(ref_t initial_tos)
 
 	    case 16:		/* LOAD-STK n */
 	      /* All attempts to start this with if (arg_field == 0)
-	         for speed have failed, so benchmark carefully before 
+	         for speed have failed, so benchmark carefully before
 	         trying it. */
 	      {
 		ref_t *other;
@@ -1614,8 +1615,8 @@ loop(ref_t initial_tos)
 
 	    case 22:		/* FUNCALL-TAIL */
 
-	      /* This polling should not be moved below the trap label, 
-	         since the interrupt code will fail on a fake 
+	      /* This polling should not be moved below the trap
+	         label, since the interrupt code will fail on a fake
 	         instruction failure. */
 
 	      POLL_SIGNALS();

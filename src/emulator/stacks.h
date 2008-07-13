@@ -16,9 +16,9 @@
 
 
 /**********************************************************************
- *     Copyright (c) by Barak Pearlmutter and Kevin Lang, 1987-99.    *
- *     Copyright (c) by Alex Stuebinger, 1998-99.                     *
- *     Distributed under the GNU General Public License v2 or later   *
+ *  Copyright (c) by Barak A. Pearlmutter and Kevin J. Lang, 1987-99. *
+ *  Copyright (c) by Alex Stuebinger, 1998-99.                        *
+ *  Distributed under the GNU General Public License v2 or later      *
  **********************************************************************/
 
 #ifndef _STACKS_H_INCLUDED
