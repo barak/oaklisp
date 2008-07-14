@@ -14,8 +14,7 @@
 ;;; or from the Free Software Foundation, 59 Temple Place - Suite 330,
 ;;; Boston, MA 02111-1307, USA
 
-
-;;; Copyright (C) 1988 Kevin J. Lang & Barak A. Pearlmutter, CMU Oaklisp Project.
+;;; Copyright (C) 1988-2008 Kevin J. Lang & Barak A. Pearlmutter
 
 ;;; Dump a table of all the instructions in a format suitable for
 ;;; compilation into the emulator.
@@ -30,6 +29,12 @@
 
     (let ((t0 (make simple-vector %argless-instructions))
 	  (t1 (make simple-vector %arged-instructions)))
+
+      (dotimes (i %argless-instructions)
+	(set! (nth t0 i) (#^symbol (format #f "ILLEGAL-ARGLESS-~d" i))))
+
+      (dotimes (i %arged-instructions)
+	(set! (nth t1 i) (#^symbol (format #f "ILLEGAL-ARGED-~d" i))))
 
       (dolist (x (#^list-type opcode-descriptor-hash-table))
 	(destructure* (instr opcode argfield . #t) x
