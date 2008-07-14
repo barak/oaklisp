@@ -61,7 +61,7 @@
 #endif
 #include <unistd.h>		/* for the chdir() and isatty() functions */
 
-#elif defined(linux) && defined(__arm__)
+#elif defined(__arm__) && defined(linux)
 /*** Linux on Arm target ***/
 
 #define WORDSIZE 32
@@ -71,6 +71,24 @@
 #define HAVE_GETRUSAGE
 
 #include <unistd.h>	       /* for the chdir() and isatty() functions */
+
+#elif defined(__sparc__) && defined(linux)
+/*** SPARC Linux target ***/
+
+#define WORDSIZE 32
+#define HAVE_LONG_LONG
+#define ASHR2(x) ((x)>>2)
+#define BYTE_GENDER big_endian
+#define HAVE_GETRUSAGE
+
+#elif defined(__mc68000__) && defined(linux)
+/*** Motorola 68k Linux target ***/
+
+#define WORDSIZE 32
+#define HAVE_LONG_LONG
+#define ASHR2(x) ((x)>>2)
+#define BYTE_GENDER big_endian
+#define HAVE_GETRUSAGE
 
 else
 /*** no machine specified ***/
@@ -104,7 +122,5 @@ typedef	unsigned char u_int8_t;
 typedef signed char int8_t;
 typedef	short	int16_t;
 #endif // USING_HORRIBLE_MS_WINDOWS
-
-#define	inline
 
 #endif
