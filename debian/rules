@@ -44,7 +44,7 @@ binary-indep: build install
 	dh_testroot
 	dh_installdocs
 	dh_installexamples
-	dh_installmanpages
+	dh_installman
 	dh_installinfo
 	dh_installchangelogs 
 	dh_link
