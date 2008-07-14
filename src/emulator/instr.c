@@ -37,7 +37,7 @@ print_pc(u_int16_t *e_progc)
 		   + 4 * spatic.size));
 }
 
-void 
+void
 print_instr(int op_field, int arg_field, u_int16_t *e_progc)
 {
   print_pc(e_progc);

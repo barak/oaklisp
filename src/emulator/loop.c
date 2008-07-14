@@ -1240,13 +1240,9 @@ loop(ref_t initial_tos)
 		PEEKVAL() = e_false;
 		GOTO_TOP;
 	      }
-#ifndef THREADS
-	      *LOC_TO_PTR(x) = PEEKVAL();
-	      PEEKVAL() = e_t;
-	      GOTO_TOP;
-#else
-	      if (pthread_mutex_trylock(&testandsetcar_lock) != 0) {
-		PEEKVAL() = e_nil;	/* Failed to acquire lock. */
+#ifdef THREADS
+	      if (pthread_mutex_trylock(&test_and_set_locative_lock) != 0) {
+		PEEKVAL() = e_false;	/* Failed to acquire lock. */
 		GOTO_TOP;
 	      }
 	      /* Start Critical Section. */
@@ -1258,8 +1254,12 @@ loop(ref_t initial_tos)
 		*LOC_TO_PTR(x) = PEEKVAL();
 		PEEKVAL() = e_t;
 	      }
-	      pthread_mutex_unlock(&testandsetcar_lock);
+	      pthread_mutex_unlock(&test_and_set_locative_lock);
 	      /* End Critical Section. */
+	      GOTO_TOP;
+#else
+	      *LOC_TO_PTR(x) = PEEKVAL();
+	      PEEKVAL() = e_t;
 	      GOTO_TOP;
 #endif
 
