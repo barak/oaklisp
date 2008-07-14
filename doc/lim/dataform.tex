@@ -66,7 +66,7 @@ Character is currently the only ``other immediate type.''  More may be
 added later, in particular Macintosh handles.  (At one time weak
 pointers were represented as their own immediate type, but they are
 now represented using integers for compatibility with the Scheme
-standard \cite{R3RS}.)
+standard \citep{R3RS}.)
 
 
 \section{Memory Structure}
@@ -136,7 +136,7 @@ ZetaLisp flavors--that's why variable references in flavors go through
 mapping tables, resulting in considerable overhead.  There are also
 important modularity considerations in favor of our scheme which are
 beyond the scope of this document, but are discussed in detail in
-\cite{SNYDER86}.} These semantics allow us to reference instance
+\citep{SNYDER86}.} These semantics allow us to reference instance
 variables very quickly, once the local instance variable block has
 been located.  It also allows us to use the same compiled code for a
 single method regardless of whether it is being invoked upon an
@@ -275,7 +275,7 @@ segments form a linked list, so upon stack underflow the top segment
 is removed from this list and copied back to the stack buffer.
 
 There is one more circumstance in which the stack buffer is flushed.
-The \df{call/cc} construct of Scheme \cite{R3RS} is implemented in
+The \df{call/cc} construct of Scheme \citep{R3RS} is implemented in
 terms of \emph{stack photos,} which are snapshots of the current state
 of the two stacks, and which can be restored in the future.  A
 \df{fill-continuation} instruction forces the stack buffers to be
@@ -311,7 +311,7 @@ between the old system and the new system were definitive.
 
 In our implementation of Oaklisp we provide two different escape
 facilities: \df{call/cc} and \df{catch}.  The \df{call/cc} construct
-is that described in the Scheme standard \cite{R3RS}.  The \df{catch}
+is that described in the Scheme standard \citep{R3RS}.  The \df{catch}
 facility provides with user with a second class \emph{catch tag}, which
 is valid only within the dynamic extent of the \df{catch}.
 
@@ -378,7 +378,7 @@ in memory:
 
 \section{Storage Reclamation}
 
-Our garbage collector \cite{PEARLMUTTER99} is a variant of Baker's
+Our garbage collector \citep{PEARLMUTTER99} is a variant of Baker's
 algorithm, a so-called ``stop and copy'' collector.  The spaces to be
 reclaimed are renamed \emph{old}, all accessible objects in the old
 spaces are transported to a new space, and the old spaces are
