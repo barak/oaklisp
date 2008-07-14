@@ -14,12 +14,12 @@ export CFLAGS
 export CPPFLAGS
 
 export prefix=/usr
-export DESTDIR=`pwd`/debian/tmp
+export DESTDIR=`pwd`/debian/oaklisp
 
 build: build-stamp
 build-stamp:
 	dh_testdir
-	$(MAKE) # compile the package
+	$(MAKE) prefix=$(prefix) # compile the package
 	touch build-stamp
 
 clean:
@@ -32,8 +32,10 @@ install: build
 	dh_testdir
 	dh_clean -k
 	dh_installdirs
-	$(MAKE) install # install into debian/tmp
+	$(MAKE) prefix=$(prefix) DESTDIR=$(DESTDIR) install
 	dh_install
+	mkdir -p debian/oaklisp-doc/usr/share/doc/oaklisp
+	mv debian/oaklisp/usr/share/doc/oaklisp/*.ps debian/oaklisp-doc/usr/share/doc/oaklisp/
 
 # Build architecture-independent files here.
 binary-indep: DH_OPTIONS=-i

@@ -6,7 +6,7 @@ Standards-Version: 3.8.0
 Build-depends: oaklisp, debhelper (>= 5), texlive-latex-base, texlive-latex-extra
 
 Package: oaklisp
-Architecture: armel lpia i386 armeb arm hppa m32r m68k mips mipsel powerpc s390 s390x sh3 sh3eb sh4 sh4eb sparc
+Architecture: i386
 Depends: ${shlibs:Depends}
 Description: An object-oriented dialect of Scheme
  Oaklisp is a dialect of Scheme that combines lexical scoping with

@@ -1,11 +1,16 @@
 oaklisp (1.3.3) unstable; urgency=low
 
   * tetex-extra build dependency (closes: #136821)
-  * solve bootstrapping issue (closes: #122117)   XXX FINISH ME!!! XXX
   * remove silly build dependency on etags
+  * patch from Len Sorensen for ARM architecture (closes: #306810)
+  * patch from Ben Collins for m68k and SPARC (see #87535)
+  * patch from Barry deFreese for m68k (see #65886)
+  * general moving stuff around
+  * restrict architecture to i386 (closes: #65886, #87535, #122117)
   * rev deb policy
+  * back from the dead! (closes: #328597)
 
- --
+ -- Barak A. Pearlmutter <bap@debian.org>  Mon, 14 Jul 2008 10:59:59 +0100
 
 oaklisp (1.3.2) unstable; urgency=low
 

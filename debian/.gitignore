@@ -10,3 +10,6 @@ oaklisp-doc.postinst.debhelper
 oaklisp-doc.prerm.debhelper
 *.log
 oaklisp
+oaklisp.postinst.debhelper
+oaklisp.postrm.debhelper
+oaklisp.substvars
