@@ -2,3 +2,5 @@ oakem
 oaklisp
 *.d
 TAGS
+*.o
+*~
