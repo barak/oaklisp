@@ -4,8 +4,19 @@ Fri,  7 Jan 2000 04:29:57 -0500.
 This package was debian-helper-ized by tony mancill <tmancill@debian.org> on
 Tue, 15 Feb 2000 21:03:25 -0700.
 
-Upstream sources (which include Debian packaging files) are available at
-http://www.bcl.hamilton.ie/~barak/oaklisp/
-http://oaklisp.alioth.debian.org/
+The current Debian Maintainer is Barak A. Pearlmutter <bap@debian.org>
 
-Copyright: GPLv2+ (see /usr/share/common-licenses/GPL)
+Upstream sources (which include Debian packaging files) are available at
+http://oaklisp.alioth.debian.org/
+see also http://www.bcl.hamilton.ie/~barak/oaklisp/
+
+Upstream Authors: Kevin J. Lang, Barak A. Pearlmutter
+
+Copyright 1985-2008 Barak A. Pearlmutter and Kevin J. Lang
+
+License:
+
+  The GNU General Public License as published by the Free Software
+  Foundation; either version 2 or (at your option) any later version.
+  On Debian systems, the complete text of the GNU General Public
+  License version 2 can be found in /usr/share/common-licenses/GPL-2.
