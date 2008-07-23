@@ -3,7 +3,7 @@ Section: interpreters
 Priority: optional
 Maintainer: Barak A. Pearlmutter <bap@debian.org>
 Standards-Version: 3.8.0
-Build-depends: oaklisp, debhelper (>= 5), texlive-latex-base, texlive-latex-extra
+Build-depends: oaklisp, debhelper (>= 7), texlive-latex-base, texlive-latex-extra
 
 Package: oaklisp
 Architecture: i386
