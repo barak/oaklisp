@@ -4,6 +4,7 @@ Priority: optional
 Maintainer: Barak A. Pearlmutter <bap@debian.org>
 Standards-Version: 3.8.0
 Build-depends: oaklisp, debhelper (>= 7), texlive-latex-base, texlive-latex-extra
+Homepage: http://oaklisp.alioth.debian.org/
 
 Package: oaklisp
 Architecture: i386

@@ -1,3 +1,9 @@
+oaklisp (1.3.3-3rc) unstable; urgency=low
+
+  * include home page in control file
+
+ -- Barak A. Pearlmutter <bap@debian.org>  Thu, 24 Jul 2008 12:14:06 +0200
+
 oaklisp (1.3.3-2) unstable; urgency=low
 
   * rewrite debian/copyright according to the arbitrary whims of the
