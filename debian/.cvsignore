@@ -1,10 +1,7 @@
-tmp
-postinst.debhelper
-prerm.debhelper
-postrm.debhelper
-substvars
+*.debhelper
+*.log
 files
+oaklisp
 oaklisp-doc
 oaklisp-doc.files
-oaklisp-doc.postinst.debhelper
-oaklisp-doc.prerm.debhelper
+*.substvars
