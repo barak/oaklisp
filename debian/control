@@ -1,10 +1,12 @@
 Source: oaklisp
-Section: interpreters
+Section: lisp
 Priority: extra
 Maintainer: Barak A. Pearlmutter <bap@debian.org>
-Standards-Version: 3.8.0
+Standards-Version: 3.8.1
 Build-depends: oaklisp, debhelper (>= 7), texlive-latex-base, texlive-latex-extra
 Homepage: http://oaklisp.alioth.debian.org/
+Vcs-Cvs: :pserver:anonymous@cvs.alioth.debian.org:/cvsroot/oaklisp
+Vcs-Browser: http://alioth.debian.org/plugins/scmcvs/cvsweb.php/?cvsroot=oaklisp
 
 Package: oaklisp
 Architecture: i386
@@ -17,6 +19,7 @@ Description: An object-oriented dialect of Scheme
  except floating point and foreign function calls.
 
 Package: oaklisp-doc
+Section: doc
 Architecture: all
 Suggests: oaklisp, postscript-viewer
 Description: Documentation for the Oaklisp dialect of Scheme
