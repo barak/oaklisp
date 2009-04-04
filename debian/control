@@ -5,7 +5,7 @@ Maintainer: Barak A. Pearlmutter <bap@debian.org>
 Standards-Version: 3.8.1
 Build-depends: oaklisp, debhelper (>= 7), texlive-latex-base, texlive-latex-extra
 Homepage: http://oaklisp.alioth.debian.org/
-Vcs-Cvs: :pserver:anonymous@cvs.alioth.debian.org:/cvsroot/oaklisp
+Vcs-Cvs: :pserver:anonymous@cvs.alioth.debian.org:/cvsroot/oaklisp oaklisp
 Vcs-Browser: http://alioth.debian.org/plugins/scmcvs/cvsweb.php/oaklisp/?cvsroot=oaklisp
 
 Package: oaklisp
