@@ -3,13 +3,13 @@ Section: lisp
 Priority: extra
 Maintainer: Barak A. Pearlmutter <bap@debian.org>
 Standards-Version: 3.8.1
-Build-depends: oaklisp, debhelper (>= 7), texlive-latex-base, texlive-latex-extra
+Build-depends: oaklisp, debhelper (>= 7), texlive-latex-base, texlive-latex-extra, libc6-dev-i386 [amd64]
 Homepage: http://oaklisp.alioth.debian.org/
 Vcs-Cvs: :pserver:anonymous@cvs.alioth.debian.org:/cvsroot/oaklisp oaklisp
 Vcs-Browser: http://alioth.debian.org/scm/viewvc.php/?root=oaklisp
 
 Package: oaklisp
-Architecture: i386
+Architecture: i386 amd64
 Depends: ${shlibs:Depends}
 Description: An object-oriented dialect of Scheme
  Oaklisp is a dialect of Scheme that combines lexical scoping with

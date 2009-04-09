@@ -30,8 +30,8 @@ oobj=$(osrc:.c=.o)
 
 all: $(progs)
 
-CFLAGS=-O2 -g -Wall
-LOADLIBES=-lpthread
+CFLAGS += -O2 -g -Wall
+LOADLIBES = -lpthread
 
 OAK=oaklisp
 

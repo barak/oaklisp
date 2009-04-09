@@ -3,15 +3,21 @@
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
-CFLAGS += "-g -Wall"
+CFLAGS += -g -Wall
 CPPFLAGS += -DFAST
 
 ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
 CFLAGS += -O3
 endif
 
+ifeq ($(shell dpkg-architecture -qDEB_BUILD_ARCH_CPU),amd64)
+CFLAGS += -m32
+LDFLAGS += -m32
+endif
+
 export CFLAGS
 export CPPFLAGS
+export LDFLAGS
 
 export prefix=/usr
 export DESTDIR=`pwd`/debian/oaklisp
