@@ -1,7 +1,0 @@
-*.debhelper
-*.log
-files
-oaklisp
-oaklisp-doc
-oaklisp-doc.files
-*.substvars
