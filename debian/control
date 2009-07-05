@@ -2,7 +2,7 @@ Source: oaklisp
 Section: lisp
 Priority: extra
 Maintainer: Barak A. Pearlmutter <bap@debian.org>
-Standards-Version: 3.8.1
+Standards-Version: 3.8.4
 Build-depends: oaklisp, debhelper (>= 7), texlive-latex-base, texlive-latex-extra, libc6-dev-i386 [amd64]
 Homepage: http://oaklisp.alioth.debian.org/
 Vcs-Cvs: :pserver:anonymous@cvs.alioth.debian.org:/cvsroot/oaklisp oaklisp
