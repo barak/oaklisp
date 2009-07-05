@@ -82,16 +82,16 @@ lambdas inline.}
 (\emph{y}) (throw \emph{x} \emph{y})))) \dt \emph{body}))}}
 
 \mc{define}{symbol value}
-\doc{\macdef{}{(set! \emph{symbol value})}}
+\doc{\macdef{}{(set!\ \emph{symbol value})}}
 
 \mc{define}{\lpar\texttt{fluid} symbol\rpar value}
-\doc{\macdef{}{(set! (fluid \emph{symbol}) \emph{value})}}
+\doc{\macdef{}{(set!\ (fluid \emph{symbol}) \emph{value})}}
 
 \mc{define}{\lpar variable \dt arglist\rpar \dt body}
-\doc{\macdef{}{(set! \emph{variable} (lambda \emph{arglist} \dt \emph{body}))}}
+\doc{\macdef{}{(set!\ \emph{variable} (lambda \emph{arglist} \dt \emph{body}))}}
 
 \mc{set\protect\bang}{symbol value}
-\doc{\macdef{}{(set! (contents (make-locative \emph{symbol})) 
+\doc{\macdef{}{(set!\ (contents (make-locative \emph{symbol})) 
 \emph{value})}}
 
 \mc{set\protect\bang}{\lpar op $a_1 \ldots a_n$\rpar value}
@@ -121,12 +121,12 @@ lambdas inline.}
 \mc{catch-errors}{}
 \doc{Implemented with \df{bind-error-handler} and \df{native-catch}.}
 
-\mc{bind}{\lpar\lpar\lpar\texttt{fluid} symbol\rpar value\rpar \ldots
+\mc{bind}{\lpar\lpar\lpar\texttt{fluid} symbol\rpar\ value\rpar \ldots
 \rpar \dt body}
 \doc{Implemented using \df{let} and \df{set\protect\bang}.  Hacks to
 \df{native-catch} and \df{call/cc} are also necessary.  Essentially,
 the bindings are pushed onto \df{fluid-bindings-alist} for the dynamic
-scope of the \df{bind}.  For details, see section \ref{fluid-impl}.}
+scope of the \df{bind}.  For details, see Section~\ref{fluid-impl}.}
 
 \mc{wind-protect}{before form after}
 \doc{\macdef{} {(dynamic-wind (lambda () \emph{before}) (lambda ()
@@ -267,10 +267,10 @@ one for each argument.}
 This is open coded in nearly the same way as \df{list}.}
 
 \op{not}{x}
-\doc{\macdef{}{(eq? \emph{x} \#f)}}
+\doc{\macdef{}{(eq?\ \emph{x} \#f)}}
 
 \op{null?}{x}
-\doc{\macdef{}{(eq? \emph{x} '())}}
+\doc{\macdef{}{(eq?\ \emph{x} '())}}
 
 
 \op{second-arg}{x y \dt rest}

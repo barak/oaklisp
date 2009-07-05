@@ -19,7 +19,7 @@
 
 
 Oaklisp is an object-oriented language which is organized around the
-concept of {\it type}.  The type of an object determines its behavior
+concept of \emph{type}.  The type of an object determines its behavior
 when operations are performed on it.  To permit the modular
 specification of types with complex behaviors, a type is allowed to
 have multiple supertypes.  There is no distinction in Oaklisp between
@@ -48,22 +48,22 @@ consistent with Lisp syntax and semantics.
 \section{Fundamental Types}
 
 There are two important relations in the Oaklisp type system: {\it
-is-a} and {\it subtype}.  An object is related to its type by the
-relation {\it is-a}, and a type is related to its supertypes by the
-relation {\it subtype}.  Each of these relations defines a tree
+is-a} and \emph{subtype}.  An object is related to its type by the
+relation \emph{is-a}, and a type is related to its supertypes by the
+relation \emph{subtype}.  Each of these relations defines a tree
 structure which includes all of the objects in the system.
 
 The most fundamental types in the system are \df{type} and
 \df{object}.  They are distinguished by their position at the top of
-the {\it is-a} and {\it subtype} hierarchies, and by their circular
+the \emph{is-a} and \emph{subtype} hierarchies, and by their circular
 definitions.
 
 \ty{type}
-\doc{This type is the top of the {\it is-a} hierarchy.  It is the
+\doc{This type is the top of the \emph{is-a} hierarchy.  It is the
 type of types, so new types are created by instantiating it.}
 
 \ty{object}
-\doc{This type is the top of the {\it subtype}\  hierarchy, and has no
+\doc{This type is the top of the \emph{subtype}\  hierarchy, and has no
 supertype.  Every other type is a subtype of \df{object}, so default methods
 for operations such as \df{print} are defined for \df{object}.}
 
@@ -77,8 +77,8 @@ determine the semantics of the language, they cannot be redefined or shadowed.
 
 \pr{eq?}{object object}
 \doc{Determines object identity.  Two objects may look and act the
-same, but still fail the \df{eq?} test.  In particular, numbers are
-not guaranteed to be unique.  Symbols {\it are} interned, though.}
+same, but still fail the \df{eq?}\ test.  In particular, numbers are
+not guaranteed to be unique.  Symbols \emph{are} interned, though.}
 
 
 
@@ -132,7 +132,7 @@ been retained to make the environment more familiar.
 
 \pr{is-a?}{object type}
 \doc{Determines whether \df{object} is an instance of \emph{type} or
-one of its subtypes. \texttt{(is-a? \emph{object} object)} is always
+one of its subtypes. \texttt{(is-a?\ \emph{object} object)} is always
 true.}
 
 \pr{subtype?}{type1 type2}
@@ -165,10 +165,10 @@ as denoting falsehood.}
 
 \gv{nil}
 \doc{The value of this is the empty list, written \texttt{()}.
-Notice that \df{nil} itself is just a variable, so \texttt{(eq? nil
+Notice that \df{nil} itself is just a variable, so \texttt{(eq?\ nil
 'nil)} is false.}
 
-\discuss{{\bf Note:} currently \texttt{()} is the same as \texttt{\#f}, the
+\discuss{\textbf{Note:} currently \texttt{()} is the same as \texttt{\#f}, the
 object used to represent falsehood.  In the future it is possible that
 these two notions, emptiness and falsehood, will be disconfabulated.
 Programs should be written in such a way that if \df{\#f} and \df{()}

@@ -93,7 +93,7 @@ linear, we maintain \df{\%wind-count} $=$ \texttt{(length \%windings)}.}
 
 \section{Catch} \label{sec:oakcatch}
 
-The format of catch tags is describe in section \ref{sec:ctagform}.
+The format of catch tags is describe in Section~\ref{sec:ctagform}.
 The simplest implementation of \df{native-catch} would have the
 \df{native-catch} macro expand into something that executed the
 appropriate unwind protect actions and restored the fluid binding list
@@ -113,7 +113,7 @@ the stacks are actually chopped off.
 
 The \df{call/cc} construct is just like \df{native-catch}, except that
 the saved stack state isn't just some offsets but is an entire stack
-photo (see section \ref{sec:stackimpl}), and that not only unwinding
+photo (see Section~\ref{sec:stackimpl}), and that not only unwinding
 but also rewinding actions might need to be done.  Because the winding
 actions might \df{throw}, it is necessary for the unwind actions to be
 executed in the stack context where the continuation is invoked, and

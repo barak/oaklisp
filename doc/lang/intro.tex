@@ -82,7 +82,7 @@ all of the methods of its supertypes, but methods for the new type
 cannot refer to instance variables from the supertypes (even though
 those variables do exist in the new composite object.) This does not
 cause problems, because when operations for the supertypes are passed
-to the object, the methods which handle them {\it can} reference the
+to the object, the methods which handle them \emph{can} reference the
 appropriate instance variables.  Since the names of instance variables
 are never inherited, conflicts cannot occur between names in the
 various supertypes.
@@ -93,7 +93,7 @@ not only benefits from the conceptual correctness which results from
 being able to close methods at compile time, but takes full advantage
 of tail-recursion and the lack of search associated with variable
 references.  Once again, we decided to carry a principle to its
-extreme, and say that {\it all} variable references must be resolved
+extreme, and say that \emph{all} variable references must be resolved
 at compile time, which results in both a simpler compiler and faster
 execution of code.  Although this decision sounds intolerable for
 users, it actually represents a shift of functionality from the

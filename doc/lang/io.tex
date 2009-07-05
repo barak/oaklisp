@@ -83,7 +83,7 @@ output with position set to the end of the file.  The \df{ugly} option
 can be added to either \df{out} or \df{append} if the user doesn't
 mind poor formating, as in files meant to be read only by other
 programs.  The opened stream will be closed when the
-\df{with-open-file} is exited, even upon abnormal exit.  {\bf Note:}
+\df{with-open-file} is exited, even upon abnormal exit.  \textbf{Note:}
 the stream is not reopened upon abnormal entry, but this may be
 changed in future versions of the system.}
 
@@ -188,7 +188,7 @@ decimal, binary and complex numbers, respectively.  The syntax
 \texttt{\#\emph{n}r\emph{xxx}} is used to read \emph{xxx} in base \emph{n}.
 \texttt{\#(\ldots)} is used for reading vectors.  The \texttt{\#|} macro
 comments out text until a matching \texttt{|\#}, with proper nesting.  As
-described in section \ref{sec:truths}, \df{\#t} and \df{\#f} are read
+described in Section~\ref{sec:truths}, \df{\#t} and \df{\#f} are read
 as the canonical true and false values, respectively.
 
 The \texttt{\#[symbol "\ldots"]} syntax can be used to read arbitrary
