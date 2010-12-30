@@ -290,7 +290,7 @@
 
 
 
-; This procedure sorts the productions according to the 
+; This procedure sorts the productions according to the
 ; length of their left-hand-sides, and returns a list
 ; of expression matching functions, each of which only
 ; handles a given LHS length.
@@ -301,18 +301,18 @@
   (let ((hacked-crunch-list
 	 (catagorize-crunches
 	  (expand-foralls raw-crunch-list listproc))))
-    (cons 'list 
+    (cons 'list
 	  (map hash-table-hairy-code
 	       hacked-crunch-list
 	       (iota (length hacked-crunch-list))))))
 
 
 
-; The following procedure generates the code for a single 
+; The following procedure generates the code for a single
 ; pattern matching function which handles all of the productions
 ; in crunch-list (whose LHS's must be of equal length).
 
-; The generated function uses the first opcode in its 
+; The generated function uses the first opcode in its
 ; first argument as a key for retrieving from a hash table
 ; a sub-function that only tries to apply the productions
 ; that are relevant for that opcode.
@@ -355,7 +355,7 @@
 
 ; This is Barak's procedure that combines
 ; a bunch of crunchers into a big labels expression
-; that sequentially runs through all of the tests in 
+; that sequentially runs through all of the tests in
 ; crunch-list with no function calls.
 
 

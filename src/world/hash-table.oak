@@ -210,7 +210,7 @@
   (let ((l (length x)))
     ;; First clause is not portable--relies on uniqueness of the empty vector.
     (cond ((zero? l) (object-hash x))
-	  (else (bit-xor 
+	  (else (bit-xor
 		 (bit-xor (rot-left l 23)
 			  (rot-left (tree-hash-aux (nth x 0) (+ d 1)) 17))
 		 (bit-xor (rot-left (tree-hash-aux (nth x (modulo 7 l)) (+ d 1)) 11)

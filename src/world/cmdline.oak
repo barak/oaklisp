@@ -37,6 +37,6 @@
 (define argline '())
 
 (define (fetch-argline)
-  (set! argline (get-argline))) 
+  (set! argline (get-argline)))
 
 (add-warm-boot-action fetch-argline)

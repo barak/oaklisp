@@ -185,13 +185,13 @@
   '(
     crunch
     mac-comp-stuff
-    mac-compiler-nodes 
-    mac-compiler1 
-    mac-compiler2 
-    mac-compiler3 
-    mac-code 
+    mac-compiler-nodes
+    mac-compiler1
+    mac-compiler2
+    mac-compiler3
+    mac-code
     assembler
-    peephole 
+    peephole
     file-compiler
     compiler-exports
     ))

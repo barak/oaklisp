@@ -106,7 +106,7 @@
    locale
    (with-open-file (s (append file ".oa") in)
       (make-oa-list (read-oaf-list s)))))
-		   
+
 
 #||
 (define (load-oa-file locale file)
@@ -157,7 +157,7 @@
     'loaded))
 
 
-       
+
 
 (define (load-omac-file locale file)
   (dofile (append file ".omac")

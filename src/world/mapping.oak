@@ -223,7 +223,7 @@
 
 	 ((aux1 op a list-of-lists)
 	  (cond ((null? (car list-of-lists)) a)
-		(else 
+		(else
 		 (aux1 op
 		       (cons (apply op (map-and-reverse car list-of-lists))
 			     a)
@@ -332,7 +332,7 @@
 			       ob (cdr kons)))
 	  (step (cdr kons))))
     (cdr outlist)))
- 
+
 
 
 #|
@@ -430,7 +430,7 @@
 
 #|
 
-; replaced by new definitions that 
+; replaced by new definitions that
 ; take a variable number of arguments
 
 (add-method (append (pair) a b)
@@ -547,7 +547,7 @@
   (add-method (append! (pair) . rest)
     (cond ((= 2 (rest-length rest)) (append!-aux2 . rest))
 	  ((= 3 (rest-length rest)) (append!-aux3 . rest))
-	  ((= 1 (rest-length rest)) (append!-aux1 . rest))	    
+	  ((= 1 (rest-length rest)) (append!-aux1 . rest))
 	  (else
 	   (backwards-listify-args append!-aux-gen . rest))))
 
@@ -564,8 +564,8 @@
 
 
 
-; Unless there are zero arguments, calls to append that invoke 
-; the method for object will call the error handling system, which 
+; Unless there are zero arguments, calls to append that invoke
+; the method for object will call the error handling system, which
 ; will force delayed values if necessary, or else report an error.
 
 
@@ -671,17 +671,17 @@
 (define-instance local-method settable-operation)
 
 (let ((local-method0 (make settable-operation)))
-  
+
   (add-method (local-method (operation) op typ)
     (local-method0 typ op))
-  
+
   (add-method (local-method0 (type operation-method-alist) typ op)
     (let ((pair (%assq op operation-method-alist)))
       (if meth (cdr meth) nil)))
-  
+
   (add-method ((setter local-method) (operation) op typ new-method)
     (set! (local-method0 typ op) new-method))
-  
+
   (add-method ((setter local-method0) (type operation-method-alist)
 				      typ op new-method)
     (cond ((null? new-method)

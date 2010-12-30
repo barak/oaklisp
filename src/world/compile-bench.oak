@@ -71,7 +71,7 @@
 								      (y (make-locative x)))
 								 (format #t "Warning: installing ~S in ~A.~%" what locale)
 								 (set! (variable? locale what) y)
-								 y))) 
+								 y)))
 						      (aux (cdr resolution-list) code-number-to-locs-alist))
 						     ((or (eq? which 'code)(eq? which 1))
 						      (aux (cdr resolution-list)

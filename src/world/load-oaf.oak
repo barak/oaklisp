@@ -134,7 +134,7 @@
 (define (read-oaf-list stream)
   (read-list-using-functions
    stream
-   (list read  
+   (list read
 	 (lambda (stream)		;list of body clauses
 	   (read-list-using-functions
 	    stream

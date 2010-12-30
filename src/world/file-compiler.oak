@@ -36,7 +36,7 @@
 (set! compiler-to-extension ".oa")
 
 ;;; valid values: 0, 1 or 2.
-(define #*compiler-noisiness 1)	
+(define #*compiler-noisiness 1)
 
 (set! #*compiling-a-file? #f)
 

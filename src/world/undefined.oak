@@ -50,7 +50,7 @@
 (define (make-undefined-variable-value sym)
   (make undefined (append "variable " (#^string sym))))
 
-;;; 
+;;;
 
 (define (setup-undefined-ivar)
   (set! ((%register 'uninitialized)) ivar-undefined-value)

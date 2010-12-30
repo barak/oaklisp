@@ -331,7 +331,7 @@ loop(ref_t initial_tos)
 
   LOCALIZE_ALL();
 
-  /* This fixes a bug in which the initial CHECK-NARGS 
+  /* This fixes a bug in which the initial CHECK-NARGS
      in the boot code tries to pop the operation and fails. */
 
   PUSHVAL_IMM(INT_TO_REF(4321));
@@ -2030,7 +2030,7 @@ loop(ref_t initial_tos)
 	   op_field, arg_field);
 #endif
 
-  /* Back off of the current intruction so it will get executed 
+  /* Back off of the current intruction so it will get executed
      when we get back from the trap code. */
   local_epc--;
 

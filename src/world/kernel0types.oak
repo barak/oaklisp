@@ -18,7 +18,7 @@
 ;;; Copyright (C) 1986 Barak A. Pearlmutter & Kevin J. Lang
 
 ;;; This program defines some types in a crude way so that
-;;; we can send messages to everything.  
+;;; we can send messages to everything.
 ;;; Most of these these types must be adjusted later in the boot
 ;;; process so that their inheritance relationships will be correct.
 

@@ -162,7 +162,7 @@
  )))
 
 (define-syntax (add-eq-test unit expect form . message)
-  `(add-test ,unit ,expect ,form eq? . ,message)) 
+  `(add-test ,unit ,expect ,form eq? . ,message))
 
 (define-syntax (add-equal-test unit expect form . message)
   `(add-test ,unit ,expect ,form equal? . ,message))
@@ -196,8 +196,8 @@
 ;; If error or exception, break into debugger if BREAK-ON-ERROR-P, else continue
 (add-method (run-test (<unit-test> expected thunk compare? message)
                       self verbose-p break-on-error-p)
-   (let* ((caught-exception #f) 
-           (actual 
+   (let* ((caught-exception #f)
+           (actual
             (bind-error-handler
              (general-error ;; catch every type of error
               (lambda (err-obj)
@@ -227,7 +227,7 @@
                         self unit)
    (let ((unit-tests (tests-for self unit)))
      (if unit-tests
-         (for-each 
+         (for-each
           (lambda (test) (run-test test verbose-p break-on-error-p))
           (reverse unit-tests))
          ((if break-on-error-p error warning)
@@ -239,7 +239,7 @@
                    (if tests
                        (block
                         (format #t "~&===>Starting Tests for ~a" unit)
-                        (for-each 
+                        (for-each
                          (lambda (test) (run-test test verbose-p break-on-error-p))
                          (reverse tests))
                         (format #t "~&===> Completed Tests for ~a~&" unit)
@@ -258,7 +258,7 @@
   (unless (subtype? <exception-test> (get-type self))
     (error "EXCEPTION TEST INVOKED ON NON-EXECEPTION: ~a" self))
   (let* ((caught-exception #f)
-          (actual 
+          (actual
            (bind-error-handler
             (general-error ;; catch every type of error
              (lambda (err-obj)

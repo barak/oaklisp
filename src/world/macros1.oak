@@ -45,7 +45,7 @@
 
 ; When compiling a file (using compile-file or load-oak-file),
 ; macro expansion occurs in a sub-locale that is augmented with
-; the local syntax of that file, and so ^Vcurrent-locale is temporarily 
+; the local syntax of that file, and so ^Vcurrent-locale is temporarily
 ; rebound to the sub-locale.  It is bound to the actual current locale
 ; during the load phase.
 ;
@@ -134,7 +134,7 @@
 
 ;;; DOTIMES, just like in Common Lisp
 
-(define-syntax (dotimes (var limit . exit-body) . body) 
+(define-syntax (dotimes (var limit . exit-body) . body)
   (let ((exit-form (and exit-body (destructure* (a) exit-body a)))
 	(v-limit (genvar))
 	(v-label (genvar)))
@@ -160,7 +160,7 @@
        (cond (,test ,@exit-body)
 	     (else ,@body (,aux ,@(map caddr clauses)))))))
 
-(define-syntax (when test . body) 
+(define-syntax (when test . body)
   `(if ,test
        (block ,@body)
        when-undefined-value))
@@ -198,7 +198,7 @@
 	    (let ((tv (genvar)) (lab (genvar)))
 	      `(iterate ,lab ((,v ,expr))
 		 (let ((,tv (get-type ,v)))
-		   (cond 
+		   (cond
 		    ,@(map (lambda (clause)
 			     (destructure* (types . body) clause
 			       `((or ,@(map (lambda (ty)
@@ -216,7 +216,7 @@
 			  (destructure* ('otherwise . body) otherwise-clause
 			    `((else ,@body)))
 			  '())))))))
- 
+
     (labels (((aux2 v expr)
 	      (if (null? clauses)
 		  (aux clauses #f v expr)

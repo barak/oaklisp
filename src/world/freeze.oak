@@ -19,10 +19,10 @@
 
 ;; The locale structure looks like this:
 ;;
-;;                     SYSTEM   
-;;                     /    \   
+;;                     SYSTEM
+;;                     /    \
 ;;               COMPILER  SYSTEM-INTERNALS
-;;               /     \    
+;;               /     \
 ;;         SCRATCH   COMPILER-INTERNALS
 ;;
 

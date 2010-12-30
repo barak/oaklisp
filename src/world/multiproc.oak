@@ -75,7 +75,7 @@
   (when trace-processes
      (format #t "init: oak process descriptor~%"))
   (set! pid 0)
-  (set! process-fluid-binding-list 
+  (set! process-fluid-binding-list
 	(map (lambda (z) (cons (car z) (cdr z)))
 	     fluid-binding-list))
   self)
@@ -167,7 +167,7 @@
   (%store-process (make process))
   (add-method (initialize (process pid process-fluid-binding-list) self)
     (set! pid (new-pid))
-    (set! process-fluid-binding-list 
+    (set! process-fluid-binding-list
 	  (copy-fluid-bindings (current-process)))
     self)
   (spawn-heavyweight-threads))

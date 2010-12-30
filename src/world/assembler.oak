@@ -23,7 +23,7 @@
 ;;; where byte-code-list is a list of bytecodes.
 
 ;;; Output format: a list of code segments, where each code segment is
-;;; a list of two things: a resolution list and a list of numbers.  The 
+;;; a list of two things: a resolution list and a list of numbers.  The
 
 ;;; Some bytecodes refer
 ;;; to constants, such as symbols and lists.  Such references are
@@ -526,7 +526,7 @@
 ;;; Bitwise operations are translated into LOG-OPs with the
 ;;; appropriate bitfields.  Fill in the following truth table, and
 ;;; then construct a bitfield with the bits you get, as below.
-;;; 
+;;;
 ;;;              X
 ;;;            0   1
 ;;;           -------

@@ -57,7 +57,7 @@
 		  (if (pair? ,v) ,inner ,(noper v pattern)))
 
 	       `(let ((,v ,expr)) ,inner))))))
-			
+
 
 ;;; This is for destructuring lists.  As in
 ;;;   (destructure (a (b c) (d . e) f) my-list

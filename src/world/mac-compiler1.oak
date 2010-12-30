@@ -71,7 +71,7 @@
 
 
 ;this handy variant fills in the enclosing-contour slots
-;of code to be inserted in the tree. 
+;of code to be inserted in the tree.
 (define (addedcode->ast form model-node)
   (let ((new-ast (code->ast form)))
     (stash-enclosing-contour new-ast (node-enclosing-contour model-node))

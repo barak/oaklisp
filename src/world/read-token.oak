@@ -133,7 +133,7 @@
 			   ((or (eq? c-syntax 'whitespace)
 				(eq? (car c-syntax) 'terminating-macro))
 			    (intern-it c r-charlist escaped?))
-			   (else 
+			   (else
 			    (signal bad-syntax-table-entry c c-syntax))))) )
 
 	     ( (read-escaped c r-charlist)

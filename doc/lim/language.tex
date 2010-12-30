@@ -91,7 +91,7 @@ lambdas inline.}
 \doc{\macdef{}{(set!\ \emph{variable} (lambda \emph{arglist} \dt \emph{body}))}}
 
 \mc{set\protect\bang}{symbol value}
-\doc{\macdef{}{(set!\ (contents (make-locative \emph{symbol})) 
+\doc{\macdef{}{(set!\ (contents (make-locative \emph{symbol}))
 \emph{value})}}
 
 \mc{set\protect\bang}{\lpar op $a_1 \ldots a_n$\rpar value}
@@ -221,7 +221,7 @@ discussion below which types the bytecode expects.
 generated \emph{tag}.}
 
 \lo{contents}{locative}
-\doc{Dereferences \emph{locative}. \texttt{((setter contents) 
+\doc{Dereferences \emph{locative}. \texttt{((setter contents)
 \emph{locative} \emph{value})} puts \emph{value} in the cell pointed to by
 \emph{locative}.}
 
@@ -413,7 +413,7 @@ length.}
 
 \op{\%varlen-allocate}{type size}
 \doc{Allocates a block of storage \emph{size} long, filling in the
-type field with \emph{type} and the size field with \emph{size}.  
+type field with \emph{type} and the size field with \emph{size}.
 \emph{Type} should be a variable length type.  Using this instead of
 \df{\%allocate} where appropriate avoids a window of gc
 vulnerability.}
@@ -483,7 +483,7 @@ contents of \emph{arglist}.  For instance, \evto{(apply + 1 2 '(3
 
 \op{make}{type \dt args}
  \doc{Returns a new instance of \emph{type} that has been initialized
-by sending it an \df{initialize} message with the extra arguments 
+by sending it an \df{initialize} message with the extra arguments
 \emph{args} passed along.}
 
 \op{\%install-method-with-env}{type operation code-body environment}
@@ -496,7 +496,7 @@ care of instance variable mapping conflicts.}
 
 \op{initialize}{object}
 \doc{Returns \emph{object}.  This no-op is what is shadowed when you
-define \df{initialize} methods for new types.  \texttt{(initialize 
+define \df{initialize} methods for new types.  \texttt{(initialize
 \emph{type} \emph{supertype-list} \emph{ivar-list})} does the work involved in
 making a new type.  The list of supertypes is used to make a list of
 all ancestors that is searched at run time to find methods for
@@ -510,7 +510,7 @@ at the end if it is present.  Any method you define to handle
 an \df{initialize} message should return \df{self}.}
 
 \op{dynamic-wind}{before-op main-op after-op}
-\doc{Calls the operation \emph{before-op}, calls the operation 
+\doc{Calls the operation \emph{before-op}, calls the operation
 \emph{main-op}, calls the operation \emph{after-op}, and returns the value
 returned by \emph{main-op}.  If \emph{main-op} is exited abnormally,
 \emph{after-op} is called automatically on the way out.  Similarly, if

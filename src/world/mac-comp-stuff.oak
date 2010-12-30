@@ -36,7 +36,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-    
+
 (define (subset? x y)
   (null? (setdifference x y)))
 
@@ -73,7 +73,7 @@
 
 
 (define-constant _%install-method-with-env
-  (make-open-coded-operation 
+  (make-open-coded-operation
    (lambda (n)
      (if (not (= n 4))
 	 (error "_%install-method-with-env takes 4 args, not ~A." n)

@@ -22,7 +22,7 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;                   handy list utilities                              ;;; 
+;;;                   handy list utilities                              ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
@@ -68,7 +68,7 @@
 
 
 
-;   listify-args now gets the arguments 
+;   listify-args now gets the arguments
 ;   off the stack more cheaply than this older code
 ; 	 ((list-aux-gen listsofar guy . rest)
 ; 	  (if (zero? (rest-length rest))

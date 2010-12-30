@@ -367,7 +367,7 @@
 (define-constant ash-right
   (add-method ((make-fancy-open-coded-operation
 		(list foldable-mixin
-		      backwards-args-mixin)		      
+		      backwards-args-mixin)
 		'((negate)(swap 1)(ash)) 2 1)
 	       (fixnum) x y)
     (ash-left x (- y))))
@@ -476,12 +476,12 @@
 
 
 ; recoded below to allow multiple arguments
-; 
+;
 ; (define-constant-instance max
 ;   (mix-types oc-mixer (list foldable-mixin operation)))
 ; (define-constant-instance min
 ;   (mix-types oc-mixer (list foldable-mixin operation)))
-; 
+;
 ; (add-method (max (object) x y)
 ;   (if (> x y) x y))
 ; (add-method (min (object) x y)
@@ -499,7 +499,7 @@
     `(let* ((,var2 ,clause2)
 	    (,var1 ,clause1))
        (if (> ,var2 ,var1) ,var2 ,var1))))
-	   
+
 
 (local-syntax (max-macro . clauses)
   (let ((n-clauses (length clauses)))
@@ -517,8 +517,8 @@
     `(let* ((,var2 ,clause2)
 	    (,var1 ,clause1))
        (if (< ,var2 ,var1) ,var2 ,var1))))
-	   
-  
+
+
 (local-syntax (min-macro . clauses)
   (let ((n-clauses (length clauses)))
     (cond ((zero? n-clauses)

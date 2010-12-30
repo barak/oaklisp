@@ -64,7 +64,7 @@ that \df{call-with-current-continuation} is excessively verbose.}
 \sform{catch}{variable \dt body}
 \doc{\emph{variable} is lexically bound to an escape operation that
 may be called from anywhere within \emph{body}'s dynamic extent. If
-\emph{variable} is not called, \df{catch} yields the value of 
+\emph{variable} is not called, \df{catch} yields the value of
 \emph{body}.  This is implemented in such a way that \emph{body} is called
 tail recursively.}
 
@@ -95,7 +95,7 @@ are evaluated depending on whether the dynamic context is entered or
 exited normally or abnormally.}
 
 \op{dynamic-wind}{before-op main-op after-op}
-\doc{Calls the operation \emph{before-op}, calls the operation 
+\doc{Calls the operation \emph{before-op}, calls the operation
 \emph{main-op}, calls the operation \emph{after-op}, and returns the value
 returned by \emph{main-op}.  If \emph{main-op} is exited abnormally,
 \emph{after-op} is called automatically on the way out.  Similarly, if
@@ -107,7 +107,7 @@ automatically on the way in.}
 % guaranteed to execute even if a throw occurs out of \emph{form}.  This
 % construct is implemented tail-recursively, and there is no restriction on
 % throws from the \emph{unwind-forms}.}
-% 
+%
 % \sform{unwind-protect0}{form \dt unwind-forms}
 % \doc{Acts like \df{unwind-protect}, except that it yields
 % the value of \emph{form}, and does not permit a tail-recursive
@@ -133,18 +133,18 @@ handlers to be invoked when various types of errors occur.
 Errors are signalled using the following operations.
 
 \op{warning}{format-string \dt format-args}
-\doc{Prints out the message specified by \emph{format-string} and 
+\doc{Prints out the message specified by \emph{format-string} and
 \emph{format-args} and continues execution.}
 
 \op{error}{format-string \dt format-args}
 \doc{This signals \df{generic-fatal-error}, which normally has the
-effect of printing out the error message specified by 
+effect of printing out the error message specified by
 \emph{format-string} and \emph{format-args} and dumping the user into a
 subordinate read-eval-print loop.}
 
 \op{cerror}{continue-string format-string \dt format-args}
 \doc{This signals \df{generic-proceedable-error}, which normally has
-the effect of printing the error message specified by 
+the effect of printing the error message specified by
 \emph{format-string} and \emph{format-args} and dumping the user into a
 subordinate read-eval-print loop in which there is a restart handler
 that continues the computation by returning a user specified value
@@ -224,7 +224,7 @@ There are a number of operations that can be invoked on error objects
 in error handlers.
 
 \op{report}{error stream}
-\doc{Instructs \emph{error} to print a descriptive message to 
+\doc{Instructs \emph{error} to print a descriptive message to
 \emph{stream}.}
 
 \op{invoke-debugger}{error}

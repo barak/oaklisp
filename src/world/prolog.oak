@@ -38,7 +38,7 @@
 ;;; like a function call; calls to normal Oaklisp predicates, notated
 ;;; by a comma followed by the call; and Prolog style cuts, notated by
 ;;; an !.  Calls to normal oaklisp predicates affect the control flow
-;;; in the same way as calls to prolog relations.  
+;;; in the same way as calls to prolog relations.
 
 
 ;;; Within calls to other relations, logic variables are preceded by
@@ -51,24 +51,24 @@
 ;;; may be accessed normally.
 ;;; Within any Oaklisp code, bound logic variables are transparently
 ;;; and silently replaced by their values when appropriate, so no
-;;; machinations should be necessary.  
+;;; machinations should be necessary.
 ;;; [Actually, your program will run faster if bound logic variables
-;;; are explicitly derefenced before being passed to oaklisp code. 
+;;; are explicitly derefenced before being passed to oaklisp code.
 ;;; You can do this using using follow-chain if you know that
 ;;; following the chain of variables will lead to an atomic value such as
 ;;; a number, or deep-copy if the variable is bound to a more complicated
 ;;; data structure containing cons cells as well as logic variables.]
 
 
-;;; As a special dispensation, Oaklisp set! forms are allowed to appear in 
-;;; the right hand side to provide a faster version of part of the 
-;;; functionality of the prolog relation "is".  A set! clause is 
-;;; performed for effect only and control is then passed to the clause to the 
+;;; As a special dispensation, Oaklisp set! forms are allowed to appear in
+;;; the right hand side to provide a faster version of part of the
+;;; functionality of the prolog relation "is".  A set! clause is
+;;; performed for effect only and control is then passed to the clause to the
 ;;; right regardless of the value to which the variable has been bound.
-;;; Set! should only be used to calculate initial values for temporary RHS 
+;;; Set! should only be used to calculate initial values for temporary RHS
 ;;; variables that will be then used in clauses that are further to the right.
 ;;; It cannot be used to pass values back to the caller of the relation
-;;; through LHS variables; for that purpose, one must use the "is" relation 
+;;; through LHS variables; for that purpose, one must use the "is" relation
 ;;; to unify the LHS variable with the new value.
 
 
@@ -218,7 +218,7 @@
 
 (define (deep-copy x)
   (let ((x (follow-chain x)))
-    (cond ((eq? x _) _)           
+    (cond ((eq? x _) _)
 	  ((logic-variable? x) x) ; used to be (make regular-logic-variable)
 	  ((pair? x)
 	   (let ((a (deep-copy (car x)))
@@ -240,8 +240,8 @@
 
 
 ; Use this macro if you want prolog to just run through the various
-; solutions without doing anything with them.  This is useful for 
-; benchmarking, or when oaklisp side effects are used inside the 
+; solutions without doing anything with them.  This is useful for
+; benchmarking, or when oaklisp side effects are used inside the
 ; prolog program to record the answers.
 
 
@@ -460,7 +460,7 @@
   (iterate aux ()
     (format #t "~A? " prompt)
     (flush standard-output)
-    (flush standard-input)  
+    (flush standard-input)
     (let ((c (read-char standard-input)))
       (cond ((eq? c #\newline) #t)
 	    ((eq? c #\y) (read-char standard-input) #t)
@@ -580,8 +580,8 @@
 
 
 
-(define (is k x y)  
-  (unify x y k))    
+(define (is k x y)
+  (unify x y k))
 
 
 
@@ -609,7 +609,7 @@
 (define (analyse-lhs-variables input-list)
   (let* ((vars-to-copy '())
 	 (seen-it '())
-	 (hacked-list 
+	 (hacked-list
 	  (map (lambda (expr expr-no)
 		 (if (comma-expr? expr)
 		     (let ((the-variable (cadr expr)))
@@ -621,7 +621,7 @@
 						    vars-to-copy))
 			    (list 'unquote 'first-reference the-variable)
 			    )))
-		     (block 
+		     (block
 		      (set seen-it (union seen-it (all-atoms-in expr)))
 		      expr)))
 	       input-list
@@ -646,13 +646,13 @@
 	      (eq? 'first-reference (second e2)))
 		; the value was directly copied by hacked-with-logic-vars,
 		; so we don't need to unify here.
-	 code) 
+	 code)
 
 	((or (comma-expr? e1) (comma-expr? e2))
 	 (cond ((or (equal? e1 ',_) (equal? e2 ',_))
 		code)
 
-;              not always a win 
+;              not always a win
 ;	       ((or (null? e2) (number? e2) (symbol? e2))
 ;		`(when (unifiable-with-constant? ,(backquotify e1) ,(backquotify e2))
 ;		   (unify ,(backquotify e1)
@@ -679,11 +679,11 @@
 				       . body)
   `(let ,(map (lambda (v)
 		(cond  ((assq v lhs-vars-to-copy)
-			; Copy the incoming argument now so that 
+			; Copy the incoming argument now so that
 			; we don't have to unify later.
 			`(,v ,(nth formal-list (cdr (assq v lhs-vars-to-copy)))))
 		       ((memq v rhs-vars-to-set)
-		       ; we are going to assign a value later with set!, 
+		       ; we are going to assign a value later with set!,
 		       ; we don't need to make a logic variable now.
 			`(,v variable-undefined-value))
 		       (else
@@ -738,7 +738,7 @@
 	       (set #*rhs-vars-to-set
 		    (cons (second (second (car rhs))) #*rhs-vars-to-set))
 	       `(block ,(second (car rhs)) ,munched-rest))
-		   
+
 	      ((comma-expr? (car rhs))
 	       `(when ,(cadar rhs)
 		  ,munched-rest))
@@ -748,17 +748,17 @@
 		 ,(lambdify munched-rest)
 		 ,@(map backquotify (cdar rhs))))))))
 
-      
+
 
 
 
 ; (define-instance unifiable-with-constant? operation)
-; 
+;
 ; (add-method (unifiable-with-constant? (regular-logic-variable flag val)
 ;  self the-constant)
 ;   (if flag
 ;       (unifiable-with-constant? val the-constant)
-;       #t)) 
+;       #t))
 ;
 ; (add-method (unifiable-with-constant? (object) self the-constant)
 ;   (eq? self the-constant))

@@ -26,7 +26,7 @@
   (set! variable-length? nil)
   (set! supertype-list the-supertype-list)
   (set! ivar-list the-ivar-list)
-  (set! ivar-count (%length ivar-list)) 
+  (set! ivar-count (%length ivar-list))
   (set! operation-method-alist '())
   (set! top-wired? nil)
   ;; Got to compute type-bp-alist and instance-length together:

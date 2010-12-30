@@ -76,5 +76,5 @@ clean:
 	-rm -f $(progs) $(psrc:.c=.o) $(osrc:.c=.o) $(dfiles) TAGS
 
 .PHONY: indent
-indent: $(psrc) $(osrc) $(hsrc) 
+indent: $(psrc) $(osrc) $(hsrc)
 	indent --no-space-after-casts --no-space-after-function-call-names $^

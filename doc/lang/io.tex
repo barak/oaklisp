@@ -114,8 +114,8 @@ to a large number of factors detailed below.}
 \doc{This holds the read table for usual lisp syntax.  The \df{nth}
 operation can be used to get and set elements of read tables, which
 are indexed by characters.  Potential entries are \df{whitespace},
-\df{constituent}, \df{single-escape}, \df{illegal}, 
-\emph{\lpar\df{terminating-macro} \dt operation\rpar}, and 
+\df{constituent}, \df{single-escape}, \df{illegal},
+\emph{\lpar\df{terminating-macro} \dt operation\rpar}, and
 \emph{\lpar\df{nonterminating-macro} \dt operation\rpar}.}
 
 \op{skip-whitespace}{input-stream}
@@ -151,7 +151,7 @@ convenience of the user.
 
 \op{define-quotelike-macro-char}{character object}
 \begin{docenv}
-Makes \emph{character} a terminating macro which returns a list of 
+Makes \emph{character} a terminating macro which returns a list of
 \emph{object} and the next thing read.  This also arranges for the printer
 to print using analogous syntax.  For instance, the quote syntax is
 defined with the line \texttt{(define-quotelike-macro-char

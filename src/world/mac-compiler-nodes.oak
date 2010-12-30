@@ -28,7 +28,7 @@
 (define-instance ast-constant-node type
   '(value
     name				;name is for documentation purposes
-    origin)				;origin holds folded node	
+    origin)				;origin holds folded node
   (list ast-node))
 
 (define-instance ast-if-node type
@@ -43,8 +43,8 @@
   type '(localvars			;names added in this contour
 	 nojumplist			;localvars that are referenced except in car position
 	 closedlist			;localvars that are closed over
-	 environment			;lexically apparent external variables 
-	 envlist)			;external variables that are closed over 
+	 environment			;lexically apparent external variables
+	 envlist)			;external variables that are closed over
   (list ast-node))
 
 (define-instance ast-method-node

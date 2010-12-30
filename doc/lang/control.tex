@@ -61,7 +61,7 @@ recursively) the value of the last one.}
 \doc{Just like \texttt{dolist} except that \emph{count-var} gives the
 count of the current element in the list, starting at zero.}
 \sform{while}{condition \dt body}
-\doc{\meq{}{(let ((q (lambda () \emph{test}))(x (lambda () \dt 
+\doc{\meq{}{(let ((q (lambda () \emph{test}))(x (lambda () \dt
 \emph{body}))) (iterate aux () (cond ((\emph{q}) (\emph{x}) (aux)))))}}
 \sform{unless}{test \dt body}
 \doc{\meq{}{(cond ((not \emph{test}) \dt \emph{body}))}}
@@ -69,7 +69,7 @@ count of the current element in the list, starting at zero.}
  \lpar termination-test \dt termination-body \rpar \dt body}
 \doc{\meq{}{(iterate aux ((\emph{var initial}) \ldots)
 (cond (\emph{termination-test} \dt \emph{termination-body})
-      (else (block \dt \emph{body}) (aux \emph{step} \ldots))))}} 
+      (else (block \dt \emph{body}) (aux \emph{step} \ldots))))}}
 
 \section{Mapping Constructs} \label{sec:controlmap}
 

@@ -22,7 +22,7 @@
 ;;; Copyright (C) 1988 Barak A. Pearlmutter and Kevin J. Lang
 
 ;;; Oaklisp Mods:
-;;; 
+;;;
 ;;; More-than-two arg append clause removed
 ;;; Appropriate (macro? system-locale X).
 
@@ -112,7 +112,7 @@
 			    (else
 			     ;; (CONS FOO 'BAR) => (list* FOO 'BAR)
 			     (LIST 'list* A D)))))
-		   ((AND (PAIR? D) (MEMQ (CAR D) '(LIST list*)))  
+		   ((AND (PAIR? D) (MEMQ (CAR D) '(LIST list*)))
 		    ;; (CONS FOO (LIST . BAR)) => (LIST FOO . BAR)
 		    (list* (CAR D) A (CDR D)))
 		   (else (LIST 'list* A D))))))))

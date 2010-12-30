@@ -47,7 +47,7 @@
 
 
 
-(labels (((partially-reverse-4 inlist) 
+(labels (((partially-reverse-4 inlist)
 	  (labels (((loop3 old new)
 		    (if (null? old)
 			new

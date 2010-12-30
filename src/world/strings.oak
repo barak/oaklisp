@@ -188,8 +188,8 @@
 
 
 
-; Note: the following 3 macros exist ONLY to 
-; improve the readability of the following procedure.  
+; Note: the following 3 macros exist ONLY to
+; improve the readability of the following procedure.
 ; They use %load-bp-i, and hence will break in other contexts.
 
 
@@ -238,7 +238,7 @@
 
   (add-method (#^list-type (string char-count) instring)
     (quick-vref-helper instring char-count)))
-  
+
 
 
 
@@ -292,7 +292,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; String predicates
-;;; 
+;;;
 
 (add-method (= (string) x y)
   (equal? x y))

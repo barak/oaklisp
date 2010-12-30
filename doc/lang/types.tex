@@ -209,7 +209,7 @@ The combinatorial explosion of the number of possible concocted types
 seems intrinsic to the style of programming involving multiple
 functionally orthogonal mixins.  Above a certain level of complexity,
 finding a type with certain known characteristics can become
-difficult.  Programmers are left wondering ``Has a type based on 
+difficult.  Programmers are left wondering ``Has a type based on
 \emph{foo} with \emph{bar, baz} and \emph{zonk} mixed in been created, if so
 what's its name, and if not what should I name it and where should I
 define it?''
@@ -223,7 +223,7 @@ eliminates the burden of remembering which types have been concocted
 and what they are named.
 
 \op{mix-types}{mixin-manager type-list}
-\doc{This returns a composite type whose supertypes are 
+\doc{This returns a composite type whose supertypes are
 \emph{type-list}.  \emph{Mixin-manager} checks its cache, and if the
 requested type is not found it creates a type with \texttt{(make type '()
 \emph{type-list})}, caches it, and returns it.}

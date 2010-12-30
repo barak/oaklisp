@@ -147,7 +147,7 @@
 )
 
 ;;;======================================================================
-;;;A <UNIT-TEST-SUITE> is an UNnamed container of unit tests, setup and 
+;;;A <UNIT-TEST-SUITE> is an UNnamed container of unit tests, setup and
 ;;;   teardown code.  Tests are a reversed list of <unit-test>
 ;;;   instances (see below).  A <unit-tests> instance maintains the (name X
 ;;;   unit-test-suite) bindings.
@@ -189,7 +189,7 @@
        (block
         (setup-thunk)
         (format #t "~%===> Starting Tests for ~a" test-name)
-        (for-each 
+        (for-each
          (lambda (test) (run-test test result-counter verbose-p break-on-error-p))
          (reverse test-list))
         (format #t "~&===> Completed Tests for ~a~%" test-name)
@@ -302,7 +302,7 @@ remove
  ) ) )
 
 (define-syntax (add-eq-test unit-name expect form . message)
-  `(add-test ,unit-name ,expect ,form eq? . ,message)) 
+  `(add-test ,unit-name ,expect ,form eq? . ,message))
 
 (define-syntax (add-equal-test unit-name expect form . message)
   `(add-test ,unit-name ,expect ,form equal? . ,message))
@@ -340,8 +340,8 @@ remove
 ;; Result-counter is-a <test-counter>
 (add-method (run-test (<unit-test> expected thunk compare? message)
                       self result-counter verbose-p break-on-error-p)
-   (let* ( (caught-exception #f) 
-           (actual 
+   (let* ( (caught-exception #f)
+           (actual
             (bind-error-handler
              (general-error ;; catch every type of error
               (lambda (err-obj)
@@ -406,7 +406,7 @@ remove
 (add-method (%run-exception-test (<unit-test> expected thunk compare? message)
                                  self result-counter verbose-p break-on-error-p)
   (let* ( (caught-exception #f)
-          (actual 
+          (actual
            (bind-error-handler
             (general-error ;; catch every type of error
              (lambda (err-obj)

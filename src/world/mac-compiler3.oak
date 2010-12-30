@@ -32,7 +32,7 @@
 
 (add-method (fold-constants-v (ast-variable-node var-type name) self locale)
   ; (format #t "folding ... ~a ~a ~%" self locale)
-  (if (and (eq? var-type 'global) 
+  (if (and (eq? var-type 'global)
 	   (variable? locale name)
 	   (frozen? locale name))
       (let ((new-node
@@ -80,7 +80,7 @@
 (add-method (fold-constants-v (ast-method-node ivarlist ivarmap primitivep method-type
 						   status arglist body) self locale)
   (map-ast-with-arg! self fold-constants-v locale)
-  (set! ivarmap '())                                                     
+  (set! ivarmap '())
   (when ivarlist
     (cond ((ivar-heuristic method-type ivarlist locale)
 	   =>
@@ -134,7 +134,7 @@
 (add-method (ivar-heuristic (ast-variable-node var-type name)
 			    self ivarlist locale)
   (and (eq? var-type 'global)
-       (let ((v (variable? locale name))) 
+       (let ((v (variable? locale name)))
 	 (and v (ivar-heuristic (contents v) ivarlist locale)))))
 
 
@@ -245,11 +245,11 @@
 ;		      '()
 )))
 			self))))
-	     (classify-variables wrapping)  
+	     (classify-variables wrapping)
 	     (set! op nichevo)		;these have been plugged
-	     (set! method-type nichevo)	;into the wrapping	
+	     (set! method-type nichevo)	;into the wrapping
 	     wrapping))
-	  (else 
+	  (else
 	   (set! op nichevo)
 	   (set! method-type nichevo)
 	   self))))
@@ -305,7 +305,7 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;This operation replaces references to environment, heap, and 
+;This operation replaces references to environment, heap, and
 ;global variables with indirect references.
 
 (define-instance indirect-to-heap-v operation)
@@ -340,7 +340,7 @@
 	  (and (is-a? node ast-combination-node)
 	       (is-a? (combn-op node) ast-constant-node)
 	       (eq? contents (constn-value (combn-op node))))))
-  
+
   (add-method (fold-contents-v (ast-set-node variable expression) self)
     (map-ast! self fold-contents-v)
       (if (contents-node? variable)
@@ -349,7 +349,7 @@
 				expression)
 			  self)
 	  self))
-  
+
   (add-method (fold-contents-v (ast-make-locative-node variable) self)
     (map-ast! self fold-contents-v)
       (if (contents-node? variable)
@@ -399,14 +399,14 @@
 
 
 (with-operations (proceed)
-  
+
   (add-method (stash-stack-map (ast-node stack-map) self outer-map)
     (set! stack-map outer-map)
     (proceed self outer-map))
-    
+
   (add-method (proceed (ast-node stack-map) self outer-map)
     (walk-ast-with-arg self stash-stack-map outer-map))
-   
+
   (add-method (proceed (ast-method-node arglist body
 					status inlabels?) self outer-map)
 					;beware hack: if it's a real inline lambda , (a b)+(0 0 x y)->(a b x y)
@@ -418,17 +418,17 @@
 				  (tail outer-map (length arglist))))
 		      arglist)))
       (stash-stack-map body newmap)))
-    
+
   (add-method (proceed (ast-set-node variable expression) self outer-map)
     (stash-stack-map expression outer-map)
     (stash-stack-map variable (cons 0 outer-map)))
-    
+
   (add-method (proceed (ast-combination-node op args rest-name) self outer-map)
     (let ((backwards? (and (is-a? op ast-constant-node)
 			   (is-a? (constn-value op) open-coded-mixin)
 			   (is-a? (constn-value op) backwards-args-mixin)
 			   (eq? rest-name nichevo))))
-		       
+
       (iterate step ((stack-map outer-map)
 		     (arglist (if backwards? args (reverse args))))
 	(cond ((null? arglist)

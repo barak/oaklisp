@@ -153,7 +153,7 @@ is identified by \emph{string} in the list of choices printed out by
 the debugger.  If the handler is invoked by calling \df{ret} with an
 argument in addition to the handler number, the \df{error-return} form
 returns this additional value; otherwise it returns \df{\#f}.  If no
-error occurs, an \df{error-return} form yields the value of 
+error occurs, an \df{error-return} form yields the value of
 \emph{body}.}
 
 \mc{error-restart}{message let-clauses \dt body}
@@ -174,7 +174,7 @@ level.  Not normally manipulated by user code.}
 
 \mc{catch-errors}
 {\lpar error-type $[$error-lambda $[$non-error-lambda$]]$\rpar \dt body}
-\doc{Evaluates \emph{body}.  If an error which is a subtype of 
+\doc{Evaluates \emph{body}.  If an error which is a subtype of
 \emph{error-type} occurs, \df{\#f} is returned, unless \emph{error-lambda} is
 given, in which case it is called on the error object.  If no error
 occurs then the result of evaluating \emph{body} is returned, unless
@@ -183,7 +183,7 @@ result of the evaluation of \emph{body} within the context of of the
 error handler, and the resultant value returned.}
 
 \mc{bind-error-handler}{\lpar error-type handler\rpar \dt body}
- \doc{This binds a handler to errors which are subtypes of 
+ \doc{This binds a handler to errors which are subtypes of
 \emph{error-type}.  When such an error occurs, an appropriate error object
 is created and \emph{handler} is applied to it.}
 
@@ -195,7 +195,7 @@ is created and \emph{handler} is applied to it.}
 even after the context has been exited the error can still be
 proceeded from, or the debugger can be entered back at the error
 context.  This should always be called tail recursively from a
-handler, and after it stashes away the continuation it calls 
+handler, and after it stashes away the continuation it calls
 \emph{after-op} on \emph{error}.  Of course, \emph{after-op} should never
 return.}
 
@@ -453,7 +453,7 @@ numbers of arguments easier.
 \doc{Returns \emph{value}.}
 
 \op{listify-args}{operation \dt args}
-\doc{Calls \emph{operation} with a single argument, a list of 
+\doc{Calls \emph{operation} with a single argument, a list of
 \emph{args}.}
 
 There is also a macro package that implements optional and keyword

@@ -111,10 +111,10 @@ b c))}{(c)}.  \evto{(last-pair '(a b c . d))}{(c . d)}.}
 \mc{destructure}{template structure \dt body}
 \doc{This is for destructuring lists, and is sort of the inverse of
 backquote.  \emph{Template} is a possibly nested list of variables.
-These variables are bound to the corresponding values of 
+These variables are bound to the corresponding values of
 \emph{structure} while \emph{body} is evaluated.  For instance,
 \macdef{(destructure (a (b) . c) x (foo a b c))}{(let ((a (car x))(b
-(caadr x))(c (cddr x))) (foo a b c))}.  It is guaranteed that 
+(caadr x))(c (cddr x))) (foo a b c))}.  It is guaranteed that
 \emph{structure} will be evaluated only once.  We note that \df{destructure}
 typically generates more efficient code than the corresponding code
 one might typically write.
@@ -146,7 +146,7 @@ an error is signaled.}
 \section{Lists as Sets}
 
 \op{mem}{predicate object list}
-\doc{Returns the first tail of \emph{list} whose \df{car} equals 
+\doc{Returns the first tail of \emph{list} whose \df{car} equals
 \emph{object} according to \emph{predicate}.}
 
 \op{memq}{object list}

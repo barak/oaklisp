@@ -246,7 +246,7 @@
     (labels (((step-both in1 in2 carry prevpair)
 
 	      (if (null? in1)
-		  (if (null? in2) 
+		  (if (null? in2)
 
 		      (block		;both empty
 		       (when (not (= 0 carry))
@@ -258,7 +258,7 @@
 				  (quotient x bignum-base)
 				  (set! (cdr prevpair) (cons (remainder x bignum-base) '())))))
 
-		  (if (null? in2) 
+		  (if (null? in2)
 					;in2 empty
 		      (let ((x (fx-plus carry (car in1))))
 			(step-one (cdr in1)
@@ -274,7 +274,7 @@
 
 
 	     ((step-one in1 carry prevpair)
-	      (cond ((null? in1)	;done 
+	      (cond ((null? in1)	;done
 		     (when (not (= 0 carry))
 		       (set (cdr prevpair) (list carry)))
 		     (cdr root))
@@ -307,7 +307,7 @@
 
 	      (if (null? in2)
 
-		  (if (null? in1) 
+		  (if (null? in1)
 					;both empty
 		      (if (not (= 0 carry))
 			  (error "negative result in diff-digitlist")
@@ -418,7 +418,7 @@
 						    accleft))
 						  d/b))
 					   acc)
-	    
+
 					 (let ((d (fx-plus (fx-plus carry (car accleft))
 							   (fx-times (car listleft) dig))))
 					   (set! (car accleft) (remainder d bignum-base))
@@ -449,17 +449,17 @@
 			       ;;regular case
 			       (let* ((u (multiply-digitlists (sum-digitlists a b) (sum-digitlists c d)))
 				      (v (multiply-digitlists a c)))
-				 (shift-sum-digitlists 
+				 (shift-sum-digitlists
 				  (shift-sum-digitlists v (diff-digitlists u (sum-digitlists v w)) lenx/2)
 				  w
 				  lenx/2))
-			   
+
 			       ;;simplified case where c=0.
-			       (shift-sum-digitlists 
+			       (shift-sum-digitlists
 				(diff-digitlists (multiply-digitlists (sum-digitlists a b) d) w)
 				w
 				lenx/2)))))))
-			   
+
 	  (if (> leny lenx)
 	      (guts y x leny lenx)
 	      (guts x y lenx leny))))))
@@ -506,12 +506,12 @@
 ; this is used by times/2 and quorem-digitlists-to-get-digit.
 
 (define (simple-multiply-step dig l)
-  (if (= 0 dig) 
+  (if (= 0 dig)
       '()
       (let ((root (cons 'root '())))
 
 	(labels (((step-one in1 carry prevpair)
-		  (cond ((null? in1)	;done 
+		  (cond ((null? in1)	;done
 			 (when (not (= 0 carry))
 			   (set (cdr prevpair) (list carry)))
 			 (cdr root))
@@ -529,7 +529,7 @@
 
 ;;;;;;;;;;;;;;;division;;;;;;;;;;;;;;;;;;;;
 
-; Warning; this code assumes that two 
+; Warning; this code assumes that two
 ; bignum digits fit into a fixnum.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -555,7 +555,7 @@
 	(let ((lenin (length inlist))
 	      (lendiv (length divisor)))
 
-	  (if (if (= lenin lendiv)	;this expression is (digitlist-< inlist divisor)	
+	  (if (if (= lenin lendiv)	;this expression is (digitlist-< inlist divisor)
 		  (samelen-digitlist-< inlist divisor)
 		  (< lenin lendiv))
 
@@ -602,7 +602,7 @@
 
 
 
-  ; Call the following helper function only when you are sure 
+  ; Call the following helper function only when you are sure
   ; that the quotient can be expressed by a single digit.
 
   ; all arguments are digit lists
@@ -610,9 +610,9 @@
 
 
 (let ((last-short-divisor #t)		;cache some internal info
-      (fix-divisor #t)   
+      (fix-divisor #t)
       (last-long-divisor #t)
-      (rev-divisor #t))  
+      (rev-divisor #t))
 
   (define (quorem-digitlists-to-get-digit inlist divisor)
 
@@ -673,7 +673,7 @@
 			    (quotient (fx-plus (fx-times 100000 inlist-hi)
 					       (fx-plus (fx-times 10 (cadr rev-inlist))
 							(quotient (caddr rev-inlist) 1000)))
-				      (if (= lenin lendiv) 
+				      (if (= lenin lendiv)
 					  (fx-plus (fx-times 100000 divisor-hi)
 						   (fx-plus (fx-times 10 (cadr rev-divisor))
 							    (quotient (caddr rev-divisor) 1000)))
@@ -684,7 +684,7 @@
 			    (quotient (fx-plus (fx-times 1000000 inlist-hi)
 					       (fx-plus (fx-times 100 (cadr rev-inlist))
 							(quotient (caddr rev-inlist) 100)))
-				      (if (= lenin lendiv) 
+				      (if (= lenin lendiv)
 					  (fx-plus (fx-times 1000000 divisor-hi)
 						   (fx-plus (fx-times 100 (cadr rev-divisor))
 							    (quotient (caddr rev-divisor) 100)))
@@ -694,7 +694,7 @@
 			    (quotient (fx-plus (fx-times 10000000 inlist-hi)
 					       (fx-plus (fx-times 1000 (cadr rev-inlist))
 							(quotient (caddr rev-inlist) 10)))
-				      (if (= lenin lendiv) 
+				      (if (= lenin lendiv)
 					  (fx-plus (fx-times 10000000 divisor-hi)
 						   (fx-plus (fx-times 1000 (cadr rev-divisor))
 							    (quotient (caddr rev-divisor) 10)))
@@ -788,7 +788,7 @@
   (define least-positive-bignum (make bignum 1 l2))
 
   (define least-negative-bignum (make bignum -1 l3)))
- 
+
 
 
 #|
@@ -806,13 +806,13 @@
 	      (,labsym (1+ ,quotient-name)(- ,remainder-name ,divisor)))))))
 
 
-  
+
 (define (sum-digitlists l1 l2)
   (let ((root (cons 'root '())))
     (labels (((step-both in1 in2 carry prevpair)
 
 	      (if (null? in1)
-		  (if (null? in2) 
+		  (if (null? in2)
 
 		      (block		;both empty
 		       (when (not (= 0 carry))
@@ -824,7 +824,7 @@
 							   quo
 							   (set! (cdr prevpair) (cons rem '())))))
 
-		  (if (null? in2) 
+		  (if (null? in2)
 					;in2 empty
 		      (iterative-positive-quorem ((+ carry (car in1)) bignum-base quo rem)
 						 (step-one (cdr in1)
@@ -839,7 +839,7 @@
 							    (set! (cdr prevpair) (cons rem '())))))))
 
 	     ((step-one in1 carry prevpair)
-	      (cond ((null? in1)	;done 
+	      (cond ((null? in1)	;done
 		     (when (not (= 0 carry))
 		       (set (cdr prevpair) (list carry)))
 		     (cdr root))

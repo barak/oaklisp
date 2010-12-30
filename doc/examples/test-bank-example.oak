@@ -24,7 +24,7 @@
     (make <person> name-1 age-1 SSN-1 passwd-1))
   (define history-1 (make  <bank-account-transaction-history> 37))
   (define bank-account-1 (make <bank-account> bank-passwd initial-balance name-1 age-1 SSN-1 passwd-1))
-  
+
  )
 
 (define-constant (teardown-thunk)

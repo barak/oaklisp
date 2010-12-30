@@ -65,7 +65,7 @@
 (add-method (initialize (list-end-error list-so-far stuff-after-dot)
 			self the-lsf the-sad)
   (set! list-so-far the-lsf)
-  (set! stuff-after-dot the-sad) 
+  (set! stuff-after-dot the-sad)
   self)
 
 (add-method (report (list-end-error list-so-far stuff-after-dot) self stream)

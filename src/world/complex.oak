@@ -22,7 +22,7 @@
 
 ;;;
 ;;; Complex numbers!  Oh boy!
-;;; 
+;;;
 
 (define-instance complex type
   '(the-real-part the-imag-part) (list number object))

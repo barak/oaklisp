@@ -154,7 +154,7 @@
 	       (lambda (the-list colon? atsign? char stream arg)
 		 (error "Unknown format control character ~C, argument ~S."
 			char arg)))))
-	 
+
   (dotimes (i 128)
     (set! (nth format-control-table i) x)))
 

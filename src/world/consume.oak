@@ -62,7 +62,7 @@
 
       (let ((new-last-pair (cons h '())))
 
-	(set! (cdr prev-pair) 
+	(set! (cdr prev-pair)
 	      (cons a (cons b (cons c (cons d
 		    (cons e (cons f (cons g new-last-pair))))))))
 
@@ -116,7 +116,7 @@
 
   )
 
-     
+
 
 
 

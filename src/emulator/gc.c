@@ -42,8 +42,8 @@
 
 
 
-/* 1/RECLAIM_FACTOR is the target for how much of new space should 
-   be used after a gc.  If more than this is used, the next new 
+/* 1/RECLAIM_FACTOR is the target for how much of new space should
+   be used after a gc.  If more than this is used, the next new
    space allocated will be bigger. */
 
 #define RECLAIM_FACTOR 3
@@ -821,7 +821,7 @@ gc_top:
     my_index = *my_index_p;
     gc_ready[my_index] = 0;
     set_gc_flag (false);
-#endif 
+#endif
 }
 
 

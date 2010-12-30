@@ -34,11 +34,11 @@
 		 (mark-tail-nodes astree)))
 	   (top-level-resolve-variables astree))))
 
-  
+
 	(add-method (expand-compile (locale) self form)
 	  (compile self (block0 (expand-groveling self form)
 				(print-sp 'mac))))
-  
+
 
 	(add-method (compile (locale) self form)
 	  (bind ((#*labels-count 0)
@@ -58,7 +58,7 @@
 		    (annotate-the-tree astree)
 		    (print-sp 'ann)
 		    (step #*labels-count))))
-	      (set! astree (fold-constants-v astree self)) 
+	      (set! astree (fold-constants-v astree self))
 	      (print-sp 'fold)
 	      (when #*contour-nodes?
 		(set! astree (insert-method-maker-v astree)))
@@ -92,7 +92,7 @@
 (define-instance mark-inline-lambdas operation)
 
 
-(with-operations (you-are-in-car-pos) 
+(with-operations (you-are-in-car-pos)
 
   (add-method (mark-inline-lambdas (ast-node) self)
     (walk-ast self mark-inline-lambdas))
@@ -110,7 +110,7 @@
     (you-are-in-car-pos op))
 
   (add-method (mark-inline-lambdas (ast-labels-node lambdalist) self)
-    (walk-ast self mark-inline-lambdas)      
+    (walk-ast self mark-inline-lambdas)
     ;; These guys must be marked as inline,
     (for-each you-are-in-car-pos lambdalist)
     ;;  and inlabels.
@@ -134,19 +134,19 @@
     (if (and (null? ivarlist)			;No ivars.
 	     (and (is-a? op ast-combination-node)
 		  (is-a? (combn-op op) ast-variable-node)
-		  (equal? (varn-name (combn-op op)) 'make)	        ;Operation is made at 
+		  (equal? (varn-name (combn-op op)) 'make)	        ;Operation is made at
 		  (= 1 (length (combn-args op)))	                ;installation time.
 		  (is-a? (car (combn-args op)) ast-variable-node)
-		  (equal? (varn-name (car (combn-args op))) 'operation)) 
+		  (equal? (varn-name (car (combn-args op))) 'operation))
 	     (is-a? method-type ast-variable-node)	;Method is for object.
 	     (equal? 'object (varn-name method-type)))	;
 	(set! status 'inline)))
  (add-method (you-are-in-car-pos (ast-method-node status op ivarlist method-type) self)
    (if (and (null? ivarlist)		;No ivars.
 	    (and (is-a? op ast-combination-node)
-		 (equal? (combn-op op) make);Operation is made at 
-		 (= 1 (length (combn-args op)));installation time. 
-		 (equal? (car (combn-args op)) operation)) 
+		 (equal? (combn-op op) make);Operation is made at
+		 (= 1 (length (combn-args op)));installation time.
+		 (equal? (car (combn-args op)) operation))
 	    (is-a? method-type ast-constant-node);Method is for object.
 	    (eq? object (constn-value method-type)))
        (set! status 'inline)))
@@ -164,7 +164,7 @@
 
 (add-method (contn-transparent? (ast-method-node status) self)
   (eq? status 'inline))
-  
+
 (add-method (contn-transparent? (ast-labels-node) self)
   t)
 
@@ -176,11 +176,11 @@
 
 (define-instance mark-tail-nodes operation)
 
-(with-operations (you-are-in-tail-pos) 
-  
+(with-operations (you-are-in-tail-pos)
+
   (add-method (mark-tail-nodes (ast-node) self)
     (walk-ast self mark-tail-nodes))
-  
+
   (add-method (mark-tail-nodes (ast-labels-node) self)
     (walk-ast self mark-tail-nodes)
     (you-are-in-tail-pos self))
@@ -188,24 +188,24 @@
   (add-method (mark-tail-nodes (ast-combination-node tail-pos?) self)
     (set! tail-pos? nil) ;erase previous analysis
     (walk-ast self mark-tail-nodes))
-  
+
   (add-method (you-are-in-tail-pos (ast-node) self) nil)	;no-op
-  
+
   (add-method (you-are-in-tail-pos (ast-if-node consequent alternate) self)
     (you-are-in-tail-pos consequent)
     (you-are-in-tail-pos alternate))
-  
+
   (add-method (you-are-in-tail-pos (ast-labels-node) self)
     (walk-ast self you-are-in-tail-pos))
-  
+
   (add-method (you-are-in-tail-pos (ast-block-node body) self)
     (you-are-in-tail-pos (last body)))
-  
+
   (add-method (you-are-in-tail-pos (ast-combination-node op tail-pos?) self)
     (set! tail-pos? t)
     (if (is-a? op ast-method-node)
 	(you-are-in-tail-pos op)))		;so that LET will work.
-  
+
   (add-method (you-are-in-tail-pos (ast-method-node status body) self)
     (if (eq? status 'inline)
 	(you-are-in-tail-pos body))))
@@ -239,7 +239,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;The environment slot of a contour node contains a list of all
 ;external lexical variables that are visible in that method.
- 
+
 (define-instance stash-environment operation)
 
 (add-method (stash-environment (ast-node) self outer-env)
@@ -248,13 +248,13 @@
 (add-method (stash-environment (ast-contour-node localvars environment) self outer-env)
   (set! environment outer-env)
   (append localvars outer-env))
-  
+
 (add-method (stash-environment (ast-method-node method-type op body) self outer-env)
   (let ((new-env (^super ast-contour-node stash-environment self outer-env)))
     (stash-environment method-type outer-env)
     (stash-environment op outer-env)
     (stash-environment body new-env)))
-  
+
 (add-method (stash-environment (ast-labels-node lambdalist body) self outer-env)
   (let ((new-env (^super ast-contour-node stash-environment self outer-env)))
     (map-with-arg stash-environment lambdalist new-env)
@@ -263,16 +263,16 @@
 
 #|
 (with-operations (proceed)
-  
+
   (add-method (stash-environment (ast-contour-node localvars environment) self outer-env)
     (set! environment outer-env)
     (proceed self outer-env (append localvars outer-env)))
-  
+
   (add-method (proceed (ast-method-node method-type op body) self outer-env new-env)
     (stash-environment method-type outer-env)
     (stash-environment op outer-env)
     (stash-environment body new-env))
-  
+
   (add-method (proceed (ast-labels-node lambdalist body) self outer-env new-env)
     (map-with-arg stash-environment lambdalist new-env)
     (stash-environment body new-env)))
@@ -289,14 +289,14 @@
 
 
 (with-operations (proceed)
-  
+
   (add-method (stash-enclosing-contour (ast-node enclosing-contour) self enc-cont)
     (set! enclosing-contour enc-cont)
     (proceed self enc-cont))
-  
+
   (add-method (proceed (ast-node) self enc-cont)
     (walk-ast-with-arg self stash-enclosing-contour enc-cont))
-  
+
   (add-method (proceed (ast-method-node method-type op body) self enc-cont)
     (stash-enclosing-contour method-type enc-cont)
     (stash-enclosing-contour op enc-cont)
@@ -319,7 +319,7 @@
   (walk-ast self classify-variables))
 
 (add-method (classify-variables (ast-variable-node
-				 var-type name source-contour) self) 
+				 var-type name source-contour) self)
   (iterate step ((contour (node-enclosing-contour self)))
 
     (cond ((memq name (contn-localvars contour))
@@ -344,11 +344,11 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;This operation notices evars and records them in the envlist 
+;This operation notices evars and records them in the envlist
 ;field of their enclosing methods.
 ;If a method cannot supply a variable closed over by an
 ;inner method, then the variable must be closed over by
-;the outer method too. 
+;the outer method too.
 ;This also fills in the nojumplist field of contours.
 
 
@@ -395,10 +395,10 @@
 (define-instance rewrite-labels-v operation)
 
 (with-operations (look-for-non-tail-call your-out-of-place)
-  
+
   (add-method (rewrite-labels-v (ast-node) self)
     (map-ast! self rewrite-labels-v))
-  
+
   (add-method (rewrite-labels-v (ast-labels-node labellist lambdalist body) self)
     (map-ast! self rewrite-labels-v)
     (look-for-non-tail-call self)
@@ -407,7 +407,7 @@
 	(block
 	  (set! #*labels-count (- #*labels-count 1))
 	  (code->ast
-	   `((%add-method ((',make ',operation) (',object) . ,labellist)    ;see below   
+	   `((%add-method ((',make ',operation) (',object) . ,labellist)    ;see below
 			   (%block
 			     ,@(map2 (lambda (lab lam)
 				       `(%set ,lab ,lam))
@@ -417,11 +417,11 @@
 	      ,@(map (lambda (x) nil)		;should really be undefined value
 		     labellist))))
 	self))
-  
+
 
   (add-method (look-for-non-tail-call (ast-node) self)
     (walk-ast self look-for-non-tail-call))
-  
+
   (add-method (look-for-non-tail-call (ast-combination-node op tail-pos?) self)
     (walk-ast self look-for-non-tail-call)
     (if (not tail-pos?)
@@ -436,6 +436,6 @@
 
 
 
-;;was    `((%add-method ((make operation) (object) . ,labellist)     
+;;was    `((%add-method ((make operation) (object) . ,labellist)
 
 

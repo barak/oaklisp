@@ -58,7 +58,7 @@
 	  ((eq? f '#f) (format s "#<DELAY ~!>" self))
 	  ((eq? f 'indicate) (format s "#[DELAY ~S ~!]" (force self) self))
 	  (else (error "Unknow FORCIBLE-PRINT-MAGIC option ~S." f)))))
-	  
+
 
 (add-method (print-list-end (forcible) self . args)
   (if #*forcible-print-magic

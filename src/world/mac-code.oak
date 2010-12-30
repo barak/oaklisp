@@ -20,7 +20,7 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;                   handy list utilities                              ;;; 
+;;;                   handy list utilities                              ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (swap-car-with-nth inlist n)
@@ -31,7 +31,7 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;        generate code to copy args down before tail calls            ;;;  
+;;;        generate code to copy args down before tail calls            ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
@@ -45,13 +45,13 @@
 	  (reverse
 	    (append (map (lambda (d) 'd) (iota old))
 		    (iota new))))
-	 
+
 	 ((count-trash-on-top x)		; sends (d d 3 2 1 d) to (2 3 2 1 d)
 	  (iterate step ((count 0)(l x))
 	    (if (or (null? l) (number? (car l)))
 		(cons count l)
 		(step (+ 1 count) (cdr l)))))
-	 
+
 	 ((plan-blt old new)
 	  (iterate step ((plan '())(model (build-model old new)))
 	    (cond ((= (length model) new)
@@ -68,7 +68,7 @@
 		    (let ((counted (count-trash-on-top model)))
 		      (step (cons `(pop ,(car counted)) plan)
 			    (cdr counted))))))))
-  
+
   (define (blt-stack n m)
     (cond ((zero? m)
 	   '())
@@ -83,7 +83,7 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;           primitive continuation definition                         ;;;                
+;;;           primitive continuation definition                         ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
@@ -109,13 +109,13 @@
 	        (not (eq? self #*barrier-node)))
 	   (number-of-args-to-pop (node-enclosing-contour self))
 	   0)))
-  
+
   (add-method (number-of-args-to-pop (ast-labels-node) self)
     (if (and (contn-transparent? self)
 	     (not (eq? self #*barrier-node)))
 	(number-of-args-to-pop (node-enclosing-contour self))
 	0))
-  
+
   (add-method (nguys-to-pop (ast-node enclosing-contour) self)
     (number-of-args-to-pop enclosing-contour))
 
@@ -163,26 +163,26 @@
 
 (add-method (gen-access-code (ast-variable-node var-type name source-contour)
 			     self cont store?)
-  (append 
+  (append
    (cond ((eq? var-type 'stack)
 	  `((,(if store? 'store-stk 'load-stk)
 	     ,(compute-offset self (node-stack-map self))
 	     ,name)))
-	    
+
 	 ((eq? var-type 'evar)
 	  `((,(if store? 'store-env 'load-env)
 	     ;; Note the extra offset of 2 here:
 	     ,(+ 2 (compute-offset self (contn-envlist source-contour)))
 	     ,name)))
-	    
+
 	 ((eq? var-type 'ivar)
 	  `((,(if store? 'store-bp 'load-bp)
 	     ,(compute-offset self (methn-ivarmap source-contour))
 	     ,name)))
-	    
+
 	 ((eq? var-type 'global)
 	  `((load-glo ,name)))
-	    
+
 	 (else (error "gen-access: Error in var-type for ~S"
 		      (list var-type name))))
    (primitive-continuation self cont)))
@@ -194,8 +194,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; The gen-code operation takes two arguments, an ast node and a continuation,
-; which may be one of three things: the symbol TAIL, the symbol NEXT, 
-; or a label, which can be any other symbol. 
+; which may be one of three things: the symbol TAIL, the symbol NEXT,
+; or a label, which can be any other symbol.
 
 
 (define-instance top-level-gen-code operation)
@@ -216,7 +216,7 @@
 ;Definitions for the primitive forms
 
 (with-operations (nargs-prologue)
-  
+
   (add-method (nargs-prologue (ast-method-node arglist rest-name) self)
     (if rest-name
 	(let ((real-nargs (length (cdr arglist))))
@@ -229,7 +229,7 @@
 		    `(load-reg nargs)
 		    `(subtract))))
 	(list `(check-nargs ,(length arglist)))))
-  
+
   (add-method (gen-code (ast-method-node ivarmap status body arglist) self cont)
     (cond ((eq? status 'code)
 	   (append
@@ -279,7 +279,7 @@
 
 
 (let ((gen-makloc-code (make operation)))
-  
+
   (add-method (gen-makloc-code (ast-variable-node var-type name source-contour) self cont)
     (append
       (cond ((memq var-type '(stack evar global))
@@ -290,8 +290,8 @@
 	       `(make-bp-loc ,(compute-offset self (methn-ivarmap source-contour)) ,name)))
 	    (else (error "Makloc: Error in var-type for ~S" (list var-type name))))
       (primitive-continuation self cont)))
-  
-  
+
+
   (add-method (gen-code (ast-make-locative-node variable) self cont)
     (gen-makloc-code variable cont)))
 
@@ -373,7 +373,7 @@
 
 
 (with-operations (open-code label-code inline-code regular-code combo-op get-jump-info)
-  
+
   (add-method (combo-op (ast-combination-node op rest-name) self)
     (cond ((not (eq? rest-name nichevo))
 	   regular-code)
@@ -391,20 +391,20 @@
 		  (methn-status op)))
 	  (else
 	   regular-code)))
-  
-  
+
+
   (add-method (gen-code (ast-combination-node) self cont)
       ((combo-op self) self cont))
-  
-  
+
+
   (add-method (get-jump-info (ast-labels-node labellist lambdalist gensymlist)
 			     self name)
       (let* ((the-lambda (rib-lookup labellist lambdalist name))
 	     (the-target (rib-lookup labellist gensymlist name))
 	     (nargs-required (length (methn-arglist the-lambda))))
-	(cons the-target nargs-required))) 
-  
-  
+	(cons the-target nargs-required)))
+
+
   (add-method (label-code (ast-combination-node op args) self cont)
       (let* ((name (varn-name op))
 	     (source-contour (varn-source-contour op))
@@ -420,8 +420,8 @@
 		  (branch ,the-target))
 		(error "CodeGen: Wrong number of arguments to operation ~S" name))
 	    (error "Compiler error: branch to ~S not tail recursive" the-target))))
-  
-  
+
+
   (add-method (open-code (ast-combination-node op args) self cont)
     (let* ((n-args (length args))
 	   (opval (constn-value op))
@@ -443,7 +443,7 @@
 		     (else `((branch ,cont)))))
 	  (error "CodeGen: Wrong number of arguments to operation ~S" opval))))
 
-  
+
   (add-method (inline-code (ast-combination-node op args) self cont)
       (let ((label? (not (memq cont '(next tail)))))
 	(if (= (length args) (length (methn-arglist op)))
@@ -456,7 +456,7 @@
 
   
 
-		
+
   (add-method (regular-code (ast-combination-node op args rest-name) self cont)
     (let* ((nmyargs (length args))
 	   (totalmyargs (+ 1 nmyargs)))
@@ -472,7 +472,7 @@
 		       '()
 		       (list
 			`(load-imm ,nmyargs) '(plus)))
-		   (list 
+		   (list
 		    `(store-reg nargs) `(pop 1)))))
 	     (if (eq? cont 'tail)
 		 (pop-args self totalmyargs)

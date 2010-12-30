@@ -176,8 +176,8 @@
 	context_stack.segment = e_nil;				\
 }
 
-/* This pops some elements off the value stack. 
-   It is inefficient because it copies elements into the buffer 
+/* This pops some elements off the value stack.
+   It is inefficient because it copies elements into the buffer
    and then pops them off.  A better thing should be written.  */
 #define POPVALS(n)						\
 {	CHECKVAL_POP((n));					\

@@ -39,7 +39,7 @@
     (p-length () 0))
    ((a x j i)
     (p-length (,a . ,x) ,i) :- (p-length ,x ,j) (is ,i ,(+ j 1)))))
-    
+
 
 
 (labels ((p-reverse3
@@ -61,7 +61,7 @@
     (p-delete ,x (,x . ,l) ,l))
    ((x y z l)
     (p-delete ,x (,y . ,l) (,y . ,z)) :- (p-delete ,x ,l ,z))))
-   
+
 
 
 
@@ -191,7 +191,7 @@
 
 
 ; This loops after finding one solution when used in right-to-left mode.
-; Putting a cut in the first clause would cause it to find no solutions. 
+; Putting a cut in the first clause would cause it to find no solutions.
 ; This behavior is consistent with quintus prolog.
 
 
@@ -215,7 +215,7 @@
    (() (weird-reverse () ()))
    ((a x x1 y) (weird-reverse (,a . ,x) ,y)
 	       :- (weird-reverse ,x ,x1) (oak-append ,y ,x1 (,a)))))
-	       
+
 
 
 
@@ -374,8 +374,8 @@
 ; This creates a prolog relation of arity N+1 from an oaklisp function of arity N.
 ; The prolog relation applies the oaklisp function to its LAST N arguments,
 ; and then returns the result by unifying it with its FIRST argument.
-; This facility currently doesn't work very well, since not all functions 
-; in oaklisp have been written to accept delayed objects.  
+; This facility currently doesn't work very well, since not all functions
+; in oaklisp have been written to accept delayed objects.
 
 
 (define (relationify op)
@@ -404,7 +404,7 @@
 
 
 
-; This procedure seems a bit muddled.  
+; This procedure seems a bit muddled.
 ; Try using the collect-solutions macro instead.
 
 ; (define (bagof k thing-to-bag bag-for-em rel arglist)

@@ -26,14 +26,14 @@
 
 ; the input to this program is a bunch of files, each of which
 ; contains a big list whose format is
-; 
+;
 ; ((
 ;   ((constant 14 ((foo bar) baz))
-;    (variable 2 append)  ; these offsets are 
+;    (variable 2 append)  ; these offsets are
 ;    (code 28 6))         ; in terms of 16 shortwords
 ;   (100 343 232 ... )    ; 16 bit opcodes
 ;   )
-;  ( 
+;  (
 ;     another code block
 ;   )
 ; )
@@ -60,7 +60,7 @@
 
 (define value-stack-size   #x1abc)
 (define context-stack-size #x2abc)
-(set! world-array-size 0)	
+(set! world-array-size 0)
 
 (define cache-pairs? #t)
 
@@ -98,7 +98,7 @@
 	(set! (nth world word-addr) word)
 	(error "Attempt to overwrite <~s ~s>." word word-addr))))
 
-(define (store-world-opcodes o1 o2 word-addr) 
+(define (store-world-opcodes o1 o2 word-addr)
   (store-world-word (cons o1 o2) word-addr))
 
 ;;; End of what used to be macros for speed
@@ -112,7 +112,7 @@
 
 (set! var-table #f)
 ;impose an ordering on variables
-(set! var-list #f) 
+(set! var-list #f)
 (set! blk-table #f)
 (set! sym-table #f)
 (set! pair-table #f)
@@ -223,7 +223,7 @@
   (set! dat-count (+ dat-count (handbuilt-data-size)))
   (format #t "~&ops:~s  vars:~s  syms:~s cells:~s~%"
 	  opc-count var-count sym-count dat-count))
-  
+
 
 
 (define (count-opcodes blk)
@@ -377,7 +377,7 @@
 (define (spew-opcodes inlist in-names)
   (format #t " spew")
   (store-world-ptr where-%code-vector-lives start-of-opc-space)
-  (store-world-int first-regular-blk-addr (+ 1 start-of-opc-space)) 
+  (store-world-int first-regular-blk-addr (+ 1 start-of-opc-space))
   (store-world-ptr where-nil-lives (+ 2 start-of-opc-space))
   (do ((fils inlist (cdr fils))
        (filno 0 (+ filno 1))
@@ -425,7 +425,7 @@
 
 
 ;this is a hack to string the top-level blocks together
-(define (changereturntonoop addr)   
+(define (changereturntonoop addr)
   (let* ((them (get-world-opcodes addr))
 	 (op1 (car them))
 	 (op2 (cdr them)))
@@ -580,7 +580,7 @@
 
 
 
-      
+
 
 
 
@@ -678,14 +678,14 @@
 	 (error "Can't PRINT-HEX #x~X with ~D digits" num ndigits)))
 
   (print num outfile))
-  
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;test stuff
 ;
 
-(define testlist 
-  '(	
+(define testlist
+  '(
     (					; start of file 1
      (					; start of block
       ((constant 6 ((foo bar) 1))
@@ -730,10 +730,10 @@
     (dotimes (i array-size)
       (set! (nth world i) 0))))
 
-(define (overwrite-world-opcodes o1 o2 word-addr) 
+(define (overwrite-world-opcodes o1 o2 word-addr)
   (set! (nth world word-addr) (cons o1 o2)))
 
-(define (overwrite-world-word word word-addr) 
+(define (overwrite-world-word word word-addr)
   (set! (nth world word-addr) word))
 
 (define (get-world-word word-addr)

@@ -123,8 +123,8 @@
       (%get-an-ivar operation op 'lambda?)
       (any? (lambda (t) (got-a-method? t op)) supertype-list)))
 
-      
-		
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

@@ -220,7 +220,7 @@ init_stacks(void)
   int *my_index_p;
   int my_index;
 #endif
- 
+
   ref_t *ptr;
 
   /* For debugging we allocate two ref_t more
@@ -233,7 +233,7 @@ init_stacks(void)
   my_index_p = pthread_getspecific (index_key);
   my_index = *my_index_p;
 #endif
- 
+
   ptr = (ref_t *) xmalloc((value_stack.size + 2)
 			  * sizeof(ref_t));
   *ptr = PATTERN;
@@ -248,7 +248,7 @@ init_stacks(void)
 
   /* Initialise context stack */
 
- 
+
   ptr = (ref_t *) xmalloc((context_stack.size + 2)
 			  * sizeof(ref_t));
   *ptr = PATTERN;

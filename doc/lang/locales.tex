@@ -50,7 +50,7 @@ that the program's semantics are preserved.
 Oaklisp source files have a default extension of \df{.oak} while
 compiled files are given the extension \df{.oa}.  \df{compile-file}
 first tries to read the file \emph{file-name}\df{.oak}, and then looks
-for \emph{file-name}, while \df{load} looks first for 
+for \emph{file-name}, while \df{load} looks first for
 \emph{file-name}\df{.oa}, then for \emph{file-name}\df{.oak}, and finally for
 \emph{file-name}.}
 
@@ -78,10 +78,10 @@ the value for references to \emph{var}.}
 
 \sform{define-instance}{var typ \dt make-args}
 \doc{If the contents of \emph{var} isn't of type \emph{typ}, this is the same
-as \texttt{(set! \emph{var} (make \emph{typ} . \emph{make-args}))}. If 
+as \texttt{(set! \emph{var} (make \emph{typ} . \emph{make-args}))}. If
 \emph{var} is already bound to an object of the right type, this form has no
 effect.  \emph{Note:} this language feature is in flux.  Currently, it
-sends an \df{initialize} message to the object with the new 
+sends an \df{initialize} message to the object with the new
 \emph{make-args}.}
 
 \sform{define-syntax}{macro-name expander}
@@ -200,27 +200,27 @@ using the global variables defined in its name space.
 %%
 % Evaluation is
 % performed by sending a \df{compile} message to the desired locale.
-% 
+%
 % \begin{group}
 % \op{(COMPILE locale form)}
 % \doc{Evaluates \df{form} in the name space defined by \df{locale} and
 % its ancestors.}
 % \end{group}
-% 
+%
 % \begin{group}
 % \op{(LOAD file locale)}
 % \doc{Completes the suspended evaluation of the form that was compiled to
 % \df{file}.\  \df{locale} must be the locale within which the
 % form was originally compiled.}
 % \end{group}
-% 
+%
 % \discuss{For improved efficiency, it is desirable for the compiler to
 % be able to open-code some functions.  This is only possible if
 % the variables bound to those functions will never change their
 % values.  The following operations may be used to inform the compiler that a
 % variable will always have the same value.}
-% 
-% 
+%
+%
 
 \spred{frozen?}{locale symbol}
 \doc{Returns \df{\#t} if \emph{symbol} is a frozen variable, otherwise
