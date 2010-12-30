@@ -6,7 +6,7 @@ Standards-Version: 3.9.1
 Build-depends:
 	oaklisp,
 	debhelper (>= 8),
-	texlive-latex-base, texlive-latex-extra,
+	texlive-latex-base, texlive-latex-extra, texlive-fonts-recommended,
 	libc6-dev-i386 [amd64]
 Homepage: http://oaklisp.alioth.debian.org/
 Vcs-Cvs: :pserver:anonymous@cvs.alioth.debian.org:/cvsroot/oaklisp oaklisp
