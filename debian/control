@@ -3,7 +3,7 @@ Section: lisp
 Priority: extra
 Maintainer: Barak A. Pearlmutter <bap@debian.org>
 Standards-Version: 3.8.1
-Build-depends: oaklisp, debhelper (>= 7), texlive-latex-base, texlive-latex-extra
+Build-depends: oaklisp, debhelper (>= 7), texlive-latex-base, texlive-latex-extra, texlive-fonts-recommended
 Homepage: http://oaklisp.alioth.debian.org/
 Vcs-Cvs: :pserver:anonymous@cvs.alioth.debian.org:/cvsroot/oaklisp
 Vcs-Browser: http://alioth.debian.org/plugins/scmcvs/cvsweb.php/?cvsroot=oaklisp
