@@ -3,7 +3,11 @@ Section: lisp
 Priority: extra
 Maintainer: Barak A. Pearlmutter <bap@debian.org>
 Standards-Version: 3.9.1
-Build-depends: oaklisp, debhelper (>= 7), texlive-latex-base, texlive-latex-extra, libc6-dev-i386 [amd64]
+Build-depends:
+	oaklisp,
+	debhelper (>= 8),
+	texlive-latex-base, texlive-latex-extra,
+	libc6-dev-i386 [amd64]
 Homepage: http://oaklisp.alioth.debian.org/
 Vcs-Cvs: :pserver:anonymous@cvs.alioth.debian.org:/cvsroot/oaklisp oaklisp
 Vcs-Browser: http://alioth.debian.org/scm/viewvc.php/?root=oaklisp
