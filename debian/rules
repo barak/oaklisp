@@ -30,7 +30,7 @@ build-stamp:
 
 clean:
 	dh_testdir
-	rm -f build-stamp	
+	rm -f build-stamp
 	[ ! -f Makefile ] || $(MAKE) clean
 	dh_clean
 
@@ -52,7 +52,7 @@ binary-indep: build install
 	dh_installexamples
 	dh_installman
 	dh_installinfo
-	dh_installchangelogs 
+	dh_installchangelogs
 	dh_link
 	dh_strip
 	dh_compress
