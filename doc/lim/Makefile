@@ -14,7 +14,7 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-all: lim.dvi
+all: lim.pdf
 
 SRC = admin.tex boot.tex bytecode.tex compiler.tex cover.tex \
       dataform.tex intro.tex language.tex lim.tex methods.tex \
@@ -22,14 +22,20 @@ SRC = admin.tex boot.tex bytecode.tex compiler.tex cover.tex \
 
 lim.dvi: $(SRC) ../mandefs.tex
 	-rm lim.ind
-	-latex lim </dev/null
+	-latex -interaction=nonstopmode lim
 	bibtex lim
 	makeindex lim
 	latex lim
+	latex lim
 
 lim.ps: lim.dvi
-	dvips -o lim.ps lim
+	dvips -K -tletter -Ppdf -G0 -R0 -q -o $@ lim
+
+%.pdf: %.ps
+	ps2pdf $<
 
 .PHONY: clean
 clean:
-	-rm -f lim.{bbl,blg,dvi,ps,idx,ilg,ind,log,toc} *.aux
+	-rm -f lim.bbl lim.blg lim.dvi lim.ps lim.pdf
+	-rm -f lim.idx lim.ilg lim.ind lim.log lim.toc
+	-rm -f *.aux

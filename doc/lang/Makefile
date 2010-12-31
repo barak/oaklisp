@@ -14,7 +14,7 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-all: lang.dvi
+all: lang.pdf
 
 SRC = control.tex cover.tex dynamic.tex intro.tex io.tex lang.tex \
       locales.tex methods.tex misc.tex numbers.tex sequences.tex \
@@ -24,17 +24,23 @@ OSRC = seqhier.ips numhier.ips
 
 lang.dvi: $(SRC) $(OSRC) ../mandefs.tex
 	-rm lang.ind
-	-latex lang </dev/null
+	-latex -interaction=nonstopmode lang
 	bibtex lang
 	makeindex lang
 	latex lang
+	latex lang
 
 lang.ps: lang.dvi $(OSRC)
-	dvips -o lang.ps lang
+	dvips -K -tletter -Ppdf -G0 -R0 -q -o $@ lang
+
+%.pdf: %.ps
+	ps2pdf $<
 
 #lang.ind: lang.idx
 #	makeindex lang
 
 .PHONY: clean
 clean:
-	-rm -f lang.{bbl,blg,dvi,ps,idx,ilg,ind,log,toc} *.aux
+	-rm -f lang.bbl lang.blg lang.dvi lang.ps lang.pdf
+	-rm -f lang.idx lang.ilg lang.ind lang.log lang.toc
+	-rm -f *.aux

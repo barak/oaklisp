@@ -27,7 +27,7 @@ d=$(DESTDIR)$(prefix)/share/doc/oaklisp
 
 .PHONY: install
 install:
-	$(MAKE) -C lang lang.ps
-	$(MAKE) -C lim  lim.ps
+	$(MAKE) -C lang lang.pdf
+	$(MAKE) -C lim  lim.pdf
 	mkdir --parents $d
-	cp -a lang/lang.ps lim/lim.ps $d/
+	cp -a lang/lang.pdf lim/lim.pdf $d/
