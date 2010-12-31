@@ -1,2 +1,1 @@
   * solve bootstrapping issue (closes: #122117)
-  * deal with 64-bit architectures that admit to 32-bit executables
