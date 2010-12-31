@@ -99,7 +99,8 @@ install: oakworld.bin
 
 .PHONY: clean
 clean: clean-oa-files
-	-rm -f oakworld{-1,-2,-3}.bin new.cold new.sym
+	-rm -f oakworld-1.bin oakworld-2.bin oakworld-3.bin
+	-rm -f new.cold new.sym
 
 .PHONY: clean-oa-files
 clean-oa-files:
