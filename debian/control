@@ -9,8 +9,8 @@ Build-depends:
 	texlive-latex-base, texlive-latex-extra, texlive-fonts-recommended,
 	libc6-dev-i386 [amd64]
 Homepage: http://oaklisp.alioth.debian.org/
-Vcs-Cvs: :pserver:anonymous@cvs.alioth.debian.org:/cvsroot/oaklisp oaklisp
-Vcs-Browser: http://alioth.debian.org/scm/viewvc.php/?root=oaklisp
+Vcs-Git: git://scm.alioth.debian.org/git/oaklisp/oaklisp.git
+Vcs-Browser: https://alioth.debian.org/scm/browser.php?group_id=100056
 
 Package: oaklisp
 Architecture: i386 amd64
