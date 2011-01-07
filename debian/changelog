@@ -1,3 +1,9 @@
+oaklisp (1.3.3-5) unstable; urgency=low
+
+  * build dependency on ghostscript for ps2pdf
+
+ -- Barak A. Pearlmutter <bap@debian.org>  Thu, 06 Jan 2011 23:17:58 +0000
+
 oaklisp (1.3.3-4) unstable; urgency=low
 
   * track change to Alioth's vcs-browser url
