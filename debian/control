@@ -1,6 +1,6 @@
 Source: oaklisp
 Section: lisp
-Priority: extra
+Priority: optional
 Maintainer: Barak A. Pearlmutter <bap@debian.org>
 Standards-Version: 3.9.1
 Build-depends:
