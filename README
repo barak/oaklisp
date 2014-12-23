@@ -2,11 +2,17 @@
 This is the Oaklisp source distribution.
 
 Oaklisp is a portable lisp interpreter / compiler for the Oaklisp
-dialect of lisp.  It is an object-oriented dialect with first class
-types and many of the benefits of Scheme.  The compiler compiles
-Oaklisp source code into byte-code for the included Oaklisp emulator /
-virtual machine.  The system is best described in the included
-documentation.
+dialect of lisp.
+
+Oaklisp is an object-oriented dialect of lisp sharing the standard
+lisp syntax, including common lisp style macros, first class types,
+multiple inheritance, and multiple namespaces (packages).  Oaklisp is
+also a Lisp-1 dialect meaning functions and variables share the same
+namespace (like Scheme).
+
+The compiler compiles Oaklisp source code into byte-code for the
+included Oaklisp emulator / virtual machine.  The system is best
+described in the included documentation.
 
 Oaklisp was written by Barak A. Pearlmutter and Kevin J. Lang.
 The original distribution is located at https://github.com/barak/oaklisp
