@@ -78,7 +78,7 @@ maybe_put(bool v, char *s)
 {
   if (v)
     {
-      printf(s);
+      fputs(s, stdout);
       fflush(stdout);
     }
 }
