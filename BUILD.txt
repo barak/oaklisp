@@ -1,0 +1,61 @@
+
+Build instructions for Oaklisp
+
+There are only two files required to run Oaklisp:
+
+oaklisp		the executable / emulator / virtual machine
+oakworld.bin	pre-built oaklisp (read in by the executable)
+
+Oaklisp is largely written in Oaklisp.  oakworld.bin contains the
+pre-built, pre-compiled oaklisp system.  This means you need an
+existing oakworld.bin in order to run Oaklisp if you want to build a
+new oakworld.bin.  Oaklisp cannot run without an existing oakworld.bin
+file.
+
+Oaklisp is sensitive to the endianness of the CPU.  (See
+http://en.wikipedia.org/wiki/Endianness ) The included oakworld.bin is
+for a little-indian architecture.  x86 and x86-64 processors are
+little-indian.  Oaklisp can be made to cross build an oakworld.bin for
+a different architecture.
+
+The oaklisp executable currently only works in 32 bit mode.  It can be
+built as a 32 bit executable on 64 bit machines.  The only requirement
+is that the 32-bit libraries are installed on the 64 bit machine.  This
+shouldn't be a problem.
+
+Building the system is done from the root of the distribution using
+gnumake.  The following targets are available:
+
+all (default)	builds the executable and assumes the pre-built / included
+		oakworld.bin and doc files
+
+install		installs the system (defaults to /usr/local but can be changed
+		as described below)
+
+clean		removes intermediary build files
+
+realclean	removes intermediary and built files but not the pre-built
+		oakworld.bin and doc files.  Basically returns the system back
+		to the state it originally came in.
+
+newworld	creates (bud does not install) a new oakworld.bin file.  It
+		assumes you already have a running oaklisp built and installed.
+
+docs		re-builds the doc files.  You must have TeX installed for
+		this to work.
+
+So, for example, the following would typically be done to get a system
+up and running:
+
+	make
+	sudo make install
+
+Lastly, as shipped, the system hard-codes the location of the oakworld.bin
+file.  If it is not where the system expects it, it will not run.  If you
+do not want the system installed under the default ( /usr/local ), you
+can change it as follows:
+
+	make prefix=/my/path
+	sudo make install prefix=/my/path
+
+
