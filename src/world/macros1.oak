@@ -45,7 +45,7 @@
 
 ; When compiling a file (using compile-file or load-oak-file),
 ; macro expansion occurs in a sub-locale that is augmented with
-; the local syntax of that file, and so ^Vcurrent-locale is temporarily
+; the local syntax of that file, and so #*current-locale is temporarily
 ; rebound to the sub-locale.  It is bound to the actual current locale
 ; during the load phase.
 ;
