@@ -101,7 +101,8 @@
 	      (bit-or (bit-and (%vref-nocheck self m)
 			       (bit-and #xFFFFFF
 					(bit-not (ash-left #xFF i))))
-		      (ash-left (%character->fixnum new-c) i))))))
+		      (ash-left (%character->fixnum new-c) i)))
+	new-c)))
 
 
 
