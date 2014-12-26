@@ -65,9 +65,8 @@
       (format outfile "~%")
 
       (for-each (lambda (f)
-		  (let ((f (downcase (#^string f))))
-		    (format outfile
-			    "~a.oa:~a.oak;$(OAK) $(OAKFLAGS) -- -locale compiler-locale -compile $* -exit~%"
-			    f f)))
-		compiler-files)))
+		  (format outfile "~a.oa " (downcase (#^string f))))
+		compiler-files)
+      (format outfile ": OAKLOCALE=--locale compiler-locale~%")))
+
   name)

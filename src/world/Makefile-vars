@@ -19,14 +19,4 @@ GRAVY = tak.oak compile-bench.oak prolog.oak prolog-examples.oak
 
 # Special rules for the compiler's source
 
-crunch.oa:crunch.oak;$(OAK) $(OAKFLAGS) -- -locale compiler-locale -compile $* -exit
-mac-comp-stuff.oa:mac-comp-stuff.oak;$(OAK) $(OAKFLAGS) -- -locale compiler-locale -compile $* -exit
-mac-compiler-nodes.oa:mac-compiler-nodes.oak;$(OAK) $(OAKFLAGS) -- -locale compiler-locale -compile $* -exit
-mac-compiler1.oa:mac-compiler1.oak;$(OAK) $(OAKFLAGS) -- -locale compiler-locale -compile $* -exit
-mac-compiler2.oa:mac-compiler2.oak;$(OAK) $(OAKFLAGS) -- -locale compiler-locale -compile $* -exit
-mac-compiler3.oa:mac-compiler3.oak;$(OAK) $(OAKFLAGS) -- -locale compiler-locale -compile $* -exit
-mac-code.oa:mac-code.oak;$(OAK) $(OAKFLAGS) -- -locale compiler-locale -compile $* -exit
-assembler.oa:assembler.oak;$(OAK) $(OAKFLAGS) -- -locale compiler-locale -compile $* -exit
-peephole.oa:peephole.oak;$(OAK) $(OAKFLAGS) -- -locale compiler-locale -compile $* -exit
-file-compiler.oa:file-compiler.oak;$(OAK) $(OAKFLAGS) -- -locale compiler-locale -compile $* -exit
-compiler-exports.oa:compiler-exports.oak;$(OAK) $(OAKFLAGS) -- -locale compiler-locale -compile $* -exit
+crunch.oa mac-comp-stuff.oa mac-compiler-nodes.oa mac-compiler1.oa mac-compiler2.oa mac-compiler3.oa mac-code.oa assembler.oa peephole.oa file-compiler.oa compiler-exports.oa : OAKLOCALE=--locale compiler-locale

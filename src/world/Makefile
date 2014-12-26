@@ -48,7 +48,7 @@ endif
 
 # How to compile oaklisp source files into oaklisp bytecode object files:
 .SUFFIXES: .oa .oak
-%.oa : %.oak ; $(OAK) $(OAKFLAGS) -- --compile $* --exit
+%.oa : %.oak ; $(OAK) $(OAKFLAGS) -- $(OAKLOCALE) --compile $* --exit
 
 # How to build a new cold world using the world builder tool:
 new.cold: $(COLDFILES) $(TOOLFILES)
