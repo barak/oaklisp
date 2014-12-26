@@ -19,7 +19,11 @@ prefix=/usr/local
 
 .PHONY: all clean
 
-all clean:
+all:
+	$(MAKE) -C lang $@  || cp ../prebuilt/doc/lang/lang.pdf lang/
+	$(MAKE) -C lim  $@  || cp ../prebuilt/doc/lim/lang.pdf  lim/
+
+clean:
 	$(MAKE) -C lang $@
 	$(MAKE) -C lim  $@
 
@@ -27,7 +31,7 @@ d=$(DESTDIR)$(prefix)/share/doc/oaklisp
 
 .PHONY: install
 install:
-	$(MAKE) -C lang lang.pdf
-	$(MAKE) -C lim  lim.pdf
+	$(MAKE) -C lang lang.pdf || cp ../prebuilt/doc/lang/lang.pdf lang/
+	$(MAKE) -C lim  lim.pdf  || cp ../prebuilt/doc/lim/lang.pdf  lim/
 	mkdir --parents $d
 	cp -a lang/lang.pdf lim/lim.pdf $d/
