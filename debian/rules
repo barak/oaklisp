@@ -3,34 +3,29 @@
 # Uncomment this to turn on verbose mode.
 # export DH_VERBOSE=1
 
-dh_targets=binary binary-arch binary-indep build build-arch build-indep clean install
-
-$(dh_targets) %:
+%:
 	dh $@ --parallel
 
-.PHONY: $(dh_targets)
 
-CFLAGS += -g -Wall
+CFLAGS   = $(shell dpkg-buildflags --get CFLAGS)
+CPPFLAGS = $(shell dpkg-buildflags --get CPPFLAGS)
+LDFLAGS  = $(shell dpkg-buildflags --get LDFLAGS)
+
+CFLAGS += -Wall
+
 CPPFLAGS += -DFAST
-
-ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
-CFLAGS += -O3
-endif
+CPPFLAGS += -DDEFAULT_WORLD=\\\"$(prefix)/lib/oaklisp/oakworld.bin\\\"
 
 ifeq ($(shell dpkg-architecture -qDEB_BUILD_ARCH_CPU),amd64)
 CFLAGS += -m32
 LDFLAGS += -m32
 endif
 
-export CFLAGS
-export CPPFLAGS
-export LDFLAGS
-
 prefix=/usr
 DESTDIR=`pwd`/debian/oaklisp
 
 override_dh_auto_build:
-	dh_auto_build -- prefix=$(prefix)
+	dh_auto_build -- prefix=$(prefix) CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="$(LDFLAGS)"
 
 override_dh_auto_install:
 	$(MAKE) -C src DESTDIR=$(DESTDIR) prefix=$(prefix) install
