@@ -6,6 +6,7 @@
 *.ilg
 *.ind
 *.log
+*.pdf
 *.ps
 *.toc
 *.gz
