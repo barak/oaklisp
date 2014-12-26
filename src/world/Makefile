@@ -39,8 +39,12 @@ SOURCE = $(ALLOAFILES:.oa=.oak) Makefile
 OAK = ../emulator/oaklisp
 
 # Flags for the emulator.
-# When bootstrapping add "OAKFLAGS+=--world ...../oakworld.bin"
 OAKFLAGS = --trace-gc=1
+# When bootstrapping add "OAKFLAGS+=--world ...../oakworld.bin"
+# generally: ../../prebuilt/src/world/oakworld.bin
+ifeq ($(shell $(OAK) $(OAKFLAGS) -- --exit > /dev/null || echo oops),oops)
+OAKFLAGS += --world  ../../prebuilt/src/world/oakworld.bin
+endif
 
 # How to compile oaklisp source files into oaklisp bytecode object files:
 .SUFFIXES: .oa .oak
