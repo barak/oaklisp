@@ -36,15 +36,20 @@ LOADLIBES = -lpthread
 OAK=oaklisp
 
 # bootstrapping problem: to compile the emulator we need a working
-# oaklisp to generate instr-data.c.
+# oaklisp to generate instr-data.c.  This is solved by trying to
+# generate it automatically if necessary, but if that fails instead
+# using a prebuilt copy.
 
 instr-data.c: instruction-table.oak
 	$(OAK) $(OAKFLAGS) -- \
 		--locale compiler-locale \
 		--load instruction-table \
 		--eval '(dump-instruction-table "$@")' \
-		--exit
+		--exit \
+	|| cp ../../prebuilt/src/emulator/instr-data.c $@
 	-indent $@
+
+instr.o: instr-data.c
 
 # Things you might want to modify and uncomment:
 # CPPFLAGS+=-DMAX_NEW_SPACE_SIZE=16000000
@@ -73,7 +78,7 @@ install: $(progs)
 
 .PHONY: clean
 clean:
-	-rm -f $(progs) $(psrc:.c=.o) $(osrc:.c=.o) $(dfiles) TAGS
+	-rm -f $(progs) $(psrc:.c=.o) $(osrc:.c=.o) $(dfiles) instr-data.c TAGS
 
 .PHONY: indent
 indent: $(psrc) $(osrc) $(hsrc)
