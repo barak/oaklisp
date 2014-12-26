@@ -4,7 +4,6 @@ Priority: optional
 Maintainer: Barak A. Pearlmutter <bap@debian.org>
 Standards-Version: 3.9.6
 Build-depends:
-	oaklisp,
 	debhelper (>= 8),
 	texlive-latex-base, texlive-latex-extra, texlive-fonts-recommended,
 	ghostscript,
