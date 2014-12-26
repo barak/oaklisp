@@ -39,17 +39,21 @@ SOURCE = $(ALLOAFILES:.oa=.oak) Makefile
 OAK = ../emulator/oaklisp
 
 # Flags for the emulator.
-# When bootstrapping add "OAKFLAGS+=--world ...../oakworld.bin"
 OAKFLAGS = --trace-gc=1
+# When bootstrapping add "OAKFLAGS+=--world ...../oakworld.bin"
+# generally: ../../prebuilt/src/world/oakworld.bin
+ifeq ($(shell $(OAK) $(OAKFLAGS) -- --exit > /dev/null || echo oops),oops)
+OAKWORLDFLAGS = --world  ../../prebuilt/src/world/oakworld.bin
+endif
 
 # How to compile oaklisp source files into oaklisp bytecode object files:
 .SUFFIXES: .oa .oak
-%.oa : %.oak ; $(OAK) $(OAKFLAGS) -- --compile $* --exit
+%.oa : %.oak ; $(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) -- $(OAKLOCALE) --compile $* --exit
 
 # How to build a new cold world using the world builder tool:
 new.cold: $(COLDFILES) $(TOOLFILES)
 	-rm -f new.cold new.sym
-	$(OAK) $(OAKFLAGS) \
+	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) \
 	   -- \
 	   --load tool \
 	   --eval "(tool-files '($(COLDFILESD:.oa=)) 'new)" \
@@ -85,7 +89,7 @@ oakworld.bin: oakworld-3.bin $(RNRSFILES)
 # How to rebuild variables included by this Makefile itself:
 
 Makefile-vars: $(MAKEFILES) $(FILESFILES)
-	$(OAK) $(OAKFLAGS) \
+	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) \
 	   -- \
 	   --load files --load make-makefile --eval '(make-makefile "$@")' \
 	   --exit

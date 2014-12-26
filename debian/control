@@ -8,7 +8,7 @@ Build-depends:
 	debhelper (>= 8),
 	texlive-latex-base, texlive-latex-extra, texlive-fonts-recommended,
 	ghostscript,
-	libc6-dev-i386 [amd64]
+	gcc-multilib [amd64]
 Homepage: http://oaklisp.alioth.debian.org/
 Vcs-Git: git://git.debian.org/git/oaklisp/oaklisp.git
 Vcs-Browser: https://alioth.debian.org/scm/browser.php?group_id=100056

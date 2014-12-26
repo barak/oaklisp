@@ -1,6 +1,5 @@
-oakem
-oaklisp
 *.d
-TAGS
 *.o
-*~
+/instr-data.c
+/oaklisp
+TAGS
