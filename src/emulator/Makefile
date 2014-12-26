@@ -31,6 +31,10 @@ oobj=$(osrc:.c=.o)
 all: $(progs)
 
 CFLAGS += -O2 -g -Wall
+ifeq ($(shell uname -m),x86_64)
+CFLAGS += -m32
+LDFLAGS += -m32
+endif
 LOADLIBES = -lpthread
 
 OAK=oaklisp
