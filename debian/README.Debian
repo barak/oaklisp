@@ -1,7 +1,0 @@
-The Debian Package oaklisp
-----------------------------
-
-An object-oriented dialect of Scheme with first-class types.
-http://oaklisp.alioth.debian.org/
-
- -- Barak A. Pearlmutter <bap@debian.org>, Wed,  6 Feb 2008 19:53:18 +0000

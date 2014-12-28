@@ -1,4 +1,8 @@
 .TH OAKLISP 1
+.de URL
+\\$2 \(laURL: \\$1 \(ra\\$3
+..
+.if \n[.g] .mso www.tmac
 
 .SH NAME
 oaklisp \- An implementation of the Oaklisp language
@@ -21,7 +25,7 @@ oaklisp \- An implementation of the Oaklisp language
 
 .SH SYNOPSIS
 .B oaklisp
-[ emulator-options ... [ -- oaklisp-options ... ]]
+[ emulator-options ... [ \-\- oaklisp-options ... ]]
 
 .SH DESCRIPTION
 .I Oaklisp
@@ -40,100 +44,100 @@ them.
 .SS EMULATOR OPTIONS
 
 .TP
-.B \-help
+.B \-\-help
 Show summary of emulator options
 .TP
-.B \-world file
+.B \-\-world file
 file is world to load
 .TP
-.B \-dump file
+.B \-\-dump file
 dump world to file upon exit
 .TP
-.B \-d file
-synonym for --dump
+.B \-\-d file
+synonym for \-\-dump
 .TP
-.B \-dump-base b
+.B \-\-dump-base b
 0=ascii, 2=binary; default=2
 .TP
-.B \-predump-gc b
+.B \-\-predump-gc b
 0=no, 1=yes; default=1
 .BR
 .TP
-.B \-size-heap n
+.B \-\-size-heap n
 n is in kilo-refs, default 128
 .TP
-.B \-size-val-stk n
+.B \-\-size-val-stk n
 value stack buffer, n is in refs
 .TP
-.B \-size-cxt-stk n
+.B \-\-size-cxt-stk n
 context stack buffer, n is in refs
 .TP
-.B \-size-seg-max n
+.B \-\-size-seg-max n
 maximum flushed segment len, n is in refs
 .BR
 .TP
-.B \-trace-gc v
+.B \-\-trace-gc v
 0=quiet, 3=very detailed; default=0
 .TP
-.B \-verbose-gc v
-synonym for --trace-gc
+.B \-\-verbose-gc v
+synonym for \-\-trace-gc
 .TP
-.B \-trace-traps
+.B \-\-trace-traps
 .TP
-.B \-trace-files
+.B \-\-trace-files
 trace filesystem operations
 
 .SS UNOPTIMIZED EMULATOR OPTIONS
 
 .TP
-.B \-trace-segs
+.B \-\-trace-segs
 trace stack segment writes/reads
 .TP
-.B \-trace-valcon
+.B \-\-trace-valcon
 print entire value stack at each instr
 .TP
-.B \-trace-cxtcon
+.B \-\-trace-cxtcon
 print entire context stack at each instr
 .TP
-.B \-trace-stks
+.B \-\-trace-stks
 print the size of the stacks at each instr
 .TP
-.B \-trace-instructions
+.B \-\-trace-instructions
 trace each bytecode executed
 .TP
-.B \-trace-methods
+.B \-\-trace-methods
 trace each method lookup
 .TP
-.B \-trace-mcache
+.B \-\-trace-mcache
 trace method cache
 
 .SS OAKLISP OPTIONS
 
 .TP
-.B \-help
+.B \-\-help
 Show summary of Oaklisp options
 
 .TP
-.B \-eval expr
+.B \-\-eval expr
 Evaluate Oaklisp expression, which is one arg so
 be sure to quote for shell.
 
 .TP
-.B \-load file
+.B \-\-load file
 Load a file.
 
 .TP
-.B \-compile file
+.B \-\-compile file
 Compile file.oak yielding file.oa
 
 .TP
-.B \-locale x
+.B \-\-locale x
 Switch to locale x, eg system-locale (default),
 compiler-locale, scheme-locale (for RnRS
 compatibility).
 
 .TP
-.B \-exit
+.B \-\-exit
 Exit upon processing this option.
 
 .SH EXAMPLES
@@ -141,7 +145,7 @@ Exit upon processing this option.
 This will compile the file myfile.oak in the scheme locale and then
 leave the user in a read-eval-print loop in the scheme locale.
 
-.B oaklisp -- -locale scheme-locale -compile myfile
+.B oaklisp \-\- \-\-locale scheme\-locale \-\-compile myfile
 
 .SH ENVIRONMENT
 The environment variable OAKWORLD will override the default compiled
@@ -181,13 +185,15 @@ Bug reports and enhancements should be sent to barak@cs.may.ie.
 
 The programs are documented more fully in the language and
 implementation manuals included with the distribution.  In binary
-packages these are probably in /usr/share/doc/oaklisp/lang.pdf and
+packages these are probably in /usr/share/doc/oaklisp\-doc/lang.pdf and
 lim.pdf.
 
 The Oaklisp home page is transitioning from
-.I http://www.bcl.hamilton.ie/~barak/oaklisp/
+.URL http://www.bcl.hamilton.ie/~barak/oaklisp/ "its old location"
 to
-.I http://oaklisp.alioth.debian.org/.
+.URL http://oaklisp.alioth.debian.org/ alioth
+and
+.URL http://github.com/barak/oaklisp github .
 
 .I The Implementation of Oaklisp
 is a chapter in
