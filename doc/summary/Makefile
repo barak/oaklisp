@@ -14,30 +14,11 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-# This value of prefix will usually be overridden
-prefix=/usr/local
+all: OaklispSummary.pdf
 
-.PHONY: all lang lim summary clean
-
-all: lang lim summary
-
-lang:
-	$(MAKE) -C lang all  || cp ../prebuilt/doc/lang/lang.pdf lang/
-
-lim:
-	$(MAKE) -C lim  all  || cp ../prebuilt/doc/lim/lang.pdf  lim/
-
-summary:
-	$(MAKE) -C summary all || cp ../prebuilt/doc/summary/OaklispSummary.pdf summary/
+%.pdf: %.tex; rubber --warn all --pdf $<
 
 clean:
-	$(MAKE) -C lang $@
-	$(MAKE) -C lim  $@
-	$(MAKE) -C summary  $@
+	rubber --clean --pdf OaklispSummary.tex
 
-d=$(DESTDIR)$(prefix)/share/doc/oaklisp
-
-.PHONY: install
-install: all
-	mkdir --parents $d
-	cp lang/lang.pdf lim/lim.pdf summary/OaklispSummary.pdf $d/
+.PHONY: all clean
