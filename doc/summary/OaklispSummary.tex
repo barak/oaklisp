@@ -1,0 +1,692 @@
+\documentclass[12pt]{article}
+\usepackage[letterpaper,margin=.75in]{geometry}
+\usepackage{alltt}
+\addtolength{\parskip}{\baselineskip}  % causes a blank line between paragraphs
+\setlength{\parindent}{0in}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\renewcommand{\headrulewidth}{0in}
+\rfoot{\small Page \thepage\ of \pageref{lastpage}}
+\cfoot{}
+\lfoot{\small rev. 12/26/14}
+
+\begin{document}
+
+\centerline{\Huge Oaklisp Summary}
+\centerline{Blake McBride (blake@mcbride.name)}
+
+\medskip
+
+{\large \bfseries Startup:}
+\smallskip
+\begin{verbatim}
+    oaklisp  [--world <file>]  [--dump <file>]  [-G]
+
+where:
+        --world indicates what world to load. Default is oakworld.bin
+                that comes with the system
+
+        --dump provides a file name where a new world will be dumped
+               when the system exits
+
+        -G  option to perform a GC prior to dumping a world
+\end{verbatim}
+
+{\large \bfseries Exiting the system:}
+
+\begin{verbatim}
+    (exit)
+
+    Use ^D to exit error states
+\end{verbatim}
+
+{\large \bfseries File types:}
+
+\smallskip
+
+\hspace{.75in}
+\hbox{\begin{tabular}{|l|l|}\hline
+File ending & Description \\\hline
+oak & Oaklisp source file \\
+&\\
+oa & compiled Oaklisp file (fasl) \\
+&\\
+bin & Oaklisp world --- binary representation of\\
+    & an entire Oaklisp system representing all \\
+    & objects in the running environment.\\\hline
+\end{tabular}}
+
+\smallskip
+
+{\large \bfseries Loadind and compiling files:}
+\smallskip
+\begin{verbatim}
+    (load "myfile")  ; will load "myfile.oa" or "myfile.oak"
+
+    (compile-file #*current-locale "myfile") ; compiles myfile.oak to myfile.oa
+\end{verbatim}
+
+\newpage
+
+{\Large \bfseries Data Types}
+
+Use {\ttfamily (get-type x)} to get the type of an item.
+
+\hspace{.75in}
+\hbox{\begin{tabular}{|l|l|l|}\hline
+Type & Comment & Example \\\hline
+null-type & null list \& false & nil or \#f or {\ttfamily \symbol{13}}() \\
+truths & true & t or \#t \\
+&&\\
+fixnum &  decimal & 48  \\
+\ \ \&  & binary & \#b1011 \\
+bignum & binary & \#2r1011 \\
+ & octal & \#o755 \\
+ & hex & \#xD5 \\
+&&\\
+fraction & decimal & 2/3 \\
+ & hex & \#xDE/FF \\
+ & floats are converted to fraction & 3.141 \\
+&&\\
+character & letter `M' & \#\verb+\+M \\
+ & & \#\verb+\+Space \\
+ & & \#\verb+\+Newline \\
+ & & \#\verb+\+Backspace \\
+ & & \#\verb+\+Tab \\
+ & & \#\verb+\+Return \\
+ & & \#\verb+\+Page \\
+&&\\
+symbol & case insensitive (up-cased) &  {\ttfamily \symbol{13}}symb \\
+ & case sensitive &   {\ttfamily \symbol{13}}$\mid$symb$\mid$ \\
+ & embedded `(' &   {\ttfamily \symbol{13}}sy\verb+\+(mb \\
+&&\\
+string & with embedded \verb+"+ & ``hello\verb+\"+ there'' \\
+&&\\
+list && {\ttfamily \symbol{13}}(hello there) \\
+&&\\
+simple-vector && \#(3 4 hello) \\
+&&\\
+type & root of all types & type \\
+     & root of all objects & object \\
+\hline
+\end{tabular}}
+
+\newpage
+
+
+{\Large \bfseries List Operations}
+
+\bigskip
+
+\hbox{\begin{tabular}{|l|l|l|l|l|l|}\hline
+Type & Comment & Sp & D & Example & Result \\\hline
+car & first element & fast & no & (car {\ttfamily \symbol{13}}(A B C)) & A \\
+cdr & rest of list & fast & no & (cdr {\ttfamily \symbol{13}}(A B C)) & (B C) \\
+c????r & shorthand for & fast & no & & \\
+ & multiple car \& cdr's & & & & \\
+ & & & & & \\
+cons & add a list node & fast & no & (cons {\ttfamily \symbol{13}}A {\ttfamily \symbol{13}}(B C)) & (A B C) \\
+list & create a list & fast & no & (list {\ttfamily \symbol{13}}A {\ttfamily \symbol{13}}B {\ttfamily \symbol{13}}C) & (A B C) \\
+append & append lists & slow & no & (append {\ttfamily \symbol{13}}(A B) {\ttfamily \symbol{13}}(D) {\ttfamily \symbol{13}}(G H)) & (A B D G H) \\
+length & & slow & no & (length {\ttfamily \symbol{13}}(A B C)) & 3 \\
+nth & & slow & no & (nth {\ttfamily \symbol{13}}(A B C) 1) & B \\
+first & same as (nth 0 x) &  &  & & \\
+second & same as (nth 1 x) &  &  & & \\
+third & same as (nth 2 x) &  &  & & \\
+etc. & &  &  & & \\
+ & & & & & \\
+last & & slow & no & (last {\ttfamily \symbol{13}}(A B C)) & (C) \\
+ & & & & & \\
+ & Given: & & & & \\
+ & (setq lst {\ttfamily \symbol{13}}(A B C)) & & & & \\
+ & replace car cell & fast & yes & (set! (car lst) {\ttfamily \symbol{13}}X) & (X B C) \\
+ & replace cdr cell & fast & yes &  (set! (cdr lst) {\ttfamily \symbol{13}}X) & (A . X) \\
+\hline
+\end{tabular}}
+
+\bigskip
+\begin{description}
+  \item{Sp} = Speed
+  \item{D} = Destructive
+\end{description}
+
+\newpage
+
+
+{\Large \bfseries Comments}
+
+\smallskip
+
+Semi-colon `;' introduces a comment.  Comments extend from the semi-colon to the end of the line.
+
+\bigskip
+
+{\Large \bfseries Evaluation and Quotes}
+
+\smallskip
+
+Lists are recursively evaluated.  The first element of a list is the function and the remainder are arguments to the function.  For example:
+
+\begin{verbatim}
+    (func arg1 arg2 ...)
+\end{verbatim}
+
+Quoting stops evaluation, so
+
+
+\begin{verbatim}
+    (quote (abc def ghi))
+\end{verbatim}
+
+would not attempt to evaluate \emph{abc}, \emph{def}, or \emph{ghi}.  The ``{\ttfamily \symbol{13}}'' symbol acts as a shorthand for \emph{quote}, so the following is equivelent to the previous statement.
+
+\hspace*{.3in}{\ttfamily \symbol{13}}\verb+(abc def ghi)+
+
+
+
+
+
+
+\bigskip
+
+{\Large \bfseries Predicates}
+
+\bigskip
+
+\hbox{\begin{tabular}{|l|l|}\hline
+function & Returns \emph{NIL}, or \emph{\#T} for \\\hline
+null? & null \\
+symbol? & symbols \\
+atom? & non-list items \\
+list? &  list items (including \emph{NIL}) \\
+number? & all numbers \\
+integer? & integers \\
+string? & strings \\
+vector? & vectors \\
+eq? & same object \\
+equal? & structurally similar objects \\
+       & or same number\\
+\hline
+\end{tabular}}
+
+\newpage
+
+{\Large \bfseries Logical Operators}
+
+\bigskip
+
+\hbox{\begin{tabular}{|l|l|l|l|}\hline
+function & Returns & Example & Comment \\\hline
+not & nil or \#T & (not exp) & Logical inverse \\
+and & last exp or nil & (and exp1 exp2 ...) & Stops evalution on first null expression \\
+or  & first non-nil exp & (or exp1 exp2 ...)  & Stops evalution on first non-null expression \\
+\hline
+\end{tabular}}
+
+\emph{and} and \emph{or} can be used as conditionals too.  For example:
+
+\begin{verbatim}
+    (and exp1 exp2 exp3)
+\end{verbatim}
+
+is the same as
+
+\begin{verbatim}
+    (if exp1
+        (if exp2 exp3))
+\end{verbatim}
+
+
+
+\bigskip
+
+{\Large \bfseries Block}
+
+\bigskip
+
+\parbox[t]{3.4in}{
+(block\\
+\hspace*{2em}    exp1\\
+\hspace*{2em}    exp2\\
+\hspace*{2em}    ...)
+}\parbox[t]{3.5in}{
+ Execute each expression and return the value of the last expression.
+}
+
+\bigskip
+
+{\Large \bfseries Local Variables}
+
+\bigskip
+
+\parbox[t]{3.4in}{
+(let ((var1 val1) ; initialize \emph{var1} to \emph{val1}\\
+\hspace*{2.5em}(var2 nil) ; initialize \emph{var2} to \emph{nil}\\
+\hspace*{2.5em}...)\\
+\hspace*{4em}    exp1\\
+\hspace*{4em}    exp2\\
+\hspace*{4em}    ...)
+}\parbox[t]{3.5in}{
+ \emph{LET:}\ \ Creates local variables and executes the expressions in their context.  Returns the value of the last expression.
+}
+
+\parbox[t]{3.4in}{
+(let* (vars)  exp1 exp2 ...)
+}\parbox[t]{3.5in}{
+ \emph{LET*:}\ \ Sames as \emph{LET} except the variables are assigned sequentially.  Previously defined variables may be used in subsequent variable initializations.
+}
+
+
+\newpage
+
+{\Large \bfseries Defining Functions}
+
+\bigskip
+
+
+\parbox[t]{3.4in}{
+(define (function-name arg1 arg2 arg3 ...)\\
+\hspace*{4em}    exp1\\
+\hspace*{4em}    exp2\\
+\hspace*{4em}    ...)\\
+\\
+(define function-name\\
+\hspace*{4em}(lambda (arg1 arg2 arg3 ...)\\
+\hspace*{4em}    exp1\\
+\hspace*{4em}    exp2\\
+\hspace*{4em}    ...))
+}\parbox[t]{3.5in}{
+ \emph{DEFINE:}\ \ Define function named \emph{function-name} with specified arguments, and run the expressions in that context.
+}
+
+\bigskip
+
+{\Large \bfseries Conditionals}
+
+\smallskip
+
+In Oaklisp, conditions are considered true if they are any value other
+than \emph{NIL} or \emph{\#F}.  Therefore, \emph{NIL} and \emph{\#F} are considered as \emph{false},
+and all other values are treated as \emph{true} conditions.
+
+
+\parbox[t]{3.4in}{
+(if test\\
+\hspace*{2em}    exp1\\
+\hspace*{2em}    [exp2])
+}\parbox[t]{3.5in}{
+ \emph{IF:}\ \ If \emph{test} expression is \emph{true}, return \emph{exp1}.
+ \emph{exp2} is optional.  If \emph{test} is \emph{false}, return \emph{exp2} or \emph{undefined-value}.
+}
+
+\parbox[t]{3.4in}{
+(cond\\
+\hspace*{2em}    (test1 exp1 exp2 ...)\\
+\hspace*{2em}    (test2 exp1 exp2 ..)\\
+\hspace*{2em}    ...\\
+\hspace*{2em}    (else exp1 exp2 ...))
+}\parbox[t]{3.5in}{
+ \emph{COND:}\ \ Evalute each \emph{testN} until one is \emph{true}.
+ If a \emph{true} test is found, its expressions are evaluated and the
+ result of the last one is returned.  The \emph{else} test is always \emph{true}.
+}
+
+
+
+\bigskip
+
+{\Large \bfseries Math Predicates}
+
+\bigskip
+
+\hbox{\begin{tabular}{|l|l|}\hline
+Function & Description \\\hline
+(number? n) & Is \emph{n} a number \\
+(zero? n) & \\
+(odd? n) & \\
+(even? n) & \\
+(negative? n) & \\
+(positive? n) & \\
+(= a b) & \\
+(!= a b) & \\
+(\verb+<+ a b) & \\
+(\verb+>+ a b) & \\
+(\verb+<+= a b) & \\
+(\verb+>+= a b) & \\
+\hline
+\end{tabular}}
+
+\newpage
+
+{\Large \bfseries Numeric Operators}
+
+\bigskip
+
+\hbox{\begin{tabular}{|l|l|}\hline
+Function & Description \\\hline
++ - * / & Math functions \\
+(abs n) & Absolute value \\
+(1+ n) & \\
+(quotient a b) & integers only \\
+(minus n) & \\
+(floor n) & \\
+(ceiling n) & \\
+(round n) & \\
+(truncate n) & \\
+(modulo a b) & \\
+(remainder a b) & \\
+(expt n p) & \\
+(max a b c ...) & \\
+(min a b c ...) & \\
+(numerator f) & \\
+(denominator f) & \\
+\hline
+\end{tabular}}
+
+
+\bigskip
+
+{\Large \bfseries String Predicates}
+
+\bigskip
+
+\hbox{\begin{tabular}{|l|l|}\hline
+Function & Description \\\hline
+(string? s) & is \emph{s} a string \\
+(= a b) & \\
+(equal? a b) & \\
+(!= a b) & \\
+(\verb+<+ a b) & \\
+(\verb+>+ a b) & \\
+(\verb+<+= a b) & \\
+(\verb+>+= a b) & \\
+\hline
+\end{tabular}}
+
+\bigskip
+
+{\Large \bfseries String Operators}
+
+\bigskip
+
+\hbox{\begin{tabular}{|l|l|}\hline
+Function & Description \\\hline
+(length s) &  \\
+(nth s i) & 0 origin\\
+(upcase s) &\\
+(downcase s)&\\
+(reverse s)&\\
+(append s1 s2)&return an appended copy\\
+(copy s)&\\
+(subseq s beg len)&\\
+\hline
+\end{tabular}}
+
+\newpage
+
+
+{\Large \bfseries Macros}
+
+\smallskip
+
+\begin{alltt}
+    (define-syntax (add a b)
+        \symbol{18}(+ ,a ,b))
+
+    (gensym \symbol{13}tmp)
+\end{alltt}
+
+{\Large \bfseries Named let}
+
+\smallskip
+
+\begin{alltt}
+    (let loop ((v 0))
+        (if (!= v 10)
+            (block
+                (print v standard-output)
+                (newline)
+                (loop (1+ v)))))
+\end{alltt}
+
+
+{\Large \bfseries Printing}
+
+\smallskip
+
+\begin{alltt}
+    (print x standard-output)
+    (newline)
+    (format <stream> <fmt> <arg1> <arg2> ...)
+        <stream> = #T = standard-output
+                   #F = return a string
+\end{alltt}
+
+\newpage
+
+{\Large \bfseries Classes and Types}
+
+In classical object-oriented terminology, the following terms apply:
+
+\bigskip
+
+\hbox{\begin{tabular}{|l|l|}\hline
+Name & Description \\\hline
+Class & describes the structure and functionality associaed with instances of it \\
+& (e.g.\ instance variables and instance methods) \\
+Meta Class & describes the structure and functionality of the class object \\
+& (e.g.\ class variables and class methods) \\
+Instance & a unique instance of a class \\
+Object & a class, metaclass, or instance \\
+\hline
+\end{tabular}}
+
+
+In Oaklisp, classes and types are the same thing.  So, every type in
+Oaklisp, such as list, symbol, string, number, fraction, etc., are all
+classes.  Also, all types and instances are objects.  In Oaklisp, all
+types and objects are first-class, this means they can be passed to
+functions, assigned to variables, etc..  They are all treated the
+same.
+
+
+Oaklisp has two root classes/types named
+\emph{Object} and \emph{Type}.  \emph{Type} is the root of all types, and \emph{Object} is the
+root of all objects. 
+
+For purposes of this and following examples, the following naming scheme shall be used:
+
+
+\bigskip
+
+\hbox{\begin{tabular}{|l|l|}\hline
+Name & Description \\\hline
+Type & the Type type \\
+type & a type \\
+Object & the Object type \\
+object & an object \\
+iv* & instance variable \\
+cv* & class variable \\
+i* & an instance object \\
+im* & instance method \\
+cm* & class method \\
+\hline
+\end{tabular}}
+
+
+\bigskip
+
+{\large \bfseries Classes -- Simple}
+
+By ``simple'' we mean without meta classes.
+
+\textbf{Creating a type or class:}
+
+Format:
+
+\begin{alltt}
+   (define <type-name>
+           (make Type <instance variable names> <superclass list>))
+\end{alltt}
+
+\newpage
+
+Example:
+
+\begin{alltt}
+   (define MyClass (make Type \symbol{13}(iv1 iv2) (list Object)))
+\end{alltt}
+
+\textbf{Creating an instance of a type:}
+
+Format:
+
+\begin{alltt}
+   (make <your-type>)
+\end{alltt}
+
+Example:
+
+\begin{alltt}
+   (define i1 (make MyClass))
+\end{alltt}
+
+\textbf{Inspecting an object:}
+
+Format:
+
+\begin{alltt}
+   (describe <object>)
+\end{alltt}
+
+Example:
+
+\begin{alltt}
+   (describe MyClass)
+   (describe i1)
+\end{alltt}
+
+
+\textbf{Creating instance methods:}
+
+Format:
+
+\begin{alltt}
+   (define-instance <method-name> operation)
+   (add-method (<method-name>
+                     (<type name>  <instance variables this method will access>)
+                     self  <method argument list>)
+               <method code>
+               ...)
+\end{alltt}
+
+\newpage
+
+Example:
+
+\begin{alltt}
+   (define-instance imSet-iv1 operation)
+   (add-method (imSet-iv1 (MyClass iv1) self a)
+               (set! iv1 a))
+  
+   (define-instance imGet-iv1 operation)
+   (add-method (imGet-iv1 (MyClass iv1) self)
+               iv1)
+
+   (imSet-iv1 i1 33)
+   (imGet-iv1 i1)
+\end{alltt}
+
+
+\textbf{Instance constructor / initialization:}
+
+Format:
+
+\begin{alltt}
+   (add-method (initialize  (<type name>  <instance variables being accessed>)
+                            self  <argument list>)
+                     <initilization code>
+                     ...
+                     self)
+\end{alltt}
+
+Example:
+
+\begin{alltt}
+   (add-method (initialize (MyClass iv1 iv2) self arg1)
+        (set! iv1 arg1)
+        (set! iv2 44)
+        self)
+
+    (define i2 (make MyClass 88))
+    ; in this case
+    ; i2->iv1 would be 88
+    ; i2->iv2 would be 44
+\end{alltt}
+
+\newpage
+
+{\large \bfseries Classes -- Complex}
+
+By ``complex'' we mean with the addition of meta classes.  This gives us class variables and class methods.
+
+\textbf{Creating a type or class:}
+
+Creating a type with a meta-type involves the creation of two types; one the meta type and the other the type.
+The type created must be an instance of the meta type.
+
+Adding initializers and instance methods are as before.  The only difference is we now have the ability
+to define and use class methods and variables.  Those will be shown.
+
+Format:
+
+\begin{alltt}
+   (define <meta-type-name>
+           (make Type <class variable names> <meta superclass list>))
+   (define <type-name>
+           (make <meta-type-name>  <instance variable names>  <superclass list>))
+\end{alltt}
+
+Example:
+
+\begin{alltt}
+    (define metaMyClass2 (make Type \symbol{13}(cv1 cv2) (list Type)))
+    (define MyClass2 (make metaMyClass2 \symbol{13}(iv1 iv2) (list Object)))
+\end{alltt}
+
+\textbf{Class methods:}
+
+Format:
+
+\begin{alltt}
+   (define-instance <method-name> operation)
+   (add-method (<method-name>
+                     (<meta type name>  <class variables this method will access>)
+                     self  <method argument list>)
+               <method code>
+               ...)
+\end{alltt}
+
+\newpage
+
+Example:
+
+\begin{alltt}
+   (define-instance cmSet-cv1 operation)
+   (add-method (cmSet-cv1 (metaMyClass2 cv1) self a)
+               (set! cv1 a))
+  
+   (define-instance cmGet-cv1 operation)
+   (add-method (cmGet-cv1 (metaMyClass2 cv1) self)
+               cv1)
+
+   (cmSet-cv1 MyClass2 33)
+   (cmGet-cv1 MyClass2)
+   (describe MyClass2)  ; to see the contents of the class
+\end{alltt}
+
+
+\label{lastpage}
+\end{document}
+
