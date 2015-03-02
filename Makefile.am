@@ -14,28 +14,7 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-all: lim.pdf
+SUBDIRS = src doc
 
-SRC = admin.tex boot.tex bytecode.tex compiler.tex cover.tex \
-      dataform.tex intro.tex language.tex lim.tex methods.tex \
-      oaklevel.tex stack.tex
-
-lim.dvi: $(SRC) ../mandefs.tex
-	-rm lim.ind
-	-latex -interaction=nonstopmode lim
-	bibtex lim
-	makeindex lim
-	latex lim
-	latex lim
-
-lim.ps: lim.dvi
-	dvips -K -tletter -Ppdf -G0 -R0 -q -o $@ lim
-
-%.pdf: %.ps
-	ps2pdf $<
-
-.PHONY: clean
-clean:
-	-rm -f lim.bbl lim.blg lim.dvi lim.ps lim.pdf
-	-rm -f lim.idx lim.ilg lim.ind lim.log lim.toc
-	-rm -f *.aux
+man_MANS = man/man1/oaklisp.1
+doc_DATA = README AUTHORS COPYING

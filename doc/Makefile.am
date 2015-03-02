@@ -14,11 +14,19 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-all: OaklispSummary.pdf
+LATEX_SRCS = lang/lang.tex lim/lim.tex summary/OaklispSummary.tex
+LATEX_PDFS = lang/lang.pdf lim/lim.pdf summary/OaklispSummary.pdf
 
-%.pdf: %.tex; rubber --warn all --pdf $<
+pdf_DATA = $(LATEX_PDFS)
 
-clean:
-	rubber --clean --pdf OaklispSummary.tex
+CLEANFILES = $(LATEX_PDFS)
 
-.PHONY: all clean
+EXTRA_DIST = $(LATEX_SRCS)
+
+RUBBERFLAGS = --inplace --warn=all --pdf
+
+.tex.pdf:
+	$(RUBBER) $(RUBBERFLAGS) $<
+
+clean-local:
+	$(RUBBER) --clean $(RUBBERFLAGS) $(PAPER_SRCS)
