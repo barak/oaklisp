@@ -20,7 +20,7 @@ SRC = control.tex cover.tex dynamic.tex intro.tex io.tex lang.tex \
       locales.tex methods.tex misc.tex numbers.tex sequences.tex \
       sides.tex types.tex user.tex
 
-OSRC = seqhier.ips numhier.ips
+OSRC = seqhier.eps numhier.eps
 
 lang.dvi: $(SRC) $(OSRC) ../mandefs.tex
 	-rm lang.ind
