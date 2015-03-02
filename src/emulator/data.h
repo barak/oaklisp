@@ -32,10 +32,6 @@
 #include "config.h"
 #include "threads.h"
 
-/* Version and greeting */
-extern const char *version, *compilation_date, *compilation_time;
-
-
 #ifndef bool
 typedef int bool;
 #endif
