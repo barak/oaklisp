@@ -21,8 +21,8 @@
 prefix=/usr/local
 
 psrc=oaklisp.c
-osrc=cmdline.c data.c gc.c loop.c signal.c stacks.c timers.c weak.c worldio.c xmalloc.c instr.c threads.c
-hsrc=cmdline.h config.h data.h gc.h loop.h signal.h stacks.h stacks-loop.h timers.h weak.h worldio.h xmalloc.h instr.h threads.h
+osrc=cmdline.c data.c gc.c loop.c signals.c stacks.c timers.c weak.c worldio.c xmalloc.c instr.c threads.c
+hsrc=cmdline.h config.h data.h gc.h loop.h signals.h stacks.h stacks-loop.h timers.h weak.h worldio.h xmalloc.h instr.h threads.h
 
 progs=$(psrc:.c=)
 pobj=$(psrc:.c=.o)
