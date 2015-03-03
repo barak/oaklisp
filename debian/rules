@@ -7,19 +7,19 @@
 	dh $@ --parallel --with autoreconf
 
 # Check
-# if we have an installed oaklisp, use that for building the world.
-# Otherwise
 # if we have a prebuilt world, use that for building the world.
+# Otherwise
+# if we have an installed oaklisp, use that for building the world.
 # Otherwise
 # exhibit blind faith.
 
 have_oaklisp := $(shell test -x /usr/bin/oaklisp && echo yes || echo no)
 have_prebuilt := $(shell test -e prebuilt/src/world/oakworld.bin && echo yes || echo no)
 
-ifeq ($(have_oaklisp),yes)
-override_dh_auto_build:
-	dh_auto_build -- OAK=/usr/bin/oaklisp
-else ifeq ($(have_prebuilt),yes)
+ifeq ($(have_prebuilt),yes)
 override_dh_auto_build:
 	dh_auto_build -- OAKWORLDFLAGS="--world $(abspath prebuilt/src/world/oakworld.bin)"
+else ifeq ($(have_oaklisp),yes)
+override_dh_auto_build:
+	dh_auto_build -- OAK=/usr/bin/oaklisp
 endif
