@@ -1,0 +1,7 @@
+2015-03-03  Barak A. Pearlmutter  <barak@cs.nuim.ie>
+
+	* autotools build system
+	* rubber to build LaTeX documentation
+	* prebuilt world on separate git branch
+	* ChangeLog file created for automake happiness
+	* AUTHORS file renamed from src/CREDITS for automake happiness

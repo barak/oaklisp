@@ -14,11 +14,7 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-all: OaklispSummary.pdf
+SUBDIRS = src doc
 
-%.pdf: %.tex; rubber --warn all --pdf $<
-
-clean:
-	rubber --clean --pdf OaklispSummary.tex
-
-.PHONY: all clean
+man_MANS = man/man1/oaklisp.1
+doc_DATA = README AUTHORS COPYING BUILD.txt ChangeLog NEWS

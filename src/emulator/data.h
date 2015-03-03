@@ -32,10 +32,6 @@
 #include "config.h"
 #include "threads.h"
 
-/* Version and greeting */
-extern const char *version, *compilation_date, *compilation_time;
-
-
 #ifndef bool
 typedef int bool;
 #endif
@@ -55,9 +51,6 @@ typedef struct {
   ref_t *start;
   ref_t *end;
   size_t size;		/* in size reference_t */
-#ifdef UNALIGNED_MALLOC
-  size_t displacement;
-#endif
 } space_t;
 
 

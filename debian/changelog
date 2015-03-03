@@ -1,8 +1,23 @@
-oaklisp (1.3.3-6) unstable; urgency=low
-
-  * priority option per override (debian/control)
-
- -- Barak A. Pearlmutter <bap@debian.org>  Mon, 31 Jan 2011 18:38:53 +0000
+oaklisp (1.3.4-1) unstable; urgency=low
+  
+  * debian/control: priority option per override (debian/control)
+  * debian/control: bump debian policy
+  * debian/rules: bump to dh 9
+  * debian/control: build dependency on gcc-multiarch for amd64
+  * debian/control: update vcs browser url (closes: #528298)
+  * debian/control: longer descriptions
+  * new upstream version
+  * adapt to new autotool upstream build scripts
+    - debian/rules: dh --with autoreconf
+    - debian/control: build dependency on rubber for LaTeX
+    - debian/control: remove build dependency on ghostscript
+    - debian/control: build depend on autoconf-archive for AX_CFLAGS_WARN_ALL
+    - debian/rules: use prebuilt world or installed oaklisp (closes: #534078)
+    - debian/README-BUILDING.Debian: remove, see upstream BUILD.txt
+    - general simplifications
+    - let upstream do more of the installation
+  
+ -- Barak A. Pearlmutter <bap@debian.org>  Tue, 03 Mar 2015 13:01:02 +0000
 
 oaklisp (1.3.3-5) unstable; urgency=low
 

@@ -14,28 +14,20 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-all: lim.pdf
+LATEX_SRCS = lang/lang.tex lim/lim.tex summary/OaklispSummary.tex
+LATEX_PDFS = lang/lang.pdf lim/lim.pdf summary/OaklispSummary.pdf
 
-SRC = admin.tex boot.tex bytecode.tex compiler.tex cover.tex \
-      dataform.tex intro.tex language.tex lim.tex methods.tex \
-      oaklevel.tex stack.tex
+pdf_DATA = $(LATEX_PDFS)
 
-lim.dvi: $(SRC) ../mandefs.tex
-	-rm lim.ind
-	-latex -interaction=nonstopmode lim
-	bibtex lim
-	makeindex lim
-	latex lim
-	latex lim
+CLEANFILES = $(LATEX_PDFS)
 
-lim.ps: lim.dvi
-	dvips -K -tletter -Ppdf -G0 -R0 -q -o $@ lim
+EXTRA_DIST = $(LATEX_SRCS)
 
-%.pdf: %.ps
-	ps2pdf $<
+RUBBERFLAGS = --inplace --warn=all --pdf
 
-.PHONY: clean
-clean:
-	-rm -f lim.bbl lim.blg lim.dvi lim.ps lim.pdf
-	-rm -f lim.idx lim.ilg lim.ind lim.log lim.toc
-	-rm -f *.aux
+.tex.pdf:
+	$(RUBBER) $(RUBBERFLAGS) $< \
+	 || cp ../prebuilt/doc/$@ $@
+
+clean-local:
+	-$(RUBBER) --clean $(RUBBERFLAGS) $(PAPER_SRCS)

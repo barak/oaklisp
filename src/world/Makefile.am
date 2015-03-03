@@ -14,16 +14,15 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-# This value of prefix will usually be overridden
-prefix=/usr/local
-
 # Bigendian machines need bigendian binary oaklisp worlds, so non-cold
 # worlds are only compatible across machines of the same endianity.
 
-all: oakworld.bin
+workaroundpkglibdir=$(pkglibdir)
+workaroundpkglib_DATA = oakworld.bin
 
--include Makefile-vars
+include Makefile-vars
 
+ALLOAFILES =
 ALLOAFILES += $(TOOLFILES)
 ALLOAFILES += $(MAKEFILES)
 ALLOAFILES += $(FILESFILES)
@@ -32,23 +31,23 @@ ALLOAFILES += $(MISCFILES)
 ALLOAFILES += $(COMPFILES)
 ALLOAFILES += $(RNRSFILES)
 
-SOURCE = $(ALLOAFILES:.oa=.oak) Makefile
-
 # The Oaklisp emulator executable.
 # Use "OAK=oaklisp" unless compiling new emulator.
-OAK = ../emulator/oaklisp
+OAK = ../oaklisp
 
 # Flags for the emulator.
 OAKFLAGS = --trace-gc=1
+
 # When bootstrapping add "OAKFLAGS+=--world ...../oakworld.bin"
 # generally: ../../prebuilt/src/world/oakworld.bin
-ifeq ($(shell $(OAK) $(OAKFLAGS) -- --exit > /dev/null || echo oops),oops)
-OAKWORLDFLAGS = --world  ../../prebuilt/src/world/oakworld.bin
-endif
+
+# ifeq ($(shell $(OAK) $(OAKFLAGS) -- --exit > /dev/null || echo oops),oops)
+# OAKWORLDFLAGS = --world  ../../prebuilt/src/world/oakworld.bin
+# endif
 
 # How to compile oaklisp source files into oaklisp bytecode object files:
-.SUFFIXES: .oa .oak
-%.oa : %.oak ; $(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) -- $(OAKLOCALE) --compile $* --exit
+.oak.oa:
+	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) -- $(OAKLOCALE) --compile $* --exit
 
 # How to build a new cold world using the world builder tool:
 new.cold: $(COLDFILES) $(TOOLFILES)
@@ -94,22 +93,5 @@ Makefile-vars: $(MAKEFILES) $(FILESFILES)
 	   --load files --load make-makefile --eval '(make-makefile "$@")' \
 	   --exit
 
-d=$(DESTDIR)$(prefix)/lib/oaklisp
-
-.PHONY: install
-install: oakworld.bin
-	mkdir --parents $d
-	cp -a $^ $d/
-
-.PHONY: clean
-clean: clean-oa-files
-	-rm -f oakworld-1.bin oakworld-2.bin oakworld-3.bin
-	-rm -f new.cold new.sym
-
-.PHONY: clean-oa-files
-clean-oa-files:
-	-rm -f $(ALLOAFILES)
-
-.PHONY: reallyclean
-reallyclean: clean
-	-rm -f oakworld.bin
+CLEANFILES = oakworld-1.bin oakworld-2.bin oakworld-3.bin new.cold	\
+ new.sym $(ALLOAFILES) oakworld.bin

@@ -5,8 +5,8 @@
 *.idx
 *.ilg
 *.ind
+*.ing
 *.log
 *.pdf
 *.ps
 *.toc
-*.gz

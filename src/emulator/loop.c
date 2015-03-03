@@ -36,7 +36,7 @@
 #include "stacks.h"
 #include "stacks-loop.h"
 #include "gc.h"
-#include "signal.h"
+#include "signals.h"
 #include "timers.h"
 #include "weak.h"
 #include "worldio.h"

@@ -1,5 +1,0 @@
-*.d
-*.o
-/instr-data.c
-/oaklisp
-TAGS

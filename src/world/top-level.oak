@@ -110,7 +110,8 @@
 
 (set! top-level
       (lambda ()
-	(format #t "~&Welcome to Oaklisp 1.3.3~%")
+	;; really should get version from configure.ac
+	(format #t "~&Welcome to Oaklisp 1.3.4~%")
 	(read-eval-print-loop)))
 
 (define (eval form locale)

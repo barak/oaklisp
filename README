@@ -1,57 +1,37 @@
-This is the Oaklisp source distribution.
+This is an Oaklisp source distribution.
 
-Oaklisp's home is:
-http://oaklisp.alioth.debian.org/
+Oaklisp is a portable lisp interpreter / compiler for the Oaklisp
+dialect of lisp.
 
-Old releases are still at:
-See http://www-bcl.cs.may.ie/~barak/oaklisp/ for updates.
+Oaklisp is an object-oriented dialect of lisp sharing the standard
+lisp syntax, including common lisp style macros, first class types,
+multiple inheritance, and multiple namespaces (packages).  Oaklisp is
+also a Lisp-1 dialect meaning functions and variables share the same
+namespace (like Scheme).
 
+Project homepage(s)
+  https://alioth.debian.org/projects/oaklisp/ (main homepage)
+  https://github.com/barak/oaklisp            (collaborative development)
+  http://www.bcl.hamilton.ie/~barak/oaklisp/  (ancient history)
 
-*** GETTING IT WORKING ***
+The compiler compiles Oaklisp source code into byte-code for the
+included Oaklisp emulator / virtual machine.  The implmentation
+is described in the included documentation, and also in
 
- Oaklisp should be straightforward to install on a virgin machine.
- You need to compile some C source to make the emulator:
+  Kevin J. Lang and Barak A. Pearlmutter.  Oaklisp: an object-oriented
+  Scheme with first class types. In OOPSLA-86, pages 30–7. doi:
+  10.1145/960112.28701.  Special issue of ACM SIGPLAN Notices 21(11).
 
-   make -C src/emulator install
+  Kevin J. Lang and Barak A. Pearlmutter. Oaklisp: an object-oriented
+  dialect of Scheme. Lisp and Symbolic Computation, 1(1):39–51, May
+  1988.
 
- If you want the emulator to look for its world somewhere else, add eg
-    CPPFLAGS='-DFAST -DDEFAULT_WORLD=\"/usr/local/lib/oaklisp/oakworld.bin\"'
+  Barak A. Pearlmutter. Garbage collection with pointers to single
+  cells.  Communications of the ACM, 39(12):202–6, December 1996.  URL
+  http://www.acm.org/cacm/extension/pearlmt.pdf.
 
- Then you need to put the recompiled binary world it will use in place:
+  Barak A. Pearlmutter and Kevin J. Lang. The implementation of
+  Oaklisp.  In Peter Lee, editor, Topics in Advanced Language
+  Implementation, pages 189–215. MIT Press, 1991.
 
-   cp -a src/world/oakworld.bin /usr/local/lib/oaklisp/
-
- (You can't just use "make -C src/world install" because a new world
- can't be built until Oaklisp is working, which requires a world to be
- installed.  That's why the source distribution includes a pre-built
- oakworld.bin.)
-
- Now invoking /usr/local/bin/oaklisp should land you in an Oaklisp
- read-eval-print loop.
-
-
-*** INSTALLING DOCUMENTATION ***
-
-Probably you should
-
-  make -C man install
-
-The language and implementation manuals are in doc/lang/lang.ps and
-doc/lim/lim.ps.  They are latex source but include working Makefiles.
-You should be able to build and install them with
-
-  make -C doc install
-
-
-*** BUILDING A NEW WORLD ***
-
-Note that Oaklisp is written in Oaklisp, so you must have a working
-Oaklisp before you can rebuild the Oaklisp world, which is done via
-
- make -C src/world
-
-In fact, you should be able to rebuild and reinstall *everything* via
-
-  make install
-
-in this top-level directory.
+See BUILD.txt for instructions on how to build the system.

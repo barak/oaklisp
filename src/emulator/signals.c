@@ -37,7 +37,7 @@
 #include <stdio.h>
 #include <signal.h>
 #include "config.h"
-#include "signal.h"
+#include "signals.h"
 
 
 

@@ -34,13 +34,6 @@
 
 
 
-bool
-isaligned(void *x)
-{
-  return ((unsigned long)x & 0x3) == 0;
-}
-
-
 
 void *
 xmalloc(size_t size)
@@ -49,11 +42,6 @@ xmalloc(size_t size)
   void *ptr = malloc(size);
   if (ptr)
     {
-      /*
-         #ifndef UNALIGNED_MALLOC
-         assert(isaligned(ptr));
-         #endif
-       */
       return ptr;
     }
   else
@@ -69,28 +57,9 @@ xmalloc(size_t size)
 void
 alloc_space(space_t * pspace, size_t size_requested)
 {
-   void *ptr;
   /* size_requested measures references */
-
-#ifdef UNALIGNED_MALLOC
-  void *ptr = xmalloc(sizeof(ref_t) * (size_requested + 1));
-
-  pspace->displacement = (size_t) ((unsigned long)ptr & (3ul));
-  pspace->start = (ref_t *) (((unsigned long)ptr + 3) & ~3ul);
-
-/*  Explanation:
- *  displacement address correction
- *   0 (mod 4)  + 0, which is good, to preserve higher alignment
- *   1 (mod 4)  + 3
- *   2 (mod 4)  + 2
- *   3 (mod 4)  + 1
- *  wastes a maximum of 4 bytes
- */
-
-#else /* UNALIGNED_MALLOC */
-  ptr = xmalloc(sizeof(ref_t) * size_requested);
+  void *ptr = xmalloc(sizeof(ref_t) * size_requested);
   pspace->start = (ref_t *) ptr;
-#endif
 
   pspace->size = size_requested;
   pspace->end = pspace->start + size_requested;
@@ -100,27 +69,11 @@ alloc_space(space_t * pspace, size_t size_requested)
 void
 free_space(space_t * pspace)
 {
-  void *ptr;
-#ifdef UNALIGNED_MALLOC
-  if (pspace.displacement)
-    {				/* reverse alignment correction */
-      ptr = (void *)((unsigned long)pspace->start - 4
-		     + pspace->displacement);
-    }
-  else
-    {
-      ptr = (void *)pspace->start;
-    }
-#else /* UNALIGNED_MALLOC */
-  ptr = (void *)pspace->start;
-#endif
+  void *ptr = (void *)pspace->start;
   assert(ptr != 0);
   free(ptr);
   pspace->start = pspace->end = 0;
   pspace->size = 0;
-#ifdef UNALIGNED_MALLOC
-  pspace->displacement = 0;
-#endif
 }
 
 
@@ -129,39 +82,29 @@ free_space(space_t * pspace)
 void
 realloc_space(space_t * pspace, size_t size_requested)
 {
-  void *ptr;
-  void *newptr;
-#ifdef UNALIGNED_MALLOC
-  if (pspace->displacement)
-    {				/* reverse alignment correction */
-      ptr = (void *)((unsigned long)pspace->start - 4
-		     + pspace->displacement);
-      newptr = realloc(ptr, sizeof(ref_t) * (size_requested + 1));
-    }
-  else
-    {
-      ptr = (void *)pspace->start;
-      newptr = realloc(ptr, sizeof(ref_t) * (size_requested));
-      /* we need not waste another 4 bytes here */
-    }
+  void *ptr = (void *)pspace->start;
+  void *newptr = realloc(ptr, sizeof(ref_t) * (size_requested));
 
-#else /* UNALIGNED_MALLOC */
-  ptr = (void *)pspace->start;
-  newptr = realloc(ptr, sizeof(ref_t) * (size_requested));
-
-#endif
-  if (ptr)
+  if (ptr == NULL)
     {
-      pspace->end = pspace->start + size_requested;
-      pspace->size = size_requested;
-    }
-  else
-    {
-      fprintf(stderr,
-	      "(ERROR(realloc_space): Unable to reallocate %lu bytes.\n",
-	      (unsigned long)size_requested);
+      fprintf(stderr, "error: realloc_space() does not expect a null pointer\n");
       exit(EXIT_FAILURE);
     }
+
+  /* This is called during a full GC to convert the old new space to
+     the new spatic space.  Any unallocated new space is trimmed.  So
+     this should be decreasing the size, or at worst leaving it the
+     same.  For that reason we do not expect the storage to be moved.
+     If it is: uh oh! */
+
+  if (ptr != newptr) 
+    {
+      fprintf(stderr, "error: realloc() with decreased size moved storage in realloc_space()\n");
+      exit(EXIT_FAILURE);
+    }
+
+  pspace->end = pspace->start + size_requested;
+  pspace->size = size_requested;
 }
 
 

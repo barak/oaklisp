@@ -1,9 +1,9 @@
-/*.log
 /*.debhelper
+/*.log
 /*.substvars
+/autoreconf.after
+/autoreconf.before
 /files
-/oaklisp
-/oaklisp-doc
-/oaklisp-doc.files
-/tmp
-substvars
+/oaklisp-doc/
+/oaklisp/
+/tmp/

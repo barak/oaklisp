@@ -27,7 +27,6 @@
 #include <stddef.h>
 #include "data.h"
 
-extern bool isaligned(void *x);
 extern void *xmalloc(size_t size);
 extern void alloc_space(space_t * pspace, size_t size_requested);
 extern void free_space(space_t * pspace);

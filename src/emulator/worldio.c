@@ -35,6 +35,19 @@
 #include "weak.h"
 
 
+void xfread(void *ptr, size_t size, size_t nmemb, FILE *stream)
+{
+  size_t r = fread(ptr, size, nmemb, stream);
+  if (r != nmemb) 
+    {
+      fprintf(stderr,
+	      "error: expected to read %d elements of size %d but received %d\n",
+	      nmemb, size, r);
+      exit(EXIT_FAILURE);
+    }
+}
+
+
 /*
  * Format of Oaklisp world image:
  *
@@ -88,7 +101,7 @@ read_ref(FILE * d)
   /* It's easy to read a reference from a binary file. */
   if (input_is_binary)
     {
-      fread((void *)&a, sizeof(ref_t), 1, d);
+      xfread((void *)&a, sizeof(ref_t), 1, d);
       return a;
     }
   else
@@ -381,7 +394,7 @@ read_world(char *str)
 
     if (input_is_binary)
       {
-	fread((void *)spatic.start, sizeof(ref_t), load_count, d);
+	xfread((void *)spatic.start, sizeof(ref_t), load_count, d);
 	reoffset((ref_t) spatic.start, spatic.start, load_count);
       }
     else
@@ -410,7 +423,7 @@ read_world(char *str)
 
     if (input_is_binary)
       {
-	fread((void *)&wp_table[1], sizeof(ref_t), (long)wp_index, d);
+	xfread((void *)&wp_table[1], sizeof(ref_t), (long)wp_index, d);
 	reoffset((ref_t) spatic.start, &wp_table[1], wp_index);
       }
     else

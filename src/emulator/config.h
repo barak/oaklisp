@@ -32,11 +32,6 @@
  *  ((x)>>2)
  *
  *
- *  UNALIGNED_MALLOC
- *  Defined if malloc() might return a pointer that is not longword
- *  aligned, i.e. whose low two bits might not be 0.
- *
- *
  *  THREADS
  *  If defined, heavyweight OS pthreads are enabled.
  *
