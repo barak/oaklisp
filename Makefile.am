@@ -17,4 +17,4 @@
 SUBDIRS = src doc
 
 man_MANS = man/man1/oaklisp.1
-doc_DATA = README AUTHORS COPYING
+doc_DATA = README AUTHORS COPYING BUILD.txt ChangeLog NEWS
