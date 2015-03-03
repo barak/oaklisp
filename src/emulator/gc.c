@@ -776,7 +776,8 @@ gc_top:
 
     if (full_gc && !pre_dump)
       {
-	/* move _new to spatic, and reallocate new. */
+	/* Move _new to spatic, and reallocate new. */
+	/* (The reallocation cannot increase the size, just frees any extra.) */
 
 	spatic = new_space;
 	realloc_space(&spatic, free_point - new_space.start);
