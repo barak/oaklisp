@@ -26,7 +26,8 @@ EXTRA_DIST = $(LATEX_SRCS)
 RUBBERFLAGS = --inplace --warn=all --pdf
 
 .tex.pdf:
-	$(RUBBER) $(RUBBERFLAGS) $<
+	$(RUBBER) $(RUBBERFLAGS) $< \
+	 || cp ../prebuilt/doc/$@ $@
 
 clean-local:
-	$(RUBBER) --clean $(RUBBERFLAGS) $(PAPER_SRCS)
+	-$(RUBBER) --clean $(RUBBERFLAGS) $(PAPER_SRCS)
