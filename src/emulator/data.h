@@ -51,9 +51,6 @@ typedef struct {
   ref_t *start;
   ref_t *end;
   size_t size;		/* in size reference_t */
-#ifdef UNALIGNED_MALLOC
-  size_t displacement;
-#endif
 } space_t;
 
 
