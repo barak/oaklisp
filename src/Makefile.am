@@ -62,6 +62,8 @@ emulator/instr-data.c: emulator/instruction-table.oak
 	|| cp ../prebuilt/src/emulator/instr-data.c $@
 	-$(INDENT) $@
 
-EXTRA_DIST = emulator/instruction-table.oak
+EXTRA_DIST = emulator/instruction-table.oak emulator/instr-data.c	\
+ misc/README misc/testing-tests.oak misc/uniq.oak			\
+ misc/unit-testing.oak
 
 CLEANFILES = emulator/instr-data.c

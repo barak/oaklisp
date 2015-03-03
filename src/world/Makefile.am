@@ -95,3 +95,5 @@ Makefile-vars: $(MAKEFILES) $(FILESFILES)
 
 CLEANFILES = oakworld-1.bin oakworld-2.bin oakworld-3.bin new.cold	\
  new.sym $(ALLOAFILES) oakworld.bin
+
+EXTRA_DIST = $(ALLOAFILES:.oa=.oak) $(GRAVY)

@@ -58,7 +58,7 @@
       (format outfile "# These are gravy.  The first two are our standard~%")
       (format outfile "# benchmarks.  The others are neat.~%")
       (format outfile "~%")
-      (format outfile "GRAVY = tak.oak compile-bench.oak prolog.oak prolog-examples.oak~%")
+      (format outfile "GRAVY = tak.oak compile-bench.oak prolog.oak prolog-examples.oak multiproc-tests.oak random.oak~%")
       (format outfile "~%")
 
       (format outfile "# Special rules for the compiler's source~%")
