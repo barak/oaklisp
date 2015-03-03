@@ -5,7 +5,9 @@ Maintainer: Barak A. Pearlmutter <bap@debian.org>
 Standards-Version: 3.9.6
 Build-depends:
 	debhelper (>= 9),
+	dh-autoreconf,
 	texlive-latex-base, texlive-latex-extra, texlive-fonts-recommended,
+	rubber,
 	ghostscript,
 	gcc-multilib [amd64]
 Homepage: http://oaklisp.alioth.debian.org/

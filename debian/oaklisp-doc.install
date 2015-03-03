@@ -1,1 +1,1 @@
-doc/*/*.pdf usr/share/doc/oaklisp-doc
+/usr/share/doc/oaklisp/* /usr/share/doc/oaklisp-doc/

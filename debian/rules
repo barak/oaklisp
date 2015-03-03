@@ -4,28 +4,8 @@
 # export DH_VERBOSE=1
 
 %:
-	dh $@ --parallel
+	dh $@ --parallel --with autoreconf
 
-
-CFLAGS   = $(shell dpkg-buildflags --get CFLAGS)
-CPPFLAGS = $(shell dpkg-buildflags --get CPPFLAGS)
-LDFLAGS  = $(shell dpkg-buildflags --get LDFLAGS)
-
-CFLAGS += -Wall
-
-CPPFLAGS += -DFAST
-CPPFLAGS += -DDEFAULT_WORLD=\\\"$(prefix)/lib/oaklisp/oakworld.bin\\\"
-
-ifeq ($(shell dpkg-architecture -qDEB_BUILD_ARCH_CPU),amd64)
-CFLAGS += -m32
-LDFLAGS += -m32
-endif
-
-prefix=/usr
-DESTDIR=`pwd`/debian/oaklisp
-
-override_dh_auto_build:
-	dh_auto_build -- prefix=$(prefix) CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" LDFLAGS="$(LDFLAGS)"
-
-override_dh_auto_install:
-	$(MAKE) -C src DESTDIR=$(DESTDIR) prefix=$(prefix) install
+# This uses installed oaklisp package for building world.
+# override_dh_auto_build:
+# 	dh_auto_build -- OAK=/usr/bin/oaklisp
