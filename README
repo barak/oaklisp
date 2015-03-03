@@ -1,4 +1,3 @@
-
 This is an Oaklisp source distribution.
 
 Oaklisp is a portable lisp interpreter / compiler for the Oaklisp
@@ -10,31 +9,29 @@ multiple inheritance, and multiple namespaces (packages).  Oaklisp is
 also a Lisp-1 dialect meaning functions and variables share the same
 namespace (like Scheme).
 
+Project homepage(s)
+  https://alioth.debian.org/projects/oaklisp/ (main homepage)
+  https://github.com/barak/oaklisp            (collaborative development)
+  http://www.bcl.hamilton.ie/~barak/oaklisp/  (ancient history)
+
 The compiler compiles Oaklisp source code into byte-code for the
-included Oaklisp emulator / virtual machine.  The system is best
-described in the included documentation.
+included Oaklisp emulator / virtual machine.  The implmentation
+is described in the included documentation, and also in
 
-Oaklisp was written by Barak A. Pearlmutter and Kevin J. Lang.
-The original distribution is located at https://github.com/barak/oaklisp
-This clone of the distribution ( https://github.com/blakemcbride/oaklisp )
-was created to accomplish the following:
+  Kevin J. Lang and Barak A. Pearlmutter.  Oaklisp: an object-oriented
+  Scheme with first class types. In OOPSLA-86, pages 30–7. doi:
+  10.1145/960112.28701.  Special issue of ACM SIGPLAN Notices 21(11).
 
-1.  make the system easy to build
+  Kevin J. Lang and Barak A. Pearlmutter. Oaklisp: an object-oriented
+  dialect of Scheme. Lisp and Symbolic Computation, 1(1):39–51, May
+  1988.
 
-    a.  smooth out the makefiles
+  Barak A. Pearlmutter. Garbage collection with pointers to single
+  cells.  Communications of the ACM, 39(12):202–6, December 1996.  URL
+  http://www.acm.org/cacm/extension/pearlmt.pdf.
 
-    b.  include required binary files (oakworld.bin)
+  Barak A. Pearlmutter and Kevin J. Lang. The implementation of
+  Oaklisp.  In Peter Lee, editor, Topics in Advanced Language
+  Implementation, pages 189–215. MIT Press, 1991.
 
-    c.  include pre-built doc files
-
-2.  make the system easy to understand
-
-    a.  include easier build docs
-
-    b.  create a tutorial
-
-3.  future enhancements
-
-Once you get a copy of the system, see BUILD.txt for instructions on
-how to build the system.
-
+See BUILD.txt for instructions on how to build the system.
