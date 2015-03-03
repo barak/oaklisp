@@ -22,7 +22,7 @@ AC_PREREQ([2.69])
 AC_INIT([Oaklisp],[1.3.4],[bap+oaklisp@debian.org],[oaklisp],[http://oaklisp.alioth.debian.org/])
 AC_CONFIG_SRCDIR([src/emulator/oaklisp.c])
 AC_CONFIG_HEADERS([config.h])
-AM_INIT_AUTOMAKE([subdir-objects foreign -Wall])
+AM_INIT_AUTOMAKE([subdir-objects -Wall])
 
 # Checks for options
 dnl --enable-threads
