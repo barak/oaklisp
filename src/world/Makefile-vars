@@ -15,7 +15,7 @@ MAKEFILES  = make-makefile.oa
 # These are gravy.  The first two are our standard
 # benchmarks.  The others are neat.
 
-GRAVY = tak.oak compile-bench.oak prolog.oak prolog-examples.oak
+GRAVY = tak.oak compile-bench.oak prolog.oak prolog-examples.oak multiproc-tests.oak random.oak
 
 # Special rules for the compiler's source
 
