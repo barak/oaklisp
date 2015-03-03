@@ -9,7 +9,6 @@ Build-depends:
 	autoconf-archive,
 	texlive-latex-base, texlive-latex-extra, texlive-fonts-recommended,
 	rubber,
-	ghostscript,
 	gcc-multilib [amd64]
 Homepage: http://oaklisp.alioth.debian.org/
 Vcs-Git: https://alioth.debian.org/anonscm/git/oaklisp/oaklisp.git
