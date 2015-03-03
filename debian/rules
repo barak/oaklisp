@@ -23,3 +23,8 @@ else ifeq ($(have_oaklisp),yes)
 override_dh_auto_build:
 	dh_auto_build -- OAK=/usr/bin/oaklisp
 endif
+
+override_dh_auto_install:
+	dh_auto_install
+	-rm --verbose debian/tmp/usr/share/doc/oaklisp/ChangeLog
+	-rm --verbose debian/tmp/usr/share/doc/oaklisp/COPYING
