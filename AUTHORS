@@ -43,3 +43,12 @@ D: helped alex spec out his emulator mods
 D: perceptive bug-sniffer and system tester: found make-lambda %full-gc bug
 D: ported SLIB and GAMBIT-benchmarks to Oaklisp
 D: scheme-locale mods
+
+N: Blake McBride
+E: blake@mcbride.name
+W: http://blake.mcbride.name
+D: Wrote the OaklispSummary document.
+D: Build system updates and documentation.
+D: Misc bug reports and bug fixes
+D: Various tweaks and enhancements.
+D: Motivation.
