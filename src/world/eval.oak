@@ -17,8 +17,31 @@
 
 ;;; Copyright (C) 1989 Kevin J. Lang & Barak A. Pearlmutter
 
-(set! top-level
-      (lambda ()
-	;; really should get version from configure.ac
-	(format #t "~&Welcome to Oaklisp 1.3.4~%")
-	(read-eval-print-loop)))
+(define (eval form locale)
+  (subeval (expand-groveling locale form) locale))
+
+(define (subeval form locale)
+  (#*top-level-evaluator form locale))
+
+(set! #*top-level-evaluator interpreter-eval)
+
+
+(define (hybrid-eval form locale)
+  ((if (contains-add-method? form) compiler-eval interpreter-eval)
+   form locale))
+
+(let ((warned-yet? #f))
+
+  (define (compiler-eval form locale)
+    (unless warned-yet?
+      (warning "compiler isn't loaded, using interpreter.")
+      (set! warned-yet? #t))
+    (interpreter-eval form locale)))
+
+
+(define (contains-add-method? form)
+  (and (pair? form)
+       (not (eq? 'quote (car form)))
+       (or (eq? '%add-method (car form))
+	   (contains-add-method? (car form))	;close enough for
+	   (contains-add-method? (cdr form)))))	;rock and roll.

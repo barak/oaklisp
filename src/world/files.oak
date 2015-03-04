@@ -102,6 +102,8 @@
     describe do
     warm do
     interpreter pl
+    eval pl
+    repl pl
     top-level pl
     booted st
     dump-stack do

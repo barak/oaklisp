@@ -1,0 +1,109 @@
+;;; This file is part of Oaklisp.
+;;;
+;;; This program is free software; you can redistribute it and/or modify
+;;; it under the terms of the GNU General Public License as published by
+;;; the Free Software Foundation; either version 2 of the License, or
+;;; (at your option) any later version.
+;;;
+;;; This program is distributed in the hope that it will be useful,
+;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;; GNU General Public License for more details.
+;;;
+;;; The GNU GPL is available at http://www.gnu.org/licenses/gpl.html
+;;; or from the Free Software Foundation, 59 Temple Place - Suite 330,
+;;; Boston, MA 02111-1307, USA
+
+
+;;; Copyright (C) 1989 Kevin J. Lang & Barak A. Pearlmutter
+
+;;; Read eval print loop for Oaklisp.
+
+(define (read-eval-print-loop)
+  (format #t "~&Oaklisp evaluation loop.~%")
+  (bind ((#*print-length 7)
+	 (#*print-level 3)
+	 (#*print-escape #t)
+	 ;; Current input
+	 (#*- #f)
+	 ;; Previous inputs:
+	 (#*+ #f)
+	 (#*++ #f)
+	 (#*+++ #f)
+	 ;; Previous macro expanded inputs:
+	 (#*? #f)
+	 (#*?? #f)
+	 (#*??? #f)
+	 ;; Previous outputs:
+	 (#** #f)
+	 (#*** #f)
+	 (#**** #f))
+    (let ((message
+	   (if (zero? #*debug-level)
+	       "Return to top level."
+	       (format #f "Return to debugger level ~D." #*debug-level))))
+      (error-restart message ()
+	(show-handlers)
+	(let ((out-of-here (and (not (zero? #*debug-level))
+				#*up-a-debug-level)))
+	  (iterate aux ()
+	    (native-catch uptag
+	      (bind ((#*up-a-debug-level uptag))
+		(dotimes (i (+ #*debug-level 1))
+		  (write-char standard-output #\>))
+		(write-char standard-output #\space)
+		(flush standard-output)
+		(set! #*+++ #*++)
+		(set! #*++ #*+)
+		(set! #*+ #*-)
+		(let ((r (bind-error-handler
+			     (read-error
+			      (lambda (x)
+				(format standard-error
+					"~&Malformed user input.~%")
+				;; Flush typeahead here?
+				(invoke-debugger x)))
+			   (read standard-input))))
+		  (clear-backspace-buffer standard-input)
+		  (cond ((eq? r the-eof-token)
+			 (cond ((not (interactive? standard-input))
+				(format #t "~&Exiting: EOF on non-interactive control stream.~%")
+				(flush standard-output)
+				(exit))
+			       ((zero? #*debug-level)
+				(format #t "~&Type (exit) to leave Oaklisp.~%")
+				(aux))
+			       (else
+				(write-char standard-output #\newline)
+				(throw out-of-here #f))))
+			(else
+			 (set! #*- r)
+			 (let ((m (bind-error-handler
+				      (general-error
+				       (lambda (x)
+					 (format standard-error
+						 "~&Unable to macroexpand ~S.~%"
+						 r)
+					 (invoke-debugger x)))
+				    (let ; error-restart
+					; "Try to macroexpand it again (args: expr, locale)."
+					((exp r) (loc #*current-locale))
+				      (expand-groveling loc exp)))))
+			   (set! #*??? #*??)
+			   (set! #*?? #*?)
+			   (set! #*? m)
+			   (let ((v (bind-error-handler
+					(general-error invoke-debugger)
+				      (subeval m #*current-locale))))
+			     (set! #**** #***)
+			     (set! #*** #**)
+			     (set! #** v)
+			     (bind-error-handler
+				 (general-error
+				  (lambda (x)
+				    (format standard-error
+					    "~&Unable to print result.~%")
+				    (invoke-debugger x)))
+			       (print v standard-output))
+			     (write-char standard-output #\newline))))))))
+	    (aux)))))))
