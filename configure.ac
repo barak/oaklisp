@@ -63,5 +63,5 @@ AC_FUNC_REALLOC
 AC_CHECK_FUNCS([gettimeofday strerror])
 
 # Epilogue
-AC_CONFIG_FILES([Makefile doc/Makefile src/Makefile src/world/Makefile])
+AC_CONFIG_FILES([Makefile doc/Makefile src/Makefile src/world/Makefile src/world/top-level.oak])
 AC_OUTPUT

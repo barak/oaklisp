@@ -12,6 +12,7 @@
 /depcomp
 /install-sh
 /missing
+/src/world/top-level.oak
 /stamp-h1
 Makefile
 Makefile.in
