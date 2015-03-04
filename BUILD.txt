@@ -36,15 +36,19 @@ build a new oakworld.bin.  Oaklisp *cannot* run without an existing
 oakworld.bin file.  You can however build the executable "oaklisp"
 (which is written in C) without a working Oaklisp.  So all you really
 need is oakworld.bin.  The executable "oaklisp" will look for
-oakworld.bin at a compile-time-specified location, but has an option
-to look elsewhere.  You may need to pass this option to the compiled
-emulator at build time, e.g.,
+oakworld.bin at a compile-time-specified location, but can be
+instructed to look elsewhere.  You may need to pass information to the
+compiled emulator at build time, e.g.,
 
-  make OAKWORLDFLAGS="--world $(pwd)/prebuilt/src/world/oakworld.bin"
+  make OAKWORLD=$(pwd)/prebuilt/src/world/oakworld.bin
 
 or
 
-  make OAKWORLDFLAGS="--world /usr/local/lib/oaklisp/oakworld.bin"
+  make OAKWORLD=/usr/local/lib/oaklisp/oakworld.bin
+
+or force use of a working oaklisp executable,
+
+  make OAK=/usr/local/bin/oaklisp
 
 CPU Architecture Issues
 =======================
