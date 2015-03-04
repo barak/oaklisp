@@ -19,37 +19,43 @@ SUBDIRS = . world
 bin_PROGRAMS = oaklisp
 
 oaklisp_SOURCES = emulator/cmdline.c emulator/data.c emulator/gc.c	\
- emulator/instr.c emulator/instr-data.c emulator/loop.c			\
- emulator/oaklisp.c emulator/signals.c emulator/stacks.c		\
- emulator/threads.c emulator/timers.c emulator/weak.c			\
- emulator/worldio.c emulator/xmalloc.c emulator/cmdline.h		\
- emulator/config.h emulator/data.h emulator/gc.h emulator/instr.h	\
- emulator/loop.h emulator/signals.h emulator/stacks.h			\
- emulator/stacks-loop.h emulator/threads.h emulator/timers.h		\
- emulator/weak.h emulator/worldio.h emulator/xmalloc.h
+ emulator/instr.c emulator/loop.c emulator/oaklisp.c			\
+ emulator/signals.c emulator/stacks.c emulator/threads.c		\
+ emulator/timers.c emulator/weak.c emulator/worldio.c			\
+ emulator/xmalloc.c emulator/cmdline.h emulator/config.h		\
+ emulator/data.h emulator/gc.h emulator/instr.h emulator/loop.h		\
+ emulator/signals.h emulator/stacks.h emulator/stacks-loop.h		\
+ emulator/threads.h emulator/timers.h emulator/weak.h			\
+ emulator/worldio.h emulator/xmalloc.h
 
-oaklisp_LDADD = -lpthread
-
-# Things you might want to modify and uncomment:
-# CPPFLAGS+=-DMAX_NEW_SPACE_SIZE=16000000
-# CPPFLAGS+=-DDEFAULT_WORLD=\"/usr/share/lib/oaklisp/oakworld.bin\"
-# CPPFLAGS+=-DFAST
-# CPPFLAGS+=-DTHREADS
-
-oaklisp_CPPFLAGS = \
- -Iemulator \
- -DFAST \
- -DDEFAULT_WORLD=\"$(pkglibdir)/oakworld.bin\"
+if NDEBUG
+else
+BUILT_SOURCES = emulator/instr-data.c
+endif
 
 if USE_M32
 oaklisp_CFLAGS = -m32
 oaklisp_LDFLAGS = -m32
 endif
 
+oaklisp_CPPFLAGS = -DDEFAULT_WORLD=\"$(pkglibdir)/oakworld.bin\"
+
+if ENABLE_THREADS
+oaklisp_CPPFLAGS += -DTHREADS
+endif
+
+if NDEBUG
+oaklisp_CPPFLAGS += -DFAST
+endif
+
+# Things to consider as configure.ac options:
+# oaklisp_CPPFLAGS += -DMAX_NEW_SPACE_SIZE=16000000
+
 # bootstrapping problem: to compile the emulator we need a working
 # oaklisp to generate instr-data.c.  This is solved by trying to
 # generate it automatically if necessary, but if that fails instead
-# using a prebuilt copy.
+# using a prebuilt copy.  Note that when -DFAST is set instr-data.c is
+# not used.
 
 OAK=oaklisp
 

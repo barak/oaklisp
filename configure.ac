@@ -32,8 +32,22 @@ dnl --withoaklisp (for a working oaklisp in bootstrapping)
 dnl snippet of code to find default oakworld.bin
 dnl    oaklisp -h | egrep -A1 '[-][-]world' | tail -n +2
 
-# No double there is a "right" way of doing this.
-AM_CONDITIONAL(USE_M32, [test "$(uname --machine)" = "x86_64"])
+AC_MSG_CHECKING([enable_ndebug])
+AC_ARG_ENABLE([ndebug],
+	[AS_HELP_STRING([--enable-ndebug],[enable high speed disable debugging (default=yes)])],,
+	[enable_ndebug=yes])
+AC_MSG_RESULT([$enable_ndebug])
+AM_CONDITIONAL([NDEBUG], [test x${enable_ndebug} = xyes])
+
+AC_MSG_CHECKING([enable_threads])
+AC_ARG_ENABLE([threads],
+	[AS_HELP_STRING([--enable-threads],[enable thread support (default=no)])],,
+	[enable_threads=no])
+AC_MSG_RESULT([$enable_threads])
+AM_CONDITIONAL([ENABLE_THREADS], [test x${enable_threads} = xyes])
+
+# No doubt there is a "right" way of doing this.
+AM_CONDITIONAL([USE_M32], [test "$(uname --machine)" = "x86_64"])
 
 # Checks for programs.
 AC_PROG_CC
@@ -42,7 +56,8 @@ AC_CHECK_PROGS([INDENT],[indent],[true])
 AC_CHECK_PROGS([RUBBER],[rubber],[false])
 
 # Checks for libraries.
-AC_SEARCH_LIBS([pthread_create],[pthread])
+AS_IF([test x$threads = xyes],
+ [AC_SEARCH_LIBS([pthread_create],[pthread])])
 
 # Checks for header files.
 AC_CHECK_HEADERS([stddef.h stdlib.h string.h sys/time.h unistd.h],,
