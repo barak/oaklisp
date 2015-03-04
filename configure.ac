@@ -26,7 +26,11 @@ AM_INIT_AUTOMAKE([subdir-objects -Wall])
 
 # Checks for options
 dnl --enable-threads
-dnl --enable-ndebug
+dnl --enable-ndebug (CPPFLAGS += -DFAST)
+dnl --with-world (for the default world in bootstrapping)
+dnl --withoaklisp (for a working oaklisp in bootstrapping)
+dnl snippet of code to find default oakworld.bin
+dnl    oaklisp -h | egrep -A1 '[-][-]world' | tail -n +2
 
 # No double there is a "right" way of doing this.
 AM_CONDITIONAL(USE_M32, [test "$(uname --machine)" = "x86_64"])
