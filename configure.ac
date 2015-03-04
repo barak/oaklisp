@@ -72,5 +72,5 @@ AC_CONFIG_FILES([Makefile
                  doc/Makefile
                  src/Makefile
                  src/world/Makefile
-                 src/world/top-level.oak])
+                 src/world/system-version.oak])
 AC_OUTPUT

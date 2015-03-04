@@ -19,6 +19,5 @@
 
 (set! top-level
       (lambda ()
-	;; really should get version from configure.ac
-	(format #t "~&Welcome to @PACKAGE_STRING@~%")
+	(format #t "~&Welcome to ~A~%" system-version)
 	(read-eval-print-loop)))
