@@ -45,22 +45,26 @@ AC_CHECK_PROGS([RUBBER],[rubber],[false])
 AC_SEARCH_LIBS([pthread_create],[pthread])
 
 # Checks for header files.
-AC_CHECK_HEADERS([stddef.h stdlib.h string.h sys/time.h unistd.h])
+AC_CHECK_HEADERS([stddef.h stdlib.h string.h sys/time.h unistd.h],,
+ [AC_MSG_ERROR([required header file unavailable])])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AX_CFLAGS_WARN_ALL
 AC_CHECK_HEADER_STDBOOL
 AC_C_INLINE
+AC_TYPE_INT8_T
 AC_TYPE_INT16_T
 AC_TYPE_INT32_T
 AC_TYPE_INT64_T
-AC_TYPE_INT8_T
+AX_C_LONG_LONG
 AC_TYPE_SIZE_T
+AC_C_BIGENDIAN
 
 # Checks for library functions.
 AC_FUNC_MALLOC
 AC_FUNC_REALLOC
-AC_CHECK_FUNCS([gettimeofday strerror])
+AC_CHECK_FUNCS([gettimeofday strerror getrusage],,
+ [AC_MSG_ERROR([required library function unavailable])])
 
 # Epilogue
 AC_CONFIG_FILES([Makefile doc/Makefile src/Makefile src/world/Makefile src/world/top-level.oak])
