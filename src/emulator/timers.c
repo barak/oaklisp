@@ -33,7 +33,7 @@
 #include "timers.h"
 
 
-#if defined(HAVE_GETTICKCOUNT)
+#ifdef HAVE_GETTICKCOUNT
 
 unsigned long
 get_real_time(void)
@@ -47,25 +47,11 @@ get_user_time(void)
   return get_real_time();
 }
 
-#elif defined(HAVE_GETRUSAGE)
+#else
+#ifdef HAVE_GETRUSAGE
 
 #include <sys/time.h>
-
-#if (defined(__hpux) && !defined(_HPUX_SOURCE))
-#define _HPUX_SOURCE
-#endif
-
-#if (defined(sun) && defined(__SVR4))
-#include "/usr/ucbinclude/sys/rusage.h"
-#include "/usr/ucbinclude/sys/resource.h"
-#else
 #include <sys/resource.h>
-#endif
-
-#ifdef __hpux
-#include <sys/syscall.h>
-#define     getrusage(a, b)     syscall(SYS_getrusage, (a), (b))
-#endif
 
 unsigned long
 get_real_time(void)
@@ -87,7 +73,6 @@ get_real_time(void)
     }
 }
 
-
 unsigned long
 get_user_time(void)
 {
@@ -108,12 +93,13 @@ get_user_time(void)
     }
 }
 
-#else /* plain ansi-libraries */
+#else
+#ifdef HAVE_CLOCK
 
 unsigned long
 get_real_time(void)
 {
-#ifdef __GLIBC_HAVE_LONG_LONG
+#ifdef HAVE_LONG_LONG
   unsigned long long temp;
   temp = (unsigned long long)clock()
     * (1000ull / CLOCKS_PER_SEC);
@@ -135,4 +121,20 @@ get_user_time(void)
   return get_real_time();
 }
 
+#else
+
+unsigned long
+get_real_time(void)
+{
+  return 0;
+}
+
+unsigned long
+get_user_time(void)
+{
+  return 0;
+}
+
+#endif
+#endif
 #endif

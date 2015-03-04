@@ -63,8 +63,9 @@ AC_C_BIGENDIAN
 # Checks for library functions.
 AC_FUNC_MALLOC
 AC_FUNC_REALLOC
-AC_CHECK_FUNCS([gettimeofday strerror getrusage],,
+AC_CHECK_FUNCS([strerror],,
  [AC_MSG_ERROR([required library function unavailable])])
+AC_CHECK_FUNCS([GetTickCount getrusage gettimeofday clock])
 
 # Epilogue
 AC_CONFIG_FILES([Makefile doc/Makefile src/Makefile src/world/Makefile src/world/top-level.oak])
