@@ -68,5 +68,9 @@ AC_CHECK_FUNCS([strerror],,
 AC_CHECK_FUNCS([GetTickCount getrusage gettimeofday clock])
 
 # Epilogue
-AC_CONFIG_FILES([Makefile doc/Makefile src/Makefile src/world/Makefile src/world/top-level.oak])
+AC_CONFIG_FILES([Makefile
+                 doc/Makefile
+                 src/Makefile
+                 src/world/Makefile
+                 src/world/top-level.oak])
 AC_OUTPUT
