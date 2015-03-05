@@ -1,0 +1,3 @@
+*.o
+/instr-data.c
+/oaklisp

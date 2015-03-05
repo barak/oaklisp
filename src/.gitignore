@@ -1,7 +1,0 @@
-*.bin
-*.cold
-*.o
-*.oa
-*.sym
-/emulator/instr-data.c
-/oaklisp

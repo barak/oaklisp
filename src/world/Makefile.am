@@ -33,7 +33,7 @@ ALLOAFILES += $(RNRSFILES)
 
 # The Oaklisp emulator executable.
 # Use "OAK=oaklisp" unless compiling new emulator.
-OAK = ../oaklisp
+OAK = ../emulator/oaklisp
 
 # Flags for the emulator.
 OAKFLAGS = --trace-gc=1
