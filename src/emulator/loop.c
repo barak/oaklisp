@@ -501,7 +501,8 @@ loop(ref_t initial_tos)
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
-#ifdef __GLIBC_HAVE_LONG_LONG
+#ifdef HAVE_LONG_LONG
+	      /* "long long" here means int64 */
 	      {
 		int64_t a = (int64_t)REF_TO_INT(x) * (int64_t)REF_TO_INT(y);
 		int highcrap = a >> (__WORDSIZE - (TAGSIZE+1));
@@ -509,8 +510,8 @@ loop(ref_t initial_tos)
 		  TRAP1(2);
 		PEEKVAL() = INT_TO_REF(a);
 	      }
-
-#elif defined(DOUBLES_FOR_OVERFLOW)
+#else
+#ifdef DOUBLES_FOR_OVERFLOW
 	      {
 		double a = (double)REF_TO_INT(x) * (double)REF_TO_INT(y);
 		if (a < (double)((long)MIN_REF / 4)
@@ -549,6 +550,7 @@ loop(ref_t initial_tos)
 		OVERFLOWN_INT(answer, TRAP1(2));
 		PEEKVAL() = INT_TO_REF(answer);
 	      }
+#endif
 #endif
 	      GOTO_TOP;
 
