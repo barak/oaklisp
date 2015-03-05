@@ -15,14 +15,7 @@ Bootstrapping
 =============
 
 The only unusual aspect here is that Oaklisp is written in Oaklisp,
-i.e., is self-hosting.  This causes a bootstrap issue.  If you already
-have Oaklisp installed, you can just use that: in the above use
-
-  make OAK=/usr/local/bin/oaklisp
-
-and that's that.
-
-If you don't have Oaklisp already installed, read on.
+i.e., is self-hosting.  This causes a bootstrap issue.
 
 There are only two files required to actually run Oaklisp:
 
@@ -37,8 +30,21 @@ oakworld.bin file.  You can however build the executable "oaklisp"
 (which is written in C) without a working Oaklisp.  So all you really
 need is oakworld.bin.  The executable "oaklisp" will look for
 oakworld.bin at a compile-time-specified location, but can be
-instructed to look elsewhere.  You may need to pass information to the
-compiled emulator at build time, e.g.,
+instructed to look elsewhere.
+
+The ./configure script will look for oakworld.bin in a few places, and
+use it in the build.  If it cannot find oakworld.bin automatically,
+you can give an explicit location
+
+  ./configure --with-world=/complete/path/to/oakworld.bin
+
+See ./configure --help for details of these options.
+
+Alternative Bootstrapping Interfaces
+====================================
+
+There are other ways to pass this information to the compiled emulator
+at build time, e.g.,
 
   make OAKWORLD=$(pwd)/prebuilt/src/world/oakworld.bin
 
@@ -46,7 +52,7 @@ or
 
   make OAKWORLD=/usr/local/lib/oaklisp/oakworld.bin
 
-or force use of a working oaklisp executable,
+If you already have Oaklisp installed, you can just use that:
 
   make OAK=/usr/local/bin/oaklisp
 
