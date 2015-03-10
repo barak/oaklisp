@@ -17,7 +17,10 @@
 man_MANS = man1/oaklisp.1
 
 man1/oaklisp.1: man1/oaklisp.1.in
-	$(SED) 's:@pkglibdir@:$(pkglibdir):g' <$< >$@
+	$(SED) \
+	 -e 's:[@]pkglibdir[@]:$(pkglibdir):g' \
+	 -e 's:[@]pdfdir[@]:$(pdfdir):g' \
+	 <$< >$@
 
 EXTRA_DIST = $(man_MANS)
 

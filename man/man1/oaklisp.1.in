@@ -188,9 +188,9 @@ Bug reports and enhancements can be filed on the
 .SH REFERENCES
 
 The programs are documented more fully in the language and
-implementation manuals included with the distribution.  In binary
-packages these are probably in /usr/share/doc/oaklisp\-doc/lang.pdf and
-lim.pdf.
+implementation manuals lang.pdf and lim.pdf, along with
+OaklispSummary.pdf, whose source is included with the distribution,
+and installed in @pdfdir@/.
 
 The Oaklisp home page is transitioning from
 .URL http://www.bcl.hamilton.ie/~barak/oaklisp/ "its old location"
