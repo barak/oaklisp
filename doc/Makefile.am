@@ -34,11 +34,11 @@ clean-local:
 
 EXTRA_DIST += examples/bank-example.oak examples/change.oak		\
  examples/test-bank-example.oak examples/unit-testing.oak		\
- lang/Makefile.nm lang/control.tex lang/cover.tex lang/dynamic.tex	\
- lang/intro.tex lang/io.tex lang/locales.tex lang/methods.tex		\
- lang/misc.tex lang/numbers.tex lang/numhier.eps lang/seqhier.eps	\
+ lang/control.tex lang/cover.tex lang/dynamic.tex lang/intro.tex	\
+ lang/io.tex lang/locales.tex lang/methods.tex lang/misc.tex		\
+ lang/numbers.tex lang/numhier.eps lang/seqhier.eps			\
  lang/sequences.tex lang/sides.tex lang/types.tex lang/user.tex		\
- lim/Makefile.nm lim/admin.tex lim/boot.tex lim/bytecode.tex		\
- lim/compiler.tex lim/cover.tex lim/dataform.tex lim/intro.tex		\
- lim/language.tex lim/methods.tex lim/oaklevel.tex lim/stack.tex	\
- mandefs.tex oakman.bib
+ lim/admin.tex lim/boot.tex lim/bytecode.tex lim/compiler.tex		\
+ lim/cover.tex lim/dataform.tex lim/intro.tex lim/language.tex		\
+ lim/methods.tex lim/oaklevel.tex lim/stack.tex mandefs.tex		\
+ oakman.bib
