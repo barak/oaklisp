@@ -76,8 +76,22 @@ AS_IF([test x${with_oaklisp} = xcheck || test x${with_oaklisp} = xyes],
                            [AC_MSG_ERROR([no oaklisp executable found])],
                            [no])])])
 
-# No doubt there is a "right" way of doing this.
-AM_CONDITIONAL([USE_M32], [test "$(uname --machine)" = "x86_64"])
+# Use -m32 if on amd64 because it's easier than doing a 64-bit port.
+# This should go before any checks that actually invoke the compiler,
+# so those tests will be in 32-bit mode if appropriate.  CFLAGS is
+# passed to the linker, so the flag does not need to be set there, but
+# it is included in a comment in case this ever changes.
+AC_CHECK_SIZEOF([void *])
+AS_IF([test x"$ac_cv_sizeof_void_p" = x4],
+      [AC_MSG_NOTICE([pointer size matches expectations])],
+      [AC_MSG_WARN([non 32-bit pointer platform detected])
+       AC_MSG_NOTICE([trying to enabling 32-bit compilation mode])
+       CFLAGS="$CFLAGS -m32"
+       : LDFLAGS="$LDFLAGS -m32"
+       unset ac_cv_sizeof_void_p
+       AC_CHECK_SIZEOF([void *])
+       AS_IF([test x"$ac_cv_sizeof_void_p" != x4],
+             [AC_MSG_WARN([bad news, pointers are now $ac_cv_sizeof_void_p bytes])])])
 
 # Checks for programs.
 AC_PROG_CC

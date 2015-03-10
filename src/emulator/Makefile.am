@@ -26,11 +26,6 @@ else
 BUILT_SOURCES = instr-data.c
 endif
 
-if USE_M32
-oaklisp_CFLAGS = -m32
-oaklisp_LDFLAGS = -m32
-endif
-
 oaklisp_CPPFLAGS = -DDEFAULT_WORLD=\"$(pkglibdir)/oakworld.bin\"
 
 if ENABLE_THREADS
