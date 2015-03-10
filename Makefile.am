@@ -20,6 +20,6 @@ man_MANS = man/man1/oaklisp.1
 doc_DATA = README AUTHORS COPYING BUILD.txt ChangeLog NEWS
 
 man/man1/oaklisp.1: man/man1/oaklisp.1.in
-	sed 's:@pkglibdir@:$(pkglibdir):g' <$< >$@
+	$(SED) 's:@pkglibdir@:$(pkglibdir):g' <$< >$@
 
 EXTRA_DIST = BUILD.txt man/man1/oaklisp.1.in

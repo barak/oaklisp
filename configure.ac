@@ -82,6 +82,7 @@ AM_CONDITIONAL([USE_M32], [test "$(uname --machine)" = "x86_64"])
 # Checks for programs.
 AC_PROG_CC
 AC_PROG_INSTALL
+AC_PROG_SED
 AC_CHECK_PROGS([INDENT],[indent],[true])
 AC_CHECK_PROGS([RUBBER],[rubber],[false])
 
