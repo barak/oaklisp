@@ -1,3 +1,15 @@
+oaklisp (1.3.5-1) unstable; urgency=medium
+
+  * debian/copyright: update to modern format
+  * debian/oaklisp-doc.doc-base.3: add summary document
+  * debian/source/local-options: enable single-debian-patch source format
+  * new upstream version
+  * adapt to new autotool upstream build scripts
+    - debian/rules: simplify in light up upstream build system tweaks
+    - debian/control: relax architecture to anything little-endian
+
+ -- Barak A. Pearlmutter <bap@debian.org>  Tue, 10 Mar 2015 21:55:46 +0000
+
 oaklisp (1.3.4-1) unstable; urgency=low
   
   * debian/control: priority option per override (debian/control)
