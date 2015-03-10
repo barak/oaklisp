@@ -155,7 +155,7 @@ The environment variable OAKWORLD will override the default compiled
 into the executable, but itself can be overridden on the command line.
 
 .SH FILES
-/usr/lib/oaklisp/oakworld.bin holds the world image.  It is portable
+@pkglibdir@/oakworld.bin holds the world image.  It is portable
 between machines of the same endianity.  The location can vary
 depending upon installation-time decisions.
 
@@ -182,7 +182,8 @@ quite difficult.
 
 POSIX threads in the emulator never got quite finished.
 
-Bug reports and enhancements should be sent to barak@cs.may.ie.
+Bug reports and enhancements can be filed on the
+.URL https://github.com/barak/oaklisp "github issue tracker" .
 
 .SH REFERENCES
 
@@ -194,9 +195,9 @@ lim.pdf.
 The Oaklisp home page is transitioning from
 .URL http://www.bcl.hamilton.ie/~barak/oaklisp/ "its old location"
 to
-.URL http://oaklisp.alioth.debian.org/ alioth
+.URL https://oaklisp.alioth.debian.org/ alioth
 and
-.URL http://github.com/barak/oaklisp github .
+.URL https://github.com/barak/oaklisp github .
 
 .I The Implementation of Oaklisp
 is a chapter in

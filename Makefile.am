@@ -19,4 +19,7 @@ SUBDIRS = src doc
 man_MANS = man/man1/oaklisp.1
 doc_DATA = README AUTHORS COPYING BUILD.txt ChangeLog NEWS
 
-EXTRA_DIST = BUILD.txt $(man_MANS)
+man/man1/oaklisp.1: man/man1/oaklisp.1.in
+	sed 's:@pkglibdir@:$(pkglibdir):g' <$< >$@
+
+EXTRA_DIST = BUILD.txt man/man1/oaklisp.1.in
