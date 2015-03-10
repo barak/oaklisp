@@ -14,8 +14,14 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-SUBDIRS = src man doc
+man_MANS = man1/oaklisp.1
 
-doc_DATA = README AUTHORS COPYING BUILD.txt ChangeLog NEWS
+man1/oaklisp.1: man1/oaklisp.1.in
+	$(SED) \
+	 -e 's:[@]pkglibdir[@]:$(pkglibdir):g' \
+	 -e 's:[@]pdfdir[@]:$(pdfdir):g' \
+	 <$< >$@
 
-EXTRA_DIST = BUILD.txt
+EXTRA_DIST = $(man_MANS)
+
+CLEANFILES = $(man_MANS)

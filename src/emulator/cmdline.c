@@ -37,6 +37,7 @@
 enum {
   FLAG_ARG = 0,
   HELP_ARG,
+  VERSION_ARG,
   WORLD_ARG,
   DUMP_ARG,
   DUMP_BASE_ARG,
@@ -50,18 +51,27 @@ enum {
 
 
 void
+version(char *prog)
+{
+  fprintf(stdout, "%s\n", PACKAGE_STRING);
+}
+
+
+void
 usage(char *prog)
 {
+  version(prog);
   fprintf(stdout,
-	  "The Oaklisp bytecode emulator.\n"
 	  "\n"
 	  "Usage: %s emulator-options -- oaklisp-options\n"
 	  "\n"
 	  "    emulator options:\n"
 	  "\n"
 	  "\t--help               print this message and terminate\n"
+	  "\t--version            print version number and terminate\n"
 	  "\n"
-	  "\t--world file         file is world to load\n"
+	  "\t--world file         world to load, default=\n"
+	  "\t                      %s\n"
 	  "\t--dump file          dump world to file upon exit\n"
 	  "\t--d file             synonym for --dump\n"
 	  "\t--dump-base b        10 or 16=ascii, 2=binary; default=2\n"
@@ -95,7 +105,7 @@ usage(char *prog)
 
 	  /* "\type (MAP CAR COMMANDLINE-OPTIONS) to a running oaklisp\n" */
 
-	  prog, DEFAULT_NEWSPACE, prog);
+	  prog, DEFAULT_WORLD, DEFAULT_NEWSPACE, prog);
 }
 
 
@@ -145,6 +155,7 @@ parse_cmd_line(int argc, char **argv)
       static struct option long_options[] =
       {
 	{"help", no_argument, 0, HELP_ARG},
+	{"version", no_argument, 0, VERSION_ARG},
 	{"world", required_argument, 0, WORLD_ARG},
 	{"dump", required_argument, 0, DUMP_ARG},
 	{"d", required_argument, 0, DUMP_ARG},
@@ -239,6 +250,11 @@ parse_cmd_line(int argc, char **argv)
 
 	case HELP_ARG:
 	  usage(argv[0]);
+	  exit(EXIT_SUCCESS);
+	  break;
+
+	case VERSION_ARG:
+	  version(argv[0]);
 	  exit(EXIT_SUCCESS);
 	  break;
 	}

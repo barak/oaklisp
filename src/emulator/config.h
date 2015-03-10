@@ -40,56 +40,27 @@
 #ifndef _CONFIG_H_INCLUDED
 #define _CONFIG_H_INCLUDED
 
-#if defined(linux) && defined (__GNUC__)
-/*** Linux with GCC ***/
+#ifdef HAVE_CONFIG_H
+#include "../../config.h"
+#endif
 
 #include <bits/wordsize.h>
-#if (__WORDSIZE != 32)
-#error word size must be 32 bits
-#endif
+// #if (__WORDSIZE != 32)
+// #error word size must be 32 bits
+// #endif
 
 #define ASHR2(x) ((x)>>2)
-#define HAVE_GETRUSAGE
-//#define THREADS
+
 #ifdef THREADS
+#ifndef MAX_THREAD_COUNT
 #define MAX_THREAD_COUNT 200
 #endif
-#include <unistd.h>		/* for the chdir() and isatty() functions */
+#endif
 
-#elif defined(__arm__) && defined(linux)
-/*** Linux on Arm target ***/
-
-#define WORDSIZE 32
-#define HAVE_LONG_LONG
-#define ASHR2(x) ((x)>>2)
+#ifdef WORDS_BIGENDIAN
+#define BYTE_GENDER big_endian
+#else
 #define BYTE_GENDER little_endian
-#define HAVE_GETRUSAGE
-
-#include <unistd.h>	       /* for the chdir() and isatty() functions */
-
-#elif defined(__sparc__) && defined(linux)
-/*** SPARC Linux target ***/
-
-#define WORDSIZE 32
-#define HAVE_LONG_LONG
-#define ASHR2(x) ((x)>>2)
-#define BYTE_GENDER big_endian
-#define HAVE_GETRUSAGE
-
-#elif defined(__mc68000__) && defined(linux)
-/*** Motorola 68k Linux target ***/
-
-#define WORDSIZE 32
-#define HAVE_LONG_LONG
-#define ASHR2(x) ((x)>>2)
-#define BYTE_GENDER big_endian
-#define HAVE_GETRUSAGE
-
-else
-/*** no machine specified ***/
-
-#error must edit config.h
-
 #endif
 
 /* Speed parameters */
@@ -108,14 +79,5 @@ else
 #ifndef THREADS
 #define OP_TYPE_METH_CACHE
 #endif
-
-#ifdef USING_HORRIBLE_MS_WINDOWS
-typedef unsigned long  u_int32_t;
-typedef unsigned short u_int16_t;
-typedef	int	int32_t;
-typedef	unsigned char u_int8_t;
-typedef signed char int8_t;
-typedef	short	int16_t;
-#endif // USING_HORRIBLE_MS_WINDOWS
 
 #endif

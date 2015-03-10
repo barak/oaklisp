@@ -45,7 +45,10 @@ them.
 
 .TP
 .B \-\-help
-Show summary of emulator options
+Show summary of emulator options and exit
+.TP
+.B \-\-version
+Print version of emulator and exit
 .TP
 .B \-\-world file
 file is world to load
@@ -152,7 +155,7 @@ The environment variable OAKWORLD will override the default compiled
 into the executable, but itself can be overridden on the command line.
 
 .SH FILES
-/usr/lib/oaklisp/oakworld.bin holds the world image.  It is portable
+@pkglibdir@/oakworld.bin holds the world image.  It is portable
 between machines of the same endianity.  The location can vary
 depending upon installation-time decisions.
 
@@ -179,21 +182,22 @@ quite difficult.
 
 POSIX threads in the emulator never got quite finished.
 
-Bug reports and enhancements should be sent to barak@cs.may.ie.
+Bug reports and enhancements can be filed on the
+.URL https://github.com/barak/oaklisp "github issue tracker" .
 
 .SH REFERENCES
 
 The programs are documented more fully in the language and
-implementation manuals included with the distribution.  In binary
-packages these are probably in /usr/share/doc/oaklisp\-doc/lang.pdf and
-lim.pdf.
+implementation manuals lang.pdf and lim.pdf, along with
+OaklispSummary.pdf, whose source is included with the distribution,
+and installed in @pdfdir@/.
 
 The Oaklisp home page is transitioning from
 .URL http://www.bcl.hamilton.ie/~barak/oaklisp/ "its old location"
 to
-.URL http://oaklisp.alioth.debian.org/ alioth
+.URL https://oaklisp.alioth.debian.org/ alioth
 and
-.URL http://github.com/barak/oaklisp github .
+.URL https://github.com/barak/oaklisp github .
 
 .I The Implementation of Oaklisp
 is a chapter in

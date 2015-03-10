@@ -31,9 +31,18 @@ ALLOAFILES += $(MISCFILES)
 ALLOAFILES += $(COMPFILES)
 ALLOAFILES += $(RNRSFILES)
 
+ALLOAFILESNONGEN =
+ALLOAFILESNONGEN += $(TOOLFILES)
+ALLOAFILESNONGEN += $(MAKEFILES)
+ALLOAFILESNONGEN += $(FILESFILES)
+ALLOAFILESNONGEN += $(COLDFILESNONGEN)
+ALLOAFILESNONGEN += $(MISCFILES)
+ALLOAFILESNONGEN += $(COMPFILES)
+ALLOAFILESNONGEN += $(RNRSFILES)
+
 # The Oaklisp emulator executable.
 # Use "OAK=oaklisp" unless compiling new emulator.
-OAK = ../oaklisp
+OAK = ../emulator/oaklisp
 
 # Flags for the emulator.
 OAKFLAGS = --trace-gc=1
@@ -96,4 +105,4 @@ Makefile-vars: $(MAKEFILES) $(FILESFILES)
 CLEANFILES = oakworld-1.bin oakworld-2.bin oakworld-3.bin new.cold	\
  new.sym $(ALLOAFILES) oakworld.bin
 
-EXTRA_DIST = $(ALLOAFILES:.oa=.oak) $(GRAVY)
+EXTRA_DIST = $(ALLOAFILESNONGEN:.oa=.oak) $(GRAVY)

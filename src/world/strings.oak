@@ -443,6 +443,8 @@
 
 
 
+(add-method (remove (string) s c)
+  (#^string (remove (#^list-type s) c)))
 
 
 

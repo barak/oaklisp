@@ -17,7 +17,4 @@
 
 ;;; Copyright (C) 1989 Kevin J. Lang & Barak A. Pearlmutter
 
-(set! top-level
-      (lambda ()
-	(format #t "~&Welcome to ~A~%" system-version)
-	(read-eval-print-loop)))
+(define system-version "@PACKAGE_STRING@")

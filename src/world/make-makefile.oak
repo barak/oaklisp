@@ -35,6 +35,11 @@
       (for-each aller1 all-the-layers)
       (format outfile "~%")
 
+      (format outfile "COLDFILESNONGEN =")
+      (for-each aller between-files)
+      (for-each aller1 (remove all-the-layers 'system-version))
+      (format outfile "~%")
+
       (format outfile "COLDFILESD =")
       (for-each aller all-the-layers)
       (format outfile "~%")

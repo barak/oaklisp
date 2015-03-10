@@ -11,7 +11,9 @@
 /configure
 /depcomp
 /install-sh
+/man/man1/oaklisp.1
 /missing
+/src/world/system-version.oak
 /stamp-h1
 Makefile
 Makefile.in
