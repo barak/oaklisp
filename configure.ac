@@ -75,7 +75,9 @@ AS_IF([test x"$ac_cv_sizeof_void_p" = x4],
        : LDFLAGS="$LDFLAGS -m32"
        unset ac_cv_sizeof_void_p
        AC_CHECK_SIZEOF([void *])
-       AS_IF([test x"$ac_cv_sizeof_void_p" != x4],
+       AS_IF([test x"$ac_cv_sizeof_void_p" = x0],
+             [AC_MSG_ERROR([bad flags, Indy])],
+             [test x"$ac_cv_sizeof_void_p" != x4],
              [AC_MSG_WARN([bad news, pointers are now $ac_cv_sizeof_void_p bytes])])])
 
 # Checks for programs.
