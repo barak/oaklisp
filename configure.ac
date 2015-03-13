@@ -117,20 +117,25 @@ AS_IF([test x${ac_cv_c_bigendian} = xyes],
       [worldsubdir=eb32],
       [worldsubdir=el32])
 
-AS_IF([test x$with_world = xcheck || test x$with_world = xyes],
-      [f=$(ls $(pwd)/src/world/oakworld.bin \
+AS_IF([test x${with_world} = xcheck || test x${with_world} = xyes],
+      [AC_MSG_CHECKING([possible locations for oakworld.bin])
+       f=$(ls $(pwd)/src/world/oakworld.bin \
               $(pwd)/prebuilt/src/world/${worldsubdir}/oakworld.bin \
               $(pwd)/prebuilt/src/world/oakworld.bin \
+              ${HOME}/lib/oaklisp/oakworld.bin \
+              /usr/local/lib/oaklisp/oakworld.bin \
               /usr/lib/oaklisp/oakworld.bin \
-              /usr/lib/*/oaklisp/oakworld.bin 2> /dev/null | head -1)
+              /usr/lib/*/oaklisp/oakworld.bin \
+              /lib/oaklisp/oakworld.bin \
+              /lib/*/oaklisp/oakworld.bin 2> /dev/null | head -1)
+       AC_MSG_RESULT([found ${f}])
        AC_CHECK_FILE([${f}],
-                     [AC_MSG_NOTICE([found ${f}])
-                      with_world=${f}])])
+                     [with_world=${f}])])
 
-AS_IF([test x$with_world = xyes],
+AS_IF([test x${with_world} = xyes],
       [AC_MSG_ERROR([no oakworld.bin found])])
 
-AS_IF([test x$with_world != xno],
+AS_IF([test x${with_world} != xno && test x${with_world} != xcheck],
  [AC_SUBST([OAKWORLDFLAGS],[--world=${with_world}])])
 
 # Checks for library functions.
