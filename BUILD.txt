@@ -59,21 +59,122 @@ If you already have Oaklisp installed, you can just use that:
 CPU Architecture Issues
 =======================
 
+Endianity
+=========
+
 Oaklisp is sensitive to the endianness of the CPU
 <http://en.wikipedia.org/wiki/Endianness>.  The oakworld.bin included
 in the git branch containing a prebuilt world, or available for
-download as a separate file, is for a little-indian architecture.  x86
-and x86-64 processors are little-endian.  Oaklisp can be made to cross
-build an oakworld.bin for a different-endian architecture.
+download as a separate file, is for a little-indian architecture.  The
+i386 and amd64 architectures (aka x86, x86_64, x86_32, IA32)
+processors are little-endian.  Oaklisp can be easily made to cross
+build an oakworld.bin for a big-endian architecture:
+ On little-endian machine:
+  $ autoreconf --install
+  $ ./configure
+  $ make -C src
+ Copy tree to big-endian machine, and there:
+  $ ./configure
+  $ make -C src/emulator clean
+  $ make -C src/emulator
+  $ rm src/world/*.bin
+  $ touch src/world/system-version.oa
+  $ touch src/world/new.cold
+  $ make -C src/world
+You should now be the proud possessor of a big-endian
+src/emulator/oaklisp and src/world/oakworld.bin.
+
+32-Bit Pointers
+===============
 
 The executable "oaklisp" currently only works in 32-bit mode.  It can
-be built as a 32-bit executable on 64-bit machines, assuming that
-32-bit development libraries are available.  (These are available on
-most systems, sometimes as an optional package.  E.g., on Debian or
-debian-derived distributions like Ubuntu, the correct package is
-gcc-multilib.)  Compiling with GCC on an x86_64 aka amd64 architecture
-machine one should use the -m32 which builds an i386 architecture
-executable.  This should be added by default by the build system.  For
-the adventurous -mx32, which uses the x86_64 instruction set with
+be built as a 32-bit executable on a 64-bit machines, assuming that a
+32-bit-pointer executable model is available and that an appropriate
+toolchain exists to target that model: compiler and development
+libraries.
+
+Enabling 32-bit Pointers on amd64 aka x86_64
+============================================
+
+A 32-bit memory model is available for on most amd64-based systems,
+sometimes as an optional package.  E.g., on Debian or Debian-derived
+distributions like Ubuntu, the correct package is gcc-multilib.
+Compiling using GCC or clang on an x86_64 aka amd64 architecture
+machine, one should use the -m32 which builds an i386 architecture
+executable.  This option will be added automatically by ./configure if
+necessary.
+
+For the adventurous, -mx32, which uses the x86_64 instruction set with
 32-bit pointers, also works provided that x32 kernel support is
-enabled and the x32 development files are available.
+enabled and the x32 development files are available.  Initial
+benchmarks showed that an src/emulator/oaklisp built with -m32 was
+slightly faster than one built with -mx32.
+
+Enabling 32-bit Pointers on Other 64-bit Architectures
+======================================================
+
+In discussion of his bug report, https://bugs.debian.org/780353/,
+James Cowgill <james410@cowgill.org.uk> kindly made a list of GCC
+flags to request a 32-bit memory model on all 64-bit architectures
+known to the Debian development tools.
+
+The -m32 option isn't valid for gcc on mips64 or arm64 or ia64.
+
+On mips64, -mabi=32 (without the -march stuff) is confirmed to work.
+
+These options are untested, but present in the GCC manual.
+
+	alpha		probably impossible
+	amd64		-m32 or -mx32
+	arm64		-mabi=ilp32
+	ia64		-milp32
+	mips64		-mabi=32
+	mips64el	-mabi=32
+	ppc64		-m32
+	ppc64el		-m32
+	s390x		-m31
+	sparc64		-m32
+
+only some of these have multilib enabled in the glibc package:
+
+	amd64
+	mips64el
+	ppc64 (but not ppc64el?)
+	sparc64
+	s390x
+
+64-Bit Port
+===========
+
+It would be great if someone were to do a 64-bit port.  In order to
+port the system to 64-bit pointers and therefore 64-bit cells, a
+number of 32-bit-cell assumptions need to be dealt with.
+
+ - The bytecode engine has 16-bit instructions, packed two/cell.  This
+   becomes four/cell when cells go 64-bit.  This requires changes to
+   the bytecode interpreter in src/emulator/ as well as to the
+   assembler which may need to insert extra padding before inline
+   literal references.  The compiler proper might not need to be
+   touched at all.
+
+ - Characters in strings would become packed seven/cell instead of
+   three/cell, but that's pretty minor, and they could certainly be
+   left three/cell until the system is otherwise converted.  This
+   impacts src/emulator/ where Oaklisp strings are converted to C
+   strings for, e.g., passing to fopen(), and the string
+   packing/unpacking code in src/world/.
+
+ - The cold world builder (generates new.cold) might need attention.
+
+ - Bignums are stored in base 10,000, the largest power of ten less
+   than (sqrt (expt 2 (- 32 3))), where the 3 bits subtracted there
+   are for the tag (2 bits) and the sign (1 bit).  These would become
+   base 1,000,000,000, the largest power of ten less than (sqrt (expt
+   2 (- 64 3))).  Also the arithmetic overflow code in src/emulator/
+   would need to be looked at.  But, bignums could wait until the
+   system is otherwise up and running.
+
+This would all be facilitated by the fact that a working 32-bit
+oaklisp could be used during the bootstrap, and due to bignums its
+word size should not affect its ability to generate 64-bit bootstrap
+files.
