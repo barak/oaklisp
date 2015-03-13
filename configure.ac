@@ -61,18 +61,49 @@ AS_IF([test x${with_oaklisp} = xcheck || test x${with_oaklisp} = xyes],
                            [AC_MSG_ERROR([no oaklisp executable found])],
                            [no])])])
 
-# Use -m32 if on amd64 because it's easier than doing a 64-bit port.
+# Check if we are on a non-32bit-pointer memory model.
+# If so, try to enable compiler options for a 32-bit memory model.
+# For example, -m32 on x86_64 aka amd64.
+# (This is easier than doing a 64-bit port!)
+#
 # This should go before any checks that actually invoke the compiler,
-# so those tests will be in 32-bit mode if appropriate.  CFLAGS is
-# passed to the linker, so the flag does not need to be set there, but
-# it is included in a comment in case this ever changes.
+# so those tests will be in 32-bit mode.  CFLAGS is passed to the
+# linker, so the flag does not need to be set there, but it is
+# included in a comment in case this ever changes.
+#
+# The options here are for GCC, but -m32 and -mx32 works on amd64 with
+# clang, and others might as well.
+
+AC_CANONICAL_HOST
 AC_CHECK_SIZEOF([void *])
 AS_IF([test x"$ac_cv_sizeof_void_p" = x4],
       [AC_MSG_NOTICE([pointer size matches expectations])],
       [AC_MSG_WARN([non 32-bit pointer platform detected])
-       AC_MSG_NOTICE([trying to enabling 32-bit compilation mode])
-       CFLAGS="$CFLAGS -m32"
-       : LDFLAGS="$LDFLAGS -m32"
+       AC_MSG_NOTICE([trying to enable 32-bit memory model compiler option for ${host_cpu}])
+       case "${host_cpu}" in
+	 alpha* )
+	     AC_MSG_ERROR([32-bit memory model unavailable on ${host_cpu}]) ;;
+	 amd64* | x86_64 )
+       	     flag32="-m32" ;;
+	 arm64* )
+       	     flag32="-mabi=ilp32" ;;
+	 ia64* )
+       	     flag32="-milp32" ;;
+	 mips64* )
+       	     flag32="-mabi=32" ;;
+	 ppc64* )
+       	     flag32="-m32" ;;
+	 s390x* )
+       	     flag32="-m31" ;;
+	 sparc64* )
+       	     flag32="-m32" ;;
+	 * )
+	     AC_MSG_WARN([non-32-bit host CPU ${host_cpu} without known 32-bit memory model option, trying -m32])
+	     flag32="-m32" ;;
+       esac
+       AC_MSG_NOTICE([compiler option for 32-bit memory model: ${flag32}])
+       CFLAGS="$CFLAGS ${flag32}"
+       : LDFLAGS="$LDFLAGS ${flag32}"
        unset ac_cv_sizeof_void_p
        AC_CHECK_SIZEOF([void *])
        AS_IF([test x"$ac_cv_sizeof_void_p" = x0],
@@ -105,7 +136,10 @@ AC_TYPE_INT32_T
 AC_TYPE_INT64_T
 AX_C_LONG_LONG
 AC_TYPE_SIZE_T
-AC_C_BIGENDIAN
+AC_C_BIGENDIAN([worldsubdir=eb32],
+	       [worldsubdir=el32],
+	       [AC_MSG_WARN([missing case, endianity unknown])],
+	       [AC_MSG_WARN([missing case, endianity unversal])])
 
 # Actual scan for binary world find comes here rather than in option
 # processing because we need to know endianity.
@@ -113,9 +147,7 @@ AC_C_BIGENDIAN
 # snippet of code for other ways to find default oakworld.bin
 #  oaklisp --help | egrep -A1 '[-][-]world' | tail -n +2
 
-AS_IF([test x${ac_cv_c_bigendian} = xyes],
-      [worldsubdir=eb32],
-      [worldsubdir=el32])
+AC_MSG_NOTICE([worldsubdir=${worldsubdir}])
 
 AS_IF([test x${with_world} = xcheck || test x${with_world} = xyes],
       [AC_MSG_CHECKING([possible locations for oakworld.bin])
