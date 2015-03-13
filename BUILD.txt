@@ -91,19 +91,57 @@ The executable "oaklisp" currently only works in 32-bit mode.  It can
 be built as a 32-bit executable on a 64-bit machines, assuming that a
 32-bit-pointer executable model is available and that an appropriate
 toolchain exists to target that model: compiler and development
-libraries.  (These are available for on most amd64-based systems,
+libraries.
+
+Enabling 32-bit Pointers on amd64 aka x86_64
+============================================
+
+A 32-bit memory model is available for on most amd64-based systems,
 sometimes as an optional package.  E.g., on Debian or Debian-derived
-distributions like Ubuntu, the correct package is gcc-multilib.)
-Compiling with GCC on an x86_64 aka amd64 architecture machine one
-should use the -m32 which builds an i386 architecture executable.
-This option will be added automatically by ./configure if it sees that
-it is being run on a 64-bit-pointer system.
+distributions like Ubuntu, the correct package is gcc-multilib.
+Compiling using GCC or clang on an x86_64 aka amd64 architecture
+machine, one should use the -m32 which builds an i386 architecture
+executable.  This option will be added automatically by ./configure if
+necessary.
 
 For the adventurous, -mx32, which uses the x86_64 instruction set with
 32-bit pointers, also works provided that x32 kernel support is
 enabled and the x32 development files are available.  Initial
 benchmarks showed that an src/emulator/oaklisp built with -m32 was
 slightly faster than one built with -mx32.
+
+Enabling 32-bit Pointers on Other 64-bit Architectures
+======================================================
+
+In discussion of his bug report, https://bugs.debian.org/780353/,
+James Cowgill <james410@cowgill.org.uk> kindly made a list of GCC
+flags to request a 32-bit memory model on all 64-bit architectures
+known to the Debian development tools.
+
+The -m32 option isn't valid for gcc on mips64 or arm64 or ia64.
+
+On mips64, -mabi=32 (without the -march stuff) is confirmed to work.
+
+These options are untested, but present in the GCC manual.
+
+	alpha		probably impossible
+	amd64		-m32 or -mx32
+	arm64		-mabi=ilp32
+	ia64		-milp32
+	mips64		-mabi=32
+	mips64el	-mabi=32
+	ppc64		-m32
+	ppc64el		-m32
+	s390x		-m31
+	sparc64		-m32
+
+only some of these have multilib enabled in the glibc package:
+
+	amd64
+	mips64el
+	ppc64 (but not ppc64el?)
+	sparc64
+	s390x
 
 64-Bit Port
 ===========
