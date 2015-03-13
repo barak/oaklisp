@@ -1,3 +1,12 @@
+2015-03-13  Barak A. Pearlmutter  <barak@cs.nuim.ie>
+
+	* oaklisp.1 fill in paths at make time
+	* configure.ac properly seek 32-bit memory model options on 64-bit hosts
+	* documentation add more build documentation
+	* world include prebuilt for big-endian, tweak location and search code
+	* autotools minor tweaks to build and use standard constructs throughout
+	* system-version.oak to pass version from configure.ac
+
 2015-03-03  Barak A. Pearlmutter  <barak@cs.nuim.ie>
 
 	* autotools build system
