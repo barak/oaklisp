@@ -74,12 +74,12 @@ AS_IF([test x${with_oaklisp} = xcheck || test x${with_oaklisp} = xyes],
 # The options here are for GCC, but -m32 and -mx32 works on amd64 with
 # clang, and others might as well.
 
-AC_CANONICAL_HOST
 AC_CHECK_SIZEOF([void *])
 AS_IF([test x"$ac_cv_sizeof_void_p" = x4],
       [AC_MSG_NOTICE([pointer size matches expectations])],
       [AC_MSG_WARN([non 32-bit pointer platform detected])
        AC_MSG_NOTICE([trying to enable 32-bit memory model compiler option for ${host_cpu}])
+       AC_CANONICAL_HOST
        case "${host_cpu}" in
 	 alpha* )
 	     AC_MSG_ERROR([32-bit memory model unavailable on ${host_cpu}]) ;;
@@ -91,7 +91,7 @@ AS_IF([test x"$ac_cv_sizeof_void_p" = x4],
        	     flag32="-milp32" ;;
 	 mips64* )
        	     flag32="-mabi=32" ;;
-	 ppc64* )
+	 powerpc64* | ppc64* )
        	     flag32="-m32" ;;
 	 s390x* )
        	     flag32="-m31" ;;
