@@ -6,6 +6,9 @@
 %:
 	dh $@ --parallel --with autoreconf
 
+override_dh_auto_configure-arch:
+	dh_auto_configure -- --disable-docs
+
 override_dh_auto_install:
 	dh_auto_install
 	-rm --verbose debian/tmp/usr/share/doc/oaklisp/ChangeLog
