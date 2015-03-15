@@ -87,27 +87,17 @@ AS_IF([test x"$ac_cv_sizeof_void_p" = x4],
       [AC_MSG_WARN([non 32-bit pointer platform detected])
        AC_MSG_NOTICE([trying to enable 32-bit memory model compiler option for ${host_cpu}])
        AC_CANONICAL_HOST
-       case "${host_cpu}" in
-	 alpha* )
-	     AC_MSG_ERROR([32-bit memory model unavailable on ${host_cpu}]) ;;
-	 amd64* | x86_64 )
-       	     flag32="-m32" ;;
-	 arm64* )
-       	     flag32="-mabi=ilp32" ;;
-	 ia64* )
-       	     flag32="-milp32" ;;
-	 mips64* )
-       	     flag32="-mabi=32" ;;
-	 powerpc64* | ppc64* )
-       	     flag32="-m32" ;;
-	 s390x* )
-       	     flag32="-m31" ;;
-	 sparc64* )
-       	     flag32="-m32" ;;
-	 * )
-	     AC_MSG_WARN([non-32-bit host CPU ${host_cpu} without known 32-bit memory model option, trying -m32])
-	     flag32="-m32" ;;
-       esac
+       AS_CASE([${host_cpu}],
+	 [alpha*],              [AC_MSG_ERROR([32-bit memory model unavailable on ${host_cpu}])],
+	 [amd64* | x86_64],     [flag32="-m32"],
+	 [arm64*],              [flag32="-mabi=ilp32"],
+	 [ia64*],               [flag32="-milp32"],
+	 [mips64*],             [flag32="-mabi=32"],
+	 [powerpc64* | ppc64*], [flag32="-m32"],
+	 [s390x*],              [flag32="-m31"],
+	 [sparc64*],            [flag32="-m32"],
+	 [AC_MSG_WARN([non-32-bit host CPU ${host_cpu} without known 32-bit memory model option, trying -m32])
+	  flag32="-m32"])
        AC_MSG_NOTICE([compiler option for 32-bit memory model: ${flag32}])
        CFLAGS="$CFLAGS ${flag32}"
        : LDFLAGS="$LDFLAGS ${flag32}"
