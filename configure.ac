@@ -26,6 +26,13 @@ AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([subdir-objects -Wall])
 
 # Process options
+AC_MSG_CHECKING([enable_docs])
+AC_ARG_ENABLE([docs],
+       [AS_HELP_STRING([--enable-docs],[build and install LaTeX-format documentation (default=yes)])],,
+       [enable_docs=yes])
+AC_MSG_RESULT([$enable_docs])
+AM_CONDITIONAL([DOCS], [test x${enable_docs} = xyes])
+
 AC_MSG_CHECKING([enable_ndebug])
 AC_ARG_ENABLE([ndebug],
        [AS_HELP_STRING([--enable-ndebug],[enable high speed disable debugging (default=yes)])],,
@@ -74,12 +81,12 @@ AS_IF([test x${with_oaklisp} = xcheck || test x${with_oaklisp} = xyes],
 # The options here are for GCC, but -m32 and -mx32 works on amd64 with
 # clang, and others might as well.
 
-AC_CANONICAL_HOST
 AC_CHECK_SIZEOF([void *])
 AS_IF([test x"$ac_cv_sizeof_void_p" = x4],
       [AC_MSG_NOTICE([pointer size matches expectations])],
       [AC_MSG_WARN([non 32-bit pointer platform detected])
        AC_MSG_NOTICE([trying to enable 32-bit memory model compiler option for ${host_cpu}])
+       AC_CANONICAL_HOST
        case "${host_cpu}" in
 	 alpha* )
 	     AC_MSG_ERROR([32-bit memory model unavailable on ${host_cpu}]) ;;
@@ -91,7 +98,7 @@ AS_IF([test x"$ac_cv_sizeof_void_p" = x4],
        	     flag32="-milp32" ;;
 	 mips64* )
        	     flag32="-mabi=32" ;;
-	 ppc64* )
+	 powerpc64* | ppc64* )
        	     flag32="-m32" ;;
 	 s390x* )
        	     flag32="-m31" ;;
@@ -116,7 +123,8 @@ AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_SED
 AC_CHECK_PROGS([INDENT],[indent],[true])
-AC_CHECK_PROGS([RUBBER],[rubber],[false])
+AS_IF([test x${enable_docs} = xyes],
+ [AC_CHECK_PROGS([RUBBER],[rubber],[false])])
 
 # Checks for libraries.
 AS_IF([test x$threads = xyes],

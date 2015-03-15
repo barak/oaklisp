@@ -14,7 +14,11 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-SUBDIRS = src man doc
+SUBDIRS = src man
+
+if DOCS
+SUBDIRS += doc
+endif
 
 doc_DATA = README AUTHORS COPYING BUILD.txt ChangeLog NEWS
 

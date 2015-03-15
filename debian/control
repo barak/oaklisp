@@ -3,13 +3,14 @@ Section: lisp
 Priority: optional
 Maintainer: Barak A. Pearlmutter <bap@debian.org>
 Standards-Version: 3.9.6
-Build-depends:
+Build-Depends:
 	debhelper (>= 9),
 	dh-autoreconf,
 	autoconf-archive,
-	texlive-latex-base, texlive-latex-extra, texlive-fonts-recommended,
-	rubber,
 	gcc-multilib [any-alpha any-amd64 any-arm64 any-ia64 any-mips64 any-mips64el any-ppc64 any-ppc64el any-s390x any-sparc64]
+Build-Depends-Indep:
+	texlive-latex-base, texlive-latex-extra, texlive-fonts-recommended,
+	rubber
 Homepage: http://oaklisp.alioth.debian.org/
 Vcs-Git: https://alioth.debian.org/anonscm/git/oaklisp/oaklisp.git
 Vcs-Browser: https://alioth.debian.org/scm/browser.php?group_id=100056
