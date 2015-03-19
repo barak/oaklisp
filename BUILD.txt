@@ -143,6 +143,9 @@ only some of these have multilib enabled in the glibc package:
 	sparc64
 	s390x
 
+To Do
+=====
+
 64-Bit Port
 ===========
 
@@ -178,3 +181,23 @@ This would all be facilitated by the fact that a working 32-bit
 oaklisp could be used during the bootstrap, and due to bignums its
 word size should not affect its ability to generate 64-bit bootstrap
 files.
+
+Binary World Format
+===================
+
+Currently the system is started by executing the emulator, which loads
+a binary world.  Different varieties of the system can be obtained by
+booting different worlds, and by passing various options like the
+desired locale.  Another option would be to make a new world format
+which can be directly executed.  This could be accomplished in one of
+three ways.  (1) The binary world could have a magic number recognized
+by the OS kernel, allowing it to be executed in a special
+idiosyncratic fashion.  (2) The binary world could start with
+ #! /usr/bin/env oaklisp
+or
+ #! /usr/bin/oaklisp
+and the emulator would recognize this situation and load the
+apppropriate world.  (3) The world could be an ELF executable which
+could be executed in native mode, and the binary data for the world
+itself could live in its own ELF segment or even be bound to a symbol
+in the ELF file.
