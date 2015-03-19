@@ -44,6 +44,13 @@ ALLOAFILESNONGEN += $(RNRSFILES)
 # Use "OAK=oaklisp" unless compiling new emulator.
 OAK = ../emulator/oaklisp
 
+# When cross-compiling, $(OAK) is for an emulator with a working
+# oakworld.bin, the "build" system in autotools terminology, while
+# $(OAKBOOT) is for the new architecture, the "host" system in
+# autotools terminology.  $(OAKBOOT) will be used only for loading
+# partial worlds, loading extra files into them, and dumping them.
+OAKBOOT = ../emulator/oaklisp
+
 # Flags for the emulator.
 OAKFLAGS = --trace-gc=1
 
@@ -69,25 +76,25 @@ new.cold: $(COLDFILES) $(TOOLFILES)
 
 # How to boot cold world into warm world:
 oakworld-1.bin: new.cold
-	 $(OAK) $(OAKFLAGS) --world new.cold --dump $@
+	 $(OAKBOOT) $(OAKFLAGS) --world new.cold --dump $@
 
 # load successive layers of functionality onto the world
 
 oakworld-2.bin: oakworld-1.bin $(MISCFILES)
-	$(OAK) $(OAKFLAGS) --world oakworld-1.bin --dump $@ \
+	$(OAKBOOT) $(OAKFLAGS) --world oakworld-1.bin --dump $@ \
 	   -- \
 	   $(foreach f, $(MISCFILES:.oa=),--load $(f)) \
 	   --exit
 
 oakworld-3.bin: oakworld-2.bin $(COMPFILES)
-	 $(OAK) $(OAKFLAGS) --world oakworld-2.bin --dump $@ \
+	 $(OAKBOOT) $(OAKFLAGS) --world oakworld-2.bin --dump $@ \
 	   -- \
 	   --locale compiler-locale \
 	   $(foreach f, $(COMPFILES:.oa=),--load $(f)) \
 	   --locale system-locale --exit
 
 oakworld.bin: oakworld-3.bin $(RNRSFILES)
-	$(OAK) $(OAKFLAGS) --world oakworld-3.bin --dump $@ \
+	$(OAKBOOT) $(OAKFLAGS) --world oakworld-3.bin --dump $@ \
 	  -- \
 	  --eval '(define-instance scheme-locale locale (list system-locale))'\
 	  --locale scheme-locale \
