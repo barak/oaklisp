@@ -63,17 +63,20 @@ Endianity
 =========
 
 Oaklisp is sensitive to the endianness of the CPU
-<http://en.wikipedia.org/wiki/Endianness>.  The oakworld.bin included
-in the git branch containing a prebuilt world, or available for
-download as a separate file, is for a little-indian architecture.  The
-i386 and amd64 architectures (aka x86, x86_64, x86_32, IA32)
-processors are little-endian.  Oaklisp can be easily made to cross
-build an oakworld.bin for a big-endian architecture:
- On little-endian machine:
+<http://en.wikipedia.org/wiki/Endianness>.  There are oakworld.bin
+files included in the git branch containing prebuilt files, or
+available for download as a separate files, for both little-endian and
+big-endian architectures.  The subdirectory is el32/ for little-endian
+and eb32/ for big-endian.
+
+However Oaklisp can easily be made to cross build an oakworld.bin for
+a big-endian or little-endian architecture, given an opposite-endian
+prebuilt world as well as access to systems of both endianities:
+ On machine with endianity of prebuilt world:
   $ autoreconf --install
   $ ./configure
   $ make -C src
- Copy tree to big-endian machine, and there:
+ Copy tree to other-endian machine, and there:
   $ ./configure
   $ make -C src/emulator clean
   $ make -C src/emulator
@@ -81,7 +84,7 @@ build an oakworld.bin for a big-endian architecture:
   $ touch src/world/system-version.oa
   $ touch src/world/new.cold
   $ make -C src/world
-You should now be the proud possessor of a big-endian
+You should now be the proud possessor of an opposite-endian
 src/emulator/oaklisp and src/world/oakworld.bin.
 
 32-Bit Pointers
@@ -93,55 +96,26 @@ be built as a 32-bit executable on a 64-bit machines, assuming that a
 toolchain exists to target that model: compiler and development
 libraries.
 
-Enabling 32-bit Pointers on amd64 aka x86_64
-============================================
-
 A 32-bit memory model is available for on most amd64-based systems,
 sometimes as an optional package.  E.g., on Debian or Debian-derived
 distributions like Ubuntu, the correct package is gcc-multilib.
 Compiling using GCC or clang on an x86_64 aka amd64 architecture
 machine, one should use the -m32 which builds an i386 architecture
-executable.  This option will be added automatically by ./configure if
-necessary.
+executable.  A similar situation holds with many 64-bit architectures.
+The appropriate GCC options will be added automatically by ./configure
+when necessary on many 64-bit architectures, thanks to an exhaustive
+list of appropriate options for all applicable Debian architectures
+provided by James Cowgill <james410@cowgill.org.uk> in discussion of
+his bug report https://bugs.debian.org/780353/.  These options also
+seem to work, in many cases, with the clang compiler.  New
+architectures can be added to configure.ac as clauses in the
+AS_CASE([${host_cpu}],...) statement.
 
-For the adventurous, -mx32, which uses the x86_64 instruction set with
+On x86_64 the -mx32 flag, which uses the x86_64 instruction set with
 32-bit pointers, also works provided that x32 kernel support is
 enabled and the x32 development files are available.  Initial
 benchmarks showed that an src/emulator/oaklisp built with -m32 was
 slightly faster than one built with -mx32.
-
-Enabling 32-bit Pointers on Other 64-bit Architectures
-======================================================
-
-In discussion of his bug report, https://bugs.debian.org/780353/,
-James Cowgill <james410@cowgill.org.uk> kindly made a list of GCC
-flags to request a 32-bit memory model on all 64-bit architectures
-known to the Debian development tools.
-
-The -m32 option isn't valid for gcc on mips64 or arm64 or ia64.
-
-On mips64, -mabi=32 (without the -march stuff) is confirmed to work.
-
-These options are untested, but present in the GCC manual.
-
-	alpha		probably impossible
-	amd64		-m32 or -mx32
-	arm64		-mabi=ilp32
-	ia64		-milp32
-	mips64		-mabi=32
-	mips64el	-mabi=32
-	ppc64		-m32
-	ppc64el		-m32
-	s390x		-m31
-	sparc64		-m32
-
-only some of these have multilib enabled in the glibc package:
-
-	amd64
-	mips64el
-	ppc64 (but not ppc64el?)
-	sparc64
-	s390x
 
 To Do
 =====
