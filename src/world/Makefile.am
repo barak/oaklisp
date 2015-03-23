@@ -52,7 +52,8 @@ OAK = ../emulator/oaklisp
 OAKBOOT = ../emulator/oaklisp
 
 # Flags for the emulator.
-OAKFLAGS = --trace-gc=1
+# OAKFLAGS = --trace-gc=1
+OAKFLAGS =
 
 # When bootstrapping add "OAKFLAGS+=--world ...../oakworld.bin"
 # generally: ../../prebuilt/src/world/oakworld.bin
