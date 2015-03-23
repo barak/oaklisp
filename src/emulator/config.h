@@ -44,11 +44,6 @@
 #include "../../config.h"
 #endif
 
-#include <bits/wordsize.h>
-// #if (__WORDSIZE != 32)
-// #error word size must be 32 bits
-// #endif
-
 #define ASHR2(x) ((x)>>2)
 
 #ifdef THREADS

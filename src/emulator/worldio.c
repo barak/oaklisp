@@ -94,7 +94,7 @@ contig(ref_t r, bool just_new)
 static ref_t
 read_ref(FILE * d)
 {
-/* Read a reference from a file: */
+  /* Read a reference from a file: */
   int c;
   ref_t a = 0;
 
@@ -106,61 +106,19 @@ read_ref(FILE * d)
     }
   else
     {
-      if (__BYTE_ORDER == __LITTLE_ENDIAN)
+      fscanf(d, " ");
+      bool swapem = (c = getc(d)) == '^';
+      if (!swapem) ungetc(c, d);
+      if (fscanf(d, "%x", &a) != 1)
 	{
-	  while (isspace(c = getc(d)))
-	    if (c == EOF)
-	      {
-		printf("Apparently truncated cold load file!\n");
-		exit(EXIT_FAILURE);
-	      }
-	  {
-	    bool swapem = c == '^';
-	    if (swapem)
-	      if ((c = getc(d)) == EOF)
-		{
-		  printf("Apparently truncated cold load file!\n");
-		  exit(EXIT_FAILURE);
-		}
-	    while (isxdigit(c))
-	      {
-		a = a << 4;
-		if (c <= '9')
-		  a |= ((ref_t) c - '0');
-		else if (c <= 'Z')
-		  a |= ((ref_t) c - 'A' + 10);
-		else
-		  a |= ((ref_t) c - 'a' + 10);
-		c = getc(d);
-	      }
-	    if (c == '^')
-	      ungetc(c, d);
-	    if (swapem)
-	      a = (a << 16 | a >> 16);
-	  }
-	  return a;
+	  printf("Error reading cold load file, might be truncated.\n");
+	  exit(EXIT_FAILURE);
 	}
-      else
-	{			/* __BYTE_ORDER == __BIG_ENDIAN */
-	  while (isspace(c = getc(d)) || c == '^')
-	    if (c == EOF)
-	      {
-		printf("Apparently truncated cold load file!\n");
-		exit(EXIT_FAILURE);
-	      }
-	  while (isxdigit(c))
-	    {
-	      a = a << 4;
-	      if (c <= '9')
-		a |= ((ref_t) c - '0');
-	      else if (c <= 'Z')
-		a |= ((ref_t) c - 'A' + 10);
-	      else
-		a |= ((ref_t) c - 'a' + 10);
-	      c = getc(d);
-	    }
-	  return a;
-	}			/* __BYTE_ORDER */
+#ifndef WORDS_BIGENDIAN
+      if (swapem)
+	a = (a << 16 | a >> 16);
+#endif
+      return a;
     }				/* input_is_binary */
 }
 
@@ -368,10 +326,11 @@ read_world(char *str)
     {
       ungetc(magichar, d);
       input_is_binary = 0;
-      if (__BYTE_ORDER == __LITTLE_ENDIAN)
-	printf("Little Endian.\n");
-      else
-	printf("Big Endian.\n");
+#ifdef WORDS_BIGENDIAN
+      printf("Big Endian.\n");
+#else
+      printf("Little Endian.\n");
+#endif
     }
 
   /* Obsolescent: read val_space_size and cxt_space_size: */

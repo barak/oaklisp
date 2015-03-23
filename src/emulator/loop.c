@@ -1001,8 +1001,11 @@ loop(ref_t initial_tos)
 	      GOTO_TOP;
 
 	    case 52:		/* BIG-ENDIAN? */
-	      x = BOOL_TO_REF(__BYTE_ORDER == __BIG_ENDIAN);
-	      PUSHVAL(x);
+#ifdef WORDS_BIGENDIAN
+	      PUSHVAL(e_t);
+#else
+	      PUSHVAL(e_false);
+#endif
 	      GOTO_TOP;
 
 	    case 53:		/* VLEN-ALLOCATE */

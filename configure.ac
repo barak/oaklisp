@@ -133,10 +133,13 @@ AC_TYPE_INT32_T
 AC_TYPE_INT64_T
 AX_C_LONG_LONG
 AC_TYPE_SIZE_T
-AC_C_BIGENDIAN([worldsubdir=eb32],
-               [worldsubdir=el32],
+AC_C_BIGENDIAN(,,
                [AC_MSG_WARN([missing case, endianity unknown])],
                [AC_MSG_WARN([missing case, endianity unversal])])
+
+AS_IF([test ${ac_cv_c_bigendian} = yes],
+ [worldsubdir=eb32],
+ [worldsubdir=el32])
 
 # Actual scan for binary world find comes here rather than in option
 # processing because we need to know endianity.
