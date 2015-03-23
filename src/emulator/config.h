@@ -57,12 +57,6 @@
 #endif
 #endif
 
-#ifdef WORDS_BIGENDIAN
-#define BYTE_GENDER big_endian
-#else
-#define BYTE_GENDER little_endian
-#endif
-
 /* Speed parameters */
 
 /* Turn off most runtime debugging features that slow down the system. */
