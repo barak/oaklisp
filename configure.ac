@@ -80,32 +80,32 @@ AS_IF([test x${with_oaklisp} = xcheck || test x${with_oaklisp} = xyes],
 # clang, and others might as well.
 
 AC_CHECK_SIZEOF([void *])
-AS_IF([test x"$ac_cv_sizeof_void_p" = x4],
- [AC_MSG_NOTICE([pointer size matches expectations])],
- [AC_MSG_WARN([non 32-bit pointer platform detected])
-  AC_MSG_NOTICE([trying to enable 32-bit memory model compiler option for ${host_cpu}])
-  AC_CANONICAL_HOST
-  AS_CASE([${host_cpu}],
-   [alpha*],              [AC_MSG_ERROR([32-bit memory model unavailable on ${host_cpu}])],
-   [amd64* | x86_64],     [flag32="-m32"],
-   [arm64*],              [flag32="-mabi=ilp32"],
-   [ia64*],               [flag32="-milp32"],
-   [mips64*],             [flag32="-mabi=32"],
-   [powerpc64* | ppc64*], [flag32="-m32"],
-   [s390x*],              [flag32="-m31"],
-   [sparc64*],            [flag32="-m32"],
-                          [flag32="-m32"
-                           AC_MSG_WARN([non-32-bit host CPU ${host_cpu}])
-			   AC_MSG_WARN([no 32-bit memory model option known, trying -m32])])
-  AC_MSG_NOTICE([compiler option for 32-bit memory model: ${flag32}])
-  CFLAGS="$CFLAGS ${flag32}"
-  : LDFLAGS="$LDFLAGS ${flag32}"
-  unset ac_cv_sizeof_void_p
-  AC_CHECK_SIZEOF([void *])
-  AS_IF([test x"$ac_cv_sizeof_void_p" = x0],
-   [AC_MSG_ERROR([bad flags, Indy])])
-  AS_IF([test x"$ac_cv_sizeof_void_p" != x4],
-   [AC_MSG_WARN([bad news, pointers are now $ac_cv_sizeof_void_p bytes])])])
+AS_CASE([${ac_cv_sizeof_void_p}],
+ [4],[AC_MSG_NOTICE([pointer size matches expectations])],
+     [AC_MSG_WARN([non 32-bit pointer platform detected])
+      AC_MSG_NOTICE([trying to enable 32-bit memory model compiler option for ${host_cpu}])
+      AC_CANONICAL_HOST
+      AS_CASE([${host_cpu}],
+       [alpha*],              [AC_MSG_ERROR([32-bit memory model unavailable on ${host_cpu}])],
+       [amd64* | x86_64],     [flag32="-m32"],
+       [arm64*],              [flag32="-mabi=ilp32"],
+       [ia64*],               [flag32="-milp32"],
+       [mips64*],             [flag32="-mabi=32"],
+       [powerpc64* | ppc64*], [flag32="-m32"],
+       [s390x*],              [flag32="-m31"],
+       [sparc64*],            [flag32="-m32"],
+			      [flag32="-m32"
+			       AC_MSG_WARN([non-32-bit host CPU ${host_cpu}])
+			       AC_MSG_WARN([no 32-bit memory model option known, trying -m32])])
+      AC_MSG_NOTICE([compiler option for 32-bit memory model: ${flag32}])
+      CFLAGS="${CFLAGS} ${flag32}"
+      : LDFLAGS="${LDFLAGS} ${flag32}"
+      unset ac_cv_sizeof_void_p
+      AC_CHECK_SIZEOF([void *])
+      AS_CASE([${ac_cv_sizeof_void_p}],
+       [0],[AC_MSG_ERROR([bad flags, Indy])],
+       [4],[AC_MSG_NOTICE([32-bit memory model achieved])],
+	   [AC_MSG_WARN([bad news, pointers are now ${ac_cv_sizeof_void_p} bytes])])])
 
 # Checks for programs.
 AC_PROG_CC
@@ -133,9 +133,7 @@ AC_TYPE_INT32_T
 AC_TYPE_INT64_T
 AX_C_LONG_LONG
 AC_TYPE_SIZE_T
-AC_C_BIGENDIAN(,,
-               [AC_MSG_WARN([missing case, endianity unknown])],
-               [AC_MSG_WARN([missing case, endianity unversal])])
+AC_C_BIGENDIAN
 
 AS_IF([test ${ac_cv_c_bigendian} = yes],
  [worldsubdir=eb32],
