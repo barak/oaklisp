@@ -86,6 +86,8 @@ maybe_put(bool v, char *s)
 #endif
 
 
+#define INCREMENT_PC(pc,i) ((pc)+=(i))
+
 
 #define NEW_STORAGE e_uninitialized
 
@@ -444,7 +446,7 @@ loop(ref_t initial_tos)
       timer_counter += timer_increment;
 #endif
 
-      instr = *local_e_pc++;
+      instr = *local_e_pc;
 
       op_field = (instr >> 2) & 0x3F;
       arg_field = instr >> 8;
@@ -452,8 +454,10 @@ loop(ref_t initial_tos)
 
 #ifndef FAST
       if (trace_insts)
-	print_instr(op_field, arg_field, local_e_pc - 1);
+	print_instr(op_field, arg_field, local_e_pc);
 #endif
+
+      INCREMENT_PC(local_e_pc,1);
 
       /*
 	fprintf(stdout, "Asserting...\n");
@@ -561,13 +565,15 @@ loop(ref_t initial_tos)
 
 	    case 6:		/* LOAD-IMM ; INLINE-REF */
 	      /* align pc to next word boundary: */
-
 	      if ((unsigned long)local_e_pc & 0x2)
-		local_e_pc++;
+		INCREMENT_PC(local_e_pc,1);
+
 	      /*NOSTRICT */
 	      x = *(ref_t *)local_e_pc;
 	      PUSHVAL(x);
-	      local_e_pc += sizeof(ref_t) / sizeof(instr_t);
+
+	      /* skip pc over inline reference */
+	      INCREMENT_PC(local_e_pc, sizeof(ref_t) / sizeof(instr_t));
 	      GOTO_TOP;
 
 	    case 7:		/* DIV */
@@ -880,25 +886,25 @@ loop(ref_t initial_tos)
 
 	    case 35:		/* LONG-BRANCH distance (signed) */
 	      POLL_SIGNALS();
-	      local_e_pc += ASHR2(SIGN_16BIT_ARG(*local_e_pc)) + 1;
+	      INCREMENT_PC(local_e_pc, ASHR2(SIGN_16BIT_ARG(*local_e_pc)) + 1);
 	      GOTO_TOP;
 
 	    case 36:		/* LONG-BRANCH-NIL distance (signed) */
 	      POLL_SIGNALS();
 	      POPVAL(x);
 	      if (x != e_nil)
-		local_e_pc++;
+		INCREMENT_PC(local_e_pc,1);
 	      else
-		local_e_pc += ASHR2(SIGN_16BIT_ARG(*local_e_pc)) + 1;
+		INCREMENT_PC(local_e_pc, ASHR2(SIGN_16BIT_ARG(*local_e_pc)) + 1);
 	      GOTO_TOP;
 
 	    case 37:		/* LONG-BRANCH-T distance (signed) */
 	      POLL_SIGNALS();
 	      POPVAL(x);
 	      if (x == e_nil)
-		local_e_pc++;
+		INCREMENT_PC(local_e_pc,1);
 	      else
-		local_e_pc += ASHR2(SIGN_16BIT_ARG(*local_e_pc)) + 1;
+		INCREMENT_PC(local_e_pc, ASHR2(SIGN_16BIT_ARG(*local_e_pc)) + 1);
 	      GOTO_TOP;
 
 	    case 38:		/* LOCATE-BP-I */
@@ -914,12 +920,12 @@ loop(ref_t initial_tos)
 	      /* Do it in ?two? instructions: */
 	      /* local_e_pc = (unsigned short*)(((unsigned long)local_e_pc + 3)&~3ul); */
 	      /* Do it in ?three? instructions including branch: */
-	      if ((unsigned long)local_e_pc & 2)
-		local_e_pc++;
+	      if ((unsigned long)local_e_pc & 0x2)
+		INCREMENT_PC(local_e_pc,1);
 
 	      /* NOSTRICT */
 	      x = *(ref_t *) local_e_pc;
-	      local_e_pc += 2;
+	      INCREMENT_PC(local_e_pc, 2);
 
 	      /* This checktag looks buggy, since it's hard to back over
 	         the instruction normally ... need to expand this out */
@@ -971,7 +977,7 @@ loop(ref_t initial_tos)
 
 	    case 46:		/* PUSH-CXT-LONG rel */
 	      PUSH_CONTEXT(ASHR2(SIGN_16BIT_ARG(*local_e_pc)) + 1);
-	      local_e_pc++;
+	      INCREMENT_PC(local_e_pc,1);
 	      GOTO_TOP;
 
 	    case 47:		/* Call a primitive routine. */
@@ -1342,7 +1348,7 @@ loop(ref_t initial_tos)
 
 	      POPVAL(x);
 	      if (x == e_nil)
-		local_e_pc += signed_arg_field;
+		INCREMENT_PC(local_e_pc, signed_arg_field);
 	      GOTO_TOP;
 
 	    case 5:		/* BRANCH-T distance (signed) */
@@ -1351,14 +1357,14 @@ loop(ref_t initial_tos)
 
 	      POPVAL(x);
 	      if (x != e_nil)
-		local_e_pc += signed_arg_field;
+		INCREMENT_PC(local_e_pc, signed_arg_field);
 	      GOTO_TOP;
 
 	    case 6:		/* BRANCH distance (signed) */
 
 	      POLL_SIGNALS();
 
-	      local_e_pc += signed_arg_field;
+	      INCREMENT_PC(local_e_pc, signed_arg_field);
 	      GOTO_TOP;
 
 	    case 7:		/* POP n */
@@ -2042,7 +2048,7 @@ loop(ref_t initial_tos)
 
   /* Back off of the current intruction so it will get executed
      when we get back from the trap code. */
-  local_e_pc--;
+  INCREMENT_PC(local_e_pc, -1);
 
   /* Pass the trap code the current NARGS. */
   x = INT_TO_REF(e_nargs);
@@ -2069,10 +2075,10 @@ loop(ref_t initial_tos)
       printf("\n");
     }
 #endif
+
   /* Trick: to preserve tail recursiveness, push context only if next
      instruction isn't a RETURN and current instruction wasn't a FUNCALL.
      or a CHECK-NARGS[-GTE]. */
-
 
   if ((op_field < 20 || op_field > 26 || op_field == 23)
       && local_e_pc[0] != (24 << 8))
