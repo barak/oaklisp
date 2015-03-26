@@ -26,7 +26,7 @@
 #include "instr-data.c"
 
 void
-print_pc(u_int16_t *e_progc)
+print_pc(instr_t *e_progc)
 {
   if (SPATIC_PTR((ref_t *) e_progc))
     fprintf(stdout, "%7ld[spatic] ",
@@ -38,7 +38,7 @@ print_pc(u_int16_t *e_progc)
 }
 
 void
-print_instr(int op_field, int arg_field, u_int16_t *e_progc)
+print_instr(int op_field, int arg_field, instr_t *e_progc)
 {
   print_pc(e_progc);
 

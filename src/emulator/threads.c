@@ -42,7 +42,7 @@ oakstack *cntxt_stack_array[MAX_THREAD_COUNT];
 #endif
 
 #ifdef THREADS
-static u_int16_t tail_recurse_instruction = (22 << 2);
+static instr_t tail_recurse_instruction = (22 << 2);
 #endif
 
 typedef struct {

@@ -207,7 +207,7 @@
 	e_env = REF_TO_PTR(e_current_method);			\
 	e_code_segment = SLOT(e_env,METHOD_CODE_OFF);		\
 	e_env = REF_TO_PTR(SLOT(e_env,METHOD_ENV_OFF));		\
-	local_epc = (u_int16_t *)			        \
+	local_epc = (instr_t *)			        \
 				((unsigned long)e_code_segment	\
 				+REF_TO_INT(local_context_sp[-2])); \
 	local_context_sp -= 3;					\

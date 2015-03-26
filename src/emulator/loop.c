@@ -297,7 +297,7 @@ find_method_type_pair(ref_t op,
 void
 loop(ref_t initial_tos)
 {
-  u_int16_t instr;
+  instr_t instr;
   u_int8_t op_field;
   u_int8_t arg_field;
 
@@ -324,7 +324,7 @@ loop(ref_t initial_tos)
      compiler can keep these in registers or on the stack instead of
      reloading from main memory. */
 
-  u_int16_t *local_epc;
+  instr_t *local_epc;
 
   ref_t *local_value_sp;
   ref_t *value_stack_bp = value_stack.bp;
@@ -567,7 +567,7 @@ loop(ref_t initial_tos)
 	      /*NOSTRICT */
 	      x = *(ref_t *)local_epc;
 	      PUSHVAL(x);
-	      local_epc += sizeof(ref_t) / sizeof(*local_epc);
+	      local_epc += sizeof(ref_t) / sizeof(instr_t);
 	      GOTO_TOP;
 
 	    case 7:		/* DIV */

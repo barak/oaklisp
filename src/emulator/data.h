@@ -46,6 +46,9 @@ typedef int bool;
 
 typedef u_int32_t ref_t;
 
+/* instruction type */
+typedef u_int16_t instr_t;
+
 /* space type */
 
 typedef struct {
@@ -88,7 +91,7 @@ typedef struct {
   ref_t     *e_env;
   ref_t     e_current_method;
   ref_t     e_code_segment;
-  u_int16_t *e_pc;
+  instr_t *e_pc;
   unsigned  e_nargs;
   ref_t     e_process;
 } register_set_t;
@@ -107,7 +110,7 @@ extern ref_t
  *e_arged_tag_trap_table, *e_argless_tag_trap_table, e_current_method,
   e_uninitialized, e_method_type, e_operation_type, e_process;
 
-extern u_int16_t *e_pc;
+extern instr_t *e_pc;
 
 extern unsigned e_nargs;
 #endif
@@ -367,7 +370,7 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 /* This is for the warmup code */
 
 #define CODE_SEG_FIRST_INSTR(seg) \
-  ( (u_int16_t *)(REF_TO_PTR((seg)) + CODE_CODE_START_OFF) )
+  ( (instr_t *)(REF_TO_PTR((seg)) + CODE_CODE_START_OFF) )
 
 
 #ifdef THREADS
