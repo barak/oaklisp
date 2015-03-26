@@ -41,15 +41,15 @@ ALLOAFILESNONGEN += $(COMPFILES)
 ALLOAFILESNONGEN += $(RNRSFILES)
 
 # The Oaklisp emulator executable.
-# Use "OAK=oaklisp" unless compiling new emulator.
-OAK = ../emulator/oaklisp
+# Use "OAK=oaklisp --batch" unless compiling new emulator.
+OAK = ../emulator/oaklisp --batch
 
 # When cross-compiling, $(OAK) is for an emulator with a working
 # oakworld.bin, the "build" system in autotools terminology, while
 # $(OAKBOOT) is for the new architecture, the "host" system in
 # autotools terminology.  $(OAKBOOT) will be used only for loading
 # partial worlds, loading extra files into them, and dumping them.
-OAKBOOT = ../emulator/oaklisp
+OAKBOOT = ../emulator/oaklisp --batch
 
 # Flags for the emulator.
 # OAKFLAGS = --trace-gc=1
