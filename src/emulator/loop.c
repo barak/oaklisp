@@ -52,6 +52,7 @@
 
 bool trace_traps = false;	/* trace tag traps */
 bool trace_files = false;	/* trace file opening */
+bool batch_mode = false;	/* disable trapping of SIGINT */
 
 #ifndef FAST
 bool trace_insts = false;	/* trace instruction execution */
@@ -395,7 +396,7 @@ loop(ref_t initial_tos)
 
   /* This is the big instruction fetch/execute loop. */
 
-  enable_signal_polling();
+  if (!batch_mode) enable_signal_polling();
 
 #define GOTO_TOP	goto top_of_loop;
 

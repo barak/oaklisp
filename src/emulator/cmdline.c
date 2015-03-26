@@ -85,6 +85,7 @@ usage(char *prog)
 	  "\t--trace-gc v         0=quiet, 3=very detailed; default=0\n"
 	  "\t--verbose-gc v       synonym for --trace-gc\n"
 	  "\t--trace-traps\n"
+	  "\t--batch              disable trapping of SIGINT\n"
 #ifndef FAST
 	  "\t--trace-segs         trace stack segment writes/reads\n"
 	  "\t--trace-valcon       print entire value stack at each instr\n"
@@ -167,6 +168,7 @@ parse_cmd_line(int argc, char **argv)
 	{"size-seg-max", required_argument, 0, MAX_SEG_ARG},
 	{"trace-gc", required_argument, 0, VERBOSE_GC_ARG},
 	{"trace-traps", no_argument, &trace_traps, true},
+	{"batch", no_argument, &batch_mode, true},
 #ifndef FAST
 	{"trace-segs", no_argument, &trace_segs, true},
 	{"trace-valcon", no_argument, &trace_valcon, true},

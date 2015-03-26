@@ -125,6 +125,7 @@ extern bool gc_before_dump;
 
 extern int trace_gc;
 extern bool trace_traps;
+extern bool batch_mode;
 
 #ifndef FAST
 
