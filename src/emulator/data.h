@@ -322,8 +322,8 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
   ALLOCATE_PROT(p, words, reason,			\
 		{ value_stack.sp = local_value_sp;	\
           context_stack.sp = local_context_sp;		\
-		  e_pc = local_epc; },			\
-		{ local_epc = e_pc;			\
+		  e_pc = local_e_pc; },			\
+		{ local_e_pc = e_pc;			\
           local_context_sp = context_stack.sp;		\
 		  local_value_sp = value_stack.sp; })
 
@@ -335,8 +335,8 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 		{ GC_MEMORY(v);				\
 		  value_stack.sp = local_value_sp;	\
           context_stack.sp = local_context_sp;		\
-		  e_pc = local_epc; },			\
-		{ local_epc = e_pc;			\
+		  e_pc = local_e_pc; },			\
+		{ local_e_pc = e_pc;			\
           local_context_sp = context_stack.sp;		\
 		  local_value_sp = value_stack.sp;	\
 		  GC_RECALL(v); })
