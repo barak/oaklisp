@@ -129,10 +129,10 @@ printref(FILE * fd, ref_t refin)
       else
 	i = (long)p >> 2;
 
-      fprintf(fd, "[%ld;tag:%d;%c]", i, refin & TAG_MASK, suffix);
+      fprintf(fd, "[%ld;tag:%lu;%c]", i, (unsigned long)(refin & TAG_MASK), suffix);
     }
   else
-    fprintf(fd, "[%ld;tag:%d]", (long)(refin >> 2), refin & TAG_MASK);
+    fprintf(fd, "[%ld;tag:%lu]", (long)(refin >> 2), (unsigned long)(refin & TAG_MASK));
 }
 
 #define GC_NULL(r) ((r)==pre_gc_nil || (r)==e_nil)

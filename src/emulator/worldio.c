@@ -41,8 +41,8 @@ void xfread(void *ptr, size_t size, size_t nmemb, FILE *stream)
   if (r != nmemb) 
     {
       fprintf(stderr,
-	      "error: expected to read %d elements of size %d but received %d\n",
-	      nmemb, size, r);
+	      "error: expected to read %lu elements of size %lu but received %lu\n",
+	      (unsigned long)nmemb, (unsigned long)size, (unsigned long)r);
       exit(EXIT_FAILURE);
     }
 }
@@ -96,24 +96,27 @@ read_ref(FILE * d)
 {
   /* Read a reference from a file: */
   int c;
-  ref_t a = 0;
 
   /* It's easy to read a reference from a binary file. */
   if (input_is_binary)
     {
+      ref_t a;
       xfread((void *)&a, sizeof(ref_t), 1, d);
       return a;
     }
   else
     {
+      ref_t a;
+      unsigned long b;
       fscanf(d, " ");
       bool swapem = (c = getc(d)) == '^';
       if (!swapem) ungetc(c, d);
-      if (fscanf(d, "%x", &a) != 1)
+      if (fscanf(d, "%lx", &b) != 1)
 	{
 	  printf("Error reading cold load file, might be truncated.\n");
 	  exit(EXIT_FAILURE);
 	}
+      a = b;
 #ifndef WORDS_BIGENDIAN
       if (swapem)
 	a = (a << 16 | a >> 16);

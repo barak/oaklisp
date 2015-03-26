@@ -44,9 +44,10 @@ typedef int bool;
 
 /* reference type */
 
-typedef u_int32_t ref_t;
+typedef size_t ref_t;
 
 /* instruction type */
+
 typedef u_int16_t instr_t;
 
 /* space type */
@@ -234,8 +235,8 @@ extern bool trace_files;
    positive fixnum, an asymmetry inherent in a twos complement
    representation. */
 
-#define MIN_REF     ((ref_t)(1<<(__WORDSIZE-1)))
-#define MAX_REF     ((ref_t)-((int32_t)MIN_REF+1))
+#define MIN_REF     ((ref_t)((ref_t)0x1<<(__WORDSIZE-1)))
+#define MAX_REF     ((ref_t)-((ssize_t)MIN_REF+1))
 
 /* Check if high three bits are equal. */
 
