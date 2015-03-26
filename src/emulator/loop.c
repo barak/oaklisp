@@ -220,6 +220,8 @@ lookup_bp_offset(ref_t y_type, ref_t meth_type)
 }
 
 
+/* 6 is enough for current build... */
+#define N_LATERS 100
 
 static inline void
 find_method_type_pair(ref_t op,
@@ -235,8 +237,8 @@ find_method_type_pair(ref_t op,
   ref_t *loclist;
 #endif
   /* stack of lists of types that remain to be searched */
-  ref_t later_lists[100];
-  ref_t *llp = &later_lists[-1];
+  ref_t later_lists[N_LATERS];
+  ref_t *llp = &later_lists[0];	/* points to first empty slot in table */
 
   while (1)			/* forever */
     {
@@ -273,18 +275,20 @@ find_method_type_pair(ref_t op,
       /* Not found in local alist, so stack the entire supertype list
          and then fetch the top guy available on the stack. */
 
-      *++llp = REF_SLOT(obj_type, TYPE_SUPER_LIST_OFF);
+      /* TO DO: should gracefully handle overflown later lists table. */
+      if (llp == &later_lists[N_LATERS]) printf("internal error: overflown laters list table\n");
+      *llp = REF_SLOT(obj_type, TYPE_SUPER_LIST_OFF);
+      llp += 1;
 
-      while (*llp == e_nil)
+      while (*(llp-1) == e_nil)
 	{
-	  if (llp == later_lists)
-	    return;
-	  llp--;
+	  if (llp == &later_lists[1]) return;
+	  llp -= 1;
 	}
 
       locl = NULL;
-      obj_type = car(*llp);
-      *llp = cdr(*llp);
+      obj_type = car(*(llp-1));
+      *(llp-1) = cdr(*(llp-1));
     }
 }
 
