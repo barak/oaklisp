@@ -119,7 +119,7 @@ read_ref(FILE * d)
       a = b;
 #ifndef WORDS_BIGENDIAN
       if (swapem)
-	a = (a << 16 | a >> 16);
+	a = ((a&0xFFFF) << 16 | (a&0xFFFF0000) >> 16);
 #endif
       return a;
     }				/* input_is_binary */
