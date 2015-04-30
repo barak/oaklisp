@@ -49,7 +49,7 @@ AM_CONDITIONAL([ENABLE_THREADS], [test x${enable_threads} = xyes])
 
 AC_MSG_CHECKING([with_world])
 AC_ARG_WITH([world],
-       [AS_HELP_STRING([--with-world[=WORLD]],[for bootstrapping (default: searches)])],,
+       [AS_HELP_STRING([--with-world@<:@=WORLD@:>@],[for bootstrapping (default: searches)])],,
        [with_world=check])
 AC_MSG_RESULT([$with_world])
 
