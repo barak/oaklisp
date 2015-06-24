@@ -5,7 +5,7 @@
 .if \n[.g] .mso www.tmac
 
 .SH NAME
-oaklisp \- An implementation of the Oaklisp language
+oaklisp \- An implementation of the Oaklisp object-oriented Scheme dialect
 
 \" This file is part of Oaklisp.
 \"
