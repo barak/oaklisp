@@ -26,6 +26,12 @@ AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([subdir-objects -Wall])
 
 # Process options
+AC_MSG_CHECKING([enable_64bit])
+AC_ARG_ENABLE([64bit],
+       [AS_HELP_STRING([--enable-64bit],[use native 64-bit mode if available (default=no)])],,
+       [enable_64bit=no])
+AC_MSG_RESULT([$enable_64bit])
+
 AC_MSG_CHECKING([enable_docs])
 AC_ARG_ENABLE([docs],
        [AS_HELP_STRING([--enable-docs],[build and install LaTeX-format documentation (default=yes)])],,
@@ -66,6 +72,11 @@ AS_IF([test x${with_oaklisp} = xcheck || test x${with_oaklisp} = xyes],
                            [AC_MSG_ERROR([no oaklisp executable found])],
                            [no])])])
 
+AS_IF([test x${enable_64bit} = xyes],
+      [AC_MSG_WARN([64-bit support is experimental!])
+       eight_if_allowed=8],
+      [eight_if_allowed=6uuBsNCtBTXDAYKXc9i])
+
 # Check if we are on a non-32bit-pointer memory model.
 # If so, try to enable compiler options for a 32-bit memory model.
 # For example, -m32 on x86_64 aka amd64.
@@ -82,6 +93,7 @@ AS_IF([test x${with_oaklisp} = xcheck || test x${with_oaklisp} = xyes],
 AC_CHECK_SIZEOF([void *])
 AS_CASE([${ac_cv_sizeof_void_p}],
  [4],[AC_MSG_NOTICE([pointer size matches expectations])],
+ [${eight_if_allowed}],[AC_MSG_WARN([pointer size of 64bit is experimental])],
      [AC_MSG_WARN([non 32-bit pointer platform detected])
       AC_MSG_NOTICE([trying to enable 32-bit memory model compiler option for ${host_cpu}])
       AC_CANONICAL_HOST
@@ -135,9 +147,12 @@ AX_C_LONG_LONG
 AC_TYPE_SIZE_T
 AC_C_BIGENDIAN
 
-AS_IF([test ${ac_cv_c_bigendian} = yes],
- [worldsubdir=eb32],
- [worldsubdir=el32])
+AS_CASE([${ac_cv_c_bigendian}_${ac_cv_sizeof_void_p}],
+ [yes_4],[worldsubdir=eb32],
+ [no_4],[worldsubdir=el32],
+ [yes_8],[worldsubdir=eb64],
+ [no_8],[worldsubdir=el64],
+	[AC_MSG_WARN([no worldsubdir for current endianity and pointer length])])
 
 # Actual scan for binary world find comes here rather than in option
 # processing because we need to know endianity.
