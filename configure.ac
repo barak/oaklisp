@@ -28,7 +28,7 @@ AM_INIT_AUTOMAKE([subdir-objects -Wall])
 # Process options
 AC_MSG_CHECKING([enable_64bit])
 AC_ARG_ENABLE([64bit],
-       [AS_HELP_STRING([--enable-64bit],[use native 64-bit mode if available (default=no)])],,
+       [AS_HELP_STRING([--enable-64-bit],[use native 64-bit mode if available (default=no)])],,
        [enable_64bit=no])
 AC_MSG_RESULT([$enable_64bit])
 
@@ -93,7 +93,7 @@ AS_IF([test x${enable_64bit} = xyes],
 AC_CHECK_SIZEOF([void *])
 AS_CASE([${ac_cv_sizeof_void_p}],
  [4],[AC_MSG_NOTICE([pointer size matches expectations])],
- [${eight_if_allowed}],[AC_MSG_WARN([pointer size of 64bit is experimental])],
+ [${eight_if_allowed}],[AC_MSG_WARN([pointer size of 64-bit is experimental])],
      [AC_MSG_WARN([non 32-bit pointer platform detected])
       AC_MSG_NOTICE([trying to enable 32-bit memory model compiler option for ${host_cpu}])
       AC_CANONICAL_HOST
