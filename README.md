@@ -17,7 +17,7 @@ Project homepage(s)
 *  http://www.bcl.hamilton.ie/~barak/oaklisp/  (ancient history)
 
 The compiler compiles Oaklisp source code into byte-code for the
-included Oaklisp emulator / virtual machine.  The implmentation
+included Oaklisp emulator / virtual machine.  The implementation
 is described in the included documentation, and also in
 
 * Kevin J. Lang and Barak A. Pearlmutter.  Oaklisp: an object-oriented
