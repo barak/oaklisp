@@ -21,12 +21,12 @@
        (lambda (args)
 	 (destructure (status . format-args) args
 	   (flush standard-error)
-	   (if (null? format-args)
-	       (if (= 0 status)
-		   (format standard-output "~&Oaklisp stopped itself...~%")
-		   (format standard-output
-			   "~&Oaklisp stopped itself (status ~D)...~%" status))
-	       (apply format standard-output format-args))
+	   (cond ((null? format-args)
+		  (format standard-output "~&Oaklisp stopped itself")
+		  (when (not (= 0 status))
+		    (format standard-output " (status ~D)" status))
+		  (format standard-output ".~%"))
+		 (else (apply format standard-output format-args)))
 	   (flush standard-output)
 	   (flush standard-error)
 	   (cond ((= 0 status) ((%halt 0)))
