@@ -23,7 +23,7 @@ AC_INIT([Oaklisp],[1.3.6],[bap+oaklisp@debian.org],[oaklisp],[http://oaklisp.ali
 AC_CONFIG_SRCDIR([src/emulator/oaklisp.c])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
-AM_INIT_AUTOMAKE([subdir-objects -Wall])
+AM_INIT_AUTOMAKE([foreign subdir-objects -Wall])
 
 # Process options
 AC_MSG_CHECKING([enable_64bit])
