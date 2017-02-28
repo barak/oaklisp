@@ -74,6 +74,7 @@
   (lambda (form)
     (destructure** form
       ((#t)			 `cond-undefined-value)
+      ((#t (guard))		 guard)	; tail recurse
       ((#t (guard) . clauses)	 `(or ,guard (cond ,@clauses)))
       ((#t (guard '=> op) . clauses) (let ((v (genvar)))
 				       `(let ((,v ,guard))
