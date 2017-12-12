@@ -9,7 +9,7 @@ Build-Depends:
 	gcc-multilib [any-alpha any-amd64 any-arm64 any-ia64 any-mips64 any-mips64el any-ppc64 any-ppc64el any-s390x any-sparc64]
 Build-Depends-Indep:
 	texlive-latex-base <!nodoc>, texlive-latex-extra <!nodoc>, texlive-fonts-recommended <!nodoc>,
-	rubber <!nodoc>
+	latexmk <!nodoc>
 Homepage: https://alioth.debian.org/projects/oaklisp/
 Vcs-Git: https://anonscm.debian.org/git/oaklisp/oaklisp.git
 Vcs-Browser: https://alioth.debian.org/scm/browser.php?group_id=100056

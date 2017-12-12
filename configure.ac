@@ -125,7 +125,7 @@ AC_PROG_INSTALL
 AC_PROG_SED
 AC_CHECK_PROGS([INDENT],[indent],[true])
 AS_IF([test x${enable_docs} = xyes],
- [AC_CHECK_PROGS([RUBBER],[rubber],[false])])
+ [AC_CHECK_PROGS([LATEXMK],[latexmk],[false])])
 
 # Checks for libraries.
 AS_IF([test x$threads = xyes],

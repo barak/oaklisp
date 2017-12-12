@@ -1,12 +1,11 @@
 *.aux
 *.bbl
 *.blg
-*.dvi
+*.fdb_latexmk
+*.fls
 *.idx
 *.ilg
 *.ind
-*.ing
 *.log
 *.pdf
-*.ps
 *.toc
