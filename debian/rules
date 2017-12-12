@@ -6,8 +6,10 @@
 %:
 	dh $@
 
-override_dh_auto_configure-arch:
+ifeq (,$(filter oaklisp-doc,$(DOPACKAGES)))
+override_dh_auto_configure:
 	dh_auto_configure -- --disable-docs
+endif
 
 override_dh_auto_install:
 	dh_auto_install
