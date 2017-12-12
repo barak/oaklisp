@@ -4,7 +4,7 @@
 # export DH_VERBOSE=1
 
 %:
-	dh $@ --parallel --with autoreconf
+	dh $@
 
 override_dh_auto_configure-arch:
 	dh_auto_configure -- --disable-docs
