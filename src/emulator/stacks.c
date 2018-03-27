@@ -202,8 +202,8 @@ dump_stack(oakstack * stack_p)
 {
   /* dump part of stack, which is not segmented */
   ref_t *p;
-  fprintf(stdout, "stack contents (height: %d): ",
-	  stack_p->sp - stack_p->bp + 1 + stack_p->pushed_count);
+  fprintf(stdout, "stack contents (height: %lu): ",
+	  (unsigned long)(stack_p->sp - stack_p->bp + 1 + stack_p->pushed_count));
 
   for (p = stack_p->bp; p <= stack_p->sp; ++p)
     {

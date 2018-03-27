@@ -129,10 +129,10 @@ printref(FILE * fd, ref_t refin)
       else
 	i = (long)p >> 2;
 
-      fprintf(fd, "[%ld;tag:%d;%c]", i, refin & TAG_MASK, suffix);
+      fprintf(fd, "[%ld;tag:%lu;%c]", i, (unsigned long)(refin & TAG_MASK), suffix);
     }
   else
-    fprintf(fd, "[%ld;tag:%d]", (long)(refin >> 2), refin & TAG_MASK);
+    fprintf(fd, "[%ld;tag:%lu]", (long)(refin >> 2), (unsigned long)(refin & TAG_MASK));
 }
 
 #define GC_NULL(r) ((r)==pre_gc_nil || (r)==e_nil)
@@ -401,8 +401,8 @@ GC_CHECK1(ref_t x, char *st, long i)
 #endif
 
 
-static u_int16_t *
-pc_touch(u_int16_t * o_pc)
+static instr_t *
+pc_touch(instr_t * o_pc)
 {
   ref_t *pcell = (ref_t *) ((unsigned long)o_pc & ~TAG_MASKL);
 
@@ -418,8 +418,8 @@ pc_touch(u_int16_t * o_pc)
   /* pcell++; */
 
   return
-    (u_int16_t *) ((u_int32_t) pcell
-		   | ((u_int32_t) o_pc & TAG_MASK));
+    (instr_t *) ((ref_t) pcell
+		   | ((ref_t) o_pc & TAG_MASK));
 }
 
 static void

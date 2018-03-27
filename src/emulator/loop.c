@@ -52,6 +52,7 @@
 
 bool trace_traps = false;	/* trace tag traps */
 bool trace_files = false;	/* trace file opening */
+bool batch_mode = false;	/* disable trapping of SIGINT */
 
 #ifndef FAST
 bool trace_insts = false;	/* trace instruction execution */
@@ -84,6 +85,8 @@ maybe_put(bool v, char *s)
 }
 #endif
 
+
+#define INCREMENT_PC(pc,i) ((pc)+=(i))
 
 
 #define NEW_STORAGE e_uninitialized
@@ -219,6 +222,8 @@ lookup_bp_offset(ref_t y_type, ref_t meth_type)
 }
 
 
+/* 6 is enough for current build... */
+#define N_LATERS 100
 
 static inline void
 find_method_type_pair(ref_t op,
@@ -234,8 +239,8 @@ find_method_type_pair(ref_t op,
   ref_t *loclist;
 #endif
   /* stack of lists of types that remain to be searched */
-  ref_t later_lists[100];
-  ref_t *llp = &later_lists[-1];
+  ref_t later_lists[N_LATERS];
+  ref_t *llp = &later_lists[0];	/* points to first empty slot in table */
 
   while (1)			/* forever */
     {
@@ -272,18 +277,20 @@ find_method_type_pair(ref_t op,
       /* Not found in local alist, so stack the entire supertype list
          and then fetch the top guy available on the stack. */
 
-      *++llp = REF_SLOT(obj_type, TYPE_SUPER_LIST_OFF);
+      /* TO DO: should gracefully handle overflown later lists table. */
+      if (llp == &later_lists[N_LATERS]) printf("internal error: overflown laters list table\n");
+      *llp = REF_SLOT(obj_type, TYPE_SUPER_LIST_OFF);
+      llp += 1;
 
-      while (*llp == e_nil)
+      while (*(llp-1) == e_nil)
 	{
-	  if (llp == later_lists)
-	    return;
-	  llp--;
+	  if (llp == &later_lists[1]) return;
+	  llp -= 1;
 	}
 
       locl = NULL;
-      obj_type = car(*llp);
-      *llp = cdr(*llp);
+      obj_type = car(*(llp-1));
+      *(llp-1) = cdr(*(llp-1));
     }
 }
 
@@ -292,7 +299,7 @@ find_method_type_pair(ref_t op,
 void
 loop(ref_t initial_tos)
 {
-  u_int16_t instr;
+  instr_t instr;
   u_int8_t op_field;
   u_int8_t arg_field;
 
@@ -319,7 +326,7 @@ loop(ref_t initial_tos)
      compiler can keep these in registers or on the stack instead of
      reloading from main memory. */
 
-  u_int16_t *local_epc;
+  instr_t *local_e_pc;
 
   ref_t *local_value_sp;
   ref_t *value_stack_bp = value_stack.bp;
@@ -380,9 +387,9 @@ loop(ref_t initial_tos)
 #define POLL_GC_SIGNALS()	if (gc_pending) {			     \
 				    value_stack.sp = local_value_sp;	     \
 				    context_stack.sp = local_context_sp;     \
-				    e_pc = local_epc;			     \
+				    e_pc = local_e_pc;			     \
 				    wait_for_gc();			     \
-				    local_epc = e_pc;			     \
+				    local_e_pc = e_pc;			     \
 				    local_context_sp = context_stack.sp;     \
 				    local_value_sp = value_stack.sp;	     \
 				}
@@ -395,7 +402,7 @@ loop(ref_t initial_tos)
 
   /* This is the big instruction fetch/execute loop. */
 
-  enable_signal_polling();
+  if (!batch_mode) enable_signal_polling();
 
 #define GOTO_TOP	goto top_of_loop;
 
@@ -439,7 +446,7 @@ loop(ref_t initial_tos)
       timer_counter += timer_increment;
 #endif
 
-      instr = *local_epc++;
+      instr = *local_e_pc;
 
       op_field = (instr >> 2) & 0x3F;
       arg_field = instr >> 8;
@@ -447,8 +454,10 @@ loop(ref_t initial_tos)
 
 #ifndef FAST
       if (trace_insts)
-	print_instr(op_field, arg_field, local_epc - 1);
+	print_instr(op_field, arg_field, local_e_pc);
 #endif
+
+      INCREMENT_PC(local_e_pc,1);
 
       /*
 	fprintf(stdout, "Asserting...\n");
@@ -556,13 +565,15 @@ loop(ref_t initial_tos)
 
 	    case 6:		/* LOAD-IMM ; INLINE-REF */
 	      /* align pc to next word boundary: */
+	      if ((unsigned long)local_e_pc & 0x2)
+		INCREMENT_PC(local_e_pc,1);
 
-	      if ((unsigned long)local_epc & 0x2)
-		local_epc++;
 	      /*NOSTRICT */
-	      x = *(ref_t *)local_epc;
+	      x = *(ref_t *)local_e_pc;
 	      PUSHVAL(x);
-	      local_epc += sizeof(ref_t) / sizeof(*local_epc);
+
+	      /* skip pc over inline reference */
+	      INCREMENT_PC(local_e_pc, sizeof(ref_t) / sizeof(instr_t));
 	      GOTO_TOP;
 
 	    case 7:		/* DIV */
@@ -875,25 +886,25 @@ loop(ref_t initial_tos)
 
 	    case 35:		/* LONG-BRANCH distance (signed) */
 	      POLL_SIGNALS();
-	      local_epc += ASHR2(SIGN_16BIT_ARG(*local_epc)) + 1;
+	      INCREMENT_PC(local_e_pc, ASHR2(SIGN_16BIT_ARG(*local_e_pc)) + 1);
 	      GOTO_TOP;
 
 	    case 36:		/* LONG-BRANCH-NIL distance (signed) */
 	      POLL_SIGNALS();
 	      POPVAL(x);
 	      if (x != e_nil)
-		local_epc++;
+		INCREMENT_PC(local_e_pc,1);
 	      else
-		local_epc += ASHR2(SIGN_16BIT_ARG(*local_epc)) + 1;
+		INCREMENT_PC(local_e_pc, ASHR2(SIGN_16BIT_ARG(*local_e_pc)) + 1);
 	      GOTO_TOP;
 
 	    case 37:		/* LONG-BRANCH-T distance (signed) */
 	      POLL_SIGNALS();
 	      POPVAL(x);
 	      if (x == e_nil)
-		local_epc++;
+		INCREMENT_PC(local_e_pc,1);
 	      else
-		local_epc += ASHR2(SIGN_16BIT_ARG(*local_epc)) + 1;
+		INCREMENT_PC(local_e_pc, ASHR2(SIGN_16BIT_ARG(*local_e_pc)) + 1);
 	      GOTO_TOP;
 
 	    case 38:		/* LOCATE-BP-I */
@@ -907,14 +918,14 @@ loop(ref_t initial_tos)
 	      /* align pc to next word boundary: */
 
 	      /* Do it in ?two? instructions: */
-	      /* local_epc = (unsigned short*)(((unsigned long)local_epc + 3)&~3ul); */
+	      /* local_e_pc = (unsigned short*)(((unsigned long)local_e_pc + 3)&~3ul); */
 	      /* Do it in ?three? instructions including branch: */
-	      if ((unsigned long)local_epc & 2)
-		local_epc++;
+	      if ((unsigned long)local_e_pc & 0x2)
+		INCREMENT_PC(local_e_pc,1);
 
 	      /* NOSTRICT */
-	      x = *(ref_t *) local_epc;
-	      local_epc += 2;
+	      x = *(ref_t *) local_e_pc;
+	      INCREMENT_PC(local_e_pc, 2);
 
 	      /* This checktag looks buggy, since it's hard to back over
 	         the instruction normally ... need to expand this out */
@@ -965,8 +976,8 @@ loop(ref_t initial_tos)
 	      /* Done with cons access instructions. */
 
 	    case 46:		/* PUSH-CXT-LONG rel */
-	      PUSH_CONTEXT(ASHR2(SIGN_16BIT_ARG(*local_epc)) + 1);
-	      local_epc++;
+	      PUSH_CONTEXT(ASHR2(SIGN_16BIT_ARG(*local_e_pc)) + 1);
+	      INCREMENT_PC(local_e_pc,1);
 	      GOTO_TOP;
 
 	    case 47:		/* Call a primitive routine. */
@@ -1001,8 +1012,11 @@ loop(ref_t initial_tos)
 	      GOTO_TOP;
 
 	    case 52:		/* BIG-ENDIAN? */
-	      x = BOOL_TO_REF(__BYTE_ORDER == __BIG_ENDIAN);
-	      PUSHVAL(x);
+#ifdef WORDS_BIGENDIAN
+	      PUSHVAL(e_t);
+#else
+	      PUSHVAL(e_false);
+#endif
 	      GOTO_TOP;
 
 	    case 53:		/* VLEN-ALLOCATE */
@@ -1334,7 +1348,7 @@ loop(ref_t initial_tos)
 
 	      POPVAL(x);
 	      if (x == e_nil)
-		local_epc += signed_arg_field;
+		INCREMENT_PC(local_e_pc, signed_arg_field);
 	      GOTO_TOP;
 
 	    case 5:		/* BRANCH-T distance (signed) */
@@ -1343,14 +1357,14 @@ loop(ref_t initial_tos)
 
 	      POPVAL(x);
 	      if (x != e_nil)
-		local_epc += signed_arg_field;
+		INCREMENT_PC(local_e_pc, signed_arg_field);
 	      GOTO_TOP;
 
 	    case 6:		/* BRANCH distance (signed) */
 
 	      POLL_SIGNALS();
 
-	      local_epc += signed_arg_field;
+	      INCREMENT_PC(local_e_pc, signed_arg_field);
 	      GOTO_TOP;
 
 	    case 7:		/* POP n */
@@ -1698,7 +1712,7 @@ loop(ref_t initial_tos)
 	      x = e_current_method;
 
 	      e_env = REF_TO_PTR(REF_SLOT(x, METHOD_ENV_OFF));
-	      local_epc = CODE_SEG_FIRST_INSTR(e_code_segment =
+	      local_e_pc = CODE_SEG_FIRST_INSTR(e_code_segment =
 					       REF_SLOT(x, METHOD_CODE_OFF));
 	      GOTO_TOP;
 
@@ -1977,7 +1991,7 @@ loop(ref_t initial_tos)
 	      x = e_current_method;
 
 	      e_env = REF_TO_PTR(REF_SLOT(x, METHOD_ENV_OFF));
-	      local_epc = CODE_SEG_FIRST_INSTR(e_code_segment =
+	      local_e_pc = CODE_SEG_FIRST_INSTR(e_code_segment =
 					       REF_SLOT(x, METHOD_CODE_OFF));
 	      GOTO_TOP;
 
@@ -2034,7 +2048,7 @@ loop(ref_t initial_tos)
 
   /* Back off of the current intruction so it will get executed
      when we get back from the trap code. */
-  local_epc--;
+  INCREMENT_PC(local_e_pc, -1);
 
   /* Pass the trap code the current NARGS. */
   x = INT_TO_REF(e_nargs);
@@ -2055,19 +2069,19 @@ loop(ref_t initial_tos)
   if (trace_traps)
     {
       printf("\nTag trap: ");
-      print_instr(op_field, arg_field, local_epc);
+      print_instr(op_field, arg_field, local_e_pc);
       printf("Top of stack: ");
       printref(stdout, PEEKVAL());
       printf("\n");
     }
 #endif
+
   /* Trick: to preserve tail recursiveness, push context only if next
      instruction isn't a RETURN and current instruction wasn't a FUNCALL.
      or a CHECK-NARGS[-GTE]. */
 
-
   if ((op_field < 20 || op_field > 26 || op_field == 23)
-      && local_epc[0] != (24 << 8))
+      && local_e_pc[0] != (24 << 8))
     PUSH_CONTEXT(0);
 
   /* Trapping instructions stash their argument counts here: */

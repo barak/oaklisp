@@ -44,23 +44,12 @@
 #include "../../config.h"
 #endif
 
-#include <bits/wordsize.h>
-// #if (__WORDSIZE != 32)
-// #error word size must be 32 bits
-// #endif
-
 #define ASHR2(x) ((x)>>2)
 
 #ifdef THREADS
 #ifndef MAX_THREAD_COUNT
 #define MAX_THREAD_COUNT 200
 #endif
-#endif
-
-#ifdef WORDS_BIGENDIAN
-#define BYTE_GENDER big_endian
-#else
-#define BYTE_GENDER little_endian
 #endif
 
 /* Speed parameters */

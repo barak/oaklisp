@@ -37,11 +37,11 @@
 }
 
 #define LOCALIZE_REGS()					\
-{	local_epc = e_pc;				\
+{	local_e_pc = e_pc;				\
 }
 
 #define UNLOCALIZE_REGS()				\
-{	e_pc = local_epc;				\
+{	e_pc = local_e_pc;				\
 }
 
 #define LOCALIZE_STKS()					\
@@ -192,7 +192,7 @@
 #define PUSH_CONTEXT(off_set)					\
 {								\
 	CHECKCXT_PUSH(CONTEXT_FRAME_SIZE);			\
-	local_context_sp[1] = INT_TO_REF((unsigned long)local_epc - \
+	local_context_sp[1] = INT_TO_REF((unsigned long)local_e_pc - \
 	(unsigned long)e_code_segment +((off_set)<<1));		\
 	local_context_sp[2] = e_current_method;			\
 	local_context_sp[3] = PTR_TO_LOC(e_bp);			\
@@ -207,7 +207,7 @@
 	e_env = REF_TO_PTR(e_current_method);			\
 	e_code_segment = SLOT(e_env,METHOD_CODE_OFF);		\
 	e_env = REF_TO_PTR(SLOT(e_env,METHOD_ENV_OFF));		\
-	local_epc = (u_int16_t *)			        \
+	local_e_pc = (instr_t *)			        \
 				((unsigned long)e_code_segment	\
 				+REF_TO_INT(local_context_sp[-2])); \
 	local_context_sp -= 3;					\

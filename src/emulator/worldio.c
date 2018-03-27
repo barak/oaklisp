@@ -41,8 +41,8 @@ void xfread(void *ptr, size_t size, size_t nmemb, FILE *stream)
   if (r != nmemb) 
     {
       fprintf(stderr,
-	      "error: expected to read %d elements of size %d but received %d\n",
-	      nmemb, size, r);
+	      "error: expected to read %lu elements of size %lu but received %lu\n",
+	      (unsigned long)nmemb, (unsigned long)size, (unsigned long)r);
       exit(EXIT_FAILURE);
     }
 }
@@ -94,73 +94,34 @@ contig(ref_t r, bool just_new)
 static ref_t
 read_ref(FILE * d)
 {
-/* Read a reference from a file: */
+  /* Read a reference from a file: */
   int c;
-  ref_t a = 0;
 
   /* It's easy to read a reference from a binary file. */
   if (input_is_binary)
     {
+      ref_t a;
       xfread((void *)&a, sizeof(ref_t), 1, d);
       return a;
     }
   else
     {
-      if (__BYTE_ORDER == __LITTLE_ENDIAN)
+      ref_t a;
+      unsigned long b;
+      fscanf(d, " ");
+      bool swapem = (c = getc(d)) == '^';
+      if (!swapem) ungetc(c, d);
+      if (fscanf(d, "%lx", &b) != 1)
 	{
-	  while (isspace(c = getc(d)))
-	    if (c == EOF)
-	      {
-		printf("Apparently truncated cold load file!\n");
-		exit(EXIT_FAILURE);
-	      }
-	  {
-	    bool swapem = c == '^';
-	    if (swapem)
-	      if ((c = getc(d)) == EOF)
-		{
-		  printf("Apparently truncated cold load file!\n");
-		  exit(EXIT_FAILURE);
-		}
-	    while (isxdigit(c))
-	      {
-		a = a << 4;
-		if (c <= '9')
-		  a |= ((ref_t) c - '0');
-		else if (c <= 'Z')
-		  a |= ((ref_t) c - 'A' + 10);
-		else
-		  a |= ((ref_t) c - 'a' + 10);
-		c = getc(d);
-	      }
-	    if (c == '^')
-	      ungetc(c, d);
-	    if (swapem)
-	      a = (a << 16 | a >> 16);
-	  }
-	  return a;
+	  printf("Error reading cold load file, might be truncated.\n");
+	  exit(EXIT_FAILURE);
 	}
-      else
-	{			/* __BYTE_ORDER == __BIG_ENDIAN */
-	  while (isspace(c = getc(d)) || c == '^')
-	    if (c == EOF)
-	      {
-		printf("Apparently truncated cold load file!\n");
-		exit(EXIT_FAILURE);
-	      }
-	  while (isxdigit(c))
-	    {
-	      a = a << 4;
-	      if (c <= '9')
-		a |= ((ref_t) c - '0');
-	      else if (c <= 'Z')
-		a |= ((ref_t) c - 'A' + 10);
-	      else
-		a |= ((ref_t) c - 'a' + 10);
-	      c = getc(d);
-	    }
-	  return a;
-	}			/* __BYTE_ORDER */
+      a = b;
+#ifndef WORDS_BIGENDIAN
+      if (swapem)
+	a = ((a&0xFFFF) << 16 | (a&0xFFFF0000) >> 16);
+#endif
+      return a;
     }				/* input_is_binary */
 }
 
@@ -368,10 +329,11 @@ read_world(char *str)
     {
       ungetc(magichar, d);
       input_is_binary = 0;
-      if (__BYTE_ORDER == __LITTLE_ENDIAN)
-	printf("Little Endian.\n");
-      else
-	printf("Big Endian.\n");
+#ifdef WORDS_BIGENDIAN
+      printf("Big Endian.\n");
+#else
+      printf("Little Endian.\n");
+#endif
     }
 
   /* Obsolescent: read val_space_size and cxt_space_size: */

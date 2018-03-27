@@ -23,9 +23,15 @@ AC_INIT([Oaklisp],[1.3.6],[bap+oaklisp@debian.org],[oaklisp],[http://oaklisp.ali
 AC_CONFIG_SRCDIR([src/emulator/oaklisp.c])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
-AM_INIT_AUTOMAKE([subdir-objects -Wall])
+AM_INIT_AUTOMAKE([foreign subdir-objects -Wall])
 
 # Process options
+AC_MSG_CHECKING([enable_64bit])
+AC_ARG_ENABLE([64bit],
+       [AS_HELP_STRING([--enable-64-bit],[use native 64-bit mode if available (default=no)])],,
+       [enable_64bit=no])
+AC_MSG_RESULT([$enable_64bit])
+
 AC_MSG_CHECKING([enable_docs])
 AC_ARG_ENABLE([docs],
        [AS_HELP_STRING([--enable-docs],[build and install LaTeX-format documentation (default=yes)])],,
@@ -49,16 +55,14 @@ AM_CONDITIONAL([ENABLE_THREADS], [test x${enable_threads} = xyes])
 
 AC_MSG_CHECKING([with_world])
 AC_ARG_WITH([world],
- [AS_HELP_STRING([--with-world[=WORLD]],
-                 [for bootstrapping (default: searches)])],,
- [with_world=check])
+       [AS_HELP_STRING([--with-world@<:@=WORLD@:>@],[for bootstrapping (default: searches)])],,
+       [with_world=check])
 AC_MSG_RESULT([$with_world])
 
 AC_MSG_CHECKING([with_oaklisp])
 AC_ARG_WITH([oaklisp],
-            [AS_HELP_STRING([--with-oaklisp=OAKLISP],
-                            [for bootstrapping (default=no)])],,
-                            [with_oaklisp=no])
+       [AS_HELP_STRING([--with-oaklisp=OAKLISP],[for bootstrapping (default=no)])],,
+       [with_oaklisp=no])
 AC_MSG_RESULT([$with_oaklisp])
 
 AS_IF([test x${with_oaklisp} = xcheck || test x${with_oaklisp} = xyes],
@@ -67,6 +71,11 @@ AS_IF([test x${with_oaklisp} = xcheck || test x${with_oaklisp} = xyes],
                     [AS_IF([test x${with_oaklisp} = xyes],
                            [AC_MSG_ERROR([no oaklisp executable found])],
                            [no])])])
+
+AS_IF([test x${enable_64bit} = xyes],
+      [AC_MSG_WARN([64-bit support is experimental!])
+       eight_if_allowed=8],
+      [eight_if_allowed=6uuBsNCtBTXDAYKXc9i])
 
 # Check if we are on a non-32bit-pointer memory model.
 # If so, try to enable compiler options for a 32-bit memory model.
@@ -82,41 +91,33 @@ AS_IF([test x${with_oaklisp} = xcheck || test x${with_oaklisp} = xyes],
 # clang, and others might as well.
 
 AC_CHECK_SIZEOF([void *])
-AS_IF([test x"$ac_cv_sizeof_void_p" = x4],
-      [AC_MSG_NOTICE([pointer size matches expectations])],
-      [AC_MSG_WARN([non 32-bit pointer platform detected])
-       AC_MSG_NOTICE([trying to enable 32-bit memory model compiler option for ${host_cpu}])
-       AC_CANONICAL_HOST
-       case "${host_cpu}" in
-	 alpha* )
-	     AC_MSG_ERROR([32-bit memory model unavailable on ${host_cpu}]) ;;
-	 amd64* | x86_64 )
-       	     flag32="-m32" ;;
-	 arm64* )
-       	     flag32="-mabi=ilp32" ;;
-	 ia64* )
-       	     flag32="-milp32" ;;
-	 mips64* )
-       	     flag32="-mabi=32" ;;
-	 powerpc64* | ppc64* )
-       	     flag32="-m32" ;;
-	 s390x* )
-       	     flag32="-m31" ;;
-	 sparc64* )
-       	     flag32="-m32" ;;
-	 * )
-	     AC_MSG_WARN([non-32-bit host CPU ${host_cpu} without known 32-bit memory model option, trying -m32])
-	     flag32="-m32" ;;
-       esac
-       AC_MSG_NOTICE([compiler option for 32-bit memory model: ${flag32}])
-       CFLAGS="$CFLAGS ${flag32}"
-       : LDFLAGS="$LDFLAGS ${flag32}"
-       unset ac_cv_sizeof_void_p
-       AC_CHECK_SIZEOF([void *])
-       AS_IF([test x"$ac_cv_sizeof_void_p" = x0],
-             [AC_MSG_ERROR([bad flags, Indy])],
-             [test x"$ac_cv_sizeof_void_p" != x4],
-             [AC_MSG_WARN([bad news, pointers are now $ac_cv_sizeof_void_p bytes])])])
+AS_CASE([${ac_cv_sizeof_void_p}],
+ [4],[AC_MSG_NOTICE([pointer size matches expectations])],
+ [${eight_if_allowed}],[AC_MSG_WARN([pointer size of 64-bit is experimental])],
+     [AC_MSG_WARN([non 32-bit pointer platform detected])
+      AC_MSG_NOTICE([trying to enable 32-bit memory model compiler option for ${host_cpu}])
+      AC_CANONICAL_HOST
+      AS_CASE([${host_cpu}],
+       [alpha*],              [AC_MSG_ERROR([32-bit memory model unavailable on ${host_cpu}])],
+       [amd64* | x86_64],     [flag32="-m32"],
+       [arm64*],              [flag32="-mabi=ilp32"],
+       [ia64*],               [flag32="-milp32"],
+       [mips64*],             [flag32="-mabi=32"],
+       [powerpc64* | ppc64*], [flag32="-m32"],
+       [s390x*],              [flag32="-m31"],
+       [sparc64*],            [flag32="-m32"],
+			      [flag32="-m32"
+			       AC_MSG_WARN([non-32-bit host CPU ${host_cpu}])
+			       AC_MSG_WARN([no 32-bit memory model option known, trying -m32])])
+      AC_MSG_NOTICE([compiler option for 32-bit memory model: ${flag32}])
+      CFLAGS="${CFLAGS} ${flag32}"
+      : LDFLAGS="${LDFLAGS} ${flag32}"
+      unset ac_cv_sizeof_void_p
+      AC_CHECK_SIZEOF([void *])
+      AS_CASE([${ac_cv_sizeof_void_p}],
+       [0],[AC_MSG_ERROR([bad flags, Indy])],
+       [4],[AC_MSG_NOTICE([32-bit memory model achieved])],
+	   [AC_MSG_WARN([bad news, pointers are now ${ac_cv_sizeof_void_p} bytes])])])
 
 # Checks for programs.
 AC_PROG_CC
@@ -124,7 +125,7 @@ AC_PROG_INSTALL
 AC_PROG_SED
 AC_CHECK_PROGS([INDENT],[indent],[true])
 AS_IF([test x${enable_docs} = xyes],
- [AC_CHECK_PROGS([RUBBER],[rubber],[false])])
+ [AC_CHECK_PROGS([LATEXMK],[latexmk],[false])])
 
 # Checks for libraries.
 AS_IF([test x$threads = xyes],
@@ -144,10 +145,14 @@ AC_TYPE_INT32_T
 AC_TYPE_INT64_T
 AX_C_LONG_LONG
 AC_TYPE_SIZE_T
-AC_C_BIGENDIAN([worldsubdir=eb32],
-	       [worldsubdir=el32],
-	       [AC_MSG_WARN([missing case, endianity unknown])],
-	       [AC_MSG_WARN([missing case, endianity unversal])])
+AC_C_BIGENDIAN
+
+AS_CASE([${ac_cv_c_bigendian}_${ac_cv_sizeof_void_p}],
+ [yes_4],[worldsubdir=eb32],
+ [no_4],[worldsubdir=el32],
+ [yes_8],[worldsubdir=eb64],
+ [no_8],[worldsubdir=el64],
+	[AC_MSG_WARN([no worldsubdir for current endianity and pointer length])])
 
 # Actual scan for binary world find comes here rather than in option
 # processing because we need to know endianity.
@@ -158,22 +163,22 @@ AC_C_BIGENDIAN([worldsubdir=eb32],
 AC_MSG_NOTICE([worldsubdir=${worldsubdir}])
 
 AS_IF([test x${with_world} = xcheck || test x${with_world} = xyes],
-      [AC_MSG_CHECKING([possible locations for oakworld.bin])
-       f=$(ls $(pwd)/src/world/oakworld.bin \
-              $(pwd)/prebuilt/src/world/${worldsubdir}/oakworld.bin \
-              $(pwd)/prebuilt/src/world/oakworld.bin \
-              ${HOME}/lib/oaklisp/oakworld.bin \
-              /usr/local/lib/oaklisp/oakworld.bin \
-              /usr/lib/oaklisp/oakworld.bin \
-              /usr/lib/*/oaklisp/oakworld.bin \
-              /lib/oaklisp/oakworld.bin \
-              /lib/*/oaklisp/oakworld.bin 2> /dev/null | head -1)
-       AC_MSG_RESULT([found ${f}])
-       AC_CHECK_FILE([${f}],
-                     [with_world=${f}])])
+ [AC_MSG_CHECKING([possible locations for oakworld.bin])
+  f=$(ls $(pwd)/src/world/oakworld.bin \
+         $(pwd)/prebuilt/src/world/${worldsubdir}/oakworld.bin \
+         $(pwd)/prebuilt/src/world/oakworld.bin \
+         ${HOME}/lib/oaklisp/oakworld.bin \
+         /usr/local/lib/oaklisp/oakworld.bin \
+         /usr/lib/oaklisp/oakworld.bin \
+         /usr/lib/*/oaklisp/oakworld.bin \
+         /lib/oaklisp/oakworld.bin \
+         /lib/*/oaklisp/oakworld.bin 2> /dev/null | head -1)
+  AC_MSG_RESULT([found ${f}])
+  AC_CHECK_FILE([${f}],
+                [with_world=${f}])])
 
 AS_IF([test x${with_world} = xyes],
-      [AC_MSG_ERROR([no oakworld.bin found])])
+ [AC_MSG_ERROR([no oakworld.bin found])])
 
 AS_IF([test x${with_world} != xno && test x${with_world} != xcheck],
  [AC_SUBST([OAKWORLDFLAGS],[--world=${with_world}])])

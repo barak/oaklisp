@@ -62,7 +62,7 @@ ref_t *e_bp, *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type,
 register_set_t *reg_set;
 size_t e_next_newspace_size;
 size_t original_newspace_size = DEFAULT_NEWSPACE * 1024;
-u_int16_t *e_pc;
+instr_t *e_pc;
 unsigned e_nargs = 0;
 
 #endif

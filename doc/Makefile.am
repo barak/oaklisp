@@ -19,18 +19,11 @@ LATEX_PDFS = lang/lang.pdf lim/lim.pdf summary/OaklispSummary.pdf
 
 pdf_DATA = $(LATEX_PDFS)
 
-CLEANFILES = $(LATEX_PDFS)
-
 EXTRA_DIST = $(LATEX_SRCS)
 
-RUBBERFLAGS = --inplace --warn=all --pdf
-
 .tex.pdf:
-	$(RUBBER) $(RUBBERFLAGS) $< \
+	cd $(dir $<) && $(LATEXMK) -pdf $(notdir $<) \
 	 || cp ../prebuilt/doc/$@ $@
-
-clean-local:
-	-$(RUBBER) --clean $(RUBBERFLAGS) $(PAPER_SRCS)
 
 EXTRA_DIST += examples/bank-example.oak examples/change.oak		\
  examples/test-bank-example.oak examples/unit-testing.oak		\
@@ -42,3 +35,24 @@ EXTRA_DIST += examples/bank-example.oak examples/change.oak		\
  lim/cover.tex lim/dataform.tex lim/intro.tex lim/language.tex		\
  lim/methods.tex lim/oaklevel.tex lim/stack.tex mandefs.tex		\
  oakman.bib
+
+CLEANFILES = $(LATEX_PDFS)
+
+CLEANFILES += lang/control.aux lang/cover.aux lang/dynamic.aux		\
+ lang/intro.aux lang/io.aux lang/lang.aux lang/lang.bbl lang/lang.blg	\
+ lang/lang.fdb_latexmk lang/lang.fls lang/lang.idx lang/lang.ilg	\
+ lang/lang.ind lang/lang.log lang/lang.toc lang/locales.aux		\
+ lang/methods.aux lang/misc.aux lang/numbers.aux			\
+ lang/numhier-eps-converted-to.pdf lang/seqhier-eps-converted-to.pdf	\
+ lang/sequences.aux lang/sides.aux lang/types.aux lang/user.aux
+
+CLEANFILES += lim/admin.aux lim/boot.aux lim/bytecode.aux		\
+ lim/compiler.aux lim/cover.aux lim/dataform.aux lim/intro.aux		\
+ lim/language.aux lim/lim.aux lim/lim.bbl lim/lim.blg			\
+ lim/lim.fdb_latexmk lim/lim.fls lim/lim.idx lim/lim.ilg lim/lim.ind	\
+ lim/lim.log lim/lim.toc lim/methods.aux lim/oaklevel.aux		\
+ lim/stack.aux
+
+CLEANFILES += summary/OaklispSummary.aux			\
+ summary/OaklispSummary.fdb_latexmk summary/OaklispSummary.fls	\
+ summary/OaklispSummary.log

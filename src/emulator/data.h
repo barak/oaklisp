@@ -44,7 +44,11 @@ typedef int bool;
 
 /* reference type */
 
-typedef u_int32_t ref_t;
+typedef size_t ref_t;
+
+/* instruction type */
+
+typedef u_int16_t instr_t;
 
 /* space type */
 
@@ -88,7 +92,7 @@ typedef struct {
   ref_t     *e_env;
   ref_t     e_current_method;
   ref_t     e_code_segment;
-  u_int16_t *e_pc;
+  instr_t *e_pc;
   unsigned  e_nargs;
   ref_t     e_process;
 } register_set_t;
@@ -107,7 +111,7 @@ extern ref_t
  *e_arged_tag_trap_table, *e_argless_tag_trap_table, e_current_method,
   e_uninitialized, e_method_type, e_operation_type, e_process;
 
-extern u_int16_t *e_pc;
+extern instr_t *e_pc;
 
 extern unsigned e_nargs;
 #endif
@@ -125,6 +129,7 @@ extern bool gc_before_dump;
 
 extern int trace_gc;
 extern bool trace_traps;
+extern bool batch_mode;
 
 #ifndef FAST
 
@@ -230,8 +235,8 @@ extern bool trace_files;
    positive fixnum, an asymmetry inherent in a twos complement
    representation. */
 
-#define MIN_REF     ((ref_t)(1<<(__WORDSIZE-1)))
-#define MAX_REF     ((ref_t)-((int32_t)MIN_REF+1))
+#define MIN_REF     ((ref_t)((ref_t)0x1<<(__WORDSIZE-1)))
+#define MAX_REF     ((ref_t)-((ssize_t)MIN_REF+1))
 
 /* Check if high three bits are equal. */
 
@@ -317,8 +322,8 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
   ALLOCATE_PROT(p, words, reason,			\
 		{ value_stack.sp = local_value_sp;	\
           context_stack.sp = local_context_sp;		\
-		  e_pc = local_epc; },			\
-		{ local_epc = e_pc;			\
+		  e_pc = local_e_pc; },			\
+		{ local_e_pc = e_pc;			\
           local_context_sp = context_stack.sp;		\
 		  local_value_sp = value_stack.sp; })
 
@@ -330,8 +335,8 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 		{ GC_MEMORY(v);				\
 		  value_stack.sp = local_value_sp;	\
           context_stack.sp = local_context_sp;		\
-		  e_pc = local_epc; },			\
-		{ local_epc = e_pc;			\
+		  e_pc = local_e_pc; },			\
+		{ local_e_pc = e_pc;			\
           local_context_sp = context_stack.sp;		\
 		  local_value_sp = value_stack.sp;	\
 		  GC_RECALL(v); })
@@ -366,7 +371,7 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 /* This is for the warmup code */
 
 #define CODE_SEG_FIRST_INSTR(seg) \
-  ( (u_int16_t *)(REF_TO_PTR((seg)) + CODE_CODE_START_OFF) )
+  ( (instr_t *)(REF_TO_PTR((seg)) + CODE_CODE_START_OFF) )
 
 
 #ifdef THREADS
