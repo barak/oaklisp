@@ -86,7 +86,25 @@ maybe_put(bool v, char *s)
 #endif
 
 
+#if __WORDSIZE == 32
+// 32-bit references, 2 16-bit instructions/reference
 #define INCREMENT_PC(pc,i) ((pc)+=(i))
+#else
+// 64-bit references, 2 16-bit instructions/reference, in low 32 bits
+#define INCREMENT_PC(pc,i) ((pc)=increment_pc((pc),(i)))
+inline instr_t *
+increment_pc(instr_t *pc, int i)
+{
+  unsigned long a=(unsigned long)pc;
+  printf("old pc: %lx\n", a);
+  a = ((a&~0x3)>>1)|(a&0x3);
+  a += i*2;
+  a = ((a&~0x3)<<1)|(a&0x3);
+  printf("new pc: %lx\n", a);
+  pc = (instr_t *)a;
+  return pc;
+}
+#endif
 
 
 #define NEW_STORAGE e_uninitialized
@@ -414,12 +432,12 @@ loop(ref_t initial_tos)
       if (trace_cxtcon) DUMP_CONTEXT_STACK();
       if (trace_stks)
 	{
-	  printf("heights val: %d = %d + %d, cxt: %d = %d + %d\n",
-		 VALUE_STACK_HEIGHT(),
-		 local_value_sp - value_stack_bp + 1,
+	  printf("heights val: %ld = %ld + %d, cxt: %ld = %ld + %d\n",
+		 (long)(VALUE_STACK_HEIGHT()),
+		 (long)(local_value_sp - value_stack_bp + 1),
 		 value_stack.pushed_count,
-		 CONTEXT_STACK_HEIGHT(),
-		 local_context_sp - context_stack_bp + 1,
+		 (long)(CONTEXT_STACK_HEIGHT()),
+		 (long)(local_context_sp - context_stack_bp + 1),
 		 context_stack.pushed_count);
 	}
 
@@ -446,7 +464,9 @@ loop(ref_t initial_tos)
       timer_counter += timer_increment;
 #endif
 
+      printf("local_e_pc = %lx\n", (size_t)local_e_pc);
       instr = *local_e_pc;
+      printf("instr = %x\n", (unsigned)instr);
 
       op_field = (instr >> 2) & 0x3F;
       arg_field = instr >> 8;
@@ -573,7 +593,7 @@ loop(ref_t initial_tos)
 	      PUSHVAL(x);
 
 	      /* skip pc over inline reference */
-	      INCREMENT_PC(local_e_pc, sizeof(ref_t) / sizeof(instr_t));
+	      INCREMENT_PC(local_e_pc, 2);
 	      GOTO_TOP;
 
 	    case 7:		/* DIV */
