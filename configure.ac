@@ -26,11 +26,11 @@ AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([foreign subdir-objects -Wall])
 
 # Process options
-AC_MSG_CHECKING([enable_64bit])
-AC_ARG_ENABLE([64bit],
+AC_MSG_CHECKING([enable_64_bit])
+AC_ARG_ENABLE([64-bit],
        [AS_HELP_STRING([--enable-64-bit],[use native 64-bit mode if available (default=no)])],,
-       [enable_64bit=no])
-AC_MSG_RESULT([$enable_64bit])
+       [enable_64_bit=no])
+AC_MSG_RESULT([$enable_64_bit])
 
 AC_MSG_CHECKING([enable_docs])
 AC_ARG_ENABLE([docs],
@@ -72,7 +72,7 @@ AS_IF([test x${with_oaklisp} = xcheck || test x${with_oaklisp} = xyes],
                            [AC_MSG_ERROR([no oaklisp executable found])],
                            [no])])])
 
-AS_IF([test x${enable_64bit} = xyes],
+AS_IF([test x${enable_64_bit} = xyes],
       [AC_MSG_WARN([64-bit support is experimental!])
        eight_if_allowed=8],
       [eight_if_allowed=6uuBsNCtBTXDAYKXc9i])
