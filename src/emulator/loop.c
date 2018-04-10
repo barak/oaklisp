@@ -109,7 +109,7 @@ increment_pc(instr_t *pc, int i)
 
 #define NEW_STORAGE e_uninitialized
 
-void
+static void
 maybe_dump_world(int dumpstackp)
 {
 #ifdef THREADS

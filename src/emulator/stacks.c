@@ -34,19 +34,19 @@
 
 int max_segment_size = 256;
 
-ref_t
+static ref_t
 stack_top(oakstack *stack_p)
 {
   return *stack_p->sp;
 }
 
-void
+static void
 stack_newtos(oakstack *stack_p, ref_t x)
 {
   *stack_p->sp = x;
 }
 
-ref_t
+static ref_t
 stack_pop(oakstack *stack_p)
 {
   if (stack_p->sp <= stack_p->bp) {
@@ -55,7 +55,7 @@ stack_pop(oakstack *stack_p)
   return *stack_p->sp;
 }
 
-void
+static void
 stack_push(oakstack *stack_p, ref_t x)
 {
   if (stack_p->sp == stack_p->bp + stack_p->size)
