@@ -267,8 +267,8 @@ invalidates any weak pointers to it.
 
 Weak pointers are implemented directly by bytecodes because the
 emulator handles all details of storage allocation and reclamation
-directly.  Weak pointers are represented by integers.  Each time call
-call the \df{object-hash} is made the argument is looked up in the
+directly.  Weak pointers are represented by integers.  Each time
+\df{object-hash} is called the argument is looked up in the
 \emph{weak pointer hash table}.  If no entry is found, a counter is
 incremented and the value of that counter is returned.  An entry is
 made in the \emph{weak pointer table} at an index corresponding to the
