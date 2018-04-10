@@ -63,7 +63,7 @@ void xfread(void *ptr, size_t size, size_t nmemb, FILE *stream)
  */
 
 
-bool input_is_binary;
+static bool input_is_binary;
 
 
 /* These are for making the world zero-based and contiguous in dumps. */
@@ -128,7 +128,7 @@ read_ref(FILE * d)
 
 #define REFBUFSIZ 256
 
-ref_t refbuf[REFBUFSIZ];
+static ref_t refbuf[REFBUFSIZ];
 
 static void
 dump_binary_world(bool just_new)
