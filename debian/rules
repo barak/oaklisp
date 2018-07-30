@@ -4,6 +4,7 @@
 # export DH_VERBOSE=1
 
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+DOPACKAGES = $(shell dh_listpackages)
 
 %:
 	dh $@
