@@ -2,9 +2,9 @@ Source: oaklisp
 Section: lisp
 Priority: optional
 Maintainer: Barak A. Pearlmutter <bap@debian.org>
-Standards-Version: 4.1.2
+Standards-Version: 4.1.5
 Build-Depends:
-	debhelper (>= 10),
+	debhelper (>= 11),
 	autoconf-archive,
 	gcc-multilib [any-alpha any-amd64 any-arm64 any-ia64 any-mips64 any-mips64el any-ppc64 any-ppc64el any-s390x any-sparc64]
 Build-Depends-Indep:
