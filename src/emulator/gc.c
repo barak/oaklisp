@@ -50,10 +50,10 @@
 
 bool full_gc = false;
 
-ref_t pre_gc_nil;
+static ref_t pre_gc_nil;
 
-unsigned long transport_count;
-unsigned long loc_transport_count;
+static unsigned long transport_count;
+static unsigned long loc_transport_count;
 
 #ifndef GC_EXAMINE_BUFFER_SIZE
 #define GC_EXAMINE_BUFFER_SIZE 16
@@ -832,7 +832,7 @@ gc_top:
    into the corresponding location in new_start.  Typically new_start
    will be the same as start */
 
-void
+static void
 shift_targets(ref_t * start, size_t len,
 	      ref_t * old_start, size_t old_len,
 	      ref_t * new_start)

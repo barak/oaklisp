@@ -50,14 +50,14 @@ enum {
 };
 
 
-void
+static void
 version(char *prog)
 {
   fprintf(stdout, "%s\n", PACKAGE_STRING);
 }
 
 
-void
+static void
 usage(char *prog)
 {
   version(prog);
@@ -112,8 +112,8 @@ usage(char *prog)
 
 /* These store the command line arguments not eaten by the emulator,
    which the running world can access. */
-int program_argc;
-char **program_argv;
+static int program_argc;
+static char **program_argv;
 
 int
 program_arg_char(int arg_index, int char_index)

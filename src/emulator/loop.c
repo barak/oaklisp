@@ -91,7 +91,7 @@ maybe_put(bool v, char *s)
 
 #define NEW_STORAGE e_uninitialized
 
-void
+static void
 maybe_dump_world(int dumpstackp)
 {
 #ifdef THREADS
