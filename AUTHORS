@@ -15,17 +15,17 @@ D: much of runtime system.  bignum division.  much of bignums.
 S: Yahoo! Research
 
 N: Barak A. Pearlmutter
-E: barak+oaklisp@cs.nuim.ie
-W: http://www.bcl.hamilton.ie/~barak/
-P: pub   1024D/FEC23FB2 2000-08-21
-P:       Key fingerprint = 3755 EE8A 783F 3493 A8FF  2C8F 2F3E 069E FEC2 3FB2
+E: barak+oaklisp@pearlmutter.net
+W: http://barak.pearlmutter.net/
+P: pub   rsa4096/125B57475E190D18 2010-10-13 [SC]
+P:       Key fingerprint = 64F4 29E3 6EA1 1CC2 D966  546F 125B 5747 5E19 0D18
 D: much of language design.  much of system design.
 D: much of lang & lim manuals.
 D: most of bytecode emulator.  call/cc.  weak pointers.  gc.  strings.
 D: much of runtime system.  I/O.  much of bignums.  rationals.  vectors.
 D: interpreter.  hash tables.  symbols.  locales.  macros.  delays.
-S: Hamilton Institute
-S: National University of Ireland Maynooth
+S: Dept. of Computer Science
+S: Maynooth University
 S: Co. Kildare
 S: Ireland
 
