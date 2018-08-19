@@ -6,7 +6,7 @@ Standards-Version: 4.2.0
 Build-Depends:
 	debhelper (>= 11),
 	autoconf-archive,
-	gcc-multilib [any-alpha any-amd64 any-arm64 any-ia64 any-mips64 any-mips64el any-ppc64 any-ppc64el any-s390x any-sparc64]
+	gcc-multilib [any-alpha any-amd64 any-arm64 any-ia64 any-mips64 any-mips64el any-ppc64 any-ppc64el any-riscv64 any-s390x any-sparc64]
 Build-Depends-Indep:
 	texlive-latex-base <!nodoc>, texlive-latex-extra <!nodoc>, texlive-fonts-recommended <!nodoc>,
 	latexmk <!nodoc>,  texlive-font-utils <!nodoc>,  ghostscript <!nodoc>
