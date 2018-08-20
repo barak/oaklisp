@@ -12,9 +12,8 @@ the Oaklisp dialect of lisp.
 
 Project homepage(s)
 
-*  https://alioth.debian.org/projects/oaklisp/ (main homepage)
-*  https://github.com/barak/oaklisp            (collaborative development)
-*  http://www.bcl.hamilton.ie/~barak/oaklisp/  (ancient history)
+*  https://github.com/barak/oaklisp       (homepage, development)
+*  http://barak.pearlmutter.net/oaklisp/  (ancient history)
 
 The compiler compiles Oaklisp source code into byte-code for the
 included Oaklisp emulator / virtual machine.  The implementation

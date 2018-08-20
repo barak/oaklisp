@@ -1,3 +1,12 @@
+oaklisp (1.3.7-2) unstable; urgency=medium
+
+  * debian/control: swizzle homepage off alioth
+  * debian/control: build depend gcc-multilib [any-riscv64] (closes: #906672)
+  * debian/control: bump policy version
+  * upstream, put cp from prebuilt outside cd (closes: #906676)
+
+ -- Barak A. Pearlmutter <bap@debian.org>  Mon, 20 Aug 2018 09:45:06 +0200
+
 oaklisp (1.3.7-1) unstable; urgency=medium
 
   * upstream release

@@ -22,7 +22,7 @@ pdf_DATA = $(LATEX_PDFS)
 EXTRA_DIST = $(LATEX_SRCS)
 
 .tex.pdf:
-	cd $(dir $<) && $(LATEXMK) -pdf $(notdir $<) \
+	(cd $(dir $<) && $(LATEXMK) -pdf $(notdir $<)) \
 	 || cp ../prebuilt/doc/$@ $@
 
 EXTRA_DIST += examples/bank-example.oak examples/change.oak		\
