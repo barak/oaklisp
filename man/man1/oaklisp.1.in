@@ -192,11 +192,9 @@ implementation manuals lang.pdf and lim.pdf, along with
 OaklispSummary.pdf, whose source is included with the distribution,
 and installed in @pdfdir@/.
 
-The Oaklisp home page is transitioning from
-.URL http://www.bcl.hamilton.ie/~barak/oaklisp/ "its old location"
+The Oaklisp home page is
+.URL http://barak.pearlmutter.net/oaklisp/ "old location"
 to
-.URL https://oaklisp.alioth.debian.org/ alioth
-and
 .URL https://github.com/barak/oaklisp github .
 
 .I The Implementation of Oaklisp
