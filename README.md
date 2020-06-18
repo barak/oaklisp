@@ -37,5 +37,7 @@ is described in the included documentation, and also in
 * Barak A. Pearlmutter and Kevin J. Lang. The implementation of
   Oaklisp.  In Peter Lee, editor, Topics in Advanced Language
   Implementation, pages 189–215. MIT Press, 1991.
+  URL http://barak.pearlmutter.net/papers/Oaklisp-TALI-Chapter-1991.djvu
+  http://barak.pearlmutter.net/papers/Oaklisp-TALI-Chapter-1991.pdf
 
 See BUILD.md for instructions on how to build the system.
