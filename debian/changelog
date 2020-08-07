@@ -4,6 +4,7 @@ oaklisp (1.3.7-3) UNRELEASED; urgency=low
   * Bump debhelper from old 11 to 13.
   * Set debhelper-compat version in Build-Depends.
   * Set upstream metadata fields: Bug-Database, Bug-Submit.
+  * Update standards version to 4.2.1, no changes needed.
 
  -- Barak A. Pearlmutter <bap@debian.org>  Fri, 07 Aug 2020 15:21:24 -0000
 

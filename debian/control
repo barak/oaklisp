@@ -2,7 +2,7 @@ Source: oaklisp
 Section: lisp
 Priority: optional
 Maintainer: Barak A. Pearlmutter <bap@debian.org>
-Standards-Version: 4.2.0
+Standards-Version: 4.2.1
 Build-Depends:
 	debhelper-compat (= 13),
 	autoconf-archive,
