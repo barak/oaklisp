@@ -8,7 +8,7 @@ License: GPL-2.0+
 
 Files: src/emulator/*
 Copyright: 1987-2015 Barak A. Pearlmutter and Kevin J. Lang
-	   1998-1999 Alex Stuebinger
+           1998-1999 Alex Stuebinger
 License: GPL-2.0+
 
 License: GPL-2.0+
@@ -17,7 +17,7 @@ Copyright: 2014 Blake McBride <blake@mcbride.name>
 
 Files: debian/*
 Copyright: 2000 Tony Mancill <tmancill@debian.org>
-	   2001-2015 Barak A. Pearlmutter <bap@debian.org>
+           2001-2015 Barak A. Pearlmutter <bap@debian.org>
 License: GPL-2.0+
 
 License: GPL-2.0+
