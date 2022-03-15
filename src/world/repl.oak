@@ -21,10 +21,13 @@
 
 (define (read-eval-print-loop)
   (format #t "~&Oaklisp evaluation loop.~%")
-  (bind ((#*print-length 7)
+  (bind (;; Exiting:
+         (#*eof-exit-limit 3)
+         ;; Print parameters:
+         (#*print-length 7)
 	 (#*print-level 3)
 	 (#*print-escape #t)
-	 ;; Current input
+	 ;; Current input:
 	 (#*- #f)
 	 ;; Previous inputs:
 	 (#*+ #f)
@@ -46,7 +49,7 @@
 	(show-handlers)
 	(let ((out-of-here (and (not (zero? #*debug-level))
 				#*up-a-debug-level)))
-	  (iterate aux ()
+	  (iterate aux ((eof-exit-i 1))
 	    (native-catch uptag
 	      (bind ((#*up-a-debug-level uptag))
 		(dotimes (i (+ #*debug-level 1))
@@ -71,8 +74,14 @@
 				(flush standard-output)
 				(exit))
 			       ((zero? #*debug-level)
-				(format #t "~&Type (exit) to leave Oaklisp.~%")
-				(aux))
+                                (cond ((= eof-exit-i #*eof-exit-limit)
+                                       (exit))
+				      (else
+                                       (let ((die (- #*eof-exit-limit eof-exit-i)))
+                                         (format #t "~&To leave Oaklisp, enter (exit), or hit ^D ")
+                                         (if (= die 1) (format #t "one last time.~%")
+                                                       (format #t "~a more times.~%" die)))
+				       (aux (+ eof-exit-i 1)))))
 			       (else
 				(write-char standard-output #\newline)
 				(throw out-of-here #f))))
@@ -106,4 +115,4 @@
 				    (invoke-debugger x)))
 			       (print v standard-output))
 			     (write-char standard-output #\newline))))))))
-	    (aux)))))))
+	    (aux 1)))))))
