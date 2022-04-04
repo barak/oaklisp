@@ -237,7 +237,7 @@
 		   (read-char stream)
 		   ((cdr c-syntax) stream c))))))))
 
-;;; In order to read dotted lists correctly, the right thing to do it
+;;; In order to read dotted lists correctly, the right thing to do is
 ;;; to return a magic thing, THE-DOT-TOKEN, when a '.' is read as a
 ;;; single, unescaped token.  Like the unread object, this is never
 ;;; returned by READ.

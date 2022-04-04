@@ -131,7 +131,11 @@
   (lambda (stream char arg)
     (when arg
       (signal cant-have-#-arg char arg))
-    (eval (read stream) #*current-locale)))
+    (let ((s (read stream)))
+      (if #*read-suppress
+	  ;; quote here is a hint that s was not evaluated
+	  `,s
+	  (eval s #*current-locale)))))
 
 (define-hash-macro-char #\b
   (lambda (stream char arg)
@@ -293,5 +297,18 @@
       (cerror "Return the corresponding exact number."
 	      "Inexact numbers are not supported.")
       x)))
+
+;;; This implements the comment notation #;sexpr , i.e., #; and the
+;;; sexpr following it are a comment and ignored. Since comments
+;;; shouldn't be evaluating stuff, a switch is added to disable
+;;; #.sexpr evaluation while reading the ignored sexpr.
+
+(define-hash-macro-char #\;
+  (lambda (stream char arg)
+    (when arg
+      (signal cant-have-#-arg char arg))
+    (bind ((#*read-suppress #t))
+      (read stream))
+    the-unread-object))
 
 ;;; eof
