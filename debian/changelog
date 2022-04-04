@@ -1,3 +1,9 @@
+oaklisp (1.3.7-5) UNRELEASED; urgency=medium
+
+  * Rules-Requires-Root: no
+
+ -- Barak A. Pearlmutter <bap@debian.org>  Mon, 04 Apr 2022 09:02:31 +0100
+
 oaklisp (1.3.7-4) unstable; urgency=medium
 
   * #;e

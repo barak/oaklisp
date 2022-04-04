@@ -3,6 +3,7 @@ Section: lisp
 Priority: optional
 Maintainer: Barak A. Pearlmutter <bap@debian.org>
 Standards-Version: 4.6.0
+Rules-Requires-Root: no
 Build-Depends:
 	debhelper-compat (= 13),
 	autoconf-archive,
