@@ -50,9 +50,9 @@
 
 #define ENABLE_TIMER	1
 
-bool trace_traps = false;	/* trace tag traps */
-bool trace_files = false;	/* trace file opening */
-bool batch_mode = false;	/* disable trapping of SIGINT */
+int  trace_traps = false;	/* trace tag traps */
+int  trace_files = false;	/* trace file opening */
+int  batch_mode = false;	/* disable trapping of SIGINT */
 
 #ifndef FAST
 bool trace_insts = false;	/* trace instruction execution */

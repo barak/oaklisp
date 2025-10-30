@@ -33,15 +33,6 @@
 #include "config.h"
 #include "threads.h"
 
-#ifndef bool
-typedef int bool;
-#endif
-
-#ifndef false
-#define false	0
-#define true	1
-#endif
-
 /* reference type */
 
 typedef size_t ref_t;
@@ -128,8 +119,8 @@ extern bool dump_flag;
 extern bool gc_before_dump;
 
 extern int trace_gc;
-extern bool trace_traps;
-extern bool batch_mode;
+extern int trace_traps;		// bool
+extern int batch_mode;		// bool
 
 #ifndef FAST
 
@@ -146,7 +137,7 @@ extern bool trace_mcache;
 
 #endif
 
-extern bool trace_files;
+extern int trace_files;		// bool
 
 
 /* miscellanous */
