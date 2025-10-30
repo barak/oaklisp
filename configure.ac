@@ -137,7 +137,7 @@ AC_CHECK_HEADERS([stddef.h stdlib.h string.h sys/time.h unistd.h],,
 
 # Checks for typedefs, structures, and compiler characteristics.
 AX_CFLAGS_WARN_ALL
-AC_CHECK_HEADER_STDBOOL
+AC_HEADER_STDBOOL
 AC_C_INLINE
 AC_TYPE_INT8_T
 AC_TYPE_INT16_T
