@@ -19,7 +19,7 @@
 
 # Prologue
 AC_PREREQ([2.69])
-AC_INIT([Oaklisp],[1.3.7],[barak+oaklisp@pearlmutter.net],[oaklisp],[https://github.com/barak/oaklisp])
+AC_INIT([Oaklisp],[1.3.8],[barak+oaklisp@pearlmutter.net],[oaklisp],[https://github.com/barak/oaklisp])
 AC_CONFIG_SRCDIR([src/emulator/oaklisp.c])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
