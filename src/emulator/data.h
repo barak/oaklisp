@@ -33,6 +33,10 @@
 #include "config.h"
 #include "threads.h"
 
+/* bool with pointer passed to getopt */
+
+typedef int bool_int;
+
 /* reference type */
 
 typedef size_t ref_t;
@@ -119,25 +123,25 @@ extern bool dump_flag;
 extern bool gc_before_dump;
 
 extern int trace_gc;
-extern int trace_traps;		// bool
-extern int batch_mode;		// bool
+extern bool_int trace_traps;
+extern bool_int batch_mode;
 
 #ifndef FAST
 
-extern bool trace_insts;
-extern bool trace_segs;
-extern bool trace_valcon;
-extern bool trace_cxtcon;
-extern bool trace_stks;
-extern bool trace_meth;
+extern bool_int trace_insts;
+extern bool_int trace_segs;
+extern bool_int trace_valcon;
+extern bool_int trace_cxtcon;
+extern bool_int trace_stks;
+extern bool_int trace_meth;
 
 #ifdef OP_TYPE_METH_CACHE
-extern bool trace_mcache;
+extern bool_int trace_mcache;
 #endif
 
 #endif
 
-extern int trace_files;		// bool
+extern bool_int trace_files;
 
 
 /* miscellanous */
