@@ -16,13 +16,15 @@
 
 LATEX_SRCS = lang/lang.tex lim/lim.tex summary/OaklispSummary.tex
 LATEX_PDFS = lang/lang.pdf lim/lim.pdf summary/OaklispSummary.pdf
+$(LATEX_PDFS): .FORCE
+.PHONY: .FORCE
 
 pdf_DATA = $(LATEX_PDFS)
 
 EXTRA_DIST = $(LATEX_SRCS)
 
 .tex.pdf:
-	(cd $(dir $<) && $(LATEXMK) -pdf $(notdir $<)) \
+	$(LATEXMK) -cd -pdf $< \
 	 || cp ../prebuilt/doc/$@ $@
 
 EXTRA_DIST += examples/bank-example.oak examples/change.oak		\
