@@ -73,9 +73,10 @@ int create_thread(ref_t start_operation)
   info_p->parent_index = *((int *)pthread_getspecific(index_key));
   info_p->my_index = index;
   if (pthread_create(&new_thread, NULL,
-		     (void *)init_thread, (void *)info_p))
-    // Error creating --- need to add some clean up code here !!!
+		     (void *)init_thread, (void *)info_p)) {
+    free(info_p);
     return 0;
+  }
   else
     return 1;
 #else
@@ -126,9 +127,13 @@ static void *init_thread (void *info_p)
   e_pc = &tail_recurse_instruction;
   e_nargs = 0;
 
-  /* Big virtual machine interpreter loop */
+  /* Big virtual machine interpreter loop.
+     If the thunk returns, the VM has no continuation to resume,
+     so we exit this thread cleanly instead of segfaulting. */
   loop(info.start_operation);
 
+  fprintf(stderr, "Warning: heavyweight thread %d thunk returned; thread exiting.\n",
+	  my_index);
   return 0;
 }
 #endif

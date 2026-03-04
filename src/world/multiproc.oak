@@ -137,7 +137,10 @@
   self)
 
 (add-method (acquire-mutex (mutex access-cons) self)
-  (until (%test-and-set-locative (car access-cons) #f #t)))
+  (let loop ()
+    (unless (%test-and-set-locative (car access-cons) #f #t)
+      (%thread-yield)
+      (loop))))
 
 (add-method (release-mutex (mutex access-cons) self)
   (set! (car access-cons) nil))
@@ -148,6 +151,10 @@
 
 (define *pid-counter* 1) ;; the 0th process is not created with this counter
 (define *pid-counter-mutex* (make mutex))
+
+;;; Enable thread-safe symbol table and add-method now that mutex is available.
+(set! *symbol-table-mutex* (make mutex))
+(set! *add-method-mutex* (make mutex))
 
 (define (new-pid)
   (let ((newp nil))
@@ -165,6 +172,7 @@
 
 (define (setup-initial-process-object)
   (%store-process (make process))
+  (set! %no-threading #f)
   (add-method (initialize (process pid process-fluid-binding-list) self)
     (set! pid (new-pid))
     (set! process-fluid-binding-list
@@ -172,8 +180,7 @@
     self)
   (spawn-heavyweight-threads))
 
-;;; XXX removed to make it boot!!!
-;;; (add-warm-boot-action setup-initial-process-object)
+(add-warm-boot-action setup-initial-process-object)
 
 
 ;;--------------------------------------------------
