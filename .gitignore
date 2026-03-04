@@ -19,3 +19,5 @@
 /stamp-h1
 Makefile
 Makefile.in
+src/world/oakworld.bin
+src/emulator/oak-cold-linker
