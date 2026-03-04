@@ -777,7 +777,13 @@
 
 
 ;;; Convoluted code defeats constant folding.  No big numbers in bignum.oa!
-(define most-negative-fixnum (ash-left (let ((x 1)) x) 29))
+;;; On 32-bit, ash-left 1 29 wraps to the most negative fixnum (-2^29).
+;;; On 64-bit, it stays positive, so we detect and use 61 instead.
+(define most-negative-fixnum
+  (let ((try (ash-left (let ((x 1)) x) 29)))
+    (if (negative? try)
+	try
+	(ash-left (let ((x 1)) x) 61))))
 (define most-positive-fixnum (- (+ most-negative-fixnum 1)))
 
 (let* ((l0 (list most-positive-fixnum))

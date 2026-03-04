@@ -404,7 +404,9 @@ GC_CHECK1(ref_t x, char *st, long i)
 static instr_t *
 pc_touch(instr_t * o_pc)
 {
-  ref_t *pcell = (ref_t *) ((unsigned long)o_pc & ~TAG_MASKL);
+  /* Align down to ref_t boundary.  On 32-bit this clears 2 bits;
+     on 64-bit this clears 3 bits for 8-byte alignment. */
+  ref_t *pcell = (ref_t *) ((uintptr_t)o_pc & ~(uintptr_t)(sizeof(ref_t) - 1));
 
   /*
     It is possible that the gc was called while a vm was executing the last
@@ -418,8 +420,8 @@ pc_touch(instr_t * o_pc)
   /* pcell++; */
 
   return
-    (instr_t *) ((ref_t) pcell
-		   | ((ref_t) o_pc & TAG_MASK));
+    (instr_t *) ((uintptr_t) pcell
+		   | ((uintptr_t) o_pc & (sizeof(ref_t) - 1)));
 }
 
 static void
@@ -827,26 +829,3 @@ gc_top:
 
 
 
-/* This routine takes a block of memory and scans through it, updating
-   all pointers into the window starting at old_start to instead point
-   into the corresponding location in new_start.  Typically new_start
-   will be the same as start */
-
-static void
-shift_targets(ref_t * start, size_t len,
-	      ref_t * old_start, size_t old_len,
-	      ref_t * new_start)
-{
-  size_t i;
-  for (i = 0; i < len; i++)
-    {
-      ref_t x = start[i];
-      if (PTR_MASK & x)		/* is it a pointer? */
-	{
-	  ref_t *y = ANY_TO_PTR(x);
-	  size_t offset = y - old_start;
-	  if (y >= 0 && offset < old_len)	/* into old window? */
-	    start[i] = PTR_TO_TAGGED(new_start + offset, x);
-	}
-    }
-}

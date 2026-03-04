@@ -26,6 +26,7 @@
 #define _DATA_H_INCLUDED
 
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -165,6 +166,27 @@ extern bool_int trace_files;
 
 #define TAGSIZE 2
 
+/* REF_SHIFT = log2(sizeof(ref_t)).  On 32-bit this equals TAGSIZE (2),
+   but on 64-bit it is 3.  Used for converting word indices to byte
+   offsets when constructing or deconstructing zero-based tagged refs
+   in world image I/O. */
+#if __WORDSIZE == 64
+#define REF_SHIFT 3
+#else
+#define REF_SHIFT 2
+#endif
+
+/* Number of 16-bit instructions packed per ref (logical), and
+   number of instr_t units per ref (physical stride). On 32-bit these
+   are equal (2); on 64-bit there is a gap: 2 instructions occupy the
+   low 32 bits of each 64-bit ref, with upper 32 bits empty. */
+#define INSTRS_PER_REF  2
+#if __WORDSIZE == 64
+#define INSTR_STRIDE    4
+#else
+#define INSTR_STRIDE    2
+#endif
+
 #define TAG_MASK	3
 #define TAG_MASKL	3l
 #define SUBTAG_MASK	0xff
@@ -185,7 +207,7 @@ extern bool_int trace_files;
 
 /* #define OR_TAG */
 
-#define REF_TO_INT(r)   ((int32_t)r>>TAGSIZE)
+#define REF_TO_INT(r)   ((ssize_t)(r)>>TAGSIZE)
 
 
 #define REF_TO_PTR(r)	((ref_t*)((r)-PTR_TAG))
@@ -219,9 +241,9 @@ extern bool_int trace_files;
 #endif
 
 #ifndef OR_TAG
-#define INT_TO_REF(i)	((ref_t)(((int32_t)(i)<<TAGSIZE) + INT_TAG))
+#define INT_TO_REF(i)	((ref_t)(((ssize_t)(i)<<TAGSIZE) + INT_TAG))
 #else
-#define INT_TO_REF(i)   ((ref_t)(((int32_t)(i)<<TAGSIZE) | INT_TAG))
+#define INT_TO_REF(i)   ((ref_t)(((ssize_t)(i)<<TAGSIZE) | INT_TAG))
 #endif
 
 #define BOOL_TO_REF(x)   ( (x) ? e_t : e_false )
@@ -242,11 +264,12 @@ extern bool_int trace_files;
 if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 */
 
-/* The following is for 32-bit ref_t only */
+/* Check if high three bits are equal (works for any word size). */
 
 #define OVERFLOWN_INT(i,code)					\
-{ u_int32_t highcrap = (i) & 0xe0000000;			\
-if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
+{ unsigned int highcrap						\
+	= ((size_t)(i)) >> (__WORDSIZE-(TAGSIZE+1));		\
+if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 
 /*
  * Offsets for wired types.  Offset includes type and
@@ -302,8 +325,8 @@ if ((highcrap) && (highcrap != 0xe0000000)) {code;}}
 
 /* Leaving r unsigned lets us checks for negative and too big in one shot: */
 #define wp_to_ref(r)					\
-  ( (u_int32_t)REF_TO_INT(r) >= (u_int32_t) wp_index ?	\
-   e_nil : wp_table[1+(u_int32_t)REF_TO_INT((r))] )
+  ( (size_t)REF_TO_INT(r) >= (size_t) wp_index ?	\
+   e_nil : wp_table[1+(size_t)REF_TO_INT((r))] )
 
 
 /* This is used to allocate some storage.  It calls gc when necessary. */
