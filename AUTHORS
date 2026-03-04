@@ -45,8 +45,8 @@ D: ported SLIB and GAMBIT-benchmarks to Oaklisp
 D: scheme-locale mods
 
 N: Blake McBride
-E: blake@mcbride.name
-W: http://blake.mcbride.name
+E: blake@mcbridemail.com
+W: https://blakemcbride.com
 D: Wrote the OaklispSummary document.
 D: Build system updates and documentation.
 D: Misc bug reports and bug fixes

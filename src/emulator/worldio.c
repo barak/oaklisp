@@ -75,20 +75,20 @@ contig(ref_t r, bool just_new)
 
   if (just_new)
     if (NEW_PTR(p))
-      return ((ref_t) (p - new_space.start) << 2) | (r & 3);
+      return ((ref_t) (p - new_space.start) << REF_SHIFT) | (r & TAG_MASK);
     else
-      printf("Non-new pointer %lu found.\n", (unsigned long)r);
+      printf("Non-new pointer %zu found.\n", (size_t)r);
   else if (SPATIC_PTR(p))
-    return ((ref_t) (p - spatic.start) << 2) | (r & 3);
+    return ((ref_t) (p - spatic.start) << REF_SHIFT) | (r & TAG_MASK);
   else if (NEW_PTR(p))
-    return ((ref_t) (p - new_space.start + spatic.size) << 2) | (r & 3);
+    return ((ref_t) (p - new_space.start + spatic.size) << REF_SHIFT) | (r & TAG_MASK);
   else
-    printf("Non-new or spatic pointer %lu found.\n", (unsigned long)r);
+    printf("Non-new or spatic pointer %zu found.\n", (size_t)r);
   return r;
 }
 
-#define contigify(r) ((r)&0x2 ? contig((r),just_new) : (r))
-#define CONTIGIFY(v) { if ((v)&2) (v) = contig((v),just_new); }
+#define contigify(r) ((r)&PTR_MASK ? contig((r),just_new) : (r))
+#define CONTIGIFY(v) { if ((v)&PTR_MASK) (v) = contig((v),just_new); }
 
 
 static ref_t
@@ -107,16 +107,16 @@ read_ref(FILE * d)
   else
     {
       ref_t a;
-      unsigned long b;
+      unsigned long long b;
       fscanf(d, " ");
       bool swapem = (c = getc(d)) == '^';
       if (!swapem) ungetc(c, d);
-      if (fscanf(d, "%lx", &b) != 1)
+      if (fscanf(d, "%llx", &b) != 1)
 	{
 	  printf("Error reading cold load file, might be truncated.\n");
 	  exit(EXIT_FAILURE);
 	}
-      a = b;
+      a = (ref_t)b;
 #ifndef WORDS_BIGENDIAN
       if (swapem)
 	a = ((a&0xFFFF) << 16 | (a&0xFFFF0000) >> 16);
@@ -140,8 +140,8 @@ dump_binary_world(bool just_new)
   /* CAUTION: STACK SPACE!!! */
 
   int imod = 0;
-  unsigned long worlsiz = free_point - new_space.start;
-  unsigned long DUMMY = 0;
+  ref_t worlsiz = free_point - new_space.start;
+  ref_t DUMMY = 0;
 
   fprintf(stderr, "Dumping in binary.\n");
 
@@ -155,10 +155,18 @@ dump_binary_world(bool just_new)
   if (!just_new)
     worlsiz += spatic.size;
 
+  /* Magic bytes: \002\002\002\002 for 32-bit, \004\004\004\004 for 64-bit */
+#if __WORDSIZE == 64
+  putc('\004', wfp);
+  putc('\004', wfp);
+  putc('\004', wfp);
+  putc('\004', wfp);
+#else
   putc('\002', wfp);
   putc('\002', wfp);
   putc('\002', wfp);
   putc('\002', wfp);
+#endif
 
   /* Header information. */
   fwrite((const void *)&DUMMY, sizeof(ref_t), 1, wfp);
@@ -218,7 +226,7 @@ dump_ascii_world(bool just_new)
   ref_t *memptr, theref;
   long i;
   int eighter = 0;
-  char *control_string = (dump_base == 10 ? "%ld " : "%lx ");
+  char *control_string = (dump_base == 10 ? "%zd " : "%zx ");
   FILE *wfp = 0;
 
   fprintf(stderr, "Dumping in ascii.\n");
@@ -230,11 +238,11 @@ dump_ascii_world(bool just_new)
       exit(EXIT_FAILURE);
     }
 
-  fprintf(wfp, control_string, 0 /*val_stk_size */ );
-  fprintf(wfp, control_string, 0 /*cxt_stk_size */ );
-  fprintf(wfp, control_string, contigify(e_boot_code));
+  fprintf(wfp, control_string, (size_t)0 /*val_stk_size */ );
+  fprintf(wfp, control_string, (size_t)0 /*cxt_stk_size */ );
+  fprintf(wfp, control_string, (size_t)contigify(e_boot_code));
   fprintf(wfp, control_string,
-	  free_point - new_space.start + (just_new ? 0 : spatic.size));
+	  (size_t)(free_point - new_space.start + (just_new ? 0 : spatic.size)));
 
   /* Maybe dump spatic space. */
   if (!just_new)
@@ -244,7 +252,7 @@ dump_ascii_world(bool just_new)
 	  fprintf(wfp, "\n");
 	theref = *memptr;
 	CONTIGIFY(theref);
-	fprintf(wfp, control_string, theref);
+	fprintf(wfp, control_string, (size_t)theref);
 	eighter = (eighter + 1) % 8;
       }
   eighter = 0;
@@ -254,14 +262,14 @@ dump_ascii_world(bool just_new)
 	fprintf(wfp, "\n");
       theref = *memptr;
       CONTIGIFY(theref);
-      fprintf(wfp, control_string, theref);
+      fprintf(wfp, control_string, (size_t)theref);
       eighter = (eighter + 1) % 8;
     }
   fprintf(wfp, "\n");
 
   /* Write the weak pointer table. */
 
-  fprintf(wfp, control_string, wp_index);
+  fprintf(wfp, control_string, (size_t)wp_index);
 
   eighter = 0;
 
@@ -271,7 +279,7 @@ dump_ascii_world(bool just_new)
 	fprintf(wfp, "\n");
       theref = wp_table[1 + i];
       CONTIGIFY(theref);
-      fprintf(wfp, control_string, theref);
+      fprintf(wfp, control_string, (size_t)theref);
       eighter = (eighter + 1) % 8;
     }
 
@@ -318,8 +326,22 @@ read_world(char *str)
       exit(EXIT_FAILURE);
     }
   magichar = getc(d);
-  if (magichar == (int)'\002')
+  if (magichar == (int)'\002' || magichar == (int)'\004')
     {
+      /* Verify world matches our pointer size */
+#if __WORDSIZE == 64
+      if (magichar != (int)'\004')
+	{
+	  printf("Error: 32-bit world loaded into 64-bit emulator.\n");
+	  exit(EXIT_FAILURE);
+	}
+#else
+      if (magichar != (int)'\002')
+	{
+	  printf("Error: 64-bit world loaded into 32-bit emulator.\n");
+	  exit(EXIT_FAILURE);
+	}
+#endif
       getc(d);
       getc(d);
       getc(d);

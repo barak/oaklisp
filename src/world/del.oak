@@ -45,4 +45,30 @@
       (append! #*error-handlers
 	       (list (cons user-interrupt invoke-debugger))))
 
+
+;;; When a fatal signal (SIGSEGV, SIGBUS, SIGFPE) is caught at the C level,
+;;; the emulator recovers via siglongjmp and routes through argless trap
+;;; slot 126.  This handler signals an Oaklisp condition so the user lands
+;;; in the debugger instead of losing the process.
+
+(define-instance vm-crash-recovery type '() (list proceedable-condition object))
+
+(add-method (report (vm-crash-recovery) self stream)
+  (format stream "VM crash recovery (fatal signal caught). State may be inconsistent.~%"))
+
+(add-method (initialize (vm-crash-recovery) self)
+  (^super proceedable-condition
+	  initialize self "Resume (state may be inconsistent)."))
+
+(define (vm-crash-handler n)
+  (signal vm-crash-recovery)
+  (set! ((%register 'nargs)) n)
+  (%return))
+
+(set! (nth %argless-tag-trap-table 126) vm-crash-handler)
+
+(set! #*error-handlers
+      (append! #*error-handlers
+	       (list (cons vm-crash-recovery invoke-debugger))))
+
 ;;; eof

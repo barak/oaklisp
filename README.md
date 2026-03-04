@@ -1,3 +1,18 @@
+Below is the normal README for Oaklisp.  I cloned it and, with the help of Claude Code, made the following changes:
+
+1. Port from 32-bit to 64-bit
+2. Bug fixes
+3. Source-only build (no world.bin file needed)
+4. Changed the version number from 1.3.8 to 2.0.0~devel
+
+This repo is located at:  https://github.com/blakemcbride/oaklisp
+
+Blake McBride
+blake@mcbridemail.com
+https://blakemcbride.com
+
+
+
 Oaklisp
 =======
 

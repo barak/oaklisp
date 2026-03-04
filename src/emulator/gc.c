@@ -38,7 +38,7 @@
 #endif
 
 
-#define FORTHREADS THREADY( for (my_index=0; my_index<next_index; my_index++) )
+#define FORTHREADS THREADY( for (my_index=0; my_index<gc_thread_count; my_index++) )
 
 
 
@@ -404,7 +404,9 @@ GC_CHECK1(ref_t x, char *st, long i)
 static instr_t *
 pc_touch(instr_t * o_pc)
 {
-  ref_t *pcell = (ref_t *) ((unsigned long)o_pc & ~TAG_MASKL);
+  /* Align down to ref_t boundary.  On 32-bit this clears 2 bits;
+     on 64-bit this clears 3 bits for 8-byte alignment. */
+  ref_t *pcell = (ref_t *) ((uintptr_t)o_pc & ~(uintptr_t)(sizeof(ref_t) - 1));
 
   /*
     It is possible that the gc was called while a vm was executing the last
@@ -418,8 +420,8 @@ pc_touch(instr_t * o_pc)
   /* pcell++; */
 
   return
-    (instr_t *) ((ref_t) pcell
-		   | ((ref_t) o_pc & TAG_MASK));
+    (instr_t *) ((uintptr_t) pcell
+		   | ((uintptr_t) o_pc & (sizeof(ref_t) - 1)));
 }
 
 static void
@@ -443,20 +445,22 @@ gc(bool pre_dump, bool full_gc, char *reason, size_t amount)
 #ifdef THREADS
   bool ready=false;
   int my_index;
+  int gc_thread_count;
   int i;
   int *my_index_p;
   my_index_p = pthread_getspecific (index_key);
   my_index = *my_index_p;
   gc_ready[my_index] = 1;
   set_gc_flag (true);
+  /* Snapshot next_index so thread creation during GC cannot cause
+     us to read uninitialized gc_ready[] slots. */
+  gc_thread_count = next_index;
 #endif
 
 #ifdef THREADS
-  /*Problem here is next_index could change if someone creates a thread
-    while someone else is gc'ing*/
    while (ready == false) {
     ready = true;
-    for (i = 0; i < next_index; i++) {
+    for (i = 0; i < gc_thread_count; i++) {
       if (gc_ready[i] == 0) {
           ready = false;
           break;
@@ -827,26 +831,3 @@ gc_top:
 
 
 
-/* This routine takes a block of memory and scans through it, updating
-   all pointers into the window starting at old_start to instead point
-   into the corresponding location in new_start.  Typically new_start
-   will be the same as start */
-
-static void
-shift_targets(ref_t * start, size_t len,
-	      ref_t * old_start, size_t old_len,
-	      ref_t * new_start)
-{
-  size_t i;
-  for (i = 0; i < len; i++)
-    {
-      ref_t x = start[i];
-      if (PTR_MASK & x)		/* is it a pointer? */
-	{
-	  ref_t *y = ANY_TO_PTR(x);
-	  size_t offset = y - old_start;
-	  if (y >= 0 && offset < old_len)	/* into old window? */
-	    start[i] = PTR_TO_TAGGED(new_start + offset, x);
-	}
-    }
-}

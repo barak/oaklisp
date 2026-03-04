@@ -64,11 +64,28 @@
 	UNLOCALIZE_REGS();				\
 }
 
+#ifdef TRACE_VALFLUSH
+#define VALUE_FLUSH(amount_to_leave)			\
+{	UNLOCALIZE_ALL();				\
+	{ int _pre = value_stack.sp - value_stack.bp + 1; \
+	  ref_t _top3[3]; int _i; \
+	  for(_i=0;_i<3 && value_stack.sp-_i>=value_stack.bp;_i++) \
+	    _top3[_i]=value_stack.sp[-_i]; \
+	  stack_flush(&value_stack, (amount_to_leave));	\
+	  fprintf(stderr,"VFLUSH: pre=%d post=%d pushed=%d top3_pre=[%#zx,%#zx,%#zx] top3_post=[%#zx,%#zx,%#zx]\n", \
+	    _pre, (int)(value_stack.sp-value_stack.bp+1), value_stack.pushed_count, \
+	    (size_t)_top3[0],(size_t)_top3[1],(size_t)_top3[2], \
+	    (size_t)value_stack.sp[0],(size_t)value_stack.sp[-1],(size_t)value_stack.sp[-2]); \
+	}					\
+	LOCALIZE_ALL();					\
+}
+#else
 #define VALUE_FLUSH(amount_to_leave)			\
 {	UNLOCALIZE_ALL();				\
 	stack_flush(&value_stack, (amount_to_leave));	\
 	LOCALIZE_ALL();					\
 }
+#endif
 
 #define CONTEXT_FLUSH(amount_to_leave)			\
 {	UNLOCALIZE_ALL();				\
@@ -115,7 +132,11 @@
 
 /* When you are sure that the buffer has enough elements in it,
    use this for looking deeper into the stack */
+#ifdef CHECK_STACK_BOUNDS
+#define PEEKVAL_UP(x)	(_check_val_bounds(local_value_sp, (x), value_stack_bp, __LINE__), *(local_value_sp-(x)))
+#else
 #define PEEKVAL_UP(x)	(*(local_value_sp-(x)))
+#endif
 
 /* Use these when you are sure that overflows and underflows cannot occur. */
 #define PUSHVAL_NOCHECK(r)  { *++local_value_sp = (r); }
@@ -159,14 +180,18 @@
 	  CONTEXT_FLUSH(context_stack.filltarget);	\
 }
 
-/* The following check that n elements can be popped without underflow. */
+/* The following check that n elements can be popped without underflow.
+   Use integer arithmetic instead of pointer comparison to avoid undefined
+   behavior when the subtraction would go below the array base.  GCC -O2
+   on 64-bit can optimize away the pointer form since the C standard says
+   pointer arithmetic past array bounds is UB. */
 #define CHECKVAL_POP(n)						\
-{	if (&local_value_sp[-(n)] < value_stack_bp)		\
+{	if ((n) > (long)(local_value_sp - value_stack_bp))	\
 		VALUE_UNFLUSH((n));				\
 }
 
 #define CHECKCXT_POP(n)						\
-{	if (&local_context_sp[-(n)] < context_stack_bp)		\
+{	if ((n) > (long)(local_context_sp - context_stack_bp))	\
 		CONTEXT_UNFLUSH((n));				\
 }
 
@@ -189,6 +214,11 @@
 	local_context_sp -= (n);				\
 }
 
+/* PUSH_CONTEXT saves the return PC as a byte offset from e_code_segment.
+   off_set is in logical instruction units; we use INCREMENT_PC to
+   convert to the correct physical address accounting for any gaps. */
+#if INSTR_STRIDE == INSTRS_PER_REF
+/* 32-bit fast path: logical instructions = physical instr_t units */
 #define PUSH_CONTEXT(off_set)					\
 {								\
 	CHECKCXT_PUSH(CONTEXT_FRAME_SIZE);			\
@@ -198,6 +228,21 @@
 	local_context_sp[3] = PTR_TO_LOC(e_bp);			\
 	local_context_sp += 3;					\
 }
+#else
+/* 64-bit path: compute physical target using INCREMENT_PC */
+#define PUSH_CONTEXT(off_set)					\
+{								\
+	CHECKCXT_PUSH(CONTEXT_FRAME_SIZE);			\
+	{ instr_t *_tgt = local_e_pc;				\
+	  INCREMENT_PC(_tgt, (off_set));			\
+	  local_context_sp[1] = INT_TO_REF((unsigned long)_tgt - \
+	      (unsigned long)e_code_segment);			\
+	}							\
+	local_context_sp[2] = e_current_method;			\
+	local_context_sp[3] = PTR_TO_LOC(e_bp);			\
+	local_context_sp += 3;					\
+}
+#endif
 
 #define POP_CONTEXT()						\
 {								\

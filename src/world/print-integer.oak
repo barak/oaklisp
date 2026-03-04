@@ -84,7 +84,9 @@
 		 ((< self 1000000) (d6 self))
 		 ((< self 10000000) (d7 self))
 		 ((< self 100000000) (d8 self))
-		 (else                (d9 self)))))
+		 ((< self 1000000000) (d9 self))
+		 ;; For 64-bit fixnums (10+ digits), use generic method.
+		 (else (^super integer print self stream)))))
 
 	(else (^super integer print self stream))))
 

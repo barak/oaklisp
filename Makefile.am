@@ -21,3 +21,12 @@ SUBDIRS += doc
 endif
 
 doc_DATA = README.md AUTHORS COPYING BUILD.md ChangeLog NEWS
+
+# Remove all generated files, restoring the tree to pre-autoreconf state.
+# (Run "autoreconf --install && ./configure" to rebuild.)
+realclean: maintainer-clean
+	rm -rf autom4te.cache
+	rm -f aclocal.m4 compile config.guess config.h.in config.sub \
+	      configure depcomp install-sh missing INSTALL stamp-h1
+	find . -name Makefile.in -delete
+	find . -name .deps -type d -exec rm -rf {} +

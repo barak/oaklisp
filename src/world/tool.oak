@@ -40,6 +40,11 @@
 
 
 
+;;; Auto-detect 64-bit from running emulator's fixnum range.
+;;; On 32-bit, most-positive-fixnum = 536870911 (2^29-1).
+;;; Override with --eval '(set! target-64bit #t)' or #f after loading.
+(set! target-64bit (not (= most-positive-fixnum 536870911)))
+
 (define cell-size 1)
 (define pair-size 3)
 (define symbol-size 2)
@@ -74,13 +79,14 @@
 ; this code depends on bignums
 
 (define (tagize-int x)
-  (+ int-tag (* 4 (if (negative? x)
-		      (+ x (expt 2 30))
-		      x))))
+  (let ((fixnum-bits (if target-64bit 62 30)))
+    (+ int-tag (* 4 (if (negative? x)
+			(+ x (expt 2 fixnum-bits))
+			x)))))
 
 (define (tagize-imm x) (+ imm-tag (ash-left x 2)))
-(define (tagize-ptr x) (+ ptr-tag (ash-left x 2)))
-(define (tagize-loc x) (+ loc-tag (ash-left x 2)))
+(define (tagize-ptr x) (+ ptr-tag (ash-left x (if target-64bit 3 2))))
+(define (tagize-loc x) (+ loc-tag (ash-left x (if target-64bit 3 2))))
 
 (define (store-world-int x word-addr) (store-world-word (tagize-int x) word-addr))
 (define (store-world-ptr x word-addr) (store-world-word (tagize-ptr x) word-addr))
@@ -653,10 +659,11 @@
 
 (define (print-hex num ndigits outfile)
   (cond ((not ndigits)
-	 (when (or (negative? num)
-		   (and (not (eq? (get-type num) fixnum))
-			(> num #xffffffff)))
-	   (error "Can't PRINT-HEX #x~X with ~D digits" num ndigits)))
+	 (let ((max-val (if target-64bit #xffffffffffffffff #xffffffff)))
+	   (when (or (negative? num)
+		     (and (not (eq? (get-type num) fixnum))
+			  (> num max-val)))
+	     (error "Can't PRINT-HEX #x~X with ~D digits" num ndigits))))
 
 	((= ndigits 4)
 	 (cond ((negative? num)
@@ -763,6 +770,8 @@
 		   (write-char outfile #\space)
 		   (print-hex guy #f outfile))
 		  ((pair? guy)
+		   ;; Opcode cell: two 16-bit opcodes packed into low 32 bits.
+		   ;; On 64-bit upper 32 bits are zero; the ^ swap is the same.
 		   (write-char outfile #\^)
 		   (print-hex (car guy) #f outfile)
 		   (print-hex (cdr guy) 4 outfile))
