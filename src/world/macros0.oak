@@ -114,6 +114,18 @@
 
 
 
+;;; Helper for lambda rest-arg destructuring.  Builds nested lets that
+;;; bind proper-args from successive cars of listvar, then bind rest-var
+;;; to the remaining cdr.
+
+(define (build-lambda-rest-let proper-args rest-var listvar body)
+  (if (null? proper-args)
+      `(let ((,rest-var ,listvar))
+	 ,@body)
+      `(let ((,(car proper-args) (car ,listvar)))
+	 ,(build-lambda-rest-let (cdr proper-args) rest-var
+				 `(cdr ,listvar) body))))
+
 (define-syntax (lambda varlist . body)
   (let ((improper-part (improper-list? varlist)))
     (cond ((if improper-part
@@ -121,7 +133,19 @@
 		   (not (symbol? improper-part)))
 	       (not (every? symbol? varlist)))
 	   (error "Malformed formal parameter list ~S." varlist))
-	  (else `(add-method ((',make ',operation)  ,@varlist)
+	  (improper-part
+	   ;; Rest args: use listify-args to collect stack args into a
+	   ;; proper list, then destructure into the named bindings.
+	   (let ((proper-args (make-proper varlist))
+		 (auxvar (genvar))
+		 (listvar (genvar)))
+	     `(let ((,auxvar
+		     (lambda (,listvar)
+		       ,(build-lambda-rest-let proper-args improper-part
+					       listvar body))))
+		(add-method ((',make ',operation) . ,improper-part)
+		  (listify-args ,auxvar . ,improper-part)))))
+	  (else `(add-method ((',make ',operation) ,@varlist)
 		   ,@body)))))
 
 
