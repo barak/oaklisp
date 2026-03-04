@@ -32,7 +32,7 @@
 (define-instance system-locale locale '())
 (define-instance compiler-locale locale (list system-locale))
 
-(define-instance oaklisp-locale locale '())
+(define-instance oaklisp-locale locale (list system-locale))
 (define-instance user-locale locale (list oaklisp-locale))
 
 ;;; eof
