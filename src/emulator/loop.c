@@ -30,6 +30,7 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
+#include <setjmp.h>
 
 #include "config.h"
 #include "data.h"
@@ -427,7 +428,24 @@ loop(ref_t initial_tos)
 
   /* This is the big instruction fetch/execute loop. */
 
-  if (!batch_mode) enable_signal_polling();
+  if (!batch_mode) {
+    enable_signal_polling();
+    enable_crash_recovery();
+  }
+
+  /* Set up crash recovery point.  If a fatal signal (SIGSEGV, SIGBUS,
+     SIGFPE) fires, siglongjmp returns here with a non-zero value. */
+  if (sigsetjmp(crash_jmpbuf, 1) != 0) {
+    /* Returned from a fatal signal -- recover to Oaklisp debugger. */
+    reinstall_crash_handler();
+    LOCALIZE_ALL();
+    crash_signal = 0;
+    /* Route through intr_trap using argless trap slot 126. */
+    arg_field = 126;
+    op_field = 0;
+    instr = (126 << 8);
+    goto crash_trap_entry;
+  }
 
 #define GOTO_TOP	goto top_of_loop;
 
@@ -2213,6 +2231,10 @@ static int _cdr_debug_count = 0;
     /* How did we get here?  Just do a user trap to get to the debugger. */
     arg_field = op_field = instr = 0;
   }
+
+  /******************/
+ crash_trap_entry:
+  /******************/
 
 #ifndef FAST
   if (trace_traps)
