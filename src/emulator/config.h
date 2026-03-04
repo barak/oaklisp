@@ -65,8 +65,6 @@
 #endif
 
 /* Activate operation-type method cache. */
-#ifndef THREADS
 #define OP_TYPE_METH_CACHE
-#endif
 
 #endif
