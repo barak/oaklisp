@@ -35,7 +35,9 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <signal.h>
+#include <setjmp.h>
 #include "config.h"
 #include "signals.h"
 
@@ -74,3 +76,51 @@ clear_signal(void)
   signal_poll_flag = 0;
 }
 #endif /* commented out */
+
+
+/* Crash recovery from fatal signals (SIGSEGV, SIGBUS, SIGFPE).
+   Uses siglongjmp to jump back into the interpreter loop, which then
+   routes through the tag-trap mechanism to an Oaklisp error handler. */
+
+sigjmp_buf crash_jmpbuf;
+volatile sig_atomic_t crash_signal = 0;
+int crash_recovery_installed = 0;
+
+static void
+crash_handler(int sig)
+{
+  crash_signal = sig;
+  if (crash_recovery_installed)
+    siglongjmp(crash_jmpbuf, sig);
+  /* If recovery not installed, re-raise to get default behavior */
+  signal(sig, SIG_DFL);
+  raise(sig);
+}
+
+static void
+install_one_crash_handler(int sig)
+{
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler = crash_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESETHAND;  /* auto-deregister after firing */
+  sigaction(sig, &sa, NULL);
+}
+
+void
+enable_crash_recovery(void)
+{
+  install_one_crash_handler(SIGSEGV);
+  install_one_crash_handler(SIGBUS);
+  install_one_crash_handler(SIGFPE);
+  crash_recovery_installed = 1;
+}
+
+void
+reinstall_crash_handler(void)
+{
+  install_one_crash_handler(SIGSEGV);
+  install_one_crash_handler(SIGBUS);
+  install_one_crash_handler(SIGFPE);
+}

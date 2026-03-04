@@ -25,9 +25,19 @@
 #ifndef _SIGNAL_H_INCLUDED
 #define _SIGNAL_H_INCLUDED
 
+#include <setjmp.h>
+#include <signal.h>
+
 void enable_signal_polling(void);
 void disable_signal_polling(void);
 void clear_signal(void);
 extern int signal_poll_flag;
+
+/* Crash recovery from fatal signals (SIGSEGV, SIGBUS, SIGFPE) */
+extern sigjmp_buf crash_jmpbuf;
+extern volatile sig_atomic_t crash_signal;
+extern int crash_recovery_installed;
+void enable_crash_recovery(void);
+void reinstall_crash_handler(void);
 
 #endif
