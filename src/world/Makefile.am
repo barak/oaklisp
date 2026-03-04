@@ -63,17 +63,22 @@ OAKFLAGS =
 # endif
 
 # How to compile oaklisp source files into oaklisp bytecode object files:
+# If compilation fails (no working oaklisp), fall back to prebuilt .oa copy.
 .oak.oa:
-	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) -- $(OAKLOCALE) --compile $* --exit
+	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) -- $(OAKLOCALE) --compile $* --exit \
+	|| cp $(srcdir)/../../prebuilt/src/world/$@ $@
 
-# How to build a new cold world using the world builder tool:
-new.cold: $(COLDFILES) $(TOOLFILES)
+# When building for 64-bit, tell oak-cold-linker to emit 64-bit refs.
+if BITS64
+COLD_LINKER_FLAGS = --64bit
+else
+COLD_LINKER_FLAGS = --32bit
+endif
+
+# How to build a new cold world using oak-cold-linker:
+new.cold: $(COLDFILES)
 	-rm -f new.cold new.sym
-	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) \
-	   -- \
-	   --load tool \
-	   --eval "(tool-files '($(COLDFILESD:.oa=)) 'new)" \
-	   --exit
+	../emulator/oak-cold-linker $(COLD_LINKER_FLAGS) -o new $(COLDFILESD:.oa=)
 
 # How to boot cold world into warm world:
 oakworld-1.bin: new.cold
@@ -102,9 +107,12 @@ oakworld.bin: oakworld-3.bin $(RNRSFILES)
 	  $(foreach f, $(RNRSFILES:.oa=),--load $(f)) \
 	  --locale system-locale --exit
 
-# How to rebuild variables included by this Makefile itself:
+# How to rebuild variables included by this Makefile itself.
+# Makefile-vars is checked in; rebuild explicitly with: make Makefile-vars
+# (No file prerequisites — otherwise make tries to build .oa files
+# even during "make clean", which fails before the emulator is built.)
 
-Makefile-vars: $(MAKEFILES) $(FILESFILES)
+Makefile-vars:
 	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) \
 	   -- \
 	   --load files --load make-makefile --eval '(make-makefile "$@")' \

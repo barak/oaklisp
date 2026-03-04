@@ -15,6 +15,8 @@
 # Boston, MA 02111-1307, USA
 
 bin_PROGRAMS = oaklisp
+noinst_PROGRAMS = oak-cold-linker
+oak_cold_linker_SOURCES = oak-cold-linker.c
 
 oaklisp_SOURCES = cmdline.c data.c gc.c instr.c loop.c oaklisp.c	\
  signals.c stacks.c threads.c timers.c weak.c worldio.c xmalloc.c	\
