@@ -127,7 +127,7 @@ AS_IF([test x${enable_docs} = xyes],
  [AC_CHECK_PROGS([LATEXMK],[latexmk],[false])])
 
 # Checks for libraries.
-AS_IF([test x$threads = xyes],
+AS_IF([test x$enable_threads = xyes],
  [AC_SEARCH_LIBS([pthread_create],[pthread])])
 
 # Checks for header files.

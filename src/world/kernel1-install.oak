@@ -25,6 +25,10 @@
 ;;;
 ;;;	ADD-METHOD should bomb on non-operations, or at least on undefineds.
 
+;;; Guard variable for thread-safe method installation.
+;;; Initialized to #f here; set to a real mutex in multiproc.oak.
+(define *add-method-mutex* #f)
+
 (set! %install-method-with-env (%allocate operation %simple-operation-length))
 (set! ((%slot 1) %install-method-with-env) 0)
 
@@ -44,7 +48,8 @@
 				  x (car real-ivar-map)))))))))
   ;; flush the method cache
   (set! ((%slot 2) op) 0)
-  ;; create and install the method
+  ;; create and install the method (critical section)
+  (when *add-method-mutex* (acquire-mutex *add-method-mutex*))
   (let ((the-method (%allocate %method 3)))
     (set! ((%slot 1) the-method) code-body)
     (set! ((%slot 2) the-method) env)
@@ -63,6 +68,7 @@
 		      (set! (cdr the-ass) the-method)
 		      (set! operation-method-alist
 			   (cons (cons op the-method) operation-method-alist)))))))
+  (when *add-method-mutex* (release-mutex *add-method-mutex*))
   op)
 
 

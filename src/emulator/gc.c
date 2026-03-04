@@ -38,7 +38,7 @@
 #endif
 
 
-#define FORTHREADS THREADY( for (my_index=0; my_index<next_index; my_index++) )
+#define FORTHREADS THREADY( for (my_index=0; my_index<gc_thread_count; my_index++) )
 
 
 
@@ -445,20 +445,22 @@ gc(bool pre_dump, bool full_gc, char *reason, size_t amount)
 #ifdef THREADS
   bool ready=false;
   int my_index;
+  int gc_thread_count;
   int i;
   int *my_index_p;
   my_index_p = pthread_getspecific (index_key);
   my_index = *my_index_p;
   gc_ready[my_index] = 1;
   set_gc_flag (true);
+  /* Snapshot next_index so thread creation during GC cannot cause
+     us to read uninitialized gc_ready[] slots. */
+  gc_thread_count = next_index;
 #endif
 
 #ifdef THREADS
-  /*Problem here is next_index could change if someone creates a thread
-    while someone else is gc'ing*/
    while (ready == false) {
     ready = true;
-    for (i = 0; i < next_index; i++) {
+    for (i = 0; i < gc_thread_count; i++) {
       if (gc_ready[i] == 0) {
           ready = false;
           break;

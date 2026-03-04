@@ -35,11 +35,11 @@ Key files and `#ifdef THREADS` sections:
 | `threads.h` | Mutex declarations, `THREADY()` macro, TLS key |
 | `threads.c` | `create_thread()`, `init_thread()`, `wait_for_gc()`, `set_gc_flag()` |
 | `data.h` | Per-thread register macros, `ALLOCATE_PROT` spin-lock, GC buffer arrays |
-| `loop.c` | Opcodes 67-71, `POLL_GC_SIGNALS()`, thread index init |
+| `loop.c` | Opcodes 67-72, `POLL_GC_SIGNALS()`, thread index init |
 | `gc.c` | `FORTHREADS` macro, per-thread root scanning, GC coordination |
 | `oaklisp.c` | Thread-0 TLS init, per-thread stack/register allocation |
 | `stacks.c` | Thread index retrieval in `init_stacks()` |
-| `config.h` | `MAX_THREAD_COUNT` (200), disables method cache under threads |
+| `config.h` | `MAX_THREAD_COUNT` (200), disables move-to-front under threads |
 
 Per-thread state (via TLS `index_key`):
 
@@ -68,6 +68,7 @@ Thread-related opcodes:
 | 69 | RESET-ALARM-COUNTER | `timer_counter = 0` |
 | 70 | HEAVYWEIGHT-THREAD | Create pthread running given thunk; returns #t/#f |
 | 71 | TEST-AND-SET-LOCATIVE | Atomic CAS on locative cell (mutex primitive) |
+| 72 | THREAD-YIELD | `sched_yield()` under THREADS, no-op otherwise |
 
 
 Oaklisp Runtime (`src/world/`)
@@ -75,7 +76,7 @@ Oaklisp Runtime (`src/world/`)
 
 | File | Content |
 |------|---------|
-| `multi-em.oak` | Primitive ops: `%make-heavyweight-thread`, `%load-process`, `%store-process`, `%test-and-set-locative` |
+| `multi-em.oak` | Primitive ops: `%make-heavyweight-thread`, `%load-process`, `%store-process`, `%test-and-set-locative`, `%thread-yield` |
 | `multiproc.oak` | Queues, process descriptors, mutexes, scheduler, semaphores, futures (464 lines) |
 | `multi-off.oak` | Guard variable `%no-threading` for cold-boot |
 | `multiproc-tests.oak` | Basic tests + TODO list of known issues |
@@ -83,7 +84,7 @@ Oaklisp Runtime (`src/world/`)
 Synchronization primitives (all in `multiproc.oak`):
 
 - **Mutex** (lines 130-143): Spin-lock via `%test-and-set-locative`.
-  Busy-waits with no sleep/yield.
+  Yields between attempts via `%thread-yield` (opcode 72).
 - **Semaphore** (lines 358-401): Mutex + waiting queue.  Blocked
   processes enqueued, woken on `signal`.
 - **Futures** (lines 409-463): Lazy evaluation with dependent process
@@ -95,93 +96,112 @@ Synchronization primitives (all in `multiproc.oak`):
 Known Bugs
 ==========
 
-Race condition in TEST-AND-SET-LOCATIVE (loop.c:1428)
+~~Race condition in TEST-AND-SET-LOCATIVE (loop.c:1428)~~
 ------------------------------------------------------
-Non-atomic pre-check before acquiring `test_and_set_locative_lock`.
-Another thread can modify the value between the check and the lock.
-Fix: move the check inside the critical section.
+**FIXED.** Removed the racy unprotected pre-check before the lock.
+The comparison now happens entirely inside the critical section.
 
-Race condition in GC (gc.c:457, FORTHREADS macro)
+~~Race condition in GC (gc.c:457, FORTHREADS macro)~~
 --------------------------------------------------
-`FORTHREADS` iterates `my_index` from 0 to `next_index`, but
-`next_index` can change if a thread is created during GC.  Comment in
-code acknowledges this.  Fix: snapshot `next_index` at GC start and
-block thread creation during GC.
+**FIXED.** `next_index` is now snapshotted into `gc_thread_count` at
+GC start.  All `FORTHREADS` loops iterate over the snapshot, preventing
+reads of uninitialized `gc_ready[]` slots if a thread is created during
+GC.
 
-configure.ac pthread linkage bug (line 130)
+~~configure.ac pthread linkage bug (line 130)~~
 --------------------------------------------
-Tests `$threads` (undefined) instead of `$enable_threads`, so
-`-lpthread` may not be linked even with `--enable-threads`.
+**FIXED.** Changed `$threads` to `$enable_threads` so `-lpthread` is
+linked when `--enable-threads` is used.
 
-Thread termination segfaults (multi-em.oak:27)
+~~Thread termination segfaults (multi-em.oak:27)~~
 -----------------------------------------------
-If a heavyweight thread's thunk returns, the VM crashes.  Comment
-warns thunk must loop forever.
+**FIXED.** `init_thread()` now prints a warning and exits cleanly if
+the thunk returns, instead of segfaulting.  Comment in `multi-em.oak`
+updated accordingly.
 
-pthread_create error leak (threads.c:77)
+~~pthread_create error leak (threads.c:77)~~
 -----------------------------------------
-Comment: "Error creating --- need to add some clean up code here !!!"
-malloc'd info struct not freed on failure.
+**FIXED.** `info_p` is now freed on `pthread_create()` failure.
 
-Fluid bindings incomplete (multiproc.oak:175)
+~~Fluid bindings incomplete (multiproc.oak:175)~~
 ----------------------------------------------
-Comment: "XXX removed to make it boot!!!"
-`setup-initial-process-object` disabled.
+**FIXED.** `setup-initial-process-object` re-enabled as a warm boot
+action.  Sets `%no-threading` to `#f` so `fluid.oak` uses per-process
+bindings via the process register instead of falling back to globals.
+
+~~Unprotected symbol table (symbols.oak)~~
+------------------------------------------
+**FIXED.** Added `*symbol-table-mutex*` guard variable (initialized
+`#f` in `symbols.oak`, set to a real mutex in `multiproc.oak`).
+`intern` and `gensym` conditionally acquire/release the mutex.
+
+~~Unprotected add-method (kernel1-install.oak)~~
+------------------------------------------------
+**FIXED.** Added `*add-method-mutex*` guard variable (initialized
+`#f` in `kernel1-install.oak`, set to a real mutex in `multiproc.oak`).
+The critical section in `%install-method-with-env` that mutates
+`operation-method-alist` is now protected.
+
+~~Method cache disabled under threads (config.h, loop.c)~~
+----------------------------------------------------------
+**FIXED.** `OP_TYPE_METH_CACHE` is now always enabled.  Cache writes
+use a seqlock pattern: method and offset are written first, then the
+type field is stored last with `__atomic_store_n` (release semantics)
+as a commit flag.  Cache reads load the type with `__atomic_load_n`
+(acquire semantics), read method/offset, then re-verify the type to
+ensure a consistent snapshot.  `OP_METH_ALIST_MTF` remains disabled
+under threads since it mutates the shared alist structure.
+
+~~Spin-lock CPU waste (multiproc.oak)~~
+---------------------------------------
+**FIXED.** `acquire-mutex` now calls `%thread-yield` (opcode 72,
+`sched_yield()`) between spin attempts instead of busy-waiting in a
+tight loop.
 
 
-Unprotected Shared Data Structures
-===================================
+Remaining Unprotected Shared Data Structures
+=============================================
 
-The most dangerous category.  These are mutable globals accessed by
-all threads with no synchronization:
-
-- **Symbol tables** — interning a symbol mutates global hash table
-- **Hash tables** — concurrent insert/lookup can corrupt
-- **`add-method`** — modifying method dispatch tables while another
-  thread is doing method lookup
-- **Method cache** (`OP_TYPE_METH_CACHE`) — disabled under threads in
-  `config.h` to avoid this, at a performance cost
-- **Move-to-front optimization** (`OP_METH_ALIST_MTF`) — also disabled
+- **Hash tables** — concurrent insert/lookup can corrupt (general
+  hash tables beyond the symbol table are not yet protected)
 
 The TODO list in `multiproc-tests.oak:67` acknowledges: "race
-conditions (symbol tables, hash tables, add-method)".
+conditions (symbol tables, hash tables, add-method)".  Symbol tables
+and add-method are now protected; general hash tables remain.
 
 
 Performance Issues
 ==================
 
-- **Spin-lock mutexes**: `acquire-mutex` busy-waits with no sleep or
-  yield.  Wastes CPU under contention.
 - **Global allocator lock**: All heap allocation contends on single
   `alloc_lock` via `pthread_mutex_trylock()` spin-loop in
   `ALLOCATE_PROT` (data.h:366).
-- **Method cache disabled**: Significant performance penalty since
-  every method dispatch does full lookup.
 - **Stop-the-world GC**: All threads pause for every collection.
 
 
 Effort Estimate to Finish
 =========================
 
-Easy (days):
-- Fix configure.ac variable name ($threads -> $enable_threads)
-- Fix TEST-AND-SET-LOCATIVE race (move check inside lock)
-- Fix GC next_index race (snapshot + block creation during GC)
-- Fix pthread_create error cleanup
-- Wrap thread thunks to catch returns/exceptions
+Easy (days): **ALL DONE**
+- ~~Fix configure.ac variable name ($threads -> $enable_threads)~~
+- ~~Fix TEST-AND-SET-LOCATIVE race (move check inside lock)~~
+- ~~Fix GC next_index race (snapshot + block creation during GC)~~
+- ~~Fix pthread_create error cleanup~~
+- ~~Wrap thread thunks to catch returns/exceptions~~
 
-Medium (weeks):
-- Replace spin-locks with pthread_mutex + condition variables
-- Protect symbol tables and hash tables with reader-writer locks
-- Make add-method thread-safe
-- Re-enable method cache with per-thread or lock-protected caching
-- Unify C-level and Oaklisp-level process management
-- Complete fluid/dynamic binding support
+Medium (weeks): **ALL DONE**
+- ~~Replace spin-locks with yielding locks (opcode 72 + %thread-yield)~~
+- ~~Protect symbol table with mutex (guard variable pattern)~~
+- ~~Make add-method thread-safe (guard variable pattern)~~
+- ~~Re-enable method cache with atomic seqlock pattern~~
+- ~~Complete fluid/dynamic binding support (enable setup-initial-process-object)~~
+- ~~Unify C-level and Oaklisp-level process management (enabled via warm boot action)~~
 
 Hard (months):
 - Thread-local allocation buffers (TLABs) or concurrent allocator
 - Concurrent or incremental GC (replace stop-the-world)
 - Systematic audit of all mutable globals in the 22K-line runtime
+  (general hash tables, I/O buffers, global lists remain unprotected)
 - Thread-aware cold-boot sequence
 
 The architecture (per-thread VM state, stop-the-world GC rendezvous,
