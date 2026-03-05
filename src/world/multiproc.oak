@@ -152,10 +152,6 @@
 (define *pid-counter* 1) ;; the 0th process is not created with this counter
 (define *pid-counter-mutex* (make mutex))
 
-;;; Enable thread-safe symbol table and add-method now that mutex is available.
-(set! *symbol-table-mutex* (make mutex))
-(set! *add-method-mutex* (make mutex))
-
 (define (new-pid)
   (let ((newp nil))
     (acquire-mutex *pid-counter-mutex*)
@@ -173,6 +169,9 @@
 (define (setup-initial-process-object)
   (%store-process (make process))
   (set! %no-threading #f)
+  ;;; Enable thread-safe symbol table and add-method now that threading is active.
+  (set! *symbol-table-mutex* (make mutex))
+  (set! *add-method-mutex* (make mutex))
   (add-method (initialize (process pid process-fluid-binding-list) self)
     (set! pid (new-pid))
     (set! process-fluid-binding-list
@@ -180,7 +179,9 @@
     self)
   (spawn-heavyweight-threads))
 
-(add-warm-boot-action setup-initial-process-object)
+;;; Call (setup-initial-process-object) to enable threading.
+;;; Not added as a warm boot action by default because the mutexes and
+;;; process register are only needed when heavyweight threads are in use.
 
 
 ;;--------------------------------------------------
