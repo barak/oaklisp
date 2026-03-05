@@ -34,35 +34,6 @@
 
 int max_segment_size = 256;
 
-static ref_t
-stack_top(oakstack *stack_p)
-{
-  return *stack_p->sp;
-}
-
-static void
-stack_newtos(oakstack *stack_p, ref_t x)
-{
-  *stack_p->sp = x;
-}
-
-static ref_t
-stack_pop(oakstack *stack_p)
-{
-  if (stack_p->sp <= stack_p->bp) {
-    stack_unflush(stack_p, stack_p->filltarget);
-  }
-  return *stack_p->sp;
-}
-
-static void
-stack_push(oakstack *stack_p, ref_t x)
-{
-  if (stack_p->sp == stack_p->bp + stack_p->size)
-    stack_flush(stack_p, stack_p->filltarget);
-  *++stack_p->sp = x;
-}
-
 
 void
 stack_flush(oakstack * stack_p, int amount_to_leave)

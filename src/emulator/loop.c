@@ -55,14 +55,14 @@ int  trace_files = false;	/* trace file opening */
 int  batch_mode = false;	/* disable trapping of SIGINT */
 
 #ifndef FAST
-bool trace_insts = false;	/* trace instruction execution */
-bool trace_valcon = false;	/* trace stack contents */
-bool trace_cxtcon = false;	/* trace contents stack contents */
-bool trace_stks = false;	/* trace contents stack contents */
-bool trace_segs = false;	/* trace stack segment manipulation */
-bool trace_meth = false;	/* trace method lookup */
+bool_int trace_insts = false;	/* trace instruction execution */
+bool_int trace_valcon = false;	/* trace stack contents */
+bool_int trace_cxtcon = false;	/* trace contents stack contents */
+bool_int trace_stks = false;	/* trace contents stack contents */
+bool_int trace_segs = false;	/* trace stack segment manipulation */
+bool_int trace_meth = false;	/* trace method lookup */
 #ifdef OP_TYPE_METH_CACHE
-bool trace_mcache = false;	/* trace method cache hits and misses */
+bool_int trace_mcache = false;	/* trace method cache hits and misses */
 #endif
 #endif
 
@@ -86,10 +86,35 @@ maybe_put(bool v, char *s)
 #endif
 
 
+/* Advance PC by i logical instructions, skipping gaps in 64-bit mode.
+   On 32-bit, INSTR_STRIDE == INSTRS_PER_REF == 2 so this is a no-op. */
+#if INSTR_STRIDE == INSTRS_PER_REF
 #define INCREMENT_PC(pc,i) ((pc)+=(i))
+#else
+static inline instr_t* _advance_pc(instr_t* pc, int n) {
+  unsigned sub = ((uintptr_t)pc / sizeof(instr_t)) % INSTR_STRIDE;
+  int total = (int)sub + n;
+  int ref_delta = (total >= 0)
+    ? total / INSTRS_PER_REF
+    : -((INSTRS_PER_REF - 1 - total) / INSTRS_PER_REF);
+  int new_sub = total - ref_delta * INSTRS_PER_REF;
+  return pc + ref_delta * INSTR_STRIDE + new_sub - (int)sub;
+}
+#define INCREMENT_PC(pc,i) ((pc) = _advance_pc((pc), (i)))
+#endif
 
 
 #define NEW_STORAGE e_uninitialized
+
+#ifdef CHECK_STACK_BOUNDS
+static inline void _check_val_bounds(ref_t *sp, int offset, ref_t *bp, int line) {
+  if ((sp - offset) < bp) {
+    fprintf(stderr, "STACK BOUNDS VIOLATION: sp=%p offset=%d bp=%p (sp-offset=%p) at line %d\n",
+            (void*)sp, offset, (void*)bp, (void*)(sp-offset), line);
+    abort();
+  }
+}
+#endif
 
 static void
 maybe_dump_world(int dumpstackp)
@@ -510,7 +535,16 @@ loop(ref_t initial_tos)
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
-#ifdef HAVE_LONG_LONG
+#if __WORDSIZE == 64 && defined(HAVE___INT128)
+	      /* Multiply integer values, check if product fits in fixnum range. */
+	      {
+		__int128 a = (__int128)REF_TO_INT(x) * (__int128)REF_TO_INT(y);
+		long highcrap = (long)(a >> (__WORDSIZE - (TAGSIZE + 1)));
+		if ((highcrap != 0L) && (highcrap != -1L))
+		  TRAP1(2);
+		PEEKVAL() = INT_TO_REF((ssize_t)a);
+	      }
+#elif defined(HAVE_LONG_LONG)
 	      /* "long long" here means int64 */
 	      {
 		int64_t a = (int64_t)REF_TO_INT(x) * (int64_t)REF_TO_INT(y);
@@ -564,8 +598,8 @@ loop(ref_t initial_tos)
 	      GOTO_TOP;
 
 	    case 6:		/* LOAD-IMM ; INLINE-REF */
-	      /* align pc to next word boundary: */
-	      if ((unsigned long)local_e_pc & 0x2)
+	      /* align pc to next ref_t boundary: */
+	      if ((uintptr_t)local_e_pc & (sizeof(ref_t) - 1))
 		INCREMENT_PC(local_e_pc,1);
 
 	      /*NOSTRICT */
@@ -573,7 +607,7 @@ loop(ref_t initial_tos)
 	      PUSHVAL(x);
 
 	      /* skip pc over inline reference */
-	      INCREMENT_PC(local_e_pc, sizeof(ref_t) / sizeof(instr_t));
+	      INCREMENT_PC(local_e_pc, INSTRS_PER_REF);
 	      GOTO_TOP;
 
 	    case 7:		/* DIV */
@@ -704,6 +738,62 @@ loop(ref_t initial_tos)
 		p[CONS_PAIR_CAR_OFF] = x;
 		p[CONS_PAIR_CDR_OFF] = PEEKVAL();
 		p[0] = e_cons_type;
+#ifdef DEBUG_CDR
+		/* Detect cons with non-list CDR that might create improper list */
+		{ ref_t _cdr_val = PEEKVAL();
+		  if (TAG_IS(_cdr_val, PTR_TAG) && _cdr_val != e_nil
+		      && TAG_IS(x, INT_TAG)
+		      && REF_TO_PTR(_cdr_val)[0] != e_cons_type) {
+		    static int _cons_warn = 0;
+		    if (_cons_warn < 3) {
+		      fprintf(stderr, "DEBUG CONS improper: car=%#zx(fix=%zd) cdr=%#zx cdr_type=%#zx\n",
+			      (size_t)x, (size_t)REF_TO_INT(x), (size_t)_cdr_val,
+			      (size_t)REF_TO_PTR(_cdr_val)[0]);
+		      fprintf(stderr, "  method=%#zx code_seg=%#zx PC_byteoff=%zd\n",
+			      (size_t)e_current_method, (size_t)e_code_segment,
+			      (size_t)((unsigned long)local_e_pc - (unsigned long)e_code_segment));
+		      { ref_t *_csp = local_context_sp; int _f;
+		        fprintf(stderr, "  context (top 5):\n");
+		        for(_f=0; _f<5 && _csp >= context_stack_bp+2; _f++) {
+		          ref_t _meth = _csp[-1];
+		          fprintf(stderr, "    frame %d: method=%#zx", _f, (size_t)_meth);
+		          if (TAG_IS(_meth, PTR_TAG)) {
+		            ref_t _code = REF_SLOT(_meth, METHOD_CODE_OFF);
+		            if (TAG_IS(_code, PTR_TAG))
+		              fprintf(stderr, " code_len=%d", (int)REF_TO_INT(REF_TO_PTR(_code)[1]));
+		          }
+		          fprintf(stderr, " pc_byteoff=%zd\n", (size_t)REF_TO_INT(_csp[-2]));
+		          _csp -= 3;
+		        }
+		      }
+		      /* dump method code */
+		      { ref_t _code = REF_SLOT(e_current_method, METHOD_CODE_OFF);
+		        if (TAG_IS(_code, PTR_TAG)) {
+		          instr_t *_first = CODE_SEG_FIRST_INSTR(_code);
+		          ref_t *_cobj = REF_TO_PTR(_code);
+		          int _nrefs = (int)REF_TO_INT(_cobj[1]);
+		          int _code_refs = _nrefs - CODE_CODE_START_OFF;
+		          int _ninstr = _code_refs * INSTR_STRIDE;
+		          int _lim = _ninstr < 200 ? _ninstr : 200;
+		          int _i;
+		          fprintf(stderr, "  CONS-creator code (%d refs, %d code refs):\n", _nrefs, _code_refs);
+		          for(_i=0; _i<_lim; _i++) {
+		            if (_i % INSTR_STRIDE == 0) fprintf(stderr, "    ref[%2d]:", _i/INSTR_STRIDE);
+		            fprintf(stderr, " %04x", (unsigned)_first[_i]);
+		            if (_i % INSTR_STRIDE == INSTR_STRIDE-1) fprintf(stderr, "\n");
+		          }
+		        }
+		      }
+		      /* dump value stack */
+		      { int _i; fprintf(stderr, "  val stack at CONS (top 10):");
+		        for(_i=0; _i<10 && (local_value_sp-_i) >= value_stack_bp; _i++)
+		          fprintf(stderr, " %#zx", (size_t)local_value_sp[-_i]);
+		        fprintf(stderr, "\n"); }
+		      _cons_warn++;
+		    }
+		  }
+		}
+#endif
 		PEEKVAL() = PTR_TO_REF(p);
 
 		GOTO_TOP;
@@ -714,7 +804,7 @@ loop(ref_t initial_tos)
 	      CHECKTAG0(x, INT_TAG, 1);
 	      /* Tag trickery: */
 
-	      PEEKVAL() = BOOL_TO_REF((int32_t)x < 0);
+	      PEEKVAL() = BOOL_TO_REF((ssize_t)x < 0);
 	      GOTO_TOP;
 
 	    case 19:		/* MODULO */
@@ -851,6 +941,20 @@ loop(ref_t initial_tos)
 	    case 31:		/* SUBTRACT */
 	      POPVAL(x);
 	      y = PEEKVAL();
+#ifdef DEBUG_SUBTRACT
+	      if (((x|y) & TAG_MASK) != 0) {
+		fprintf(stderr, "DEBUG SUBTRACT trap: x=%#zx y=%#zx tags x=%zd y=%zd\n",
+			(size_t)x, (size_t)y, (size_t)(x & TAG_MASK), (size_t)(y & TAG_MASK));
+		fprintf(stderr, "  PC offset from code_seg: %zd\n",
+			(size_t)((unsigned long)local_e_pc - (unsigned long)e_code_segment));
+		fprintf(stderr, "  e_current_method: %#zx\n", (size_t)e_current_method);
+		/* Print a few more stack values */
+		if (local_value_sp > value_stack_bp + 2) {
+		  fprintf(stderr, "  stack[-2]: %#zx stack[-3]: %#zx stack[-4]: %#zx\n",
+			  (size_t)local_value_sp[-1], (size_t)local_value_sp[-2], (size_t)local_value_sp[-3]);
+		}
+	      }
+#endif
 	      CHECKTAGS_INT_1(x, y, 2);
 
 	      {
@@ -915,17 +1019,14 @@ loop(ref_t initial_tos)
 
 	    case 39:		/* LOAD-IMM-CON ; INLINE-REF */
 	      /* This is like a LOAD-IMM followed by a CONTENTS. */
-	      /* align pc to next word boundary: */
+	      /* align pc to next ref_t boundary: */
 
-	      /* Do it in ?two? instructions: */
-	      /* local_e_pc = (unsigned short*)(((unsigned long)local_e_pc + 3)&~3ul); */
-	      /* Do it in ?three? instructions including branch: */
-	      if ((unsigned long)local_e_pc & 0x2)
+	      if ((uintptr_t)local_e_pc & (sizeof(ref_t) - 1))
 		INCREMENT_PC(local_e_pc,1);
 
 	      /* NOSTRICT */
 	      x = *(ref_t *) local_e_pc;
-	      INCREMENT_PC(local_e_pc, 2);
+	      INCREMENT_PC(local_e_pc, INSTRS_PER_REF);
 
 	      /* This checktag looks buggy, since it's hard to back over
 	         the instruction normally ... need to expand this out */
@@ -936,10 +1037,83 @@ loop(ref_t initial_tos)
 
 	      /* Cons access instructions. */
 
+#ifdef DEBUG_CDR
+static int _cdr_debug_count = 0;
+#define CONSINSTR(a)						\
+		{ x = PEEKVAL();				\
+		  if (!TAG_IS(x, PTR_TAG) || REF_SLOT(x,0) != e_cons_type) { \
+		    if (_cdr_debug_count < 1) { \
+		    fprintf(stderr, "DEBUG CONSINSTR trap #%d: x=%#zx tag=%zd instr=%d nargs=%d\n", \
+			    _cdr_debug_count, (size_t)x, (size_t)(x & TAG_MASK), arg_field, e_nargs); \
+		    fprintf(stderr, "  code_seg=%#zx PC byte offset=%zd method=%#zx\n", \
+			    (size_t)e_code_segment, \
+			    (size_t)((unsigned long)local_e_pc - (unsigned long)e_code_segment), \
+			    (size_t)e_current_method); \
+		    if (TAG_IS(x, PTR_TAG)) { \
+		      fprintf(stderr, "  slot[0]=%#zx slot[1]=%#zx (cons_type=%#zx)\n", \
+			      (size_t)REF_SLOT(x,0), (size_t)REF_SLOT(x,1), (size_t)e_cons_type); \
+		    } \
+		    { int _i; fprintf(stderr, "  val stack (top 20):"); \
+		      for(_i=0; _i<20 && (local_value_sp-_i) >= value_stack_bp; _i++) \
+		        fprintf(stderr, " %#zx", (size_t)local_value_sp[-_i]); \
+		      fprintf(stderr, "\n"); } \
+		    /* Walk up CDR chain from caller frames to find where the list becomes improper */ \
+		    { int _d; fprintf(stderr, "  CDR chain walk from caller frames:\n"); \
+		      for (_d=4; _d<20 && (local_value_sp-_d) >= value_stack_bp; _d+=2) { \
+		        ref_t _lst = local_value_sp[-_d]; \
+		        fprintf(stderr, "    depth %d: ref=%#zx tag=%zd", _d, (size_t)_lst, (size_t)(_lst & TAG_MASK)); \
+		        if (TAG_IS(_lst, PTR_TAG)) { \
+		          ref_t *_p = REF_TO_PTR(_lst); \
+		          fprintf(stderr, " type=%#zx car=%#zx cdr=%#zx", (size_t)_p[0], (size_t)_p[CONS_PAIR_CAR_OFF], (size_t)_p[CONS_PAIR_CDR_OFF]); \
+		          if (_p[0] == e_cons_type) fprintf(stderr, " [CONS]"); \
+		          else fprintf(stderr, " [NOT-CONS type_tag=%zd]", (size_t)(_p[0] & TAG_MASK)); \
+		        } \
+		        fprintf(stderr, "\n"); \
+		      } } \
+		    { instr_t *_first = CODE_SEG_FIRST_INSTR(e_code_segment); \
+		      ref_t *_obj = REF_TO_PTR(e_code_segment); \
+		      int _nrefs = (int)REF_TO_INT(_obj[1]); \
+		      int _code_refs = _nrefs - CODE_CODE_START_OFF; \
+		      int _ninstr = _code_refs * INSTR_STRIDE; \
+		      fprintf(stderr, "  code_vec: %d total refs, %d code refs, first_instr=%p\n", \
+			      _nrefs, _code_refs, (void*)_first); \
+		      fprintf(stderr, "  PC at instr_t offset %td from first_instr\n", \
+			      local_e_pc - _first); \
+		      { int _i, _lim = _ninstr < 100 ? _ninstr : 100; \
+		        fprintf(stderr, "  instructions (from first_instr):"); \
+		        for(_i=0; _i<_lim; _i++) { \
+		          if (_i % INSTR_STRIDE == 0) fprintf(stderr, "\n    ref[%2d]:", _i/INSTR_STRIDE); \
+		          fprintf(stderr, " %04x", (unsigned)_first[_i]); \
+		        } \
+		        fprintf(stderr, "\n"); } } \
+		    { ref_t *_csp = local_context_sp; int _f; \
+		      fprintf(stderr, "  context stack (call chain, innermost first):\n"); \
+		      for(_f=0; _f<200 && _csp >= context_stack_bp+2; _f++) { \
+		        ref_t _meth = _csp[-1]; \
+		        ref_t _pcoff = _csp[-2]; \
+		        fprintf(stderr, "    frame %d: method=%#zx pc_byteoff=%zd", \
+		                _f, (size_t)_meth, (size_t)REF_TO_INT(_pcoff)); \
+		        if (TAG_IS(_meth, PTR_TAG)) { \
+		          ref_t _code = REF_SLOT(_meth, METHOD_CODE_OFF); \
+		          if (TAG_IS(_code, PTR_TAG)) { \
+		            ref_t *_cobj = REF_TO_PTR(_code); \
+		            int _clen = (int)REF_TO_INT(_cobj[1]); \
+		            fprintf(stderr, " code_len=%d", _clen); \
+		          } \
+		        } \
+		        fprintf(stderr, "\n"); \
+		        _csp -= 3; \
+		      } } \
+		    _cdr_debug_count++; } \
+		    CHECKTAG0(x, PTR_TAG, a);			\
+		    TRAP0(a);					\
+		  } }
+#else
 #define CONSINSTR(a)						\
 		{ x = PEEKVAL();				\
 		  CHECKTAG0(x, PTR_TAG, a);			\
 		  if (REF_SLOT(x,0) != e_cons_type) { TRAP0(a); } }
+#endif
 
 	    case 40:		/* CAR */
 	      CONSINSTR(1);
@@ -1393,7 +1567,7 @@ loop(ref_t initial_tos)
 	      /* Tag trickery and opcode knowledge changes this
 	         PUSHVAL_IMM(INT_TO_REF(signed_arg_field));
 	         to this: */
-	      PUSHVAL_IMM((ref_t) (((int16_t) instr) >> 6));
+	      PUSHVAL_IMM((ref_t) ((ssize_t)((int16_t) instr) >> 6));
 	      GOTO_TOP;
 
 	    case 11:		/* STORE-STK n */
