@@ -1499,6 +1499,57 @@ static int _cdr_debug_count = 0;
 	      }
 	      GOTO_TOP;
 
+	    case 74:		/* LOAD-WORLD */
+	      POPVAL(x);	/* locative to string data */
+	      y = PEEKVAL();	/* string length */
+	      {
+		char *s = oak_c_string((ref_t *) LOC_TO_PTR(x),
+				       REF_TO_INT(y));
+
+		/* Free old heap spaces */
+		free_space(&spatic);
+		free_space(&new_space);
+
+		/* Load the new world (allocates new spatic) */
+		read_world(s);
+		free(s);
+
+		/* Allocate new working space */
+		new_space.size = e_next_newspace_size
+		  = original_newspace_size;
+		alloc_space(&new_space, new_space.size);
+		free_point = new_space.start;
+
+		/* Reset stacks (discard all flushed segments) */
+		value_stack.sp = value_stack.bp;
+		*value_stack.bp = INT_TO_REF(1234);
+		value_stack.segment = 0;
+		value_stack.pushed_count = 0;
+
+		context_stack.sp = context_stack.bp;
+		*context_stack.bp = INT_TO_REF(1234);
+		context_stack.segment = 0;
+		context_stack.pushed_count = 0;
+
+		/* Set boot registers from new world */
+		e_current_method = e_boot_code;
+		e_env = REF_TO_PTR(REF_SLOT(e_current_method,
+					     METHOD_ENV_OFF));
+		e_code_segment = REF_SLOT(e_current_method,
+					  METHOD_CODE_OFF);
+		e_pc = CODE_SEG_FIRST_INSTR(e_code_segment);
+		e_bp = e_env;
+		e_nargs = 0;
+
+		/* Reinitialize local register copies */
+		LOCALIZE_ALL();
+
+		/* Push initial values as in loop() entry */
+		PUSHVAL_IMM(INT_TO_REF(4321));
+		PUSHVAL_IMM(INT_TO_REF(54321));
+	      }
+	      GOTO_TOP;
+
 #ifndef FAST
 	    default:
 	      printf("\nError (vm interpreter): "
