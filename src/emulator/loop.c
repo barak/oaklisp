@@ -1481,6 +1481,24 @@ static int _cdr_debug_count = 0;
 	      PUSHVAL(e_nil);
 	      GOTO_TOP;
 
+	    case 73:		/* DUMP-WORLD */
+	      POPVAL(x);	/* locative to string data */
+	      y = PEEKVAL();	/* string length */
+	      {
+		char *s = oak_c_string((ref_t *) LOC_TO_PTR(x),
+				       REF_TO_INT(y));
+		char *old_dump_file_name = dump_file_name;
+		dump_file_name = s;
+		UNLOCALIZE_ALL();
+		gc(false, false, "impending world dump", 0);
+		dump_world(false);
+		LOCALIZE_ALL();
+		dump_file_name = old_dump_file_name;
+		free(s);
+		PEEKVAL() = e_t;
+	      }
+	      GOTO_TOP;
+
 #ifndef FAST
 	    default:
 	      printf("\nError (vm interpreter): "
