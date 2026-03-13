@@ -15,28 +15,13 @@
 ;;; Boston, MA 02111-1307, USA
 
 
-;;; Copyright (C) 1989 Kevin J. Lang & Barak A. Pearlmutter
-
-(define-constant %gc
-  (add-method ((make-open-coded-operation '((gc)) 0 1)
-	       (object))
-    (%gc)))
-
-(define-constant %full-gc
-  (add-method ((make-open-coded-operation '((full-gc)) 0 1)
-	       (object))
-    (%full-gc)))
-
 ;;; Dump the current world image to a file without exiting.
-;;; Takes a string locative and length at the VM level.
+;;; The low-level primitive %dump-world is defined in gc.oak.
 
-(define-constant %dump-world
-  (add-method ((make-open-coded-operation '((dump-world)) 2 1)
-	       (object) str-loc len)
-    (%dump-world str-loc len)))
+;;; User-facing operation: (dump-world "filename.bin")
+(define-instance dump-world operation)
 
-;;; Maybe there should be an interface to the next-newspace-size register
-;;; here.  And maybe RECLAIM_FRACTION should be a register with an interface
-;;; here instead of a C compile-time constant.
+(add-method (dump-world (string) self)
+  (%dump-world (make-locative (%vref self 0)) (length self)))
 
 ;;; eof
