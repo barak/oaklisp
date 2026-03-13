@@ -522,6 +522,7 @@
 (define-opcode test-and-set-locative	(0 71) in3 out1 ns)
 (define-opcode thread-yield		(0 72) in0 out1 ns)
 (define-opcode dump-world		(0 73) in2 out1 ns)
+(define-opcode load-world		(0 74) in2 out0 ns)
 
 
 

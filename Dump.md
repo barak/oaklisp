@@ -1,8 +1,9 @@
-# Live World Dump
+# Live World Dump and Load
 
 Oaklisp supports dumping the current world image to a file while the
-system continues running.  This is in addition to the existing
-`--dump` command-line option, which dumps the world only upon exit.
+system continues running, and loading a world image at runtime to
+replace the current one.  These are in addition to the existing
+`--dump` and `--world` command-line options.
 
 ## Usage
 
@@ -56,9 +57,52 @@ Takes a locative to string data and a fixnum length.  This is the
 open-coded VM instruction used internally by `dump-world`.  Most users
 should call `dump-world` instead.
 
+---
+
+## Loading a World at Runtime
+
+### `(load-world filename)` — operation on `string`
+
+Loads the world image from *filename*, completely replacing the
+current world in memory.  **This call never returns.**  The VM
+restarts with the loaded world's boot code, which re-processes the
+original command-line arguments.
+
+```scheme
+(load-world "snapshot.bin")
+;; execution never reaches here
+```
+
+This is equivalent to restarting Oaklisp with `--world snapshot.bin`,
+except it happens within the running process and reuses the same
+command-line arguments.
+
+### `(%load-world locative length)` — low-level primitive
+
+Takes a locative to string data and a fixnum length.  This is the
+open-coded VM instruction used internally by `load-world`.  Most users
+should call `load-world` instead.
+
+### Example: checkpoint and restore
+
+```scheme
+;; Build up some state and checkpoint it
+(define counter 0)
+(set! counter 100)
+(dump-world "checkpoint.bin")
+
+;; Later, in another session or after further changes:
+(load-world "checkpoint.bin")
+;; VM restarts with counter = 100
+```
+
+---
+
 ## Implementation
 
-The feature spans three layers:
+### dump-world
+
+Three layers:
 
 1. **VM instruction 73 (DUMP-WORLD)** in `src/emulator/loop.c` —
    extracts the filename, runs a GC, dumps the world via the existing
@@ -71,11 +115,31 @@ The feature spans three layers:
    user-facing `dump-world` wrapper in `src/world/dump-world.oak`
    (loaded into the standard world via MISCFILES).
 
+### load-world
+
+Three layers:
+
+1. **VM instruction 74 (LOAD-WORLD)** in `src/emulator/loop.c` —
+   extracts the filename, frees old heap spaces, calls `read_world()`
+   to load the new world, allocates fresh working space, resets the
+   stacks, sets boot registers, and restarts the interpreter loop.
+
+2. **Opcode definition** in `src/world/assembler.oak` —
+   `(define-opcode load-world (0 74) in2 out0 ns)`.
+
+3. **Oaklisp bindings** — `%load-world` primitive in `src/world/gc.oak`,
+   user-facing `load-world` wrapper in `src/world/dump-world.oak`
+   (loaded into the standard world via MISCFILES).
+
 ## Notes
 
 - A GC warning about a locative having its raw cell moved may appear
-  during the dump.  This is harmless.
+  during a dump.  This is harmless.
 - The dump format is the same binary format used by `--dump`, so
-  dumped worlds are loaded with `--world` as usual.
+  dumped worlds are loaded with `--world` or `load-world` as usual.
 - The dumped world includes all state present at dump time, including
   any loaded files and defined variables.
+- After `load-world`, the loaded world re-processes the original
+  command-line arguments.  If those arguments include a call to
+  `load-world`, the result is an infinite loop — use `load-world`
+  from the REPL or guard it with a condition.
