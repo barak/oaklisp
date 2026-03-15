@@ -174,40 +174,6 @@ Fix: Added `(< self 1000000000)` guard for `d9`, with fallback `(^super integer 
 
 ---
 
-## Bugs Discovered and Fixed (in order)
-
-### 1. Segfault on Cold World Boot
-
-**Symptom**: 64-bit emulator segfaults immediately when loading cold world.
-
-**Root cause**: `worldio.c:contig()` used `<< TAGSIZE` (shift by 2) to convert word indices to byte offsets. On 64-bit, needs `<< REF_SHIFT` (shift by 3) because each ref is 8 bytes. Same issue in `tool.oak:tagize-ptr/tagize-loc`.
-
-### 2. Infinite Loop Loading bignum.oa
-
-**Symptom**: 64-bit oakworld-1 hangs with exponential heap growth (0% GC utilization) when loading bignum.oa.
-
-**Root cause**: `bignum.oak` hardcoded `most-negative-fixnum` as `(ash-left 1 29)`. On 64-bit, this produces +536870912 instead of -536870912, making `most-positive-fixnum` = -536870913 (negative!). `normalize-digitlist` enters infinite loop because `quotientm(-1, base)` returns -1, carry never reaches 0.
-
-### 3. Garbled Printing of Large Fixnums
-
-**Symptom**: Numbers like `(* 123456789 987654321)` print as garbage characters.
-
-**Root cause**: `print-integer.oak` fixnum optimization handles only up to 9 digits. The `else` clause for >= 10^9 called `(d9 self)` which passed a multi-digit quotient to `digit->char`, producing non-printable characters.
-
-### 4. Multiplication Overflow Not Detected
-
-**Symptom**: `(expt 2 100)` returns 0, `(fact 20)` returns wrong value.
-
-**Root cause**: Initial `__int128` implementation used `int` (32-bit) variable `highcrap` to hold the overflow check bits, truncating them. Second attempt tried multiplying tagged refs directly and checking top 3 bits of 128-bit product, but overflow bits are at position ~65, not ~125.
-
-**Final fix**: Multiply `REF_TO_INT` values via `__int128`, store overflow check in `long` (64-bit):
-```c
-long highcrap = (long)(a >> (__WORDSIZE - (TAGSIZE + 1)));
-```
-This right-shifts by 61, leaving the sign bits that indicate overflow.
-
----
-
 ## Bootstrap Process
 
 ### Normal build (self-hosting, 64-bit host)
@@ -262,7 +228,7 @@ Use `./configure --disable-64-bit` to force 32-bit mode (requires gcc-multilib).
 
 Create `config.h` in project root:
 ```c
-#define PACKAGE_STRING "oaklisp 1.3.7"
+#define PACKAGE_STRING "oaklisp 2.1.0"
 #define HAVE_CONFIG_H 1
 #define HAVE___INT128 1
 #define SIZEOF_VOID_P 8
@@ -328,4 +294,4 @@ On 64-bit, `--size-heap N` means N × 1024 refs × 8 bytes. The default (128K re
 
 6. **`(ash-left 1 N)` wraps silently on 32-bit.** `(ash-left 1 32)` returns 1 (not 4294967296) on 32-bit Oaklisp. Don't use large shifts for architecture detection; compare `most-positive-fixnum` against a known 30-bit fixnum value instead.
 
-7. **Compiler CDR error on 64-bit.** The 64-bit world's compiler currently can't compile `tool.oak` (CDR dispatch error). Use the 32-bit world to compile `.oa` files — they're portable.
+7. **Cross-compiling tool.oak.** If the 64-bit compiler has trouble with `tool.oak`, use the 32-bit world to compile `.oa` files — they're portable.

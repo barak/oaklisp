@@ -49,7 +49,7 @@ extern void gc(bool pre_dump, bool full_gc, char *reason,
 #ifdef THREADS
 extern int gc_ready[];
 extern bool gc_pending;
-extern pthread_mutex_t gc_lock;
+extern oak_mutex_t gc_lock;
 #endif
 
 extern void set_gc_flag (bool flag);

@@ -177,10 +177,11 @@ in.)
 
 The memory format does not support uninterpreted "blobs".
 
-Porting the system to 64-bit machines has not been done, and would be
-quite difficult.
-
-POSIX threads in the emulator never got quite finished.
+Thread support is available via the \fB--enable-threads\fP configure
+option.  When enabled, thread infrastructure (mutexes, process
+register, per-process fluid bindings) is automatically initialized
+at warm boot.  Use \fB--pthreads N\fP to spawn additional native
+threads.
 
 Bug reports and enhancements can be filed on the
 .URL https://github.com/barak/oaklisp "github issue tracker" .

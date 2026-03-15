@@ -31,11 +31,9 @@
 #endif
 #include <assert.h>
 #include <setjmp.h>
-#ifdef THREADS
-#include <sched.h>
-#endif
 
 #include "config.h"
+#include "oak-atomic.h"
 #include "data.h"
 #include "stacks.h"
 #include "stacks-loop.h"
@@ -47,6 +45,9 @@
 #include "loop.h"
 #include "cmdline.h"
 #include "xmalloc.h"
+#ifdef USE_MARK_SWEEP
+#include "gc-ms.h"
+#endif
 
 #ifndef FAST
 #include "instr.h"
@@ -74,6 +75,9 @@ bool_int trace_mcache = false;	/* trace method cache hits and misses */
 
 bool gc_before_dump = true;	/* do a GC before dumping the world */
 
+#ifdef THREADS
+oak_mutex_t dump_lock = OAK_MUTEX_INITIALIZER;
+#endif
 
 #ifdef FAST
 #define maybe_put(x,s)
@@ -126,7 +130,7 @@ maybe_dump_world(int dumpstackp)
 #ifdef THREADS
   int *my_index_p;
   int  my_index;
-  my_index_p = pthread_getspecific (index_key);
+  my_index_p = oak_tls_get(index_key);
   my_index = *(my_index_p);
 #endif
   if (dumpstackp > 2)
@@ -329,8 +333,8 @@ void
 loop(ref_t initial_tos)
 {
   instr_t instr;
-  u_int8_t op_field;
-  u_int8_t arg_field;
+  uint8_t op_field;
+  uint8_t arg_field;
 
   /* trap_nargs is used by instructions when they trap, to tell the
      trap code about a property of the instruction.  (It might be
@@ -338,7 +342,7 @@ loop(ref_t initial_tos)
   unsigned trap_nargs;
 
 #ifdef THREADS
-  int* my_index_p = pthread_getspecific (index_key);
+  int* my_index_p = oak_tls_get(index_key);
   int  my_index = *(my_index_p);
 #endif
 
@@ -437,8 +441,8 @@ loop(ref_t initial_tos)
   }
 
   /* Set up crash recovery point.  If a fatal signal (SIGSEGV, SIGBUS,
-     SIGFPE) fires, siglongjmp returns here with a non-zero value. */
-  if (sigsetjmp(crash_jmpbuf, 1) != 0) {
+     SIGFPE) fires, oak_longjmp returns here with a non-zero value. */
+  if (oak_setjmp(crash_jmpbuf) != 0) {
     /* Returned from a fatal signal -- recover to Oaklisp debugger. */
     reinstall_crash_handler();
     LOCALIZE_ALL();
@@ -455,6 +459,7 @@ loop(ref_t initial_tos)
  top_of_loop:
   while (1)			/* forever */
     {
+      crash_count = 0;  /* Reset consecutive crash counter on normal execution */
 #ifndef FAST
       if (trace_valcon) DUMP_VALUE_STACK();
       if (trace_cxtcon) DUMP_CONTEXT_STACK();
@@ -742,6 +747,7 @@ loop(ref_t initial_tos)
 	    case 15:		/* SET-CONTENTS */
 	      POPVAL(x);
 	      CHECKTAG1(x, LOC_TAG, 2);
+	      SATB_BARRIER(LOC_TO_PTR(x));
 	      *LOC_TO_PTR(x) = PEEKVAL();
 	      GOTO_TOP;
 
@@ -891,6 +897,7 @@ loop(ref_t initial_tos)
 	    case 22:		/* STORE-BP-I */
 	      POPVAL(x);
 	      CHECKTAG1(x, INT_TAG, 2);
+	      SATB_BARRIER(e_bp + REF_TO_INT(x));
 	      *(e_bp + REF_TO_INT(x)) = PEEKVAL();
 	      GOTO_TOP;
 
@@ -907,20 +914,25 @@ loop(ref_t initial_tos)
 	    case 25:		/* ALLOCATE */
 	      {
 		ref_t *p;
+		size_t alloc_len;
 
 		POPVAL(x);
 		y = PEEKVAL();
 		CHECKTAG1(y, INT_TAG, 2);
+		alloc_len = (size_t)REF_TO_INT(y);
 
-		ALLOCATE1(p, REF_TO_INT(y),
+		ALLOCATE1(p, alloc_len,
 			  "space crunch in ALLOCATE instruction", x);
 
 		*p = x;
 
 		PEEKVAL() = PTR_TO_REF(p);
 
-		while (++p < free_point)
-		  *p = NEW_STORAGE;
+		{ ref_t *fill = p + 1;
+		  ref_t *end = p + alloc_len;
+		  while (fill < end)
+		    *fill++ = NEW_STORAGE;
+		}
 		GOTO_TOP;
 	      }
 
@@ -940,12 +952,12 @@ loop(ref_t initial_tos)
 	      GOTO_TOP;
 
 	    case 28:		/* PEEK */
-	      PEEKVAL() = INT_TO_REF(*(u_int16_t *) PEEKVAL());
+	      PEEKVAL() = INT_TO_REF(*(uint16_t *) PEEKVAL());
 	      GOTO_TOP;
 
 	    case 29:		/* POKE */
 	      POPVAL(x);
-	      *(u_int16_t *) x = (u_int16_t) REF_TO_INT(PEEKVAL());
+	      *(uint16_t *) x = (uint16_t) REF_TO_INT(PEEKVAL());
 	      GOTO_TOP;
 
 	    case 30:		/* MAKE-CELL */
@@ -1149,12 +1161,14 @@ static int _cdr_debug_count = 0;
 	    case 42:		/* SET-CAR */
 	      CONSINSTR(2);
 	      POPVALS(1);
+	      SATB_BARRIER(pcar(x));
 	      *pcar(x) = PEEKVAL();
 	      GOTO_TOP;
 
 	    case 43:		/* SET-CDR */
 	      CONSINSTR(2);
 	      POPVALS(1);
+	      SATB_BARRIER(pcdr(x));
 	      *pcdr(x) = PEEKVAL();
 	      GOTO_TOP;
 
@@ -1220,18 +1234,21 @@ static int _cdr_debug_count = 0;
 	      CHECKTAG1(y, INT_TAG, 2);
 	      {
 		ref_t *p;
+		size_t alloc_len = (size_t)REF_TO_INT(y);
 
-		ALLOCATE1(p, REF_TO_INT(y),
+		ALLOCATE1(p, alloc_len,
 			  "space crunch in VARLEN-ALLOCATE instruction", x);
 
 		PEEKVAL() = PTR_TO_REF(p);
 
 		p[0] = x;
 		p[1] = y;
-		p += 2;
 
-		while (p < free_point)
-		  *p++ = NEW_STORAGE;
+		{ ref_t *fill = p + 2;
+		  ref_t *end = p + alloc_len;
+		  while (fill < end)
+		    *fill++ = NEW_STORAGE;
+		}
 	      }
 	      GOTO_TOP;
 
@@ -1261,10 +1278,12 @@ static int _cdr_debug_count = 0;
 #endif
 	      x = PEEKVAL();
 	      /* CHECKTAG0(x,PTR_TAG,1); */
+	      SATB_BARRIER(&REF_SLOT(x, CONTINUATION_VAL_SEGS));
 	      REF_SLOT(x, CONTINUATION_VAL_SEGS)
 		= value_stack.segment;
 	      REF_SLOT(x, CONTINUATION_VAL_OFF)
 		= INT_TO_REF(value_stack.pushed_count);
+	      SATB_BARRIER(&REF_SLOT(x, CONTINUATION_CXT_SEGS));
 	      REF_SLOT(x, CONTINUATION_CXT_SEGS)
 		= context_stack.segment;
 	      REF_SLOT(x, CONTINUATION_CXT_OFF)
@@ -1447,7 +1466,7 @@ static int _cdr_debug_count = 0;
 	      CHECKTAG1(x, LOC_TAG, 2);
 	      POPVAL(y);
 #ifdef THREADS
-	      if (pthread_mutex_trylock(&test_and_set_locative_lock) != 0) {
+	      if (oak_mutex_trylock(&test_and_set_locative_lock) != 0) {
 		PEEKVAL() = e_false;	/* Failed to acquire lock. */
 		GOTO_TOP;
 	      }
@@ -1457,10 +1476,11 @@ static int _cdr_debug_count = 0;
 		PEEKVAL() = e_false;
 	      } else {
 		// succeed
+		SATB_BARRIER(LOC_TO_PTR(x));
 		*LOC_TO_PTR(x) = PEEKVAL();
 		PEEKVAL() = e_t;
 	      }
-	      pthread_mutex_unlock(&test_and_set_locative_lock);
+	      oak_mutex_unlock(&test_and_set_locative_lock);
 	      /* End Critical Section. */
 	      GOTO_TOP;
 #else
@@ -1468,6 +1488,7 @@ static int _cdr_debug_count = 0;
 		PEEKVAL() = e_false;
 		GOTO_TOP;
 	      }
+	      SATB_BARRIER(LOC_TO_PTR(x));
 	      *LOC_TO_PTR(x) = PEEKVAL();
 	      PEEKVAL() = e_t;
 	      GOTO_TOP;
@@ -1476,7 +1497,7 @@ static int _cdr_debug_count = 0;
 
 	    case 72:		/* THREAD-YIELD */
 #ifdef THREADS
-	      sched_yield();
+	      oak_thread_yield();
 #endif
 	      PUSHVAL(e_nil);
 	      GOTO_TOP;
@@ -1484,6 +1505,7 @@ static int _cdr_debug_count = 0;
 	    case 73:		/* DUMP-WORLD */
 	      POPVAL(x);	/* locative to string data */
 	      y = PEEKVAL();	/* string length */
+	      THREADY(oak_mutex_lock(&dump_lock));
 	      {
 		char *s = oak_c_string((ref_t *) LOC_TO_PTR(x),
 				       REF_TO_INT(y));
@@ -1497,11 +1519,13 @@ static int _cdr_debug_count = 0;
 		free(s);
 		PEEKVAL() = e_t;
 	      }
+	      THREADY(oak_mutex_unlock(&dump_lock));
 	      GOTO_TOP;
 
 	    case 74:		/* LOAD-WORLD */
 	      POPVAL(x);	/* locative to string data */
 	      y = PEEKVAL();	/* string length */
+	      THREADY(oak_mutex_lock(&dump_lock));
 	      {
 		char *s = oak_c_string((ref_t *) LOC_TO_PTR(x),
 				       REF_TO_INT(y));
@@ -1519,6 +1543,10 @@ static int _cdr_debug_count = 0;
 		  = original_newspace_size;
 		alloc_space(&new_space, new_space.size);
 		free_point = new_space.start;
+
+#ifdef USE_MARK_SWEEP
+		ms_reinit();
+#endif
 
 		/* Reset stacks (discard all flushed segments) */
 		value_stack.sp = value_stack.bp;
@@ -1548,6 +1576,7 @@ static int _cdr_debug_count = 0;
 		PUSHVAL_IMM(INT_TO_REF(4321));
 		PUSHVAL_IMM(INT_TO_REF(54321));
 	      }
+	      THREADY(oak_mutex_unlock(&dump_lock));
 	      GOTO_TOP;
 
 #ifndef FAST
@@ -1682,6 +1711,7 @@ static int _cdr_debug_count = 0;
 	      GOTO_TOP;
 
 	    case 13:		/* STORE-BP n */
+	      SATB_BARRIER(e_bp + arg_field);
 	      *(e_bp + arg_field) = PEEKVAL();
 	      GOTO_TOP;
 
@@ -1691,6 +1721,7 @@ static int _cdr_debug_count = 0;
 	      GOTO_TOP;
 
 	    case 15:		/* STORE-ENV n */
+	      SATB_BARRIER(e_env + arg_field);
 	      *(e_env + arg_field) = PEEKVAL();
 	      GOTO_TOP;
 
@@ -1771,11 +1802,15 @@ static int _cdr_debug_count = 0;
 		  GOTO_TOP;
 		case 14:
 		  CHECKTAG1(x, LOC_TAG, 1);
+		  THREADY(oak_mutex_lock(&alloc_lock));
 		  free_point = LOC_TO_PTR(x);
+		  THREADY(oak_mutex_unlock(&alloc_lock));
 		  GOTO_TOP;
 		case 15:
 		  CHECKTAG1(x, LOC_TAG, 1);
+		  THREADY(oak_mutex_lock(&alloc_lock));
 		  new_space.end = LOC_TO_PTR(x);
+		  THREADY(oak_mutex_unlock(&alloc_lock));
 		  GOTO_TOP;
 		case 16:
 		  e_segment_type = x;
@@ -1883,6 +1918,13 @@ static int _cdr_debug_count = 0;
 		case 22:
 		  PUSHVAL(e_process);
 		  GOTO_TOP;
+		case 23:	/* THREADS-ENABLED? */
+#ifdef THREADS
+		  PUSHVAL(e_t);
+#else
+		  PUSHVAL(e_nil);
+#endif
+		  GOTO_TOP;
 		default:
 		  fprintf(stderr, "Error (vm interpreter): "
 			  "LOAD-REG %d, unknown .\n", arg_field);
@@ -1930,17 +1972,15 @@ static int _cdr_debug_count = 0;
 		  /* Atomic read: type first (acquire), then method/offset,
 		     then re-verify type hasn't changed (seqlock pattern). */
 		  {
-		    ref_t cached_type = __atomic_load_n(
-		      &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF),
-		      __ATOMIC_ACQUIRE);
+		    ref_t cached_type = OAK_ATOMIC_LOAD_REF(
+		      &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF));
 		    if (y_type == cached_type)
 		      {
 			ref_t cached_meth = REF_SLOT(x, OPERATION_CACHE_METH_OFF);
 			ref_t cached_off = REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF);
 			/* Re-verify type to ensure consistent read. */
-			if (y_type == __atomic_load_n(
-			      &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF),
-			      __ATOMIC_ACQUIRE))
+			if (y_type == OAK_ATOMIC_LOAD_REF(
+			      &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF)))
 			  {
 			    maybe_put(trace_mcache, "H");
 			    e_current_method = cached_meth;
@@ -1994,13 +2034,17 @@ static int _cdr_debug_count = 0;
 		         Write method and offset first, then type last
 		         (type acts as commit flag for readers). */
 #ifdef THREADS
+		      SATB_BARRIER(&REF_SLOT(x, OPERATION_CACHE_METH_OFF));
 		      REF_SLOT(x, OPERATION_CACHE_METH_OFF) = e_current_method;
 		      REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF) = offset;
-		      __atomic_store_n(
+		      SATB_BARRIER(&REF_SLOT(x, OPERATION_CACHE_TYPE_OFF));
+		      OAK_ATOMIC_STORE_REF(
 			&REF_SLOT(x, OPERATION_CACHE_TYPE_OFF),
-			y_type, __ATOMIC_RELEASE);
+			y_type);
 #else
+		      SATB_BARRIER(&REF_SLOT(x, OPERATION_CACHE_TYPE_OFF));
 		      REF_SLOT(x, OPERATION_CACHE_TYPE_OFF) = y_type;
+		      SATB_BARRIER(&REF_SLOT(x, OPERATION_CACHE_METH_OFF));
 		      REF_SLOT(x, OPERATION_CACHE_METH_OFF) = e_current_method;
 		      REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF) = offset;
 #endif
@@ -2062,6 +2106,7 @@ static int _cdr_debug_count = 0;
 	    case 26:		/* STORE-SLOT n */
 	      POPVAL(x);
 	      CHECKTAG1(x, PTR_TAG, 2);
+	      SATB_BARRIER(&REF_SLOT(x, arg_field));
 	      REF_SLOT(x, arg_field) = PEEKVAL();
 	      GOTO_TOP;
 

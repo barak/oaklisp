@@ -166,22 +166,41 @@
 ;;; redefine fluid operations ater the first...
 ;;; --------------------------------------------------
 
+(define %threads-initialized #f)
+
+(define (init-thread-infrastructure)
+  ;;; Initialize mutexes, process register, and per-process fluid bindings.
+  ;;; Safe to call multiple times; only runs once.
+  (unless %threads-initialized
+    (%store-process (make process))
+    (set! %no-threading #f)
+    (set! *symbol-table-mutex* (make mutex))
+    (set! *add-method-mutex* (make mutex))
+    (set! *expression-table-mutex* (make mutex))
+    (set! *stream-primitive-mutex* (make mutex))
+    (set! *locale-mutex* (make mutex))
+    (set! *fluid-table-mutex* (make mutex))
+    (add-method (initialize (process pid process-fluid-binding-list) self)
+      (set! pid (new-pid))
+      (set! process-fluid-binding-list
+	    (copy-fluid-bindings (current-process)))
+      self)
+    (set! %threads-initialized #t)))
+
 (define (setup-initial-process-object)
-  (%store-process (make process))
-  (set! %no-threading #f)
-  ;;; Enable thread-safe symbol table and add-method now that threading is active.
-  (set! *symbol-table-mutex* (make mutex))
-  (set! *add-method-mutex* (make mutex))
-  (add-method (initialize (process pid process-fluid-binding-list) self)
-    (set! pid (new-pid))
-    (set! process-fluid-binding-list
-	  (copy-fluid-bindings (current-process)))
-    self)
+  ;;; Initialize thread infrastructure (if not already done) and spawn
+  ;;; any extra heavyweight threads requested via --pthreads.
+  (init-thread-infrastructure)
   (spawn-heavyweight-threads))
 
-;;; Call (setup-initial-process-object) to enable threading.
-;;; Not added as a warm boot action by default because the mutexes and
-;;; process register are only needed when heavyweight threads are in use.
+;;; Auto-initialize threading at warm boot if the emulator supports it.
+;;; This sets up mutexes and the process register but does NOT spawn
+;;; extra threads — that happens later via --pthreads or explicit call.
+(define (maybe-init-threads)
+  (when (%threads-enabled?)
+    (init-thread-infrastructure)))
+
+(add-warm-boot-action maybe-init-threads)
 
 
 ;;--------------------------------------------------

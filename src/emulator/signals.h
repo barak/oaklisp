@@ -31,13 +31,31 @@
 void enable_signal_polling(void);
 void disable_signal_polling(void);
 void clear_signal(void);
-extern int signal_poll_flag;
+extern volatile sig_atomic_t signal_poll_flag;
 
-/* Crash recovery from fatal signals (SIGSEGV, SIGBUS, SIGFPE) */
-extern sigjmp_buf crash_jmpbuf;
+/* Crash recovery from fatal signals (SIGSEGV, SIGBUS, SIGFPE).
+   On Windows, SIGBUS does not exist; only SIGSEGV and SIGFPE
+   are handled.  Uses sigsetjmp/siglongjmp on POSIX, or
+   setjmp/longjmp on Windows. */
+
+#if defined(_MSC_VER) && !defined(__MINGW32__)
+/* Windows (MSVC): no sigsetjmp/siglongjmp */
+#define oak_jmp_buf       jmp_buf
+#define oak_setjmp(buf)   setjmp(buf)
+#define oak_longjmp(buf, val) longjmp(buf, val)
+#else
+/* POSIX: use sig-aware variants to save/restore signal mask */
+#define oak_jmp_buf       sigjmp_buf
+#define oak_setjmp(buf)   sigsetjmp(buf, 1)
+#define oak_longjmp(buf, val) siglongjmp(buf, val)
+#endif
+
+extern oak_jmp_buf crash_jmpbuf;
 extern volatile sig_atomic_t crash_signal;
+extern volatile sig_atomic_t crash_count;
 extern int crash_recovery_installed;
 void enable_crash_recovery(void);
 void reinstall_crash_handler(void);
+void reset_crash_count(void);
 
 #endif

@@ -130,20 +130,26 @@
 (define-constant-instance %stream-primitive
   (mix-types oc-mixer (list foldable-mixin operation)))
 
+(define *stream-primitive-mutex* #f)
+
 (let ((sp-alist '()))
 
   (add-method (%stream-primitive (object) n)
-    (let ((x (assq n sp-alist)))
-      (cond (x => cdr)
-	    (else
-	     (let ((op
-		    (make
-		     (mix-types oc-mixer (list open-coded-mixin operation))
-		     `((stream-primitive ,n))
-		     (nth '(0 0 0 2 2 2 1 1 2 1 1 1 2 2) n)
-		     1)))
-	       (set! sp-alist (cons (cons n op) sp-alist))
-	       op))))))
+    (when *stream-primitive-mutex* (acquire-mutex *stream-primitive-mutex*))
+    (let ((result
+	   (let ((x (assq n sp-alist)))
+	     (cond (x => cdr)
+		   (else
+		    (let ((op
+			   (make
+			    (mix-types oc-mixer (list open-coded-mixin operation))
+			    `((stream-primitive ,n))
+			    (nth '(0 0 0 2 2 2 1 1 2 1 1 1 2 2) n)
+			    1)))
+		      (set! sp-alist (cons (cons n op) sp-alist))
+		      op))))))
+      (when *stream-primitive-mutex* (release-mutex *stream-primitive-mutex*))
+      result)))
 
 #||
 ;;; This is what all the stream primitives do:

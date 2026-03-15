@@ -20,20 +20,22 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <pthread.h>
 #include "threads.h"
 #include "xmalloc.h"
 #include "stacks.h"
 #include "loop.h"
 #include "gc.h"
+#ifdef USE_MARK_SWEEP
+#include "gc-ms.h"
+#endif
 
 #ifdef THREADS
 int next_index = 0;
-pthread_key_t index_key;
-pthread_mutex_t gc_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t alloc_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t index_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t test_and_set_locative_lock = PTHREAD_MUTEX_INITIALIZER;
+oak_tls_key_t index_key;
+oak_mutex_t gc_lock = OAK_MUTEX_INITIALIZER;
+oak_mutex_t alloc_lock = OAK_MUTEX_INITIALIZER;
+oak_mutex_t index_lock = OAK_MUTEX_INITIALIZER;
+oak_mutex_t test_and_set_locative_lock = OAK_MUTEX_INITIALIZER;
 bool gc_pending = false;
 int gc_ready[MAX_THREAD_COUNT];
 register_set_t* register_array[MAX_THREAD_COUNT];
@@ -43,6 +45,23 @@ oakstack *cntxt_stack_array[MAX_THREAD_COUNT];
 
 #ifdef THREADS
 static instr_t tail_recurse_instruction = (22 << 2);
+
+void
+oak_threads_system_init(void)
+{
+#ifdef OAK_NEEDS_DYNAMIC_MUTEX_INIT
+    oak_mutex_init(&gc_lock);
+    oak_mutex_init(&alloc_lock);
+    oak_mutex_init(&index_lock);
+    oak_mutex_init(&test_and_set_locative_lock);
+    {
+      extern oak_mutex_t wp_lock;
+      extern oak_mutex_t dump_lock;
+      oak_mutex_init(&wp_lock);
+      oak_mutex_init(&dump_lock);
+    }
+#endif
+}
 #endif
 
 typedef struct {
@@ -58,7 +77,7 @@ static void *init_thread(void *info_p);
 int create_thread(ref_t start_operation)
 {
 #ifdef THREADS
-  pthread_t new_thread;
+  oak_thread_t new_thread;
   int index;
   start_info_t *info_p = (start_info_t *)malloc(sizeof(start_info_t));
   index = get_next_index();
@@ -70,10 +89,9 @@ int create_thread(ref_t start_operation)
   }
   gc_ready[index] = 0;
   info_p->start_operation = start_operation;
-  info_p->parent_index = *((int *)pthread_getspecific(index_key));
+  info_p->parent_index = *((int *)oak_tls_get(index_key));
   info_p->my_index = index;
-  if (pthread_create(&new_thread, NULL,
-		     (void *)init_thread, (void *)info_p)) {
+  if (oak_thread_create(&new_thread, init_thread, (void *)info_p)) {
     free(info_p);
     return 0;
   }
@@ -98,7 +116,7 @@ static void *init_thread (void *info_p)
 
   *my_index_p = info.my_index;
   my_index = *my_index_p;
-  pthread_setspecific(index_key, (void *)my_index_p);
+  oak_tls_set(index_key, (void *)my_index_p);
   /* Increment also releases the gc lock on next_index so another
      starting thread can get the lock, or a thread that is gc'ing can
      get the lock */
@@ -123,6 +141,11 @@ static void *init_thread (void *info_p)
 
   gc_examine_ptr = gc_examine_buffer;
 
+#ifdef USE_MARK_SWEEP
+  tlab_cursor_array[my_index] = NULL;
+  tlab_end_array[my_index] = NULL;
+#endif
+
   /* At this point, it should be OK if the garbage collector gets run. */
   e_pc = &tail_recurse_instruction;
   e_nargs = 0;
@@ -143,16 +166,16 @@ void set_gc_flag (bool flag)
 #ifdef THREADS
   int *my_index_p;
   int  my_index;
-  my_index_p = pthread_getspecific (index_key);
+  my_index_p = oak_tls_get(index_key);
   my_index = *(my_index_p);
 
   if (flag == true) {
-    pthread_mutex_lock (&gc_lock);
+    oak_mutex_lock(&gc_lock);
     gc_pending = flag;
   }
   else {
     gc_pending = flag;
-    pthread_mutex_unlock (&gc_lock);
+    oak_mutex_unlock(&gc_lock);
   }
 #endif
 }
@@ -166,14 +189,14 @@ int get_next_index ()
 {
   int ret = -1;
 #ifdef THREADS
-  pthread_mutex_lock (&index_lock);
+  oak_mutex_lock(&index_lock);
   if (next_index >= MAX_THREAD_COUNT) {
     ret = -1;
   } else {
     ret = next_index;
     next_index++;
   }
-  pthread_mutex_unlock (&index_lock);
+  oak_mutex_unlock(&index_lock);
 #endif
   return (ret);
 }
@@ -187,11 +210,11 @@ void wait_for_gc()
 #ifdef THREADS
   int *my_index_p;
   int  my_index;
-  my_index_p = pthread_getspecific (index_key);
+  my_index_p = oak_tls_get(index_key);
   my_index = *(my_index_p);
   gc_ready[my_index] = 1;
-  pthread_mutex_lock (&gc_lock);
+  oak_mutex_lock(&gc_lock);
   gc_ready[my_index] = 0;
-  pthread_mutex_unlock (&gc_lock);
+  oak_mutex_unlock(&gc_lock);
 #endif
 }

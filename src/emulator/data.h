@@ -29,8 +29,11 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <pthread.h>
+#ifdef _WIN32
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 #include "config.h"
 #include "threads.h"
 
@@ -44,7 +47,7 @@ typedef size_t ref_t;
 
 /* instruction type */
 
-typedef u_int16_t instr_t;
+typedef uint16_t instr_t;
 
 /* space type */
 
@@ -148,7 +151,11 @@ extern bool_int trace_files;
 /* miscellanous */
 
 #ifndef ISATTY
+#if defined(_MSC_VER)
+#define ISATTY(stream) (_isatty(_fileno(stream)))
+#else
 #define ISATTY(stream) (isatty(fileno(stream)))
+#endif
 #endif
 
 
@@ -260,7 +267,7 @@ extern bool_int trace_files;
 /*
 #define OVERFLOWN_INT(i,code)					\
 { register int highcrap						\
-	= ((u_int32_t)(i)) >> (__WORDSIZE-(TAGSIZE+1));		\
+	= ((uint32_t)(i)) >> (__WORDSIZE-(TAGSIZE+1));		\
 if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 */
 
@@ -360,10 +367,120 @@ if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 		  GC_RECALL(v); })
 
 
+#if defined(USE_MARK_SWEEP) && defined(THREADS)
+
+/*
+ * TLAB-aware allocator for multi-threaded mark-sweep mode.
+ *
+ * Fast path: bump the thread's TLAB pointer (no lock).
+ * Slow path: acquire alloc_lock, try free list / TLAB refill / GC.
+ */
+
+#include "gc-ms.h"
+
+#define ALLOCATE_PROT(p, words, reason, before, after)			\
+{									\
+  int _tlab_idx = *(int *)oak_tls_get(index_key);			\
+  if ((words) <= TLAB_SIZE &&						\
+      tlab_cursor_array[_tlab_idx] &&					\
+      tlab_cursor_array[_tlab_idx] + (words)				\
+        <= tlab_end_array[_tlab_idx]) {					\
+    /* TLAB fast path — no lock needed. */				\
+    (p) = tlab_cursor_array[_tlab_idx];					\
+    tlab_cursor_array[_tlab_idx] += (words);				\
+    ms_bump_alloc_notify_atomic((p), (words));				\
+  } else {								\
+    /* Slow path — acquire global allocator lock. */			\
+    while (oak_mutex_trylock(&alloc_lock) != 0) {			\
+      if (gc_pending) { before; wait_for_gc(); after; }			\
+    }									\
+    (p) = ms_alloc_slow_locked((words),					\
+			       &tlab_cursor_array[_tlab_idx],		\
+			       &tlab_end_array[_tlab_idx]);		\
+    if (!(p)) {								\
+      before;								\
+      ms_collect(false, (reason), (words));				\
+      after;								\
+      (p) = ms_alloc_slow_locked((words),				\
+				 &tlab_cursor_array[_tlab_idx],		\
+				 &tlab_end_array[_tlab_idx]);		\
+      if (!(p)) {							\
+	before;								\
+	gc(false, true, (reason), (words));				\
+	ms_reinit();							\
+	after;								\
+	(p) = free_point;						\
+	free_point += (words);						\
+	ms_bump_alloc_notify((p), (words));				\
+      }									\
+    }									\
+    oak_mutex_unlock(&alloc_lock);					\
+  }									\
+}
+
+#elif defined(USE_MARK_SWEEP)
+
+/*
+ * Single-threaded mark-sweep allocator (no TLABs needed).
+ */
+
+#include "gc-ms.h"
+
+#define ALLOCATE_PROT(p, words, reason, before, after)	\
+{							\
+  /* Try free list first, then lazy sweep. */		\
+  (p) = ms_free_list_alloc((words));			\
+  if (!(p)) {						\
+    while (ms_lazy_sweep_one()) {			\
+      (p) = ms_free_list_alloc((words));		\
+      if ((p)) break;					\
+    }							\
+  }							\
+  if (!(p)) {						\
+    if (free_point + (words) < new_space.end) {		\
+      /* Bump pointer has space. */			\
+      (p) = free_point;				\
+      free_point += (words);				\
+      ms_bump_alloc_notify((p), (words));		\
+    } else {						\
+      /* Heap exhausted — collect. */			\
+      before;						\
+      ms_collect(false, (reason), (words));		\
+      after;						\
+      (p) = ms_free_list_alloc((words));		\
+      if (!(p)) {					\
+	while (ms_lazy_sweep_one()) {			\
+	  (p) = ms_free_list_alloc((words));		\
+	  if ((p)) break;				\
+	}						\
+      }							\
+      if (!(p)) {					\
+	if (free_point + (words) < new_space.end) {	\
+	  (p) = free_point;				\
+	  free_point += (words);			\
+	  ms_bump_alloc_notify((p), (words));		\
+	} else {					\
+	  /* MS-GC couldn't free enough; copying GC	\
+	     will expand the heap. */			\
+	  before;					\
+	  gc(false, true, (reason), (words));		\
+	  ms_reinit();					\
+	  after;					\
+	  (p) = free_point;				\
+	  free_point += (words);			\
+	  ms_bump_alloc_notify((p), (words));		\
+	}						\
+      }							\
+    }							\
+  }							\
+}
+
+#else /* !USE_MARK_SWEEP */
+
 #define ALLOCATE_PROT(p, words, reason, before, after)	\
 {							\
   THREADY(						\
-      while (pthread_mutex_trylock(&alloc_lock) != 0) {	\
+      while (oak_mutex_trylock(&alloc_lock) != 0) {	\
 	      if (gc_pending) {				\
 		      before; wait_for_gc(); after;	\
 	      }						\
@@ -377,8 +494,15 @@ if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
     }							\
   (p) = free_point;					\
   free_point += (words);				\
-  THREADY( pthread_mutex_unlock (&alloc_lock); )	\
+  THREADY( oak_mutex_unlock(&alloc_lock); )		\
 }
+
+#endif /* USE_MARK_SWEEP */
+
+/* SATB write barrier — no-op when mark-sweep GC is not enabled. */
+#ifndef USE_MARK_SWEEP
+#define SATB_BARRIER(addr) ((void)0)
+#endif
 
 /* These get slots out of Oaklisp objects, and may be used as lvalues. */
 

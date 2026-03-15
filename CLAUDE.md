@@ -36,7 +36,7 @@ make install
 - `--enable-64-bit` — Native 64-bit mode (default: yes); use `--disable-64-bit` to force 32-bit
 - `--enable-docs` — Build LaTeX documentation (default: yes)
 - `--enable-ndebug` — High-speed mode, disables debug tracing (default: yes, sets -DFAST)
-- `--enable-threads` — Thread support (default: no, experimental)
+- `--enable-threads` — Thread support (default: no)
 - `--with-world=PATH` — Path to oakworld.bin for recompiling .oa files from source
 - `--with-oaklisp=OAKLISP` — Path to existing oaklisp executable for bootstrapping
 

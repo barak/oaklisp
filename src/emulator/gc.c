@@ -31,6 +31,9 @@
 #include "xmalloc.h"
 #include "stacks.h"
 #include "gc.h"
+#ifdef USE_MARK_SWEEP
+#include "gc-ms.h"
+#endif
 
 
 #ifdef USE_VADVISE
@@ -214,6 +217,10 @@ gc_touch0(ref_t r)
 
 	    free_point += len;
 
+#ifdef USE_MARK_SWEEP
+	    ms_record_transport(new_place);
+#endif
+
 #ifndef FAST
 	    if (free_point >= new_space.end)
 	      {
@@ -299,6 +306,10 @@ loc_touch0(ref_t r, bool warn_if_unmoved)
 
 	  ref_t *new_place = free_point++;	/* make a new cell. */
 	  ref_t new_r = PTR_TO_LOC(new_place);
+
+#ifdef USE_MARK_SWEEP
+	  ms_record_transport(new_place);
+#endif
 
 #ifndef FAST
 	  if (free_point >= new_space.end)
@@ -448,25 +459,36 @@ gc(bool pre_dump, bool full_gc, char *reason, size_t amount)
   int gc_thread_count;
   int i;
   int *my_index_p;
-  my_index_p = pthread_getspecific (index_key);
-  my_index = *my_index_p;
-  gc_ready[my_index] = 1;
-  set_gc_flag (true);
-  /* Snapshot next_index so thread creation during GC cannot cause
-     us to read uninitialized gc_ready[] slots. */
-  gc_thread_count = next_index;
-#endif
 
-#ifdef THREADS
-   while (ready == false) {
-    ready = true;
-    for (i = 0; i < gc_thread_count; i++) {
-      if (gc_ready[i] == 0) {
-          ready = false;
-          break;
+#ifdef USE_MARK_SWEEP
+  /* When called from ms_collect during a concurrent GC cycle,
+     threads are already parked — skip our own synchronization. */
+  if (gc_concurrent_in_progress) {
+    my_index_p = oak_tls_get(index_key);
+    my_index = *my_index_p;
+    gc_thread_count = next_index;
+  } else {
+#endif
+    my_index_p = oak_tls_get(index_key);
+    my_index = *my_index_p;
+    gc_ready[my_index] = 1;
+    set_gc_flag (true);
+    /* Snapshot next_index so thread creation during GC cannot cause
+       us to read uninitialized gc_ready[] slots. */
+    gc_thread_count = next_index;
+
+    while (ready == false) {
+      ready = true;
+      for (i = 0; i < gc_thread_count; i++) {
+	if (gc_ready[i] == 0) {
+	    ready = false;
+	    break;
+	}
       }
     }
+#ifdef USE_MARK_SWEEP
   }
+#endif
 #endif
 
   /* The full_gc flag is also a global to avoid ugly parameter passing. */
@@ -822,10 +844,16 @@ gc_top:
       fflush(stdout);
   }
 #ifdef THREADS
-    my_index_p = pthread_getspecific (index_key);
-    my_index = *my_index_p;
-    gc_ready[my_index] = 0;
-    set_gc_flag (false);
+#ifdef USE_MARK_SWEEP
+    if (!gc_concurrent_in_progress) {
+#endif
+      my_index_p = oak_tls_get(index_key);
+      my_index = *my_index_p;
+      gc_ready[my_index] = 0;
+      set_gc_flag (false);
+#ifdef USE_MARK_SWEEP
+    }
+#endif
 #endif
 }
 
