@@ -783,6 +783,7 @@ ms_mark_roots(void)
 /*  Sweep phase                                                        */
 /* ------------------------------------------------------------------ */
 
+#ifndef THREADS
 static size_t
 ms_sweep(void)
 {
@@ -854,6 +855,7 @@ ms_sweep(void)
 
     return reclaimed;
 }
+#endif /* !THREADS */
 
 
 /* ------------------------------------------------------------------ */

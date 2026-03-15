@@ -164,11 +164,6 @@ static void *init_thread (void *info_p)
 void set_gc_flag (bool flag)
 {
 #ifdef THREADS
-  int *my_index_p;
-  int  my_index;
-  my_index_p = oak_tls_get(index_key);
-  my_index = *(my_index_p);
-
   if (flag == true) {
     oak_mutex_lock(&gc_lock);
     gc_pending = flag;
