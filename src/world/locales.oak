@@ -32,6 +32,8 @@
 
 (define-simple-print-method locale "Locale")
 
+(define *locale-mutex* #f)
+
 (define-instance variable? settable-operation)
 (define-instance variable-here? settable-operation)
 (define-instance macro? settable-operation)
@@ -64,12 +66,14 @@
     (if x (cdr x) nil)))
 
 (add-method ((setter variable-here?) (locale variable-table) self sym loci)
+  (when *locale-mutex* (acquire-mutex *locale-mutex*))
   (cond ((null? loci)
 	 (set! (present? variable-table sym) nil))
 	(else (set! (present? variable-table sym)
 		    (if (eq? loci t)
 			(%make-cell (make-undefined-variable-value sym))
-			loci)))))
+			loci))))
+  (when *locale-mutex* (release-mutex *locale-mutex*)))
 
 (add-method (macro? (locale superiors) self sym)
 ;    (let ((loc (find-locale self sym macro-here?)))
@@ -91,6 +95,7 @@
   (when (variable? self sym)
     (warning "installing macro ~S in ~S where it is already a variable.~%"
 	     sym self))
+  (when *locale-mutex* (acquire-mutex *locale-mutex*))
   (let ((entry (assq sym macro-alist)))
     (cond ((null? expander)
 	   (if entry
@@ -98,6 +103,7 @@
 	       (warning "~S already isn't a macro in ~S.~%" sym self)))
 	  (entry (set! (cdr entry) expander))
 	  (else (set! macro-alist (cons (cons sym expander) macro-alist)))))
+  (when *locale-mutex* (release-mutex *locale-mutex*))
   expander)
 
 (add-method (frozen? (locale) self sym)
@@ -112,10 +118,12 @@
       (error "Symbol ~A not installed in ~A so shouldn't be checked for FROZEN-HERE?." sym self)))
 
 (add-method ((setter frozen-here?) (locale frozen-symbols) self sym new-phase)
+  (when *locale-mutex* (acquire-mutex *locale-mutex*))
   (let ((old-phase (frozen-here? self sym)))
     (cond ((and new-phase (not old-phase))
 	   (set! frozen-symbols (cons sym frozen-symbols)))
 	  ((and (not new-phase) old-phase)
-	   (set! frozen-symbols (delq sym frozen-symbols))))))
+	   (set! frozen-symbols (delq sym frozen-symbols)))))
+  (when *locale-mutex* (release-mutex *locale-mutex*)))
 
 ;;; eof

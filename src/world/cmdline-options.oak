@@ -35,7 +35,8 @@ Oaklisp level options.
                            compiler-locale, scheme-locale (for RnRS
                            compatibility).
 
-        --pthreads         Number of pthreads to allocate.
+        --pthreads N       Spawn N heavyweight (native) threads.
+                           Requires emulator compiled with --enable-threads.
 
         --exit             Exit upon processing this option.
 
@@ -64,10 +65,14 @@ Example:
 			 (eval (read (make string-input-stream x))
 			       #*current-locale))))
     ("pthreads" 1 ,(lambda (x)
+		     (unless (%threads-enabled?)
+		       (format #t "Warning: --pthreads ignored (emulator compiled without thread support).~%")
+		       (exit 1 ""))
 		     (set! heavyweight-thread-count
 			   (read (make string-input-stream x)))
 		     (unless (integer? heavyweight-thread-count)
-		       (exit 1 "-pthread option takes integer argument.~%"))))
+		       (exit 1 "--pthreads option takes integer argument.~%"))
+		     (setup-initial-process-object)))
     ("exit" 0 ,(lambda ()
 		 (exit 0 "")))))
 

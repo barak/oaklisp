@@ -32,6 +32,11 @@
 #include <ctype.h>
 #include <errno.h>
 
+/* MSVC names strdup with a leading underscore. */
+#if defined(_MSC_VER) && !defined(strdup)
+#define strdup _strdup
+#endif
+
 /* ================================================================
  * Constants (from tool.oak)
  * ================================================================ */

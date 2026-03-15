@@ -27,7 +27,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <getopt.h>
+#include "oak-getopt.h"
 #include "config.h"
 #include "data.h"
 #include "cmdline.h"
@@ -141,7 +141,7 @@ parse_cmd_line(int argc, char **argv)
      about threads ... ? */
   int my_index;
   int *my_index_p;
-  my_index_p = pthread_getspecific (index_key);
+  my_index_p = oak_tls_get(index_key);
   my_index = *my_index_p;
 #endif
 

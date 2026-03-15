@@ -201,7 +201,7 @@ init_stacks(void)
 
   /* Initialise value stack */
 #ifdef THREADS
-  my_index_p = pthread_getspecific (index_key);
+  my_index_p = oak_tls_get(index_key);
   my_index = *my_index_p;
 #endif
 

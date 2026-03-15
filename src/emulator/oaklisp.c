@@ -26,8 +26,6 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <wait.h>
-#include <pthread.h>
 #include "config.h"
 #include "data.h"
 #include "cmdline.h"
@@ -36,6 +34,9 @@
 #include "worldio.h"
 #include "loop.h"
 #include "xmalloc.h"
+#ifdef USE_MARK_SWEEP
+#include "gc-ms.h"
+#endif
 
 
 int
@@ -44,14 +45,15 @@ main(int argc, char **argv)
 #ifdef THREADS
   int my_index;
   int *my_index_p;
-  pthread_key_create (&index_key, (void*)free_registers);
+  oak_threads_system_init();
+  oak_tls_create(&index_key, (void*)free_registers);
 #endif
 
 #ifdef THREADS
   my_index_p = (int *)malloc (sizeof (int));
   *my_index_p = get_next_index();
-  pthread_setspecific (index_key, (void*)my_index_p);
-  my_index_p = pthread_getspecific(index_key);
+  oak_tls_set(index_key, (void*)my_index_p);
+  my_index_p = oak_tls_get(index_key);
   my_index = *my_index_p;
   gc_ready[my_index] = 0;
   /* inc_next_index();*/
@@ -75,6 +77,13 @@ main(int argc, char **argv)
   new_space.size = e_next_newspace_size = original_newspace_size;
   alloc_space(&new_space, new_space.size);
   free_point = new_space.start;
+
+#ifdef USE_MARK_SWEEP
+  ms_init();
+#if defined(THREADS)
+  gc_safepoint_init();
+#endif
+#endif
 
 #ifdef THREADS
   register_array[my_index] = (register_set_t*)malloc(sizeof(register_set_t));

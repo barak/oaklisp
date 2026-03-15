@@ -18,10 +18,11 @@ bin_PROGRAMS = oaklisp
 noinst_PROGRAMS = oak-cold-linker
 oak_cold_linker_SOURCES = oak-cold-linker.c
 
-oaklisp_SOURCES = cmdline.c data.c gc.c instr.c loop.c oaklisp.c	\
- signals.c stacks.c threads.c timers.c weak.c worldio.c xmalloc.c	\
- cmdline.h config.h data.h gc.h instr.h loop.h signals.h stacks.h	\
- stacks-loop.h threads.h timers.h weak.h worldio.h xmalloc.h
+oaklisp_SOURCES = cmdline.c data.c gc.c gc-ms.c instr.c loop.c		\
+ oaklisp.c signals.c stacks.c threads.c timers.c weak.c worldio.c	\
+ xmalloc.c cmdline.h config.h data.h gc.h gc-ms.h instr.h loop.h	\
+ oak-atomic.h oak-getopt.h oak-thread.h signals.h stacks.h stacks-loop.h	\
+ threads.h timers.h weak.h worldio.h xmalloc.h
 
 if NDEBUG
 else
@@ -33,7 +34,7 @@ oaklisp_CPPFLAGS = $(AM_CPPFLAGS)
 oaklisp_CPPFLAGS += -DDEFAULT_WORLD=\"$(pkglibdir)/oakworld.bin\"
 
 if ENABLE_THREADS
-oaklisp_CPPFLAGS += -DTHREADS
+oaklisp_CPPFLAGS += -DTHREADS -DUSE_MARK_SWEEP
 endif
 
 if NDEBUG

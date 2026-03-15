@@ -31,6 +31,11 @@
 #include "xmalloc.h"
 #include "gc.h"
 #include "weak.h"
+#include "threads.h"
+
+#ifdef THREADS
+oak_mutex_t wp_lock = OAK_MUTEX_INITIALIZER;
+#endif
 
 
 /*
@@ -121,12 +126,14 @@ rebuild_wp_hashtable(void)
 {
   long i;
 
+  THREADY(oak_mutex_lock(&wp_lock));
   for (i = 0; i < wp_hashtable_size; i++)
     wp_hashtable[i].obj = e_false;
 
   for (i = 0; i < wp_index; i++)
     if (wp_table[1 + i] != e_false)
       enter_wp(wp_table[1 + i], INT_TO_REF(i));
+  THREADY(oak_mutex_unlock(&wp_lock));
 }
 
 
@@ -137,9 +144,12 @@ ref_to_wp(ref_t r)
 {
   long i;
   ref_t temp;
+  ref_t result;
 
   if (r == e_false)
     return INT_TO_REF(-1);
+
+  THREADY(oak_mutex_lock(&wp_lock));
   i = wp_key(r) % wp_hashtable_size;
 
   while (1)			/* forever */
@@ -147,13 +157,17 @@ ref_to_wp(ref_t r)
       temp = wp_hashtable[i].obj;
       if (temp == r)
 	{
-	  return wp_hashtable[i].wp;
+	  result = wp_hashtable[i].wp;
+	  THREADY(oak_mutex_unlock(&wp_lock));
+	  return result;
 	}
       else if (temp == e_false)
 	{
 	  /* Make a new weak pointer, installing it in both tables: */
 	  wp_hashtable[i].obj = wp_table[1 + wp_index] = r;
-	  return wp_hashtable[i].wp = INT_TO_REF(wp_index++);
+	  result = wp_hashtable[i].wp = INT_TO_REF(wp_index++);
+	  THREADY(oak_mutex_unlock(&wp_lock));
+	  return result;
 	}
       else if (++i == wp_hashtable_size)
 	{

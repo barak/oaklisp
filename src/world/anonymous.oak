@@ -21,20 +21,26 @@
 
 (define expression-table (make-eq-hash-table))
 
+(define *expression-table-mutex* #f)
+
 (define (reasonable-expression a-locale obj)
-  (let ((ref (present? expression-table obj)))
-    (cond ((and ref
-		(let* ((expr (cdr ref))
-		       (curval (dumb-but-safe-eval expr a-locale)))
-		  (if (eq? obj curval)
-		      expr
-		      nil)))
-	   => identity)
-	  (else
-	   (let ((expr (create-accessor-expression a-locale obj)))
-	     (cond (ref (set! (cdr ref) expr))
-		   (else (set! (present? expression-table obj) expr)
-			 expr)))))))
+  (when *expression-table-mutex* (acquire-mutex *expression-table-mutex*))
+  (let ((result
+	 (let ((ref (present? expression-table obj)))
+	   (cond ((and ref
+		       (let* ((expr (cdr ref))
+			      (curval (dumb-but-safe-eval expr a-locale)))
+			 (if (eq? obj curval)
+			     expr
+			     nil)))
+		  => identity)
+		 (else
+		  (let ((expr (create-accessor-expression a-locale obj)))
+		    (cond (ref (set! (cdr ref) expr))
+			  (else (set! (present? expression-table obj) expr)
+				expr))))))))
+    (when *expression-table-mutex* (release-mutex *expression-table-mutex*))
+    result))
 
 
 (define-instance create-accessor-expression operation)
@@ -81,8 +87,10 @@
 	   (next (cdr guards)(cdr ops))))))
 
 (define (how-to-get-val ag ao)
+  (when *expression-table-mutex* (acquire-mutex *expression-table-mutex*))
   (push fancy-accessor-guards ag)
-  (push fancy-accessor-operations ao))
+  (push fancy-accessor-operations ao)
+  (when *expression-table-mutex* (release-mutex *expression-table-mutex*)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
