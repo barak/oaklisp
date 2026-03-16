@@ -193,14 +193,10 @@
   (init-thread-infrastructure)
   (spawn-heavyweight-threads))
 
-;;; Auto-initialize threading at warm boot if the emulator supports it.
-;;; This sets up mutexes and the process register but does NOT spawn
-;;; extra threads — that happens later via --pthreads or explicit call.
-(define (maybe-init-threads)
-  (when (%threads-enabled?)
-    (init-thread-infrastructure)))
-
-(add-warm-boot-action maybe-init-threads)
+;;; Threading is NOT auto-initialized at warm boot.  The compiler
+;;; deadlocks when mutexes are active (branch-instruction compilation
+;;; re-enters mutex-protected code).  Call (setup-initial-process-object)
+;;; or use --pthreads to enable threading explicitly.
 
 
 ;;--------------------------------------------------

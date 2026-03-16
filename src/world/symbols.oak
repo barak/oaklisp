@@ -34,22 +34,22 @@
 (define-instance intern settable-operation)
 
 (add-method (intern (string) self)
-  (when *symbol-table-mutex* (acquire-mutex *symbol-table-mutex*))
+  (if *symbol-table-mutex* (acquire-mutex *symbol-table-mutex*))
   (let ((result
 	 (cond ((present? symbol-table self) => cdr)
 	       (else
 		(set! (present? symbol-table self)
 		      (make symbol self))))))
-    (when *symbol-table-mutex* (release-mutex *symbol-table-mutex*))
+    (if *symbol-table-mutex* (release-mutex *symbol-table-mutex*))
     result))
 
 (add-method (intern (symbol print-name) self)
-  (when *symbol-table-mutex* (acquire-mutex *symbol-table-mutex*))
+  (if *symbol-table-mutex* (acquire-mutex *symbol-table-mutex*))
   (if (present? symbol-table print-name)
-      (block (when *symbol-table-mutex* (release-mutex *symbol-table-mutex*))
+      (block (if *symbol-table-mutex* (release-mutex *symbol-table-mutex*))
 	     (warning "attempt to reintern symbol ~S ignored.~%" self))
       (block (set! (present? symbol-table print-name) self)
-	     (when *symbol-table-mutex* (release-mutex *symbol-table-mutex*)))))
+	     (if *symbol-table-mutex* (release-mutex *symbol-table-mutex*)))))
 
 ;;; The following variable is used so that the symbols.oa file does
 ;;; not have to be manually edited each time symbols is recompiled.
@@ -83,10 +83,10 @@
 
 (let ((counter 0))
   (define (gensym x)
-    (when *symbol-table-mutex* (acquire-mutex *symbol-table-mutex*))
+    (if *symbol-table-mutex* (acquire-mutex *symbol-table-mutex*))
     (let ((result (#^symbol (format #f "~A~D" x counter))))
       (set! counter (+ counter 1))
-      (when *symbol-table-mutex* (release-mutex *symbol-table-mutex*))
+      (if *symbol-table-mutex* (release-mutex *symbol-table-mutex*))
       result)))
 
 (define generate-symbol gensym)
