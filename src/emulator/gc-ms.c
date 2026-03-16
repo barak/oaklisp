@@ -629,6 +629,7 @@ ms_trace(void)
 }
 
 
+#ifdef THREADS
 /*
  * Concurrent variant of ms_mark_ref — uses atomic bitmap operations
  * so the GC thread can mark concurrently with mutator allocations.
@@ -683,6 +684,7 @@ ms_trace_concurrent(void)
 	}
     }
 }
+#endif /* THREADS */
 
 
 /*

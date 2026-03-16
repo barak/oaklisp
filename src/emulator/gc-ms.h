@@ -149,7 +149,9 @@ void satb_log_old(ref_t *addr);
 void satb_flush_all(void);
 
 /* Barrier macro: insert before any heap write that overwrites an
-   existing pointer field.  No-op when gc_satb_active == 0. */
+   existing pointer field.  No-op when gc_satb_active == 0.
+   Overrides the no-op fallback defined in data.h. */
+#undef SATB_BARRIER
 #define SATB_BARRIER(addr) \
     do { if (OAK_UNLIKELY(gc_satb_active)) \
 	     satb_log_old(addr); } while (0)
