@@ -68,6 +68,25 @@ OAKFLAGS =
 	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) -- $(OAKLOCALE) --compile $* --exit \
 	|| cp $(srcdir)/../../prebuilt/src/world/$@ $@
 
+# Cold world .oa files form the bootstrap layer and must be compiled by
+# the matching compiler version.  When compiled by an older installed
+# world, bytecode differences (rest-argument handling, format strings,
+# open-coded operations) cause warm-boot hangs or crashes.  Always use
+# prebuilt versions for cold files; only MISCFILES/COMPFILES/RNRSFILES
+# are compiled fresh from source.
+$(COLDFILES): %.oa: %.oak
+	cp $(srcdir)/../../prebuilt/src/world/$@ $@
+
+# multiproc.oa (a MISCFILE) depends on assembler.oa (register-list with
+# threads-enabled?) and multi-em.oa (%threads-enabled? open-coded
+# operation).  Without these loaded first, the compiler generates wrong
+# bytecode for thread primitives.
+multiproc.oa: multiproc.oak multi-em.oa assembler.oa
+	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) -- \
+	  --locale compiler-locale --load assembler --locale system-locale \
+	  --load multi-em --compile multiproc --exit \
+	|| cp $(srcdir)/../../prebuilt/src/world/$@ $@
+
 # When building for 64-bit, tell oak-cold-linker to emit 64-bit refs.
 if BITS64
 COLD_LINKER_FLAGS = --64bit
