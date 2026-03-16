@@ -105,22 +105,29 @@ Synchronization primitives (all in `multiproc.oak`):
   disable.  `pause()` does `call/cc` context switch.
 
 
-Warm Boot Initialization
-=========================
+Initialization
+===============
 
-When the emulator is compiled with `--enable-threads`, thread
-infrastructure is automatically initialized at warm boot:
+Thread infrastructure is **not** auto-initialized at warm boot.
+Auto-initialization was removed because it causes the compiler to
+deadlock: when mutex guards are active, compiling expressions that
+contain branch instructions (if/cond/or) re-enters mutex-protected
+code in the method-installation path.
 
-1. `%threads-enabled?` (LOAD-REG 23) probes the emulator at warm boot
-2. If threads are supported, `maybe-init-threads` (warm boot action in
-   `multiproc.oak`) calls `init-thread-infrastructure`, which:
-   - Creates a process descriptor and stores it in the process register
-   - Sets `%no-threading` to `#f` (enables per-process fluid bindings)
-   - Initializes all guard-variable mutexes
-3. Extra native threads are spawned only if `--pthreads N` is used
+Threading is initialized explicitly via `--pthreads N`, which calls
+`setup-initial-process-object` in `multiproc.oak`.  This in turn
+calls `init-thread-infrastructure`, which:
 
-On a non-THREADS emulator, `%threads-enabled?` returns nil and no
-thread infrastructure is initialized — zero overhead.
+1. Creates a process descriptor and stores it in the process register
+2. Sets `%no-threading` to `#f` (enables per-process fluid bindings)
+3. Initializes all guard-variable mutexes
+4. Redefines process initialization to assign unique PIDs
+
+Then `spawn-heavyweight-threads` creates N-1 additional native threads.
+
+On a non-THREADS emulator, `%threads-enabled?` returns nil and the
+`--pthreads` option prints a warning and exits.  Without `--pthreads`,
+all guard-variable mutexes remain `#f` — zero overhead.
 
 
 Thread Safety
@@ -149,7 +156,18 @@ All known shared data structures are protected:
 
 All guard variables are `#f` during cold/warm boot (no mutex overhead)
 and initialized to `(make mutex)` in `init-thread-infrastructure`
-(`multiproc.oak`) when threading is activated.
+(`multiproc.oak`) when `--pthreads` is used.
+
+**Bootstrap constraint:** The `.oak` source files for cold-world files
+(symbols, kernel1-install, locales, fluid, anonymous, streams) contain
+mutex guard code using `if`-guarded patterns (not `when`, which is
+unavailable during cold compilation).  However, freshly compiled cold
+`.oa` files are bootstrap-incompatible — the installed compiler may
+generate different bytecode for rest-arguments and format strings,
+causing warm-boot hangs.  Therefore all cold files always use prebuilt
+`.oa` from `prebuilt/src/world/`.  To update the prebuilt copies after
+modifying cold `.oak` sources, first build a working world, use it to
+recompile the modified files, and copy the results back to `prebuilt/`.
 
 **User responsibility:** General user-created hash tables used
 concurrently need application-level locking.
