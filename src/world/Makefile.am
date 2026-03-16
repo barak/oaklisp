@@ -68,12 +68,11 @@ OAKFLAGS =
 	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) -- $(OAKLOCALE) --compile $* --exit \
 	|| cp $(srcdir)/../../prebuilt/src/world/$@ $@
 
-# Cold world .oa files form the bootstrap layer and must be compiled by
-# the matching compiler version.  When compiled by an older installed
-# world, bytecode differences (rest-argument handling, format strings,
-# open-coded operations) cause warm-boot hangs or crashes.  Always use
-# prebuilt versions for cold files; only MISCFILES/COMPFILES/RNRSFILES
-# are compiled fresh from source.
+# Cold files are bootstrap-sensitive: freshly compiled versions may use
+# different bytecode patterns (rest-args, format strings) than the
+# installed compiler expects, causing warm-boot hangs.  Always use
+# prebuilt versions.  To update prebuilt .oa files after modifying cold
+# .oak sources, build a working world first, then recompile with it.
 $(COLDFILES): %.oa: %.oak
 	cp $(srcdir)/../../prebuilt/src/world/$@ $@
 

@@ -40,13 +40,13 @@
 
 (define add-to-current-fluid-bindings
   (add-method ((make operation) c-cell)
-    (when *fluid-table-mutex* (acquire-mutex *fluid-table-mutex*))
+    (if *fluid-table-mutex* (acquire-mutex *fluid-table-mutex*))
     (let ((z (or %no-threading (%load-process))))
       (if (eq? z 0)
 	  (set! (cdr top-level-fluid-binding-list)
 		(cons c-cell (cdr top-level-fluid-binding-list)))
 	  (append! (fluid-bindings z) (cons c-cell nil))))
-    (when *fluid-table-mutex* (release-mutex *fluid-table-mutex*))))
+    (if *fluid-table-mutex* (release-mutex *fluid-table-mutex*))))
 
 
 

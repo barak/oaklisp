@@ -135,7 +135,7 @@
 (let ((sp-alist '()))
 
   (add-method (%stream-primitive (object) n)
-    (when *stream-primitive-mutex* (acquire-mutex *stream-primitive-mutex*))
+    (if *stream-primitive-mutex* (acquire-mutex *stream-primitive-mutex*))
     (let ((result
 	   (let ((x (assq n sp-alist)))
 	     (cond (x => cdr)
@@ -148,7 +148,7 @@
 			    1)))
 		      (set! sp-alist (cons (cons n op) sp-alist))
 		      op))))))
-      (when *stream-primitive-mutex* (release-mutex *stream-primitive-mutex*))
+      (if *stream-primitive-mutex* (release-mutex *stream-primitive-mutex*))
       result)))
 
 #||
