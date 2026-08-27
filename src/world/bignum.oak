@@ -124,6 +124,20 @@
     (otherwise (error "Domain error in second arg (= ~D ~D)." x y))))
 
 
+;;; EQUAL? on two bignums is the method above, so it compares values;
+;;; the default HASH-KEY is object identity, which does not.  Without
+;;; this an EQUAL-HASH-TABLE keyed on bignums silently never finds
+;;; anything -- see the comment on HASH-KEY in hash-table.oak.  The
+;;; digits are the normalized magnitude, so equal values always present
+;;; the same list here.
+
+(add-method (hash-key (bignum sign digits) self)
+  (iterate aux ((l digits) (k (if (negative? sign) 1 0)))
+    (if (null? l)
+	k
+	(aux (cdr l) (bit-xor (rot-left k 7) (car l))))))
+
+
 (add-method (negative? (bignum sign) x)
   (= sign -1))
 

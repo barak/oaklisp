@@ -205,24 +205,41 @@
    them it is just a pointer move; when it does not -- unwinding out of
    a deep recursion pops far more than the buffer can ever hold --
    stack_pop_n drops whole flushed segments instead of copying them back
-   in only to discard them. */
+   in only to discard them.
+
+   A count of zero or less pops nothing.  Callers reach these through
+   BASH_VAL_HEIGHT and BASH_CXT_HEIGHT, which compute the count as a
+   difference against a target height; a target above the current one
+   makes that difference negative, and subtracting it would move the
+   stack pointer *up*, past the live top and possibly past the end of
+   the buffer.  THROW checks its heights before it gets here, but the
+   guard belongs at the bottom too, where it covers every caller that
+   computes a count rather than knowing one. */
 #define POPVALS(n)						\
-{	if ((long)(n) < (long)(local_value_sp - value_stack_bp + 1)) \
-	  { local_value_sp -= (n); }				\
-	else							\
-	  {	UNLOCALIZE_VAL();				\
-		stack_pop_n(&value_stack, (long)(n));		\
-		LOCALIZE_VAL();					\
+{	long _pop_n = (long)(n);				\
+	if (_pop_n > 0)						\
+	  {	if (_pop_n < (long)(local_value_sp		\
+				    - value_stack_bp + 1))	\
+		  { local_value_sp -= _pop_n; }			\
+		else						\
+		  {	UNLOCALIZE_VAL();			\
+			stack_pop_n(&value_stack, _pop_n);	\
+			LOCALIZE_VAL();				\
+		  }						\
 	  }							\
 }
 
 #define POPCXTS(n)						\
-{	if ((long)(n) < (long)(local_context_sp - context_stack_bp + 1)) \
-	  { local_context_sp -= (n); }				\
-	else							\
-	  {	UNLOCALIZE_CXT();				\
-		stack_pop_n(&context_stack, (long)(n));		\
-		LOCALIZE_CXT();					\
+{	long _pop_n = (long)(n);				\
+	if (_pop_n > 0)						\
+	  {	if (_pop_n < (long)(local_context_sp		\
+				    - context_stack_bp + 1))	\
+		  { local_context_sp -= _pop_n; }		\
+		else						\
+		  {	UNLOCALIZE_CXT();			\
+			stack_pop_n(&context_stack, _pop_n);	\
+			LOCALIZE_CXT();				\
+		  }						\
 	  }							\
 }
 

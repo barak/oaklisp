@@ -33,20 +33,33 @@
 (add-method (last (pair) self)
   (car (last-pair self)))
 
+;;; Walking off the end of a list used to report a CDR of NIL, which
+;;; names neither the index nor the list.  Vectors and strings say what
+;;; went wrong; these say the same thing in the same words.  The test is
+;;; NULL? rather than PAIR? because NULL? is open coded and PAIR? is an
+;;; ordinary operation that does not exist this early in the cold load;
+;;; an improper list still reports at the CAR or CDR, as it always did.
+
 (add-method ((locater nth) (pair) self n)
-  (iterate aux ((self self) (n n))
-    (cond ((zero? n) (make-locative (car self)))
-	  ((negative? n) (error "Negative index to (LOCATER NTH)."))
-	  (else (aux (cdr self) (- n 1))))))
+  (if (negative? n)
+      (error "Index ~D into ~S out of bounds." n self)
+      (iterate aux ((l self) (i n))
+	(cond ((null? l)
+	       (error "Index ~D into ~S out of bounds." n self))
+	      ((zero? i) (make-locative (car l)))
+	      (else (aux (cdr l) (- i 1)))))))
 
 (add-method ((setter nth) (pair) self n new-value)
   (set! (contents (make-locative (nth self n))) new-value))
 
 (add-method (nth (pair) self n)
-  (iterate aux ((self self) (n n))
-    (cond ((zero? n) (car self))
-	  ((negative? n) (error "Negative index to (LOCATER NTH)."))
-	  (else (aux (cdr self) (- n 1))))))
+  (if (negative? n)
+      (error "Index ~D into ~S out of bounds." n self)
+      (iterate aux ((l self) (i n))
+	(cond ((null? l)
+	       (error "Index ~D into ~S out of bounds." n self))
+	      ((zero? i) (car l))
+	      (else (aux (cdr l) (- i 1)))))))
 
 (add-method ((locater tail) (pair) self n)
   (cond ((< n 1) (error "Illegal index to LOCATER TAIL of a list."))
@@ -57,9 +70,13 @@
   (set! (contents (make-locative (tail self n))) new-value))
 
 (add-method (tail (list-type) self n)
-  (iterate aux ((self self) (n n))
-    (cond ((zero? n) self)
-	  (else (aux (cdr self) (- n 1))))))
+  (if (negative? n)
+      (error "Index ~D into ~S out of bounds." n self)
+      (iterate aux ((l self) (i n))
+	(cond ((zero? i) l)
+	      ((null? l)
+	       (error "Index ~D into ~S out of bounds." n self))
+	      (else (aux (cdr l) (- i 1)))))))
 
 (add-method ((locater last) (pair) self)
   (make-locative (car (last-pair self))))
@@ -78,8 +95,25 @@
 ;;; NOTE This is not optimal.  We could use make to make an empty list and
 ;;; then fill it with an iterate, avoiding all these funcalls.
 
+;;; Bounded the way EQUAL? below is, and for the same reason: copying a
+;;; circular list never finishes.  The budget is threaded through an
+;;; operation rather than tested with a PAIR? call at every node so that
+;;; the tail of an improper list still gets whatever COPY method its own
+;;; type provides.
+
+(define-instance %copy-bounded operation)
+
+(add-method (%copy-bounded (object) self n)
+  (copy self))
+
+(add-method (%copy-bounded (pair) self n)
+  (if (zero? n)
+      (error "COPY gave up after ~D elements; the list may be circular."
+	     *circular-list-limit*)
+      (cons (car self) (%copy-bounded (cdr self) (- n 1)))))
+
 (add-method (copy (pair) self)
-  (cons (car self) (copy (cdr self))))
+  (%copy-bounded self *circular-list-limit*))
 
 (add-method (copy (null-type) self)
   nil)
@@ -466,9 +500,13 @@
 ;;; List manipulation
 
 (add-method (reverse (list-type) self)
-  (iterate aux ((new '()) (old self))
-    (if (null? old) new
-	(aux (cons (car old) new) (cdr old)))))
+  ;; Bounded like LENGTH and COPY; a circular list has no reverse.
+  (iterate aux ((new '()) (old self) (n *circular-list-limit*))
+    (cond ((null? old) new)
+	  ((zero? n)
+	   (error "REVERSE gave up after ~D elements; the list may be circular."
+		  *circular-list-limit*))
+	  (else (aux (cons (car old) new) (cdr old) (- n 1))))))
 
 (add-method (reverse! (list-type) self)
   (iterate aux ((old self)

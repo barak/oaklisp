@@ -48,11 +48,17 @@
 	       (escape-object) tag value)
     (%throw tag value)))
 
-;;; The THROW instruction traps when its tag is not a pointer.  This
-;;; belongs with the rest of the table in tag-trap.oak, but %THROW does
-;;; not exist that early in the cold load.
+;;; The THROW instruction traps when its tag is not a pointer, and when
+;;; the stack heights recorded in the escape object are not heights the
+;;; current stacks could have.  The handler must not be %THROW itself:
+;;; %THROW's method for an escape object is that very instruction, so a
+;;; bad height would trap again forever.  This is the same trap the
+;;; table in tag-trap.oak avoids for slots 11, 25 and 53; it lives here
+;;; only because %THROW does not exist that early in the cold load.
 
-(set! (nth %argless-tag-trap-table 48) %throw)
+(set! (nth %argless-tag-trap-table 48)
+      (lambda (tag value)
+	(error "Illegal args (%THROW ~S ~S).~%" tag value)))
 
 ;;; %FILLTAG can never be actually called without losing, only the
 ;;; open coded version works, so we don't bother with a method for it.
