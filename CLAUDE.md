@@ -45,7 +45,7 @@ make install
 - **64-bit by default:** On 64-bit platforms, builds natively with 64-bit pointers and 62-bit fixnums. Use `--disable-64-bit` to force 32-bit mode (adds `-m32`).
 - **Endian- and word-size-sensitive:** Binary world images (`.bin`) are not portable across endianness or word size, but prebuilt `.oa` files are architecture-independent.
 - **Source-only bootstrap:** No prebuilt `oakworld.bin` is needed. The build uses `oak-cold-linker` (built from C alongside the emulator) to link prebuilt `.oa` files from `prebuilt/src/world/` into a cold world. For development, `.oak` files are recompiled from source if a working Oaklisp is available, falling back to prebuilt `.oa` copies otherwise.
-- **No prebuilt objects at all:** `./configure --enable-bootstrap` (needs `guile3.0`) compiles every `.oa` from `.oak` with the Guile-hosted compiler in `src/cold-compiler/` before linking the cold world; `prebuilt/` is then unused. `make check-bootstrap` in `src/world` verifies that compiler reproduces `prebuilt/` byte for byte (a release check, alongside `check-prebuilt` and `check-cold-linker`).
+- **Optional, off by default — no prebuilt objects at all:** `./configure --enable-bootstrap` (needs `guile3.0`) compiles every `.oa` from `.oak` with the Guile-hosted compiler in `src/cold-compiler/` before linking the cold world; `prebuilt/` is then unused. `make check-bootstrap` in `src/world` verifies that compiler reproduces `prebuilt/` byte for byte (a release check, alongside `check-prebuilt` and `check-cold-linker`).
 
 ## Architecture
 

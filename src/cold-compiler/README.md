@@ -3,7 +3,9 @@ Bootstrapping Oaklisp from source
 
 `oak-bootstrap.scm` compiles Oaklisp `.oak` sources to `.oa` objects
 without a running Oaklisp.  It is what `./configure --enable-bootstrap`
-uses, and what `make check-bootstrap` in `src/world` runs.
+uses, and what `make check-bootstrap` in `src/world` runs.  Neither is
+part of a default build, which uses the precompiled objects in
+`prebuilt/src/world/` and needs no Guile.
 
     guile3.0 --no-auto-compile oak-bootstrap.scm --srcdir ../world --outdir OUT \
         --noisy 0 cold-booting kernel0 ... --locale compiler-locale crunch ...
