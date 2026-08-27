@@ -48,4 +48,60 @@
 	     (step left factors (cdr tries)))))))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Square roots.
+
+;;; There are no floats here, so a square root is either exact or it is
+;;; an error.  INTEGER-SQRT answers the largest integer whose square is
+;;; at most N, which is enough to decide which of the two it is, and to
+;;; give ABS of a Gaussian integer an exact value when it has one.
+;;; Newton's method converges from above once it is started at or above
+;;; the true root, so the initial guess is the smallest power of two
+;;; whose square is at least N.
+
+(define-instance integer-sqrt operation)
+
+(add-method (integer-sqrt (integer) n)
+  (cond ((negative? n)
+	 (error "INTEGER-SQRT of the negative number ~S." n))
+	((< n 2) n)
+	(else
+	 (let ((start (iterate guess ((g 1))
+			(if (< n (* g g)) g (guess (+ g g))))))
+	   (iterate aux ((x start))
+	     (let ((y (quotient (+ x (quotient n x)) 2)))
+	       (if (< y x) (aux y) x)))))))
+
+(define-instance sqrt operation)
+
+(define (%inexact-sqrt-error x)
+  (error "SQRT of ~S is not exact, and this Oaklisp has no floats." x))
+
+(add-method (sqrt (integer) n)
+  (cond ((negative? n) (make-complex 0 (sqrt (- n))))
+	(else
+	 (let ((r (integer-sqrt n)))
+	   (if (= (* r r) n) r (%inexact-sqrt-error n))))))
+
+(add-method (sqrt (fraction the-numerator the-denominator) x)
+  (cond ((negative? x) (make-complex 0 (sqrt (- x))))
+	(else
+	 (let ((rn (integer-sqrt the-numerator))
+	       (rd (integer-sqrt the-denominator)))
+	   (if (and (= (* rn rn) the-numerator)
+		    (= (* rd rd) the-denominator))
+	       (/ rn rd)
+	       (%inexact-sqrt-error x))))))
+
+;;; For Z = A+Bi with an exact modulus M, the principal square root is
+;;; sqrt((M+A)/2) + i*sgn(B)*sqrt((M-A)/2); both halves are exact
+;;; whenever the answer is a Gaussian rational, and signal otherwise.
+
+(add-method (sqrt (complex the-real-part the-imag-part) z)
+  (let* ((m (abs z))
+	 (re (sqrt (/ (+ m the-real-part) 2)))
+	 (im (sqrt (/ (- m the-real-part) 2))))
+    (make-complex re (if (negative? the-imag-part) (- im) im))))
+
+
 ;;; eof

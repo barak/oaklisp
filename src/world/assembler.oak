@@ -497,6 +497,12 @@
 (define-opcode call-primitive		(0 47))
 
 (define-opcode throw			(0 48) in2 ns)
+;; OBJECT-HASH does allocate a weak pointer slot, so NOSIDES -- which
+;; lets the peephole pass drop the instruction when nobody wants the
+;; answer -- is not literally true.  It is still safe: the answer for a
+;; given object does not change, and a slot taken by an object that
+;; later dies goes back on the free list at the next collection, so a
+;; deleted OBJECT-HASH costs nothing that a kept one would not.
 (define-opcode object-hash		(0 49) in1 out1 notnil nosides ns)
 (define-opcode object-unhash		(0 50) in1 out1 nosides ns)
 (define-opcode gc			(0 51) in0 out1 ns)

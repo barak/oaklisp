@@ -97,20 +97,25 @@
 		   (block (read-char stream) -1)
 		   1)))
     (iterate next ((worknum 0))
-      (let* ((the-char (read-char stream))
-	     (num-val (- (%character->fixnum the-char) (#^number #\0))))
-	(cond ((and (>= num-val 0) (<= num-val 10))
-	       (next (+ (* worknum 10) num-val)))
-	      ((eq? the-char #\))
-	       (unread-char stream the-char)
-	       (* worknum sign))
-	      ((or (eq? the-char #\space)
-		   (eq? the-char #\tab)
-		   (eq? the-char #\newline)
-		   (nth standard-read-table the-char) 'whitespace)
-	       (* worknum sign))
-	      (else
-	       (error "~C encountered by dumb-read-number." the-char)))))))
+      (let ((the-char (read-char stream)))
+	;; A truncated object file runs out mid-number; without this the
+	;; EOF token would be handed to %CHARACTER->FIXNUM.
+	(if (eq? the-char the-eof-token)
+	    (error "End of file encountered by DUMB-READ-NUMBER.")
+	    (let ((num-val (- (%character->fixnum the-char) (#^number #\0))))
+	      (cond ((and (>= num-val 0) (<= num-val 10))
+		     (next (+ (* worknum 10) num-val)))
+		    ((eq? the-char #\))
+		     (unread-char stream the-char)
+		     (* worknum sign))
+		    ((or (eq? the-char #\space)
+			 (eq? the-char #\tab)
+			 (eq? the-char #\newline)
+			 (nth standard-read-table the-char) 'whitespace)
+		     (* worknum sign))
+		    (else
+		     (error "~C encountered by dumb-read-number."
+			    the-char)))))))))
 
 ;;; This does what its name implies, going circularly through the list
 ;;; of functions.
@@ -125,6 +130,13 @@
       (cond ((eq? #\) the-char)
 	     (read-char stream)
 	     (reverse! worklist))
+	    ;; An object file truncated by a full disk or a killed
+	    ;; compile ends inside this list.  Without this clause the
+	    ;; loop hands the EOF token to the next reading function
+	    ;; forever, or accepts a prefix of the file as if it were
+	    ;; the whole of it.
+	    ((eq? the-eof-token the-char)
+	     (error "End of file inside a list read from ~A." stream))
 	    (else
 	     (next (cons ((car funlist) stream) worklist)
 		   (cond ((cdr funlist) => identity)

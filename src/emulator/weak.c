@@ -87,6 +87,23 @@ wp_hashtable_entry;
 wp_hashtable_entry *wp_hashtable;
 
 
+/* Slots emptied by post_gc_wp(), available for reuse.  Without this the
+   weak pointer table grows with the number of objects ever hashed rather
+   than with the number currently live, and since eq hash tables call
+   OBJECT-HASH on every key they are handed, an ordinary long running
+   program grows it without bound.
+
+   A weak pointer is the slot index itself, so a slot may only be handed
+   out again once nothing can be holding the old index; post_gc_wp()
+   empties a slot exactly when the object it named has been collected,
+   which is the point at which the old index has become permanently
+   dead. */
+
+static int *wp_free_list = NULL;
+static int wp_free_count = 0;
+static int wp_free_size = 0;
+
+
 
 /* Fibonacci hashing: floor( 2^N * (sqrt(5)-1)/2 ) for N-bit words. */
 #if __WORDSIZE == 64
@@ -158,8 +175,31 @@ enter_wp(ref_t r, ref_t wp)
 }
 
 
-/* Rebuild the weak pointer hash table from the information in the table
-   that takes weak pointers to objects.  The caller holds wp_lock. */
+/* Record slot I as free.  Running out of memory here is not fatal: the
+   slot simply stays unused, which is the old behaviour. */
+static void
+free_wp_slot(int i)
+{
+  if (wp_free_count >= wp_free_size)
+    {
+      int new_size = wp_free_size < 64 ? 64 : wp_free_size * 2;
+      int *bigger;
+
+      if (wp_free_size > INT_MAX / 2)
+	return;
+      bigger = (int *) realloc(wp_free_list, (size_t)new_size * sizeof(int));
+      if (bigger == NULL)
+	return;
+      wp_free_list = bigger;
+      wp_free_size = new_size;
+    }
+  wp_free_list[wp_free_count++] = i;
+}
+
+
+/* Rebuild the weak pointer hash table, and the list of reusable slots,
+   from the information in the table that takes weak pointers to objects.
+   The caller holds wp_lock. */
 static void
 rebuild_wp_hashtable_locked(void)
 {
@@ -168,9 +208,13 @@ rebuild_wp_hashtable_locked(void)
   for (i = 0; i < wp_hashtable_size; i++)
     wp_hashtable[i].obj = e_false;
 
+  wp_free_count = 0;
+
   for (i = 0; i < wp_index; i++)
     if (wp_table[1 + i] != e_false)
       enter_wp(wp_table[1 + i], INT_TO_REF(i));
+    else
+      free_wp_slot((int)i);
 }
 
 
@@ -279,21 +323,31 @@ ref_to_wp(ref_t r)
 	}
       else if (temp == e_false)
 	{
-	  /* Make a new weak pointer, installing it in both tables.
-	     Grow first if the weak pointer table is full or the hash
-	     table is getting crowded; growing rehashes, so the probe
-	     has to be restarted afterwards. */
-	  if (wp_index >= wp_table_size
-	      || 2 * (wp_index + 1) >= wp_hashtable_size)
+	  /* Make a new weak pointer, installing it in both tables.  A
+	     slot freed by a previous collection is reused in preference
+	     to extending the table.  Only when there is none does the
+	     table grow, and then it may need to grow first if it is full
+	     or the hash table is getting crowded; growing rehashes, so
+	     the probe has to be restarted afterwards. */
+	  int slot;
+
+	  if (wp_free_count > 0)
+	    slot = wp_free_list[--wp_free_count];
+	  else
 	    {
-	      grow_wp_tables(wp_index + 1);
-	      i = wp_key(r) % wp_hashtable_size;
-	      while (wp_hashtable[i].obj != e_false)
-		if (++i == wp_hashtable_size)
-		  i = 0;
+	      if (wp_index >= wp_table_size
+		  || 2 * (wp_index + 1) >= wp_hashtable_size)
+		{
+		  grow_wp_tables(wp_index + 1);
+		  i = wp_key(r) % wp_hashtable_size;
+		  while (wp_hashtable[i].obj != e_false)
+		    if (++i == wp_hashtable_size)
+		      i = 0;
+		}
+	      slot = wp_index++;
 	    }
-	  wp_hashtable[i].obj = wp_table[1 + wp_index] = r;
-	  result = wp_hashtable[i].wp = INT_TO_REF(wp_index++);
+	  wp_hashtable[i].obj = wp_table[1 + slot] = r;
+	  result = wp_hashtable[i].wp = INT_TO_REF(slot);
 	  THREADY(oak_mutex_unlock(&wp_lock));
 	  return result;
 	}
@@ -350,6 +404,8 @@ post_gc_wp(void)
   long i;
   unsigned long discard_count = 0;
 
+  THREADY(oak_mutex_lock(&wp_lock));
+
   for (i = 0; i < wp_index; i++)
     {
       ref_t r = wp_table[1 + i], *p;
@@ -364,13 +420,18 @@ post_gc_wp(void)
 	    }
 	  else
 	    {
+	      /* The object is gone, so nothing can be holding this index
+		 any more; the rebuild below puts the slot back on the
+		 free list to be handed out again. */
 	      wp_table[1 + i] = e_false;
 	      discard_count += 1;
 	    }
 	}
     }
 
-  rebuild_wp_hashtable();
+  rebuild_wp_hashtable_locked();
+
+  THREADY(oak_mutex_unlock(&wp_lock));
 
   return discard_count;
 }

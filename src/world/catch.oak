@@ -48,6 +48,12 @@
 	       (escape-object) tag value)
     (%throw tag value)))
 
+;;; The THROW instruction traps when its tag is not a pointer.  This
+;;; belongs with the rest of the table in tag-trap.oak, but %THROW does
+;;; not exist that early in the cold load.
+
+(set! (nth %argless-tag-trap-table 48) %throw)
+
 ;;; %FILLTAG can never be actually called without losing, only the
 ;;; open coded version works, so we don't bother with a method for it.
 

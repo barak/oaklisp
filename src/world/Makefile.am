@@ -138,6 +138,39 @@ Makefile-vars:
 	   --load files --load make-makefile --eval '(make-makefile "$@")' \
 	   --exit
 
+# Release check: recompile every source with the world that was just
+# built and compare the result against the object shipped in prebuilt/.
+# A difference means the sources and the shipped world have drifted
+# apart, which is how several bugs came to live in objects that could
+# not be seen by reading the sources.  This recompiles in place, so the
+# objects here are left as the freshly compiled ones; they should be
+# identical, and if they are not the check says which.
+#
+# Needs a working oakworld.bin, so run it after a full build.
+
+check-prebuilt: oakworld.bin
+	@rc=0; \
+	for f in $(ALLOAFILESNONGEN); do \
+	  b=`echo $$f | sed 's/\.oa$$//'`; \
+	  loc=""; \
+	  case " $(COMPFILES) " in *" $$f "*) loc="--locale compiler-locale";; esac; \
+	  if test "$$f" = "multiproc.oa"; then \
+	    $(OAK) $(OAKFLAGS) --world oakworld.bin -- \
+	      --locale compiler-locale --load assembler --locale system-locale \
+	      --load multi-em --compile $$b --exit > /dev/null 2>&1 \
+	      || { echo "compile failed: $$b"; rc=1; continue; }; \
+	  else \
+	    $(OAK) $(OAKFLAGS) --world oakworld.bin -- $$loc --compile $$b --exit \
+	      > /dev/null 2>&1 || { echo "compile failed: $$b"; rc=1; continue; }; \
+	  fi; \
+	  if test -f $(srcdir)/../../prebuilt/src/world/$$f; then \
+	    cmp -s $$f $(srcdir)/../../prebuilt/src/world/$$f \
+	      || { echo "$$f differs from prebuilt/src/world/$$f"; rc=1; }; \
+	  fi; \
+	done; \
+	test $$rc = 0 && echo "All objects reproduce prebuilt/src/world/."; \
+	exit $$rc
+
 CLEANFILES = oakworld-1.bin oakworld-2.bin oakworld-3.bin new.cold	\
  new.sym $(ALLOAFILES) oakworld.bin
 

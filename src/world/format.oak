@@ -60,16 +60,27 @@
      control-string stream (length arglist) (length arglist) arglist)))
 
 
+;;; Fetch the next character of a directive.  Running past the end of
+;;; the control string means the string ended in the middle of a
+;;; directive, which is worth saying so rather than reporting an index
+;;; out of bounds against the control string.
+
+(define (format-directive-char control-string index limit)
+  (if (< index limit)
+      (nth control-string index)
+      (error "The control string ~S ends in the middle of a directive."
+	     control-string)))
+
 (define (format-parse-directive stream control-string index limit . args)
   (labels ((parse-list
 	    (lambda (char index the-list)
 	      (cond ((eq? char #\,)
-		     (parse-list (nth control-string index)
+		     (parse-list (format-directive-char control-string index limit)
 				 (+ index 1)
 				 (cons nil the-list)))
 		    ((eq? char #\')
-		     (let ((quoted-char (nth control-string index)))
-		       (eat-comma (nth control-string (+ index 1))
+		     (let ((quoted-char (format-directive-char control-string index limit)))
+		       (eat-comma (format-directive-char control-string (+ index 1) limit)
 				  (+ index 2) (cons quoted-char the-list))))
 		    ((number-starter? char)
 		     (labels ((parse-number
@@ -78,7 +89,7 @@
 				   (cond ((and (<= (#^number #\0) cn)
 					       (<= cn (#^number #\9)))
 					  (parse-number
-					   (nth control-string index)
+					   (format-directive-char control-string index limit)
 					   (+ index 1)
 					   (+ (* num 10) (- cn (#^number #\0)))
 					   neg?))
@@ -88,27 +99,27 @@
 					   (cons (if neg? (- num) num)
 						 the-list))))))))
 			     (cond ((eq? char #\-)
-				    (parse-number (nth control-string index)
+				    (parse-number (format-directive-char control-string index limit)
 						  (+ index 1) 0 #t))
 				   ((eq? char #\+)
-				    (parse-number (nth control-string index)
+				    (parse-number (format-directive-char control-string index limit)
 						  (+ index 1) 0 #f))
 				   (else
 				    (parse-number char index 0 #f)))))
 		    (else (find-colon char index the-list)))))
 	   (eat-comma (lambda (char index the-list)
 			(if (eq? char #\,)
-			    (parse-list (nth control-string index)
+			    (parse-list (format-directive-char control-string index limit)
 					(+ index 1) the-list)
 			    (parse-list char index the-list))))
 	   (find-colon (lambda (char index the-list)
 			 (if (eq? char #\:)
-			     (find-atsign (nth control-string index)
+			     (find-atsign (format-directive-char control-string index limit)
 					  (+ index 1) the-list #t)
 			     (find-atsign char index the-list #f))))
 	   (find-atsign (lambda (char index the-list colon?)
 			  (if (eq? char #\@)
-			      (terminate (nth control-string index)
+			      (terminate (format-directive-char control-string index limit)
 					 (+ index 1) the-list colon? #t)
 			      (terminate char index the-list colon? #f))))
 	   (terminate
@@ -124,7 +135,7 @@
 		      (else
 		       (error "Format control arg may be only 0 or 1.")))))))
 
-       (parse-list (nth control-string index) (+ index 1) '())))
+       (parse-list (format-directive-char control-string index limit) (+ index 1) '())))
 
 (define (formati1 stream control-string index limit
 		  the-list colon? atsign? char op arg . args)

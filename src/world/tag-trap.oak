@@ -99,7 +99,11 @@
 (set! (nth %argless-tag-trap-table 44) (locater car))
 (set! (nth %argless-tag-trap-table 45) (locater cdr))
 
-(set! (nth %argless-tag-trap-table 48) throw)
+;;; Slots 48, 55 and 56 want THROW, %FILL-CONTINUATION and %CONTINUE,
+;;; which are not defined yet at this point in the cold load; they are
+;;; filled in by catch.oak and continuation.oak instead.  Assigning them
+;;; here just stored whatever their variables held, which was 0.
+;(set! (nth %argless-tag-trap-table 48) throw)
 (set! (nth %argless-tag-trap-table 50) object-unhash)
 ;(set! (nth %argless-tag-trap-table 51) %gc)
 ;(set! (nth %argless-tag-trap-table 52) big-endian?)
@@ -110,8 +114,8 @@
       (lambda (type size)
 	(error "Illegal args (%VARLEN-ALLOCATE ~S ~S).~%" type size)))
 (set! (nth %argless-tag-trap-table 54) %increment-locative)
-(set! (nth %argless-tag-trap-table 55) %fill-continuation)
-(set! (nth %argless-tag-trap-table 56) %continue)
+;(set! (nth %argless-tag-trap-table 55) %fill-continuation)
+;(set! (nth %argless-tag-trap-table 56) %continue)
 ;(set! (nth %argless-tag-trap-table 57) reverse-cons)
 ;(set! (nth %argless-tag-trap-table 58) most-negative-fixnum?)
 (set! (nth %argless-tag-trap-table 59) fx-plus)

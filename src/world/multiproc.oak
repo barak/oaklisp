@@ -168,11 +168,22 @@
 
 (define %threads-initialized #f)
 
+(define (init-process-object)
+  ;;; Give this virtual machine a process object.  Anything that reaches
+  ;;; the scheduler -- PROCESS-ID, PAUSE, PROCESS-RUN-FN, FORCE of a
+  ;;; future -- needs one, and unlike the mutexes below this is harmless
+  ;;; on its own, so it is a warm boot action.
+  ;;; The test is on the register rather than on a flag: the process
+  ;;; register is not part of a dumped world, so it comes back as the
+  ;;; fixnum 0 on every boot while a flag would come back set.
+  (when (eq? (%load-process) 0)
+    (%store-process (make process))))
+
 (define (init-thread-infrastructure)
   ;;; Initialize mutexes, process register, and per-process fluid bindings.
   ;;; Safe to call multiple times; only runs once.
   (unless %threads-initialized
-    (%store-process (make process))
+    (init-process-object)
     (set! %no-threading #f)
     (set! *symbol-table-mutex* (make mutex))
     (set! *add-method-mutex* (make mutex))
@@ -193,10 +204,18 @@
   (init-thread-infrastructure)
   (spawn-heavyweight-threads))
 
-;;; Threading is NOT auto-initialized at warm boot.  The compiler
-;;; deadlocks when mutexes are active (branch-instruction compilation
+;;; The mutexes are NOT auto-initialized at warm boot: the compiler
+;;; deadlocks when they are active (branch-instruction compilation
 ;;; re-enters mutex-protected code).  Call (setup-initial-process-object)
-;;; or use --pthreads to enable threading explicitly.
+;;; or use --pthreads to enable them explicitly.  The process object is
+;;; another matter -- without it the process register holds the fixnum 0
+;;; and the scheduler, and so DELAY/FORCE, cannot run at all -- so that
+;;; much does happen at every warm boot.
+
+;;; Before CMDLINE-EAT, so that an --eval or a --load can already use
+;;; the scheduler.
+
+(add-warm-boot-action-first init-process-object)
 
 
 ;;--------------------------------------------------

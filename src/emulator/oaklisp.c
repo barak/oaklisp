@@ -50,15 +50,15 @@ main(int argc, char **argv)
 #endif
 
 #ifdef THREADS
-  my_index_p = (int *)malloc (sizeof (int));
+  my_index_p = (int *)xmalloc(sizeof (int));
   *my_index_p = get_next_index();
   oak_tls_set(index_key, (void*)my_index_p);
   my_index_p = oak_tls_get(index_key);
   my_index = *my_index_p;
   gc_ready[my_index] = 0;
   /* inc_next_index();*/
-  value_stack_array[my_index] = (oakstack*)malloc (sizeof (oakstack));
-  cntxt_stack_array[my_index] = (oakstack*)malloc(sizeof (oakstack));
+  value_stack_array[my_index] = (oakstack*)xmalloc(sizeof (oakstack));
+  cntxt_stack_array[my_index] = (oakstack*)xmalloc(sizeof (oakstack));
   value_stack.size = 1024;
   value_stack.filltarget = 1024/2;
   context_stack.size = 512;
@@ -86,9 +86,9 @@ main(int argc, char **argv)
 #endif
 
 #ifdef THREADS
-  register_array[my_index] = (register_set_t*)malloc(sizeof(register_set_t));
+  register_array[my_index] = (register_set_t*)xmalloc(sizeof(register_set_t));
 #else
-  reg_set = (register_set_t*)malloc(sizeof(register_set_t));
+  reg_set = (register_set_t*)xmalloc(sizeof(register_set_t));
 #endif
 
   /* Set the registers to the boot code */
