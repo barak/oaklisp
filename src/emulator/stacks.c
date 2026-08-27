@@ -139,11 +139,31 @@ stack_flush(oakstack * stack_p, int amount_to_leave)
 }
 
 
+/* Called when more values are asked for than the buffer can hold.  The
+   caller has to pop through the segments in more than one pass instead;
+   see stack_pop_n.  Does not return. */
+
+static void
+stack_overunflush(oakstack * stack_p, long wanted)
+{
+  fprintf(stderr,
+	  "Fatal error (vm): unflush of %ld values into a %d value stack "
+	  "buffer.\n", wanted, stack_p->size);
+  fflush(stderr);
+  exit(EXIT_FAILURE);
+}
+
+
 /* This routine grabs some segments that have been flushed from the buffer
    and puts them back in.  Because the segments might be small, it
    may have to put more than one segment back in.  It grabs enough so that
    the buffer has at least n+1 values in it, so that at least n values could
-   be popped off without underflow. */
+   be popped off without underflow.
+
+   The caller must not ask for more values than the buffer holds: the
+   command line code guarantees room for a maximal segment on top of the
+   deepest access any instruction makes, and anything that has to reach
+   further down than that goes through stack_pop_n. */
 
 void
 stack_unflush(oakstack * stack_p, int n)
@@ -185,6 +205,12 @@ stack_unflush(oakstack * stack_p, int n)
   if (trace_segs) printf("(%ld)-", number_to_pull);
 #endif
 
+  /* The shuffle below and the segment copy after it both write as far
+     as bp[new_count-1], so refuse to start rather than run off the end
+     of the buffer. */
+  if (new_count > stack_p->size)
+    stack_overunflush(stack_p, new_count);
+
   /* Copy the data in the buffer up to its new home. */
   dest = &stack_p->bp[new_count - 1];
 
@@ -214,6 +240,76 @@ stack_unflush(oakstack * stack_p, int n)
   if (trace_segs)
     printf(".\n");
 #endif
+}
+
+
+/* Pop n values off a stack.  Unlike unflushing and then moving the
+   pointer, this does not require the values to be in the buffer all at
+   once: whole flushed segments that fall entirely within the pop are
+   dropped rather than copied back in, and only the segment the boundary
+   lands in is unflushed.  A deep unwind -- a THROW or an error escape
+   out of a recursion thousands of frames deep -- pops far more values
+   than the buffer holds, and asking stack_unflush for them wrote past
+   the end of it. */
+
+void
+stack_pop_n(oakstack * stack_p, long n)
+{
+  long count = stack_p->sp - stack_p->bp + 1;
+
+  if (n <= 0)
+    return;
+
+  /* Everything to pop is in the buffer, and popping it leaves the top
+     of the stack visible. */
+  if (n < count)
+    {
+      stack_p->sp -= n;
+      return;
+    }
+
+  /* Otherwise throw the whole buffer away and work through the
+     segments. */
+  n -= count;
+  stack_p->sp = stack_p->bp - 1;
+
+  while (n > 0)
+    {
+      segment_t *s;
+      long this_one;
+
+      if (stack_p->segment == e_nil)
+	stack_underflow(stack_p, (int)n);
+
+      s = (segment_t *) REF_TO_PTR(stack_p->segment);
+      this_one = REF_TO_INT(s->length_field) - SEGMENT_HEADER_LENGTH;
+
+      /* The boundary falls inside this segment; leave it to the
+	 unflush below. */
+      if (this_one > n)
+	break;
+
+      stack_p->segment = s->previous_segment;
+      stack_p->pushed_count -= (int)this_one;
+      n -= this_one;
+
+#ifndef FAST
+      if (trace_segs) printf("seg:drop-%ld.\n", this_one);
+#endif
+    }
+
+  /* Pull one segment back in so the top of the stack is visible again
+     and the remainder can be popped from the buffer.  A segment never
+     exceeds max_segment_size, which the buffer is sized to hold.  With
+     nothing left to pull in there is nothing under the pop either,
+     which is the underflow the ordinary pop path reports. */
+  if (n > 0 || stack_p->segment != e_nil)
+    {
+      stack_unflush(stack_p, (int)n);
+      stack_p->sp -= n;
+    }
+  else
+    stack_underflow(stack_p, 1);
 }
 
 

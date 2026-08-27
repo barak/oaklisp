@@ -59,14 +59,16 @@ These operations work on all sequences.
 \op{copy}{sequence}
 
 \op{append}{sequence1 sequence2}
-\doc{Returns a sequence of the type of \emph{sequence1}.  One slight
-bug is that one may not pass \df{append} a first argument that's a
-list and a second that's not.  This may be fixed in the future.  All
-other combinations should work correctly.}
+\doc{Returns a sequence of the type of \emph{sequence1}.  The
+arguments must all be of the same type, except that when the first is
+a list the last one may be anything at all: as in R3RS, it becomes the
+tail of the result, so \texttt{(append '(1 2) 3)} is
+\texttt{(1 2 . 3)}.  A mismatch between any of the others is an
+error.}
 \op{append\protect\bang}{sequence1 sequence2}
 \doc{Most sequences have immutable lengths, and hence are not
 appropriate arguments to \df{append\protect\bang}.  The major exception is lists.
-The same bug is present here as in \df{append}.}
+The same rule about the last argument applies here as in \df{append}.}
 
 \op{reverse}{sequence}
 \op{reverse\protect\bang}{sequence}

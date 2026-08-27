@@ -130,8 +130,16 @@
 		       (op the-list colon? atsign? char stream)
 		       (formati stream control-string index limit . args))
 		      ((eq? 1 arg-count)
-		       (formati1 stream control-string index limit
-				 the-list colon? atsign? char op . args))
+		       ;; FORMATI1 takes the argument to print as its tenth
+		       ;; parameter, so running out of arguments used to
+		       ;; surface as a nargs error against it, with its whole
+		       ;; parameter list printed.  Nothing is passed along
+		       ;; here because there is nothing left to pass.
+		       (if (zero? (rest-length args))
+			   (error "The ~~~C directive in ~S has no argument left to print."
+				  char control-string)
+			   (formati1 stream control-string index limit
+				     the-list colon? atsign? char op . args)))
 		      (else
 		       (error "Format control arg may be only 0 or 1.")))))))
 
@@ -161,10 +169,13 @@
 
 (define-instance format-control-table simple-vector 128)
 
-(let ((x (list 1
-	       (lambda (the-list colon? atsign? char stream arg)
-		 (error "Unknown format control character ~C, argument ~S."
-			char arg)))))
+;;; An unknown directive takes no argument: asking for one made
+;;; (format #f "~^") report a nargs error against FORMATI1 rather than
+;;; naming the directive it could not understand.
+
+(let ((x (list 0
+	       (lambda (the-list colon? atsign? char stream)
+		 (error "Unknown format control character ~C." char)))))
 
   (dotimes (i 128)
     (set! (nth format-control-table i) x)))
@@ -173,12 +184,46 @@
   (set! (nth format-control-table (#^number (upcase char)))
        (list arg-count lamb)))
 
+;;; Numeric parameters.  The manual says a ~ "may be followed by a
+;;; number ... which vary the action that would normally be taken", but
+;;; FORMAT-PARSE-DIRECTIVE collected them and only ~nR ever looked.
+;;; These are the Common Lisp mincol and padchar parameters: ~<mincol>D
+;;; pads on the left to that width, ~<mincol>A pads on the right, and a
+;;; second parameter -- ~<mincol>,'<char>D -- gives the pad character.
+;;;
+;;; PARSE-DIRECTIVE conses the parameters up as it reads them, so the
+;;; list arrives reversed; FORMAT-PARAMETER indexes it in the order they
+;;; were written.  IS-A? rather than the type predicates because this
+;;; file is loaded into the cold world well before predicates.oak.
+
+(define (format-parameter the-list n)
+  (iterate step ((l (reverse the-list)) (n n))
+    (cond ((null? l) '())
+	  ((zero? n) (car l))
+	  (else (step (cdr l) (- n 1))))))
+
+(define (format-pad stream the-list first pad-left? thunk)
+  (let ((mincol (format-parameter the-list first)))
+    (if (not (is-a? mincol fixnum))
+	(thunk stream)
+	(let ((padchar (let ((c (format-parameter the-list (+ first 1))))
+			 (if (is-a? c character) c #\space)))
+	      (s (make string-output-stream)))
+	  (thunk s)
+	  (let* ((str (#^string s))
+		 (n (- mincol (length str))))
+	    (when (not pad-left?) (write-string str stream))
+	    (dotimes (i n) (write-char stream padchar))
+	    (when pad-left? (write-string str stream)))))))
+
 ;;; The way they work:
 
 (define-format-control #\A 1
   (lambda (the-list colon? atsign? char stream arg)
-    (bind ((#*print-escape #f))
-      (print arg stream))))
+    (format-pad stream the-list 0 #f
+		(lambda (out)
+		  (bind ((#*print-escape #f))
+		    (print arg out))))))
 
 (define-format-control #\~ 0
   (lambda (the-list colon? atsign? char stream)
@@ -194,43 +239,61 @@
 
 (define-format-control #\S 1
   (lambda (the-list colon? atsign? char stream arg)
-    (bind ((#*print-escape #t))
-      (print arg stream))))
+    (format-pad stream the-list 0 #f
+		(lambda (out)
+		  (bind ((#*print-escape #t))
+		    (print arg out))))))
 
 (define-format-control #\B 1
   (lambda (the-list colon? atsign? char stream arg)
-    (bind ((#*print-radix 2))
-      (print arg stream))))
+    (format-pad stream the-list 0 #t
+		(lambda (out)
+		  (bind ((#*print-radix 2))
+		    (print arg out))))))
 
 (define-format-control #\D 1
   (lambda (the-list colon? atsign? char stream arg)
-    (bind ((#*print-radix 10))
-      (print arg stream))))
+    (format-pad stream the-list 0 #t
+		(lambda (out)
+		  (bind ((#*print-radix 10))
+		    (print arg out))))))
 
 (define-format-control #\O 1
   (lambda (the-list colon? atsign? char stream arg)
-    (bind ((#*print-radix 8))
-      (print arg stream))))
+    (format-pad stream the-list 0 #t
+		(lambda (out)
+		  (bind ((#*print-radix 8))
+		    (print arg out))))))
 
 (define-format-control #\X 1
   (lambda (the-list colon? atsign? char stream arg)
-    (bind ((#*print-radix 16))
-      (print arg stream))))
+    (format-pad stream the-list 0 #t
+		(lambda (out)
+		  (bind ((#*print-radix 16))
+		    (print arg out))))))
+
+;;; ~R takes the radix as its first parameter, so its mincol and
+;;; padchar are the second and third.
 
 (define-format-control #\R 1
   (lambda (the-list colon? atsign? char stream arg)
-    (cond ((null? the-list)
-	   (error "Roman numerals are not yet implemented."))
-	  (else
-	   (bind ((#*print-radix (last the-list)))
-	     (print arg stream))))))
+    (let ((radix (format-parameter the-list 0)))
+      (cond ((null? radix)
+	     (error "Roman numerals are not yet implemented."))
+	    (else
+	     (format-pad stream the-list 1 #t
+			 (lambda (out)
+			   (bind ((#*print-radix radix))
+			     (print arg out)))))))))
 
 (define-format-control #\C 1
   (lambda (the-list colon? atsign? char stream arg)
     ;; Like ~A, and unlike leaving it to whatever #*PRINT-ESCAPE
     ;; happens to be bound to out here.
-    (bind ((#*print-escape #f))
-      (print arg stream))))
+    (format-pad stream the-list 0 #f
+		(lambda (out)
+		  (bind ((#*print-escape #f))
+		    (print arg out))))))
 
 (define-format-control #\P 1
   (lambda (the-list colon? atsign? char stream arg)

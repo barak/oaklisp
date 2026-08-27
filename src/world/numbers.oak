@@ -601,7 +601,9 @@
 	     `((load-stk 1)
 	       (load-stk 1)
 	       (<)
-	       (branch-nil ,noswap)
+	       ;; The same sequence as MAX2 with the branch inverted: keep
+	       ;; the first operand when it is the smaller one.
+	       (branch-t ,noswap)
 	       (swap 1)
 	       (label ,noswap)
 	       (blast 1)

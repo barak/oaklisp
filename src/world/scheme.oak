@@ -298,4 +298,151 @@
 		  (thunk)
 		  (block (set! standard-output old) (close s)))))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; More numbers.
+
+;;; Every number in this system is exact, so the two conversions are
+;;; the identity, and the complex operations that need no floating
+;;; point are the ones this locale was missing.
+
+(define (make-rectangular x y) (make-complex x y))
+(define magnitude abs)
+(define (exact->inexact x) x)
+(define (inexact->exact x) x)
+
+;;; The simplest rational within E of X, by the usual continued
+;;; fraction argument.  Exact throughout, so no floats are needed here
+;;; either.
+
+(define rationalize
+  (labels (((simplest-positive x y)		;0 < x < y
+	    (let ((fx (floor x))
+		  (fy (floor y)))
+	      (cond ((not (< fx x)) fx)
+		    ((= fx fy)
+		     (+ fx (/ 1 (simplest-positive (/ 1 (- y fy))
+						   (/ 1 (- x fx))))))
+		    (else (+ fx 1)))))
+	   ((simplest x y)
+	    (cond ((< y x) (simplest y x))
+		  ((= x y) x)
+		  ((positive? x) (simplest-positive x y))
+		  ((negative? y) (- (simplest-positive (- y) (- x))))
+		  (else 0))))
+    (lambda (x e)
+      (let ((e (abs e)))
+	(simplest (- x e) (+ x e))))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Names this locale has to shadow.
+
+;;; DEFINE writes through to the inherited cell when SYSTEM-LOCALE
+;;; already has the name, and FREEZE-IN-CURRENT-LOCALE then reports
+;;; that the symbol is not installed here, so a shadow needs a cell of
+;;; its own first.  Freezing the value is what lets the compiler open
+;;; code it in files compiled into this locale.
+
+(define (shadow-in-current-locale sym val)
+  (let ((cell (or (variable-here? #*current-locale sym)
+		  (set! (variable-here? #*current-locale sym) #t))))
+    (set! (contents cell) val)
+    (set! (frozen-here? #*current-locale sym) #t)
+    val))
+
+
+;;; R3RS makes the five numeric comparisons n-ary, (< x1 x2 x3 ...).
+;;; The Oaklisp operations these shadow are strictly binary --
+;;; doc/lang/numbers.tex documents them that way -- and a third
+;;; argument was not even a runtime error but "CodeGen: Wrong number of
+;;; arguments" out of the compiler.
+;;;
+;;; The chain is open coded, the way MAX and MIN are, so two arguments
+;;; still compile to the instruction they always did.  Arguments arrive
+;;; on the stack with the first one on top, so each step copies the top
+;;; two, compares them and drops the first; a comparison that fails
+;;; branches into a chain of pops that unwinds whatever is left, so
+;;; every exit leaves exactly one value where the n arguments were.
+
+(define (%chain-compare op a l)
+  (cond ((null? l) #t)
+	((op a (car l)) (%chain-compare op (car l) (cdr l)))
+	(else #f)))
+
+(define (%n-ary-comparison name binary-op binary-code)
+  (let ((op
+	 (make-fancy-open-coded-operation
+	  (list foldable-mixin)
+	  (lambda (n)
+	    (cond
+	     ((< n 2)
+	      (error "~A requires at least two arguments." name))
+	     ((= n 2) (copy binary-code))
+	     (else
+	      (let ((fails (map (lambda (i) (generate-symbol 'cmp-fail))
+				(iota (- n 1))))
+		    (done (generate-symbol 'cmp-done)))
+		(append
+		 (splice (map (lambda (lab)
+				`((load-stk 1)
+				  (load-stk 1)
+				  ,@(copy binary-code)
+				  (branch-nil ,lab)
+				  (pop 1)))
+			      fails))
+		 `((pop 1) (load-imm #t) (branch ,done))
+		 (splice (map (lambda (lab) `((label ,lab) (pop 1)))
+			      fails))
+		 `((pop 1) (load-imm ()) (label ,done)))))))
+	  nil 1)))
+
+    (add-method (op (object) x y . args)
+      (if (binary-op x y)
+	  (listify-args (lambda (rest) (%chain-compare binary-op y rest))
+			. args)
+	  (consume-args #f . args)))
+    op))
+
+(shadow-in-current-locale '=  (%n-ary-comparison "="  =  '((=))))
+(shadow-in-current-locale '<  (%n-ary-comparison "<"  <  '((<))))
+(shadow-in-current-locale '>  (%n-ary-comparison ">"  >  '((swap 1) (<))))
+(shadow-in-current-locale '<= (%n-ary-comparison "<=" <= '((swap 1) (<) (not))))
+(shadow-in-current-locale '>= (%n-ary-comparison ">=" >= '((<) (not))))
+
+
+;;; R3RS requires the standard types to be disjoint, and LIST? to be
+;;; false for an improper list.  Oaklisp's lattice makes STRING a
+;;; subtype of SIMPLE-VECTOR and CONS-PAIR a subtype of LIST-TYPE, so
+;;; its own VECTOR? and LIST? answer #t for a string and for (1 . 2).
+;;; Both answers are defensible inside Oaklisp; only these shadows have
+;;; to be R3RS.
+
+(shadow-in-current-locale
+ 'vector?
+ (let ((op (make operation)))
+   (add-method (op (forcible) self) (op (force self)))
+   (add-method (op (object) self) #f)
+   (add-method (op (simple-vector) self) #t)
+   (add-method (op (string) self) #f)
+   op))
+
+(shadow-in-current-locale
+ 'list?
+ (lambda (x)
+   ;; Tortoise and hare, so a circular list answers #f rather than
+   ;; walking forever.
+   (iterate step ((slow x) (fast x))
+     (cond ((null? fast) #t)
+	   ((not (pair? fast)) #f)
+	   (else
+	    (let ((fast (cdr fast)))
+	      (cond ((null? fast) #t)
+		    ((not (pair? fast)) #f)
+		    (else
+		     (let ((fast (cdr fast))
+			   (slow (cdr slow)))
+		       (and (not (eq? fast slow))
+			    (step slow fast)))))))))))
+
 ;;; eof
