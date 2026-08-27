@@ -35,17 +35,27 @@
     (lcons 2 (primes-list 3))))
 
 
+;;; Zero and the negatives are dealt with before the loop starts, so
+;;; what it sees is always a positive integer.  (QUOTIENT 0 P) is 0 for
+;;; every prime, so zero never reaches the (= 1 LEFT) test and used to
+;;; spin forever; a negative argument used to come back with its sign
+;;; smuggled into the last factor.
+
 (define (factor n)
-  (iterate step ((left n) (factors '()) (tries prime-list))
-    (let* ((try (car tries))
-	   (try-square (* try try)))
-      (cond ((= 1 left) factors)
-	    ((zero? (modulo left try))
-	     (step (quotient left try) (cons try factors) tries))
-	    ((> try-square left)
-	     (cons left factors))
-	    (else
-	     (step left factors (cdr tries)))))))
+  (cond ((zero? n)
+	 (error "FACTOR of 0, which has no factorization."))
+	((negative? n) (cons -1 (factor (- n))))
+	(else
+	 (iterate step ((left n) (factors '()) (tries prime-list))
+	   (let* ((try (car tries))
+		  (try-square (* try try)))
+	     (cond ((= 1 left) factors)
+		   ((zero? (modulo left try))
+		    (step (quotient left try) (cons try factors) tries))
+		   ((> try-square left)
+		    (cons left factors))
+		   (else
+		    (step left factors (cdr tries)))))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

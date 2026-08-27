@@ -317,8 +317,11 @@
   ((%stream-primitive 11) fd))
 
 (add-method (position (file-input-stream) self)
-  (- (^super file-stream position self)
-     (unread-chars self)))
+  ;; The primitive answers NIL when the stream has no position to
+  ;; report, so that has to pass straight through rather than being
+  ;; arithmetic'd.
+  (let ((p (^super file-stream position self)))
+    (and p (- p (unread-chars self)))))
 
 (add-method ((setter position) (file-stream fd) self pos)
   (unless ((%stream-primitive 12) fd pos)

@@ -227,16 +227,33 @@ cdr(ref_t x)
 
 
 
-static inline ref_t
-assq(ref_t elt, ref_t lis, ref_t notfound)
+/* The ASSQ instruction takes its list off the value stack, so both the
+   spine and every element of it are ordinary Oaklisp values that the
+   program chose.  car() and cdr() dereference without looking at the
+   tag, so this checks each cell the way CONSINSTR checks the cons
+   instructions -- a pointer, and a pair -- before following it.  A
+   false return means the instruction should trap; *RESULT is set only
+   on success. */
+
+static inline bool
+assq_checked(ref_t elt, ref_t lis, ref_t notfound, ref_t *result)
 {
   while (lis != e_nil) {
-    ref_t this = car(lis);
-    if (car(this) == elt)
-      return this;
+    ref_t this;
+
+    if (!TAG_IS(lis, PTR_TAG) || REF_SLOT(lis, 0) != e_cons_type)
+      return false;
+    this = car(lis);
+    if (!TAG_IS(this, PTR_TAG) || REF_SLOT(this, 0) != e_cons_type)
+      return false;
+    if (car(this) == elt) {
+      *result = this;
+      return true;
+    }
     lis = cdr(lis);
   }
-  return notfound;
+  *result = notfound;
+  return true;
 }
 
 
@@ -871,62 +888,6 @@ loop(ref_t initial_tos)
 		p[CONS_PAIR_CAR_OFF] = x;
 		p[CONS_PAIR_CDR_OFF] = PEEKVAL();
 		p[0] = e_cons_type;
-#ifdef DEBUG_CDR
-		/* Detect cons with non-list CDR that might create improper list */
-		{ ref_t _cdr_val = PEEKVAL();
-		  if (TAG_IS(_cdr_val, PTR_TAG) && _cdr_val != e_nil
-		      && TAG_IS(x, INT_TAG)
-		      && REF_TO_PTR(_cdr_val)[0] != e_cons_type) {
-		    static int _cons_warn = 0;
-		    if (_cons_warn < 3) {
-		      fprintf(stderr, "DEBUG CONS improper: car=%#zx(fix=%zd) cdr=%#zx cdr_type=%#zx\n",
-			      (size_t)x, (size_t)REF_TO_INT(x), (size_t)_cdr_val,
-			      (size_t)REF_TO_PTR(_cdr_val)[0]);
-		      fprintf(stderr, "  method=%#zx code_seg=%#zx PC_byteoff=%zd\n",
-			      (size_t)e_current_method, (size_t)e_code_segment,
-			      (size_t)((unsigned long)local_e_pc - (unsigned long)e_code_segment));
-		      { ref_t *_csp = local_context_sp; int _f;
-		        fprintf(stderr, "  context (top 5):\n");
-		        for(_f=0; _f<5 && _csp >= context_stack_bp+2; _f++) {
-		          ref_t _meth = _csp[-1];
-		          fprintf(stderr, "    frame %d: method=%#zx", _f, (size_t)_meth);
-		          if (TAG_IS(_meth, PTR_TAG)) {
-		            ref_t _code = REF_SLOT(_meth, METHOD_CODE_OFF);
-		            if (TAG_IS(_code, PTR_TAG))
-		              fprintf(stderr, " code_len=%d", (int)REF_TO_INT(REF_TO_PTR(_code)[1]));
-		          }
-		          fprintf(stderr, " pc_byteoff=%zd\n", (size_t)REF_TO_INT(_csp[-2]));
-		          _csp -= 3;
-		        }
-		      }
-		      /* dump method code */
-		      { ref_t _code = REF_SLOT(e_current_method, METHOD_CODE_OFF);
-		        if (TAG_IS(_code, PTR_TAG)) {
-		          instr_t *_first = CODE_SEG_FIRST_INSTR(_code);
-		          ref_t *_cobj = REF_TO_PTR(_code);
-		          int _nrefs = (int)REF_TO_INT(_cobj[1]);
-		          int _code_refs = _nrefs - CODE_CODE_START_OFF;
-		          int _ninstr = _code_refs * INSTR_STRIDE;
-		          int _lim = _ninstr < 200 ? _ninstr : 200;
-		          int _i;
-		          fprintf(stderr, "  CONS-creator code (%d refs, %d code refs):\n", _nrefs, _code_refs);
-		          for(_i=0; _i<_lim; _i++) {
-		            if (_i % INSTR_STRIDE == 0) fprintf(stderr, "    ref[%2d]:", _i/INSTR_STRIDE);
-		            fprintf(stderr, " %04x", (unsigned)_first[_i]);
-		            if (_i % INSTR_STRIDE == INSTR_STRIDE-1) fprintf(stderr, "\n");
-		          }
-		        }
-		      }
-		      /* dump value stack */
-		      { int _i; fprintf(stderr, "  val stack at CONS (top 10):");
-		        for(_i=0; _i<10 && (local_value_sp-_i) >= value_stack_bp; _i++)
-		          fprintf(stderr, " %#zx", (size_t)local_value_sp[-_i]);
-		        fprintf(stderr, "\n"); }
-		      _cons_warn++;
-		    }
-		  }
-		}
-#endif
 		PEEKVAL() = PTR_TO_REF(p);
 
 		GOTO_TOP;
@@ -1077,7 +1038,17 @@ loop(ref_t initial_tos)
 
 	    case 26:		/* ASSQ */
 	      POPVAL(x);
-	      PEEKVAL() = assq(x, PEEKVAL(), e_false);
+	      {
+		ref_t result;
+
+		/* TRAP1 pushes X back, so the handler sees both
+		   arguments where it expects them.  The trap table entry
+		   for this slot must not be %ASSQ itself, whose method
+		   is this very instruction; see tag-trap.oak. */
+		if (!assq_checked(x, PEEKVAL(), e_false, &result))
+		  TRAP1(2);
+		PEEKVAL() = result;
+	      }
 	      GOTO_TOP;
 
 	    case 27:		/* LOAD-LENGTH */
@@ -1209,83 +1180,10 @@ loop(ref_t initial_tos)
 
 	      /* Cons access instructions. */
 
-#ifdef DEBUG_CDR
-static int _cdr_debug_count = 0;
-#define CONSINSTR(a)						\
-		{ x = PEEKVAL();				\
-		  if (!TAG_IS(x, PTR_TAG) || REF_SLOT(x,0) != e_cons_type) { \
-		    if (_cdr_debug_count < 1) { \
-		    fprintf(stderr, "DEBUG CONSINSTR trap #%d: x=%#zx tag=%zd instr=%d nargs=%d\n", \
-			    _cdr_debug_count, (size_t)x, (size_t)(x & TAG_MASK), arg_field, e_nargs); \
-		    fprintf(stderr, "  code_seg=%#zx PC byte offset=%zd method=%#zx\n", \
-			    (size_t)e_code_segment, \
-			    (size_t)((unsigned long)local_e_pc - (unsigned long)e_code_segment), \
-			    (size_t)e_current_method); \
-		    if (TAG_IS(x, PTR_TAG)) { \
-		      fprintf(stderr, "  slot[0]=%#zx slot[1]=%#zx (cons_type=%#zx)\n", \
-			      (size_t)REF_SLOT(x,0), (size_t)REF_SLOT(x,1), (size_t)e_cons_type); \
-		    } \
-		    { int _i; fprintf(stderr, "  val stack (top 20):"); \
-		      for(_i=0; _i<20 && (local_value_sp-_i) >= value_stack_bp; _i++) \
-		        fprintf(stderr, " %#zx", (size_t)local_value_sp[-_i]); \
-		      fprintf(stderr, "\n"); } \
-		    /* Walk up CDR chain from caller frames to find where the list becomes improper */ \
-		    { int _d; fprintf(stderr, "  CDR chain walk from caller frames:\n"); \
-		      for (_d=4; _d<20 && (local_value_sp-_d) >= value_stack_bp; _d+=2) { \
-		        ref_t _lst = local_value_sp[-_d]; \
-		        fprintf(stderr, "    depth %d: ref=%#zx tag=%zd", _d, (size_t)_lst, (size_t)(_lst & TAG_MASK)); \
-		        if (TAG_IS(_lst, PTR_TAG)) { \
-		          ref_t *_p = REF_TO_PTR(_lst); \
-		          fprintf(stderr, " type=%#zx car=%#zx cdr=%#zx", (size_t)_p[0], (size_t)_p[CONS_PAIR_CAR_OFF], (size_t)_p[CONS_PAIR_CDR_OFF]); \
-		          if (_p[0] == e_cons_type) fprintf(stderr, " [CONS]"); \
-		          else fprintf(stderr, " [NOT-CONS type_tag=%zd]", (size_t)(_p[0] & TAG_MASK)); \
-		        } \
-		        fprintf(stderr, "\n"); \
-		      } } \
-		    { instr_t *_first = CODE_SEG_FIRST_INSTR(e_code_segment); \
-		      ref_t *_obj = REF_TO_PTR(e_code_segment); \
-		      int _nrefs = (int)REF_TO_INT(_obj[1]); \
-		      int _code_refs = _nrefs - CODE_CODE_START_OFF; \
-		      int _ninstr = _code_refs * INSTR_STRIDE; \
-		      fprintf(stderr, "  code_vec: %d total refs, %d code refs, first_instr=%p\n", \
-			      _nrefs, _code_refs, (void*)_first); \
-		      fprintf(stderr, "  PC at instr_t offset %td from first_instr\n", \
-			      local_e_pc - _first); \
-		      { int _i, _lim = _ninstr < 100 ? _ninstr : 100; \
-		        fprintf(stderr, "  instructions (from first_instr):"); \
-		        for(_i=0; _i<_lim; _i++) { \
-		          if (_i % INSTR_STRIDE == 0) fprintf(stderr, "\n    ref[%2d]:", _i/INSTR_STRIDE); \
-		          fprintf(stderr, " %04x", (unsigned)_first[_i]); \
-		        } \
-		        fprintf(stderr, "\n"); } } \
-		    { ref_t *_csp = local_context_sp; int _f; \
-		      fprintf(stderr, "  context stack (call chain, innermost first):\n"); \
-		      for(_f=0; _f<200 && _csp >= context_stack_bp+2; _f++) { \
-		        ref_t _meth = _csp[-1]; \
-		        ref_t _pcoff = _csp[-2]; \
-		        fprintf(stderr, "    frame %d: method=%#zx pc_byteoff=%zd", \
-		                _f, (size_t)_meth, (size_t)REF_TO_INT(_pcoff)); \
-		        if (TAG_IS(_meth, PTR_TAG)) { \
-		          ref_t _code = REF_SLOT(_meth, METHOD_CODE_OFF); \
-		          if (TAG_IS(_code, PTR_TAG)) { \
-		            ref_t *_cobj = REF_TO_PTR(_code); \
-		            int _clen = (int)REF_TO_INT(_cobj[1]); \
-		            fprintf(stderr, " code_len=%d", _clen); \
-		          } \
-		        } \
-		        fprintf(stderr, "\n"); \
-		        _csp -= 3; \
-		      } } \
-		    _cdr_debug_count++; } \
-		    CHECKTAG0(x, PTR_TAG, a);			\
-		    TRAP0(a);					\
-		  } }
-#else
 #define CONSINSTR(a)						\
 		{ x = PEEKVAL();				\
 		  CHECKTAG0(x, PTR_TAG, a);			\
 		  if (REF_SLOT(x,0) != e_cons_type) { TRAP0(a); } }
-#endif
 
 	    case 40:		/* CAR */
 	      CONSINSTR(1);
@@ -1336,8 +1234,30 @@ static int _cdr_debug_count = 0;
 	      POPVAL(x);
 	      CHECKTAG1(x, PTR_TAG, 2);
 	      y = PEEKVAL();
-	      BASH_VAL_HEIGHT(REF_TO_INT(REF_SLOT(x, ESCAPE_OBJECT_VAL_OFF)));
-	      BASH_CXT_HEIGHT(REF_TO_INT(REF_SLOT(x, ESCAPE_OBJECT_CXT_OFF)));
+	      {
+		/* The two heights come out of slots of the escape
+		   object, which is ordinary heap data: an escape used
+		   after its extent has ended, or one whose slots have
+		   been written, names a height the stacks no longer
+		   have.  BASH_*_HEIGHT would then pop a negative count,
+		   which moves the stack pointer *up* -- past the live
+		   top and possibly past the end of the buffer -- rather
+		   than reporting anything.  A code vector is untrusted
+		   input to the interpreter and so is this. */
+		long val_height =
+		  (long) REF_TO_INT(REF_SLOT(x, ESCAPE_OBJECT_VAL_OFF));
+		long cxt_height =
+		  (long) REF_TO_INT(REF_SLOT(x, ESCAPE_OBJECT_CXT_OFF));
+
+		if (val_height < 0
+		    || val_height > (long) VALUE_STACK_HEIGHT()
+		    || cxt_height < 0
+		    || cxt_height > (long) CONTEXT_STACK_HEIGHT())
+		  TRAP1(2);
+
+		BASH_VAL_HEIGHT(val_height);
+		BASH_CXT_HEIGHT(cxt_height);
+	      }
 	      PUSHVAL(y);
 	      POP_CONTEXT();
 	      GOTO_TOP;
@@ -1654,6 +1574,11 @@ static int _cdr_debug_count = 0;
 
 	    case 73:		/* DUMP-WORLD */
 	      POPVAL(x);	/* locative to string data */
+	      /* %DUMP-WORLD is an ordinary binding, so a caller that
+		 hands it something other than a locative gets here with
+		 it; without this the fixnum would be dereferenced as a
+		 pointer.  TRAP1 pushes X back for the handler. */
+	      CHECKTAG1(x, LOC_TAG, 2);
 	      y = PEEKVAL();	/* string length */
 	      THREADY(oak_mutex_lock(&dump_lock));
 	      {
@@ -1677,6 +1602,7 @@ static int _cdr_debug_count = 0;
 
 	    case 74:		/* LOAD-WORLD */
 	      POPVAL(x);	/* locative to string data */
+	      CHECKTAG1(x, LOC_TAG, 2);
 	      y = PEEKVAL();	/* string length */
 	      THREADY(oak_mutex_lock(&dump_lock));
 	      {
@@ -2296,8 +2222,6 @@ static int _cdr_debug_count = 0;
 	      GOTO_TOP;
 
 	    case 28:		/* MAKE-CLOSED-ENVIRONMENT n */
-	      /* This code might be in error if arg_field == 0, which the
-	         compiler should never generate. */
 	      {
 		ref_t *p;
 		ref_t z;
@@ -2309,6 +2233,19 @@ static int _cdr_debug_count = 0;
 		    fflush(stderr);
 		  }
 #endif
+
+		/* The net stack effect is 1 - ARG_FIELD, so every value
+		   the compiler generates is a pop and the CHECKVAL_POP
+		   below covers it.  Zero is the one value that is a
+		   push, and CHECKVAL_POP(-1) reserves nothing for it.  A
+		   code vector is heap data like any other, so make the
+		   room here rather than trusting the compiler never to
+		   emit it -- the warning above that would have noticed
+		   is compiled out of the shipped build.  This has to
+		   happen before the allocation, since flushing the stack
+		   can cons and would leave P stale. */
+		if (arg_field == 0)
+		  CHECKVAL_PUSH(1);
 
 		ALLOCATE_SS(p, (size_t)(arg_field + 2),
 			    "space crunch in MAKE-CLOSED-ENVIRONMENT");
@@ -2359,7 +2296,13 @@ static int _cdr_debug_count = 0;
 		case 4:	/* fopen, mode WRITE */
 		case 5:	/* fopen, mode APPEND */
 		  POPVAL(x);
-		  /* How about a CHECKTAG(x,LOC_TAG,) here, eh? */
+		  /* The file name arrives as a locative into a string's
+		     data and a length.  Compiled code can reach this
+		     instruction with anything at all in the first
+		     position, so check it before dereferencing; TRAP1
+		     pushes X back for the handler.  The length needs no
+		     check of its own: oak_c_string clamps it. */
+		  CHECKTAG1(x, LOC_TAG, 2);
 		  {
 		    char *s = (char *)oak_c_string((ref_t *) LOC_TO_PTR(x),
 						   REF_TO_INT(PEEKVAL()));
@@ -2420,7 +2363,16 @@ static int _cdr_debug_count = 0;
 		  GOTO_TOP;
 
 		case 11:	/* tell where we are */
-		  PEEKVAL() = INT_TO_REF(ftell((FILE *) PEEKVAL()));
+		  {
+		    /* ftell answers -1 on an unseekable or closed
+		       stream, which is indistinguishable from a real
+		       position once it is handed back as a fixnum.
+		       Every other stream primitive reports failure as
+		       NIL, so this one does too. */
+		    long pos = ftell((FILE *) PEEKVAL());
+
+		    PEEKVAL() = (pos < 0) ? e_nil : INT_TO_REF(pos);
+		  }
 		  GOTO_TOP;
 
 		case 12:	/* set where we are */
@@ -2435,6 +2387,7 @@ static int _cdr_debug_count = 0;
 
 		case 13:	/* change working directory */
 		  POPVAL(x);
+		  CHECKTAG1(x, LOC_TAG, 2);
 		  {
 		    char *s = oak_c_string((ref_t *) LOC_TO_PTR(x),
 					   REF_TO_INT(PEEKVAL()));
@@ -2453,6 +2406,20 @@ static int _cdr_debug_count = 0;
 		       new-len, reading down. */
 		    ref_t z;
 		    char *from, *to;
+
+		    /* Both name locatives are checked while all four
+		       arguments are still on the stack, so a trap finds
+		       them where the handler expects them; the deeper of
+		       the two is reached through MAKE_BACK_VAL_PTR,
+		       which makes sure the buffer holds it. */
+		    {
+		      ref_t *new_name_loc;
+
+		      MAKE_BACK_VAL_PTR(new_name_loc, 2);
+		      if (!TAG_IS(PEEKVAL(), LOC_TAG)
+			  || !TAG_IS(*new_name_loc, LOC_TAG))
+			TRAP0(4);
+		    }
 
 		    POPVAL(x);	/* locative to the old name */
 		    POPVAL(y);	/* length of the old name */

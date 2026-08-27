@@ -84,7 +84,12 @@
 (set! (nth %argless-tag-trap-table 25)
       (lambda (type size)
 	(error "Illegal args (%ALLOCATE ~S ~S).~%" type size)))
-(set! (nth %argless-tag-trap-table 26) %assq)
+;;; And slot 26, for the same reason as 11, 25 and 53: ASSQ traps when
+;;; its list is not a proper list of pairs, and %ASSQ's method is the
+;;; instruction itself.
+(set! (nth %argless-tag-trap-table 26)
+      (lambda (x l)
+	(error "Illegal args (%ASSQ ~S ~S).~%" x l)))
 ;(set! (nth %argless-tag-trap-table 28) %peek)
 ;(set! (nth %argless-tag-trap-table 29) (setter %peek))
 (set! (nth %argless-tag-trap-table 31) subtract/2)

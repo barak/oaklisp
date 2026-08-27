@@ -175,16 +175,21 @@
   ;    (set! (nth new i) (nth self (+ index i)))))
   )
 
+;;; Running off the end of the list used to report a CDR of NIL, which
+;;; names neither the range asked for nor the list; NTH and TAIL in
+;;; mapping.oak report the same way this does.
+
 (labels ((copy-first-chunk
-	  (lambda (l i)
-	    (if (zero? i)
-		'()
-		(cons (car l)
-		      (copy-first-chunk (cdr l)
-					(- i 1)))))))
+	  (lambda (l i whole end)
+	    (cond ((zero? i) '())
+		  ((null? l)
+		   (error "Index ~D into ~S out of bounds." end whole))
+		  (else
+		   (cons (car l)
+			 (copy-first-chunk (cdr l) (- i 1) whole end)))))))
 
   (add-method (subseq (list-type) self index len)
-    (copy-first-chunk (tail self index) len)))
+    (copy-first-chunk (tail self index) len self (+ index len))))
 
 ;;; From beginning to INDEX (exclusive).
 (add-method (head (sequence) self index)
