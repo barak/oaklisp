@@ -26,6 +26,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #ifndef FAST
 #undef NDEBUG
 #endif
@@ -54,6 +55,10 @@
 #endif
 
 #define ENABLE_TIMER	1
+
+/* How many instructions the interpreter has to execute after a crash
+   recovery before the crash is no longer considered "consecutive". */
+#define CRASH_PROGRESS_INSTRS 1024
 
 int  trace_traps = false;	/* trace tag traps */
 int  trace_files = false;	/* trace file opening */
@@ -255,8 +260,11 @@ lookup_bp_offset(ref_t y_type, ref_t meth_type)
 }
 
 
-/* 6 is enough for current build... */
-#define N_LATERS 100
+/* Depth of the supertype search stack that lives on the C stack.  6 is
+   enough for the current build, but a user-defined type graph can be
+   arbitrarily deep, so past this point the table moves to the heap
+   instead of running off the end of the frame. */
+#define N_LATERS 64
 
 static inline void
 find_method_type_pair(ref_t op,
@@ -272,8 +280,10 @@ find_method_type_pair(ref_t op,
   ref_t *loclist;
 #endif
   /* stack of lists of types that remain to be searched */
-  ref_t later_lists[N_LATERS];
-  ref_t *llp = &later_lists[0];	/* points to first empty slot in table */
+  ref_t inline_lists[N_LATERS];
+  ref_t *later_lists = inline_lists;
+  size_t later_size = N_LATERS;
+  size_t llp = 0;		/* index of first empty slot in table */
 
   while (1)			/* forever */
     {
@@ -301,6 +311,8 @@ find_method_type_pair(ref_t op,
 #endif
 	      *method_ptr = cdr(car_cache);
 	      *type_ptr = obj_type;
+	      if (later_lists != inline_lists)
+		free(later_lists);
 	      return;
 	    }
 	  alist = *(locl = pcdr(alist));
@@ -310,20 +322,48 @@ find_method_type_pair(ref_t op,
       /* Not found in local alist, so stack the entire supertype list
          and then fetch the top guy available on the stack. */
 
-      /* TO DO: should gracefully handle overflown later lists table. */
-      if (llp == &later_lists[N_LATERS]) printf("internal error: overflown laters list table\n");
-      *llp = REF_SLOT(obj_type, TYPE_SUPER_LIST_OFF);
-      llp += 1;
-
-      while (*(llp-1) == e_nil)
+      if (llp == later_size)
 	{
-	  if (llp == &later_lists[1]) return;
+	  /* Grow the table; the first growth moves it off the C stack. */
+	  size_t new_size = 2 * later_size;
+	  ref_t *bigger;
+
+	  if (later_lists == inline_lists)
+	    {
+	      bigger = (ref_t *) xmalloc(new_size * sizeof(ref_t));
+	      memcpy(bigger, inline_lists, later_size * sizeof(ref_t));
+	    }
+	  else
+	    {
+	      bigger = (ref_t *) realloc(later_lists,
+					 new_size * sizeof(ref_t));
+	      if (bigger == NULL)
+		{
+		  fprintf(stderr, "\nERROR: out of memory while searching"
+			  " a type hierarchy %lu levels deep.\n",
+			  (unsigned long)later_size);
+		  exit(EXIT_FAILURE);
+		}
+	    }
+	  later_lists = bigger;
+	  later_size = new_size;
+	}
+      later_lists[llp++] = REF_SLOT(obj_type, TYPE_SUPER_LIST_OFF);
+
+      while (later_lists[llp - 1] == e_nil)
+	{
+	  if (llp == 1)
+	    {
+	      if (later_lists != inline_lists)
+		free(later_lists);
+	      return;
+	    }
 	  llp -= 1;
 	}
 
       locl = NULL;
-      obj_type = car(*(llp-1));
-      *(llp-1) = cdr(*(llp-1));
+      obj_type = car(later_lists[llp - 1]);
+      later_lists[llp - 1] = cdr(later_lists[llp - 1]);
     }
 }
 
@@ -353,6 +393,9 @@ loop(ref_t initial_tos)
   unsigned timer_counter = 0;
   unsigned timer_increment = 0;
 #endif
+
+  /* Instructions executed since the last crash recovery. */
+  unsigned long crash_progress = 0;
 
 
   /* These are "local" versions of some globals, to make sure the C
@@ -443,10 +486,38 @@ loop(ref_t initial_tos)
   /* Set up crash recovery point.  If a fatal signal (SIGSEGV, SIGBUS,
      SIGFPE) fires, oak_longjmp returns here with a non-zero value. */
   if (oak_setjmp(crash_jmpbuf) != 0) {
-    /* Returned from a fatal signal -- recover to Oaklisp debugger. */
+    /* Returned from a fatal signal -- recover to Oaklisp debugger.
+
+       The globals were refreshed from the loop's locals at the top of
+       the faulting instruction (see the UNLOCALIZE_ALL below), so
+       LOCALIZE_ALL() restores the state as of just before the fault;
+       without that they would be arbitrarily stale and we would resume
+       at a random old PC and fault again forever.
+
+       The other loop locals are only assigned before oak_setjmp, so
+       siglongjmp leaves them either restored from the jmp_buf or intact
+       on this (unwound-to) frame -- but the standard calls that
+       indeterminate for non-volatile automatics, so recompute the ones
+       that matter. */
     reinstall_crash_handler();
     LOCALIZE_ALL();
+    value_stack_bp = value_stack.bp;
+    value_stack_end = &value_stack.bp[value_stack.size];
+    context_stack_bp = context_stack.bp;
+    context_stack_end = &context_stack.bp[context_stack.size];
+#if ENABLE_TIMER
+    timer_counter = 0;
+#endif
+#ifdef THREADS
+    my_index_p = oak_tls_get(index_key);
+    my_index = *(my_index_p);
+#endif
+    crash_progress = 0;
     crash_signal = 0;
+    /* The saved PC points at the faulting instruction, but the trap
+       entry below backs up one instruction (its callers reach it after
+       the PC has already been advanced), so step over it first. */
+    INCREMENT_PC(local_e_pc, 1);
     /* Route through intr_trap using argless trap slot 126. */
     arg_field = 126;
     op_field = 0;
@@ -459,32 +530,46 @@ loop(ref_t initial_tos)
  top_of_loop:
   while (1)			/* forever */
     {
-      crash_count = 0;  /* Reset consecutive crash counter on normal execution */
+      /* Keep the globals tracking the interpreter's live state so that
+         crash recovery above has something accurate to resume from.
+         Skipped in batch mode, where fatal signals just terminate. */
+      if (crash_recovery_installed)
+	{
+	  UNLOCALIZE_ALL();
+	  /* A crash is "consecutive" only while the recovery keeps
+	     faulting without getting anywhere; once the VM has made
+	     real progress, forget it. */
+	  if (crash_count != 0 && ++crash_progress > CRASH_PROGRESS_INSTRS)
+	    {
+	      crash_count = 0;
+	      crash_progress = 0;
+	    }
+	}
 #ifndef FAST
       if (trace_valcon) DUMP_VALUE_STACK();
       if (trace_cxtcon) DUMP_CONTEXT_STACK();
       if (trace_stks)
 	{
-	  printf("heights val: %d = %d + %d, cxt: %d = %d + %d\n",
-		 VALUE_STACK_HEIGHT(),
-		 local_value_sp - value_stack_bp + 1,
+	  printf("heights val: %ld = %ld + %d, cxt: %ld = %ld + %d\n",
+		 (long)VALUE_STACK_HEIGHT(),
+		 (long)(local_value_sp - value_stack_bp + 1),
 		 value_stack.pushed_count,
-		 CONTEXT_STACK_HEIGHT(),
-		 local_context_sp - context_stack_bp + 1,
+		 (long)CONTEXT_STACK_HEIGHT(),
+		 (long)(local_context_sp - context_stack_bp + 1),
 		 context_stack.pushed_count);
 	}
 
       {
-	int val_buffer_count = local_value_sp - value_stack_bp + 1;
-	int cxt_buffer_count = local_context_sp - context_stack_bp + 1;
+	long val_buffer_count = local_value_sp - value_stack_bp + 1;
+	long cxt_buffer_count = local_context_sp - context_stack_bp + 1;
 	if (val_buffer_count < 1 || val_buffer_count > value_stack.size) {
-	  fprintf(stderr, "vm error: val_buffer_count = %d\n",
+	  fprintf(stderr, "vm error: val_buffer_count = %ld\n",
 		  val_buffer_count);
 	  exit(EXIT_FAILURE);
 	}
 	/* Should this be a zero ??? */
 	if (cxt_buffer_count < 0 || cxt_buffer_count > context_stack.size) {
-	  fprintf(stderr, "vm error: cxt_buffer_count = %d\n",
+	  fprintf(stderr, "vm error: cxt_buffer_count = %ld\n",
 		  cxt_buffer_count);
 	  exit(1);
 	}
@@ -531,7 +616,7 @@ loop(ref_t initial_tos)
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
 	      {
-		long a = REF_TO_INT(x) + REF_TO_INT(y);
+		ssize_t a = REF_TO_INT(x) + REF_TO_INT(y);
 		OVERFLOWN_INT(a, TRAP1(2));
 		PEEKVAL() = INT_TO_REF(a);
 	      }
@@ -544,7 +629,7 @@ loop(ref_t initial_tos)
 	      if (x == MIN_REF)
 		TRAP0(1);
 	      /* Tag trickery: */
-	      PEEKVAL() = -((long)x);
+	      PEEKVAL() = (ref_t)(-((ssize_t)x));
 	      GOTO_TOP;
 
 	    case 3:		/* EQ? */
@@ -565,8 +650,8 @@ loop(ref_t initial_tos)
 	      /* Multiply integer values, check if product fits in fixnum range. */
 	      {
 		__int128 a = (__int128)REF_TO_INT(x) * (__int128)REF_TO_INT(y);
-		long highcrap = (long)(a >> (__WORDSIZE - (TAGSIZE + 1)));
-		if ((highcrap != 0L) && (highcrap != -1L))
+		ssize_t highcrap = (ssize_t)(a >> (__WORDSIZE - (TAGSIZE + 1)));
+		if ((highcrap != 0) && (highcrap != -1))
 		  TRAP1(2);
 		PEEKVAL() = INT_TO_REF((ssize_t)a);
 	      }
@@ -583,16 +668,16 @@ loop(ref_t initial_tos)
 #ifdef DOUBLES_FOR_OVERFLOW
 	      {
 		double a = (double)REF_TO_INT(x) * (double)REF_TO_INT(y);
-		if (a < (double)((long)MIN_REF / 4)
-		    || a > (double)((long)MAX_REF / 4))
+		if (a < (double)((ssize_t)MIN_REF / 4)
+		    || a > (double)((ssize_t)MAX_REF / 4))
 		  TRAP1(2);
-		PEEKVAL() = INT_TO_REF((long)a);
+		PEEKVAL() = INT_TO_REF((ssize_t)a);
 	      }
 #else
 	      {
-		long a = REF_TO_INT(x), b = REF_TO_INT(y);
-		unsigned long al, ah, bl, bh, hh, hllh, ll;
-		long answer;
+		ssize_t a = REF_TO_INT(x), b = REF_TO_INT(y);
+		size_t al, ah, bl, bh, hh, hllh, ll;
+		ssize_t answer;
 		bool neg = false;
 		/* MNF check */
 		if (a < 0)
@@ -607,14 +692,14 @@ loop(ref_t initial_tos)
 		  }
 		al = a & 0x7FFF;
 		bl = b & 0x7FFF;
-		ah = (unsigned long)a >> 15;
-		bh = (unsigned long)b >> 15;
+		ah = (size_t)a >> 15;
+		bh = (size_t)b >> 15;
 		ll = al * bl;
 		hllh = al * bh + ah * bl;
 		hh = ah * bh;
 		if (hh || hllh >> 15)
 		  TRAP1(2);
-		answer = (hllh << 15) + ll;
+		answer = (ssize_t)((hllh << 15) + ll);
 		if (neg) answer = -answer;
 		OVERFLOWN_INT(answer, TRAP1(2));
 		PEEKVAL() = INT_TO_REF(answer);
@@ -647,7 +732,7 @@ loop(ref_t initial_tos)
 		  (y == INT_TO_REF(-1) && x == MIN_REF))
 		TRAP1(2);
 	      /* Tag trickery: */
-	      PEEKVAL() = INT_TO_REF((long)x / (long)y);
+	      PEEKVAL() = INT_TO_REF((ssize_t)x / (ssize_t)y);
 	      GOTO_TOP;
 
 	    case 8:		/* =0? */
@@ -682,7 +767,7 @@ loop(ref_t initial_tos)
 				printf("GET-DATA of "),
 				printref(stdout, x),
 				printf("\n"),
-				-(long)p - 1)
+				-(ssize_t)p - 1)
 			       );
 		}
 	      else
@@ -699,13 +784,13 @@ loop(ref_t initial_tos)
 
 		if (tag & PTR_MASK)
 		  {
-		    long i = REF_TO_INT(x);
+		    ssize_t i = REF_TO_INT(x);
 
 		    /* Preclude creation of very odd references. */
 		    TRAP1_IF(i < 0, 2);
-		    if (i < (long)spatic.size)
+		    if (i < (ssize_t)spatic.size)
 		      z = PTR_TO_LOC(spatic.start + i);
-		    else if (i < (long)(spatic.size + new_space.size))
+		    else if (i < (ssize_t)(spatic.size + new_space.size))
 		      z = PTR_TO_LOC(new_space.start + (i - spatic.size));
 		    else
 		      {
@@ -842,9 +927,9 @@ loop(ref_t initial_tos)
 	      if (y == INT_TO_REF(0))
 		TRAP1(2);
 	      {
-		long a = REF_TO_INT(x) % REF_TO_INT(y);
-		if ((a < 0 && (long)y > 0) ||
-		    ((long)y < 0 && (long)x > 0 && a > 0))
+		ssize_t a = REF_TO_INT(x) % REF_TO_INT(y);
+		if ((a < 0 && (ssize_t)y > 0) ||
+		    ((ssize_t)y < 0 && (ssize_t)x > 0 && a > 0))
 		  a += REF_TO_INT(y);
 		PEEKVAL() = INT_TO_REF(a);
 	      }
@@ -854,17 +939,43 @@ loop(ref_t initial_tos)
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
-	      /* Tag trickery: */
 	      {
-		long b = REF_TO_INT(y);
+		/* Number of bits in a fixnum, sign bit included. */
+		const unsigned fixnum_width = __WORDSIZE - TAGSIZE;
+		ssize_t a = REF_TO_INT(x);
+		ssize_t b = REF_TO_INT(y);
+
 		if (b < 0)
 		  {
-		    PEEKVAL() = ((long)x >> -b) & ~TAG_MASKL;
+		    /* Arithmetic right shift.  Shifting by the word size
+		       or more is undefined in C, so saturate instead: the
+		       answer is 0 or -1 depending on the sign. */
+		    size_t count = (size_t)(-b);
+
+		    PEEKVAL() = (count >= fixnum_width)
+		      ? INT_TO_REF(a < 0 ? -1 : 0)
+		      : INT_TO_REF(a >> count);
+		    GOTO_TOP;
+		  }
+		else if (a == 0 || b == 0)
+		  {
+		    PEEKVAL() = INT_TO_REF(a);
 		    GOTO_TOP;
 		  }
 		else
 		  {
-		    PEEKVAL() = x << b;
+		    /* Left shift.  Trap (which promotes to a bignum, just
+		       like PLUS and TIMES do) whenever the mathematical
+		       result would not fit in a fixnum. */
+		    ssize_t r;
+
+		    if ((size_t)b >= fixnum_width)
+		      TRAP1(2);
+		    r = (ssize_t)((size_t)a << b);
+		    if ((r >> b) != a)
+		      TRAP1(2);
+		    OVERFLOWN_INT(r, TRAP1(2));
+		    PEEKVAL() = INT_TO_REF(r);
 		    GOTO_TOP;
 		  }
 	      }
@@ -877,21 +988,23 @@ loop(ref_t initial_tos)
 		 with an infinite-precision integer language model.
 		 This instr is used for computing string hashes. */
 	      {
-		unsigned long a = (unsigned long)x;
-		long b = REF_TO_INT(y);
+		const ssize_t width = __WORDSIZE - TAGSIZE;
+		size_t a = (size_t)x;
+		ssize_t b = REF_TO_INT(y);
 
+		/* Reduce the rotation count into [0,width).  Shifting by
+		   the word size or more is undefined in C, and rotating
+		   by a multiple of the field width is the identity, so
+		   this both removes the undefined behavior and gives the
+		   mathematically right answer for any count. */
+		b %= width;
 		if (b < 0)
-		  {
-		    PEEKVAL()
-		      = (a >> -b | a << (__WORDSIZE - 2 + b)) & ~TAG_MASKL;
-		    GOTO_TOP;
-		  }
-		else
-		  {
-		    PEEKVAL()
-		      = (a << b | a >> (__WORDSIZE - 2 - b)) & ~TAG_MASKL;
-		    GOTO_TOP;
-		  }
+		  b += width;
+
+		PEEKVAL() = (b == 0)
+		  ? (ref_t)(a & ~TAG_MASKL)
+		  : (ref_t)((a << b | a >> (width - b)) & ~TAG_MASKL);
+		GOTO_TOP;
 	      }
 
 	    case 22:		/* STORE-BP-I */
@@ -919,6 +1032,11 @@ loop(ref_t initial_tos)
 		POPVAL(x);
 		y = PEEKVAL();
 		CHECKTAG1(y, INT_TAG, 2);
+		/* Every object needs room for at least its type slot.  A
+		   zero length would write one word past the allocation and
+		   a negative one would rewind the allocation pointer, so
+		   both have to trap instead. */
+		TRAP1_IF(REF_TO_INT(y) < 1, 2);
 		alloc_len = (size_t)REF_TO_INT(y);
 
 		ALLOCATE1(p, alloc_len,
@@ -991,7 +1109,7 @@ loop(ref_t initial_tos)
 	      CHECKTAGS_INT_1(x, y, 2);
 
 	      {
-		long a = REF_TO_INT(x) - REF_TO_INT(y);
+		ssize_t a = REF_TO_INT(x) - REF_TO_INT(y);
 		OVERFLOWN_INT(a, TRAP1(2));
 		PEEKVAL() = INT_TO_REF(a);
 		GOTO_TOP;
@@ -1011,7 +1129,7 @@ loop(ref_t initial_tos)
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
 	      /* Tag trickery: */
-	      PEEKVAL() = BOOL_TO_REF((long)x < (long)y);
+	      PEEKVAL() = BOOL_TO_REF((ssize_t)x < (ssize_t)y);
 	      GOTO_TOP;
 
 	    case 34:		/* LOG-NOT */
@@ -1216,6 +1334,11 @@ static int _cdr_debug_count = 0;
 	    case 51:		/* GC */
 	      UNLOCALIZE_ALL();
 	      gc(false, false, "explicit call", 0);
+#ifdef USE_MARK_SWEEP
+	      /* The copying collector replaced new space; the mark-sweep
+		 bitmaps and free lists still describe the freed one. */
+	      ms_reinit();
+#endif
 	      LOCALIZE_ALL();
 	      PUSHVAL(e_false);
 	      GOTO_TOP;
@@ -1232,6 +1355,9 @@ static int _cdr_debug_count = 0;
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAG1(y, INT_TAG, 2);
+	      /* A variable length object needs room for its type slot and
+		 its length slot, so lengths below 2 have to trap. */
+	      TRAP1_IF(REF_TO_INT(y) < 2, 2);
 	      {
 		ref_t *p;
 		size_t alloc_len = (size_t)REF_TO_INT(y);
@@ -1384,14 +1510,14 @@ static int _cdr_debug_count = 0;
 	      /* Tag trickery: */
 	      /* I can't seem to get anything like this to work: */
 
-	      PEEKVAL() = INT_TO_REF((((long)x < 0) ^ ((long)y < 0))
-				     ? -(long)x / -(long)y
-				     : (long)x / (long)y);
+	      PEEKVAL() = INT_TO_REF((((ssize_t)x < 0) ^ ((ssize_t)y < 0))
+				     ? -(ssize_t)x / -(ssize_t)y
+				     : (ssize_t)x / (ssize_t)y);
 
 	      {
-		long a = (long)x / (long)y;
-		if (((long)x < 0 && (long)y > 0 && a * (long)y > (long)x) ||
-		    ((long)y < 0 && (long)x > 0 && a * (long)y < (long)x))
+		ssize_t a = (ssize_t)x / (ssize_t)y;
+		if (((ssize_t)x < 0 && (ssize_t)y > 0 && a * (ssize_t)y > (ssize_t)x) ||
+		    ((ssize_t)y < 0 && (ssize_t)x > 0 && a * (ssize_t)y < (ssize_t)x))
 		  a -= 1;
 		PEEKVAL() = INT_TO_REF(a);
 	      }
@@ -1400,6 +1526,9 @@ static int _cdr_debug_count = 0;
 	    case 64:		/* FULL-GC */
 	      UNLOCALIZE_ALL();
 	      gc(false, true, "explicit call", 0);
+#ifdef USE_MARK_SWEEP
+	      ms_reinit();
+#endif
 	      LOCALIZE_ALL();
 	      PUSHVAL(e_false);
 	      GOTO_TOP;
@@ -1513,6 +1642,9 @@ static int _cdr_debug_count = 0;
 		dump_file_name = s;
 		UNLOCALIZE_ALL();
 		gc(false, false, "impending world dump", 0);
+#ifdef USE_MARK_SWEEP
+		ms_reinit();
+#endif
 		dump_world(false);
 		LOCALIZE_ALL();
 		dump_file_name = old_dump_file_name;
@@ -1547,6 +1679,11 @@ static int _cdr_debug_count = 0;
 #ifdef USE_MARK_SWEEP
 		ms_reinit();
 #endif
+
+		/* The switches on the command line were meant for the
+		   world we just discarded; leaving them in place makes
+		   "--eval (load-world ...)" reboot forever. */
+		clear_program_args();
 
 		/* Reset stacks (discard all flushed segments) */
 		value_stack.sp = value_stack.bp;
@@ -1834,9 +1971,11 @@ static int _cdr_debug_count = 0;
 		  e_operation_type = x;
 		  GOTO_TOP;
 		case 21:
+		  /* e_false is e_nil (see data.h), so this is register 1
+		     under another name and needs the same bookkeeping. */
 		  e_false = x;
-		  /* wp_table[0] = e_false; */
-		  /* rebuild_wp_hashtable(); */
+		  wp_table[0] = e_false;
+		  rebuild_wp_hashtable();
 		  GOTO_TOP;
 		case 22:
 		  e_process = x;
@@ -1874,7 +2013,7 @@ static int _cdr_debug_count = 0;
 		  PUSHVAL(PTR_TO_REF(e_env));
 		  GOTO_TOP;
 		case 8:
-		  PUSHVAL(INT_TO_REF((long)e_nargs));
+		  PUSHVAL(INT_TO_REF((ssize_t)e_nargs));
 		  GOTO_TOP;
 		case 9:
 		  PUSHVAL(e_env_type);
@@ -2130,7 +2269,7 @@ static int _cdr_debug_count = 0;
 		  }
 #endif
 
-		ALLOCATE_SS(p, (long)(arg_field + 2),
+		ALLOCATE_SS(p, (size_t)(arg_field + 2),
 			    "space crunch in MAKE-CLOSED-ENVIRONMENT");
 
 		z = PTR_TO_REF(p);
@@ -2153,6 +2292,9 @@ static int _cdr_debug_count = 0;
 
 
 	    case 30:		/* LOCATE-SLOT n */
+	      /* Like LOAD-SLOT and STORE-SLOT, refuse to build a locative
+		 out of something that is not a pointer. */
+	      CHECKTAG0(PEEKVAL(), PTR_TAG, 1);
 	      PEEKVAL()
 		= PTR_TO_LOC(REF_TO_PTR(PEEKVAL()) + arg_field);
 	      GOTO_TOP;
@@ -2244,7 +2386,7 @@ static int _cdr_debug_count = 0;
 		  POPVAL(x);
 		  {
 		    FILE *fd = (FILE *) x;
-		    long i = REF_TO_INT(PEEKVAL());
+		    long i = (long)REF_TO_INT(PEEKVAL());
 
 		    PEEKVAL() = fseek(fd, i, 0) == 0 ? e_t : e_nil;
 		  }

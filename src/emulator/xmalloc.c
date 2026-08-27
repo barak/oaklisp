@@ -82,24 +82,28 @@ free_space(space_t * pspace)
 void
 realloc_space(space_t * pspace, size_t size_requested)
 {
-  void *ptr = (void *)pspace->start;
-  void *newptr = realloc(ptr, sizeof(ref_t) * (size_requested));
+  /* This is called during a full GC to convert the old new space into
+     the new spatic space.  Any unallocated tail is trimmed.
 
-  if (ptr == NULL)
+     The live world holds absolute pointers into this block, so it must
+     not move.  realloc() gives no such guarantee even when shrinking
+     (glibc's mremap path for large mmap'ed chunks is free to relocate,
+     and ASan relocates unconditionally), so we do not call it at all:
+     we simply keep the oversized malloc block and shrink the space's
+     logical extent.  The tail is wasted until the space is freed, which
+     is always safe. */
+
+  if (pspace->start == NULL)
     {
       fprintf(stderr, "error: realloc_space() does not expect a null pointer\n");
       exit(EXIT_FAILURE);
     }
 
-  /* This is called during a full GC to convert the old new space to
-     the new spatic space.  Any unallocated new space is trimmed.  So
-     this should be decreasing the size, or at worst leaving it the
-     same.  For that reason we do not expect the storage to be moved.
-     If it is: uh oh! */
-
-  if (ptr != newptr) 
+  if (size_requested > pspace->size)
     {
-      fprintf(stderr, "error: realloc() with decreased size moved storage in realloc_space()\n");
+      fprintf(stderr, "error: realloc_space() cannot grow a space in place"
+	      " (%lu -> %lu refs)\n",
+	      (unsigned long)pspace->size, (unsigned long)size_requested);
       exit(EXIT_FAILURE);
     }
 

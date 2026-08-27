@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <setjmp.h>
 #include "threads.h"
 #include "xmalloc.h"
 #include "stacks.h"
@@ -38,6 +39,10 @@ oak_mutex_t index_lock = OAK_MUTEX_INITIALIZER;
 oak_mutex_t test_and_set_locative_lock = OAK_MUTEX_INITIALIZER;
 bool gc_pending = false;
 int gc_ready[MAX_THREAD_COUNT];
+/* Slots of threads that have exited.  next_index never decreases, so
+   without this a dead thread's gc_ready flag would stay 0 forever and
+   stall every subsequent stop-the-world handshake. */
+int gc_thread_dead[MAX_THREAD_COUNT];
 register_set_t* register_array[MAX_THREAD_COUNT];
 oakstack *value_stack_array[MAX_THREAD_COUNT];
 oakstack *cntxt_stack_array[MAX_THREAD_COUNT];
@@ -45,6 +50,45 @@ oakstack *cntxt_stack_array[MAX_THREAD_COUNT];
 
 #ifdef THREADS
 static instr_t tail_recurse_instruction = (22 << 2);
+
+/* Unwind targets for threads whose thunk runs to completion.  A spawned
+   thread starts with an empty context stack, so the RETURN that leaves
+   the thunk's outermost frame has no context to pop; stack_unflush
+   detects that and unwinds back to init_thread instead of walking a
+   segment list that isn't there.  Slot 0, the main thread, is never
+   armed: when the boot code returns there is nowhere to unwind to. */
+static jmp_buf thread_exit_point[MAX_THREAD_COUNT];
+static volatile int thread_exit_armed[MAX_THREAD_COUNT];
+
+/* True when the calling thread can be unwound out of loop(). */
+int
+oak_thread_can_exit(void)
+{
+  int *my_index_p = (int *)oak_tls_get(index_key);
+
+  if (my_index_p == NULL)
+    return 0;
+  if (*my_index_p <= 0 || *my_index_p >= MAX_THREAD_COUNT)
+    return 0;
+  return thread_exit_armed[*my_index_p];
+}
+
+/* Leave the interpreter and return to init_thread.  Does not return. */
+void
+oak_thread_exit_unwind(void)
+{
+  int my_index = *((int *)oak_tls_get(index_key));
+
+  /* This thread will not execute another instruction, so retire it here
+     rather than making a collection that is already waiting on our
+     handshake flag wait for the thread-local destructor to run.
+     free_registers repeats this when the thread actually exits. */
+  gc_thread_dead[my_index] = 1;
+  gc_ready[my_index] = 1;
+
+  thread_exit_armed[my_index] = 0;
+  longjmp(thread_exit_point[my_index], 1);
+}
 
 void
 oak_threads_system_init(void)
@@ -88,6 +132,7 @@ int create_thread(ref_t start_operation)
     return 0;
   }
   gc_ready[index] = 0;
+  gc_thread_dead[index] = 0;
   info_p->start_operation = start_operation;
   info_p->parent_index = *((int *)oak_tls_get(index_key));
   info_p->my_index = index;
@@ -105,7 +150,7 @@ int create_thread(ref_t start_operation)
 #ifdef THREADS
 static void *init_thread (void *info_p)
 {
-  int my_index;
+  volatile int my_index;
   int *my_index_p;
   start_info_t info;
   my_index_p = (int *)malloc(sizeof(int));
@@ -150,10 +195,17 @@ static void *init_thread (void *info_p)
   e_pc = &tail_recurse_instruction;
   e_nargs = 0;
 
-  /* Big virtual machine interpreter loop.
-     If the thunk returns, the VM has no continuation to resume,
-     so we exit this thread cleanly instead of segfaulting. */
-  loop(info.start_operation);
+  /* Big virtual machine interpreter loop.  It never returns: a thunk
+     that runs to completion returns from its outermost frame, which
+     underflows this thread's context stack, and stack_unflush unwinds
+     back to the setjmp below instead of faulting. */
+  if (setjmp(thread_exit_point[my_index]) == 0)
+    {
+      thread_exit_armed[my_index] = 1;
+      loop(info.start_operation);
+    }
+
+  thread_exit_armed[my_index] = 0;
 
   fprintf(stderr, "Warning: heavyweight thread %d thunk returned; thread exiting.\n",
 	  my_index);
@@ -196,8 +248,60 @@ int get_next_index ()
   return (ret);
 }
 
-void free_registers ()
+/* Thread-local storage destructor for index_key: runs when a thread
+   exits.  Retires the thread's slot so the garbage collector stops
+   waiting for it and stops scanning its stacks as roots. */
+
+void free_registers (void *arg)
 {
+#ifdef THREADS
+  int *my_index_p = (int *)arg;
+  int i;
+
+  if (my_index_p == NULL)
+    return;
+
+  i = *my_index_p;
+  if (i < 0 || i >= MAX_THREAD_COUNT)
+    return;
+
+  /* Announce the slot is gone before doing anything that can block, so
+     a collection that is already waiting on our handshake flag is free
+     to finish. */
+  gc_thread_dead[i] = 1;
+  gc_ready[i] = 1;
+
+  /* gc_lock is held for the duration of a collection, so taking it
+     here guarantees nobody is scanning our stacks right now.  Anyone
+     who starts afterwards will skip the slot. */
+  oak_mutex_lock(&gc_lock);
+
+  if (value_stack_array[i] != NULL)
+    {
+      if (value_stack_array[i]->bp != NULL)
+	free(value_stack_array[i]->bp - 1);
+      free(value_stack_array[i]);
+      value_stack_array[i] = NULL;
+    }
+  if (cntxt_stack_array[i] != NULL)
+    {
+      if (cntxt_stack_array[i]->bp != NULL)
+	free(cntxt_stack_array[i]->bp - 1);
+      free(cntxt_stack_array[i]);
+      cntxt_stack_array[i] = NULL;
+    }
+  if (register_array[i] != NULL)
+    {
+      free(register_array[i]);
+      register_array[i] = NULL;
+    }
+
+  oak_mutex_unlock(&gc_lock);
+
+  free(my_index_p);
+#else
+  (void)arg;
+#endif
 }
 
 void wait_for_gc()

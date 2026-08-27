@@ -46,8 +46,13 @@
 				    (ash-right x 2))
 			    (bit-and x #x3))
 		   ;; High 16 bits:
+		   ;; FX-TIMES, not ASH-LEFT: this is a bit field being
+		   ;; packed, and on a 32 bit build a 16 bit instruction
+		   ;; shifted left by 14 does not fit in a fixnum.  ASH
+		   ;; would promote it to a bignum; the wrapping multiply
+		   ;; keeps the bit pattern we want.
 		   (%crunch (bit-or (bit-and (%pointer x0) #x3FFF)
-				    (ash-left x 14))
+				    (fx-times x 16384))
 			    (%tag x0)))))
       (set! (%vref self n2) x1))))
 
@@ -70,8 +75,9 @@
 		   (%crunch (bit-or (bit-and (%pointer x0) (bit-not #x3FFF))
 				    (ash-right x 2))
 			    (bit-and x #x3))
-		   ;; High 16 bits:
-		   (%crunch (bit-or (bit-and (%pointer x0) #x3FFF) (ash-left x 14))
+		   ;; High 16 bits:  (see the note on FX-TIMES above)
+		   (%crunch (bit-or (bit-and (%pointer x0) #x3FFF)
+				    (fx-times x 16384))
 			    (%tag x0)))))
       (set! (%vref self n2) x1)))))
 

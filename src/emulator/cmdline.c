@@ -50,6 +50,22 @@ enum {
 };
 
 
+/* Parse a command line argument that must be a positive integer. */
+static int
+positive_arg(char *arg, const char *what)
+{
+  int value = atoi(arg);
+
+  if (value <= 0)
+    {
+      fprintf(stderr, "Error (command line parser): %s requires a"
+	      " positive argument, not \"%s\".\n", what, arg);
+      exit(EXIT_FAILURE);
+    }
+  return value;
+}
+
+
 static void
 version(char *prog)
 {
@@ -74,7 +90,7 @@ usage(char *prog)
 	  "\t                      %s\n"
 	  "\t--dump file          dump world to file upon exit\n"
 	  "\t--d file             synonym for --dump\n"
-	  "\t--dump-base b        10 or 16=ascii, 2=binary; default=2\n"
+	  "\t--dump-base b        16=ascii, 2=binary; default=2\n"
 	  "\t--predump-gc b       0=no, 1=yes; default=1\n"
 	  "\n"
 	  "\t--size-heap n        n is in kilo-refs, default %d\n"
@@ -119,12 +135,24 @@ int
 program_arg_char(int arg_index, int char_index)
 {
   char *a;
-  if (arg_index >= program_argc)
+  if (arg_index < 0 || arg_index >= program_argc)
     return -1;
   a = program_argv[arg_index];
-  if (char_index > strlen(a))
+  if (char_index < 0 || (size_t)char_index > strlen(a))
     return -1;
   return a[char_index];
+}
+
+
+/* Forget the command line arguments passed to the world.  Used after
+   LOAD-WORLD so the freshly booted world does not re-execute the
+   switches (--load, --eval, ...) that were meant for the old one,
+   which would otherwise reboot forever. */
+
+void
+clear_program_args(void)
+{
+  program_argc = 0;
 }
 
 
@@ -216,10 +244,13 @@ parse_cmd_line(int argc, char **argv)
 	case DUMP_BASE_ARG:
 	  dump_flag = true;
 	  dump_base = atoi(optarg);
-	  if (dump_base != 2 && dump_base != 10 && dump_base != 16)
+	  /* Base 10 is not supported: ascii worlds are read back with
+	     "%llx", so a decimal dump could never be reloaded. */
+	  if (dump_base != 2 && dump_base != 16)
 	    {
 	      fprintf(stderr, "Error (command line parser): invalid"
-		      " dump base %s.\n", optarg);
+		      " dump base %s; use 16 (ascii) or 2 (binary).\n",
+		      optarg);
 	      exit(EXIT_FAILURE);
 	    }
 	  break;
@@ -233,17 +264,17 @@ parse_cmd_line(int argc, char **argv)
 	  break;
 
 	case VALSIZ_ARG:
-	  value_stack.size = atoi(optarg);
+	  value_stack.size = positive_arg(optarg, "--size-val-stk");
 	  value_stack.filltarget = value_stack.size/2;
 	  break;
 
 	case CXTSIZ_ARG:
-	  context_stack.size = atoi(optarg);
+	  context_stack.size = positive_arg(optarg, "--size-cxt-stk");
 	  context_stack.filltarget = context_stack.size/2;
 	  break;
 
 	case MAX_SEG_ARG:
-	  max_segment_size = atoi(optarg);
+	  max_segment_size = positive_arg(optarg, "--size-seg-max");
 	  break;
 
 	case VERBOSE_GC_ARG:
@@ -280,8 +311,22 @@ parse_cmd_line(int argc, char **argv)
 
   if (value_stack.size < 254 + max_segment_size) {
     value_stack.size = 254 + max_segment_size;
+    value_stack.filltarget = value_stack.size/2;
     fprintf(stderr, "warning: using value stack of size %d.\n",
 	    value_stack.size);
+  }
+
+  /* The context stack needs the same guarantee.  The deepest pop it
+     ever has to satisfy is a whole context frame (CONTEXT_FRAME_SIZE),
+     and unflushing only pulls in entire segments, so the buffer must
+     be able to hold a maximal segment on top of a frame's worth of
+     entries. */
+
+  if (context_stack.size < CONTEXT_FRAME_SIZE + max_segment_size) {
+    context_stack.size = CONTEXT_FRAME_SIZE + max_segment_size;
+    context_stack.filltarget = context_stack.size/2;
+    fprintf(stderr, "warning: using context stack of size %d.\n",
+	    context_stack.size);
   }
 
   /* put remainder of command line in variables accessed by Oaklisp-level

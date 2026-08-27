@@ -46,7 +46,7 @@ main(int argc, char **argv)
   int my_index;
   int *my_index_p;
   oak_threads_system_init();
-  oak_tls_create(&index_key, (void*)free_registers);
+  oak_tls_create(&index_key, free_registers);
 #endif
 
 #ifdef THREADS

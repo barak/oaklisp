@@ -48,13 +48,14 @@ extern void gc(bool pre_dump, bool full_gc, char *reason,
 
 #ifdef THREADS
 extern int gc_ready[];
+extern int gc_thread_dead[];
 extern bool gc_pending;
 extern oak_mutex_t gc_lock;
 #endif
 
 extern void set_gc_flag (bool flag);
 extern int get_next_index();
-extern void free_registers();
+extern void free_registers(void *arg);
 extern void wait_for_gc();
 
 #endif

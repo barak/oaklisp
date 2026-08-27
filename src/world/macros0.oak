@@ -126,6 +126,26 @@
 	 ,(build-lambda-rest-let (cdr proper-args) rest-var
 				 `(cdr ,listvar) body))))
 
+;;; True when FORM uses REST-VAR the way the language manual says a rest
+;;; name may be used: at the end of a call that passes the extra
+;;; arguments along, (f a . rest), or in a (rest-length rest) form.
+;;; Such a body wants the native binding, in which the name stands for
+;;; the extra arguments where they sit on the stack.  Any other body
+;;; wants the R3RS binding, in which the name is an ordinary variable
+;;; holding a list.  Quoted structure is data, not code, so it is not
+;;; examined.
+
+(define (native-rest-use? form rest-var)
+  (cond ((not (pair? form)) nil)
+	((eq? (car form) 'quote) nil)
+	((and (eq? (car form) 'rest-length)
+	      (pair? (cdr form))
+	      (eq? (car (cdr form)) rest-var))
+	 #t)
+	((eq? (improper-list? form) rest-var) #t)
+	(else (any? (lambda (sub) (native-rest-use? sub rest-var))
+		    (make-proper form)))))
+
 (define-syntax (lambda varlist . body)
   (let ((improper-part (improper-list? varlist)))
     (cond ((if improper-part
@@ -133,6 +153,15 @@
 		   (not (symbol? improper-part)))
 	       (not (every? symbol? varlist)))
 	   (error "Malformed formal parameter list ~S." varlist))
+	  ((and improper-part
+		(any? (lambda (form) (native-rest-use? form improper-part))
+		      body))
+	   ;; Native rest args: the body hands them on rather than
+	   ;; naming them, so pass them straight to the method.  This is
+	   ;; also what keeps the world's own sources, which are written
+	   ;; this way throughout, compiling to the code they always did.
+	   `(add-method ((',make ',operation) ,@varlist)
+	      ,@body))
 	  (improper-part
 	   ;; Rest args: use listify-args to collect stack args into a
 	   ;; proper list, then destructure into the named bindings.

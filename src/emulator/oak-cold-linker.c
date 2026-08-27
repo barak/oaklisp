@@ -421,6 +421,24 @@ static sexp_t *parse_hash(parser_t *p)
             return make_bool(0);
         }
         pungetc(p, c2);
+        /* #f followed by more chars — a symbol starting with #F, the
+           same way #t is handled above. */
+        char buf[4096];
+        buf[0] = '#';
+        buf[1] = c;
+        int len = 2;
+        for (;;) {
+            c2 = pgetc(p);
+            if (c2 == EOF || isspace(c2) || c2 == '(' || c2 == ')') {
+                if (c2 != EOF) pungetc(p, c2);
+                break;
+            }
+            if (len < (int)sizeof(buf) - 1)
+                buf[len++] = c2;
+        }
+        buf[len] = '\0';
+        upcase_str(buf);
+        return make_sym(buf);
     }
 
     fprintf(stderr, "Unknown hash syntax: #%c\n", c);
@@ -453,47 +471,67 @@ static sexp_t *parse_string_lit(parser_t *p)
     return make_string(buf);
 }
 
+/* Parse the elements of a list, up to and including the closing paren.
+   The elements are accumulated iteratively rather than by recursing on
+   the tail: a .oa opcode list can hold tens of thousands of elements,
+   which would otherwise exhaust the C stack. */
 static sexp_t *parse_list(parser_t *p)
 {
-    skip_whitespace(p);
-    int c = pgetc(p);
-    if (c == ')') return SEXP_NIL;
-    pungetc(p, c);
+    sexp_t *head = SEXP_NIL;
+    sexp_t *tail = NULL;        /* last pair of head, NULL while empty */
 
-    sexp_t *car = parse_sexp(p);
-    skip_whitespace(p);
+#define LIST_APPEND(x)						\
+    do {							\
+	sexp_t *_cell = make_pair((x), SEXP_NIL);		\
+	if (tail) tail->u.pair.cdr = _cell; else head = _cell;	\
+	tail = _cell;						\
+    } while (0)
 
-    c = pgetc(p);
-    if (c == '.') {
-        int c2 = pgetc(p);
-        if (c2 != EOF && !isspace(c2) && c2 != '(' && c2 != ')') {
-            /* Dot followed by non-delimiter — symbol like "..." or ".FOO" */
-            pungetc(p, c2);
-            sexp_t *sym = parse_atom(p, '.');
-            sexp_t *rest = parse_list(p);
-            return make_pair(car, make_pair(sym, rest));
-        }
-        /* Standalone dot: could be dotted-pair or a symbol named ".".
-           Try dotted-pair: parse one sexp, check for closing ")".
-           If ")" doesn't follow, it was actually the symbol ".". */
-        if (c2 != EOF) pungetc(p, c2);
-        sexp_t *next = parse_sexp(p);
+    for (;;) {
         skip_whitespace(p);
-        c = pgetc(p);
-        if (c == ')') {
-            /* (car . next) — genuine dotted pair */
-            return make_pair(car, next);
-        }
-        /* Not a dotted pair — "." was a symbol.  We already parsed
-           "next" as the element after it; continue with rest of list. */
+        int c = pgetc(p);
+        if (c == ')' || c == EOF) return head;
         pungetc(p, c);
-        sexp_t *rest = parse_list(p);
-        return make_pair(car, make_pair(make_sym("."), make_pair(next, rest)));
-    }
-    pungetc(p, c);
 
-    sexp_t *cdr = parse_list(p);
-    return make_pair(car, cdr);
+        sexp_t *car = parse_sexp(p);
+        skip_whitespace(p);
+
+        c = pgetc(p);
+        if (c == '.') {
+            int c2 = pgetc(p);
+            if (c2 != EOF && !isspace(c2) && c2 != '(' && c2 != ')') {
+                /* Dot followed by non-delimiter — symbol like "..." or ".FOO" */
+                pungetc(p, c2);
+                sexp_t *sym = parse_atom(p, '.');
+                LIST_APPEND(car);
+                LIST_APPEND(sym);
+                continue;
+            }
+            /* Standalone dot: could be dotted-pair or a symbol named ".".
+               Try dotted-pair: parse one sexp, check for closing ")".
+               If ")" doesn't follow, it was actually the symbol ".". */
+            if (c2 != EOF) pungetc(p, c2);
+            sexp_t *next = parse_sexp(p);
+            skip_whitespace(p);
+            c = pgetc(p);
+            if (c == ')') {
+                /* (... car . next) — genuine dotted pair */
+                sexp_t *cell = make_pair(car, next);
+                if (tail) tail->u.pair.cdr = cell; else head = cell;
+                return head;
+            }
+            /* Not a dotted pair — "." was a symbol.  We already parsed
+               "next" as the element after it; continue with rest of list. */
+            pungetc(p, c);
+            LIST_APPEND(car);
+            LIST_APPEND(make_sym("."));
+            LIST_APPEND(next);
+            continue;
+        }
+        pungetc(p, c);
+        LIST_APPEND(car);
+    }
+#undef LIST_APPEND
 }
 
 static sexp_t *parse_sexp(parser_t *p)
@@ -636,23 +674,42 @@ static pc_entry_t *pair_cache[PC_SIZE];
 
 static int sexp_equal(sexp_t *a, sexp_t *b);
 
+/* The cdr chain is walked iteratively (recursing once per list element
+   would exhaust the C stack on a long opcode list); only the car is
+   recursed into, and nesting depth is small.  The value is identical to
+   the natural recursive definition. */
 static unsigned sexp_hash(sexp_t *s)
 {
-    if (!s) return 0;
-    switch (s->type) {
-    case S_NIL:    return 1;
-    case S_INT:    return (unsigned)(s->u.ival * 2654435761ULL);
-    case S_SYM:    return ht_hash(s->u.sval, 1000000007);
-    case S_CHAR:   return s->u.cval * 7919;
-    case S_STRING: return ht_hash(s->u.sval, 1000000007) ^ 0xDEAD;
-    case S_BOOL:   return s->u.bval ? 42 : 43;
-    case S_PAIR:   return sexp_hash(s->u.pair.car) * 31 + sexp_hash(s->u.pair.cdr);
+    unsigned acc = 0;
+
+    while (s && s->type == S_PAIR) {
+        acc += sexp_hash(s->u.pair.car) * 31;
+        s = s->u.pair.cdr;
     }
-    return 0;
+
+    if (!s) return acc;
+    switch (s->type) {
+    case S_NIL:    return acc + 1;
+    case S_INT:    return acc + (unsigned)(s->u.ival * 2654435761ULL);
+    case S_SYM:    return acc + ht_hash(s->u.sval, 1000000007);
+    case S_CHAR:   return acc + s->u.cval * 7919;
+    case S_STRING: return acc + (ht_hash(s->u.sval, 1000000007) ^ 0xDEAD);
+    case S_BOOL:   return acc + (s->u.bval ? 42 : 43);
+    case S_PAIR:   break;   /* not reachable: the loop consumed pairs */
+    }
+    return acc;
 }
 
 static int sexp_equal(sexp_t *a, sexp_t *b)
 {
+    /* Walk both cdr chains in step, for the same reason. */
+    while (a != b && a && b && a->type == S_PAIR && b->type == S_PAIR) {
+        if (!sexp_equal(a->u.pair.car, b->u.pair.car))
+            return 0;
+        a = a->u.pair.cdr;
+        b = b->u.pair.cdr;
+    }
+
     if (a == b) return 1;
     if (!a || !b) return 0;
     if (a->type != b->type) return 0;
@@ -663,8 +720,7 @@ static int sexp_equal(sexp_t *a, sexp_t *b)
     case S_CHAR:   return a->u.cval == b->u.cval;
     case S_STRING: return !strcmp(a->u.sval, b->u.sval);
     case S_BOOL:   return a->u.bval == b->u.bval;
-    case S_PAIR:   return sexp_equal(a->u.pair.car, b->u.pair.car) &&
-                          sexp_equal(a->u.pair.cdr, b->u.pair.cdr);
+    case S_PAIR:   break;   /* not reachable: the loop consumed pairs */
     }
     return 0;
 }
@@ -918,13 +974,38 @@ static uint64_t constant_refgen(sexp_t *c);
  * Pair allocation
  * ================================================================ */
 
+/* Lay out a pair, and its cdr chain, in the data space.  The chain is
+   walked iteratively: recursing once per element would exhaust the C
+   stack on a long constant list.  Allocation order, and the sharing
+   provided by the pair cache, are the same as with the natural
+   recursive formulation. */
 static uint64_t pair_alloc(sexp_t *c)
 {
-    long newpair = alloc_dat(PAIR_SIZE);
-    store_world_ptr(where_cons_pair_lives, newpair);
-    store_world_word(constant_refgen(c->u.pair.car), newpair + 1);
-    store_world_word(constant_refgen(c->u.pair.cdr), newpair + 2);
-    return tagize_ptr(newpair);
+    long first = alloc_dat(PAIR_SIZE);
+    long cur = first;
+
+    for (;;) {
+        sexp_t *cdr = c->u.pair.cdr;
+        uint64_t cdr_ref;
+
+        store_world_ptr(where_cons_pair_lives, cur);
+        store_world_word(constant_refgen(c->u.pair.car), cur + 1);
+
+        if (cdr && cdr->type == S_PAIR
+            && !pair_cache_lookup(cdr, &cdr_ref)) {
+            long next = alloc_dat(PAIR_SIZE);
+            cdr_ref = tagize_ptr(next);
+            pair_cache_insert(cdr, cdr_ref);
+            store_world_word(cdr_ref, cur + 2);
+            cur = next;
+            c = cdr;
+            continue;
+        }
+        if (!(cdr && cdr->type == S_PAIR))
+            cdr_ref = constant_refgen(cdr);
+        store_world_word(cdr_ref, cur + 2);
+        return tagize_ptr(first);
+    }
 }
 
 static uint64_t caching_pair_alloc(sexp_t *c)
@@ -1188,6 +1269,15 @@ static void count_things(void)
     for (int fi = 0; fi < nfiles; fi++) {
         sexp_t *fil = files[fi].data;
         int nblks = sexp_list_len(fil);
+        if (nblks < 1) {
+            /* The layout arithmetic below (and build_blk_table) assumes
+               at least a top level block; without this check an empty
+               object file makes the opcode count go negative and the
+               block table walk backwards. */
+            fprintf(stderr, "%s: object file contains no code blocks\n",
+                    file_names[fi]);
+            exit(1);
+        }
         opc_count += TOP_CODE_DELTA + REG_CODE_DELTA * (nblks - 1);
         if (nblks > max_blks)
             max_blks = nblks;

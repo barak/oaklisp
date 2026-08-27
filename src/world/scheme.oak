@@ -91,9 +91,13 @@
 
 ; (define string-append append)
 
+;;; Written in terms of a list of arguments rather than native rest
+;;; args: this file is loaded into SCHEME-LOCALE, where a dotted
+;;; parameter list always binds a list, and R3RS callers expect that
+;;; too.
 (define (string-append . args)
-  (if (zero? (rest-length args))
-      "" (append . args)))
+  (if (null? args)
+      "" (apply append args)))
 
 
 (define string->list #^list-type)
@@ -140,9 +144,9 @@
 		    (print obj port)))))
 
     (lambda (obj . rest)
-      (if (zero? (rest-length rest))
-	  (write0 obj standard-output . rest)
-	  (write0 obj . rest)))))
+      (if (null? rest)
+	  (write0 obj standard-output)
+	  (write0 obj (car rest))))))
 
 (define display
   (let ((display0 (lambda (obj port)
@@ -150,9 +154,9 @@
 		    (print obj port)))))
 
     (lambda (obj . rest)
-      (if (zero? (rest-length rest))
-	  (display0 obj standard-output . rest)
-	  (display0 obj . rest)))))
+      (if (null? rest)
+	  (display0 obj standard-output)
+	  (display0 obj (car rest))))))
 
 ;;; Argument order incompatibility hackaround:
 

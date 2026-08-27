@@ -53,13 +53,17 @@
 		(let* ((xi (car c))
 		       (xj   (if (null? (cdr c))  0  (cadr c)))
 		       (rest (if (null? (cdr c)) nil (cddr c))))
+		  ;; FX-TIMES, not ASH-LEFT: packing a 16 bit instruction
+		  ;; 14 bits up overflows a fixnum on a 32 bit build, and
+		  ;; ASH promotes on overflow.  The wrapping multiply
+		  ;; keeps the bit pattern this field layout needs.
 		  (set! (%vref v i)
 		       (if (%big-endian?)
-			   (%crunch (bit-or (ash-left xi 14)
+			   (%crunch (bit-or (fx-times xi 16384)
 					    (ash-right xj 2))
 				    (bit-and xj #x3))
 			   ;(bit-or (ash-left xi 14) xj)
-			   (%crunch (bit-or (ash-left xj 14)
+			   (%crunch (bit-or (fx-times xj 16384)
 					    (ash-right xi 2))
 				    (bit-and xi #x3))
 			   ;(bit-or xi (ash-left xj 14))

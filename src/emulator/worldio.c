@@ -226,7 +226,9 @@ dump_ascii_world(bool just_new)
   ref_t *memptr, theref;
   long i;
   int eighter = 0;
-  char *control_string = (dump_base == 10 ? "%zd " : "%zx ");
+  /* Always hexadecimal: read_ref() parses ascii worlds with "%llx",
+     so a decimal dump could never be read back. */
+  char *control_string = "%zx ";
   FILE *wfp = 0;
 
   fprintf(stderr, "Dumping in ascii.\n");
@@ -394,13 +396,17 @@ read_world(char *str)
     /* Load the weak pointer table. */
     wp_index = read_ref(d);
 
-    if (wp_index + 1 > wp_table_size)
+    if (wp_index < 0)
       {
 	fprintf(stderr,
-		"Error (loading world): number of weak pointers in world"
-		" exceeds internal table size.\n");
+		"Error (loading world): bogus weak pointer count %d.\n",
+		wp_index);
 	exit(EXIT_FAILURE);
       }
+
+    /* The tables grow on demand, so a world with more weak pointers
+       than the current capacity is fine; just make room for them. */
+    ensure_wp_capacity(wp_index + 1);
 
     load_count = wp_index;
     mptr = &wp_table[1];

@@ -26,5 +26,6 @@
 
 extern void parse_cmd_line(int argc, char **argv);
 extern int program_arg_char(int arg_index, int char_index);
+extern void clear_program_args(void);
 
 #endif
