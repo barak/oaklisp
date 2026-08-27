@@ -171,7 +171,28 @@ check-prebuilt: oakworld.bin
 	test $$rc = 0 && echo "All objects reproduce prebuilt/src/world/."; \
 	exit $$rc
 
+# Release check: oak-cold-linker is a C reimplementation of tool.oak, so
+# the two must produce the same cold world from the same objects.  Both
+# lay symbols out in the order they first see them rather than in hash
+# table order, which is what makes that comparison exact rather than
+# merely equivalent.
+#
+# Needs a working oakworld.bin, so run it after a full build.
+
+check-cold-linker: oakworld.bin new.cold
+	@rm -f tool-cold.cold tool-cold.sym
+	@$(OAK) $(OAKFLAGS) --world oakworld.bin -- \
+	  --load files --load tool \
+	  --eval '(tool-files (quote ($(COLDFILESD:.oa=))) "tool-cold")' \
+	  --exit > /dev/null 2>&1 \
+	  || { echo "tool.oak cold link failed"; rm -f tool-cold.*; exit 1; }
+	@cmp new.cold tool-cold.cold \
+	  && echo "oak-cold-linker reproduces tool.oak's cold world." \
+	  || { echo "new.cold differs from tool.oak's cold world."; \
+	       rm -f tool-cold.*; exit 1; }
+	@rm -f tool-cold.cold tool-cold.sym
+
 CLEANFILES = oakworld-1.bin oakworld-2.bin oakworld-3.bin new.cold	\
- new.sym $(ALLOAFILES) oakworld.bin
+ new.sym tool-cold.cold tool-cold.sym $(ALLOAFILES) oakworld.bin
 
 EXTRA_DIST = $(ALLOAFILESNONGEN:.oa=.oak) $(GRAVY)
