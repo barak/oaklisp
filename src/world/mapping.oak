@@ -89,11 +89,44 @@
 
 ;;; EQUAL?
 
-(add-method (equal? (pair) x y)
+;;; Descending into circular structure would not terminate -- two
+;;; distinct but equal circular lists never diverge -- so the recursion
+;;; is bounded.  R3RS leaves the circular case undefined; signalling
+;;; beats spinning.  The budget is spent one unit per pair descended
+;;; through, in either the CAR or the CDR direction, so it also caps
+;;; comparisons of enormous acyclic lists; raise it if that ever
+;;; matters.
+
+(define *equal-depth-limit* 1000000)
+
+;;; This is EQUAL? with the budget threaded through it, so the type
+;;; dispatch that decides whether to descend is the operation's own
+;;; rather than an extra PAIR? test at every node.
+
+(define-instance %equal-bounded? operation)
+
+(add-method (%equal-bounded? (object) x y depth)
+  (equal? x y))
+
+(add-method (%equal-bounded? (pair) x y depth)
   (or (eq? x y)
       (and (pair? y)
-	   (equal? (car x) (car y))
-	   (equal? (cdr x) (cdr y)))))
+	   (if (zero? depth)
+	       (error "EQUAL? gave up after ~D levels; the structure may be circular."
+		      *equal-depth-limit*)
+	       (let ((d (- depth 1))
+		     (xa (car x))
+		     (ya (car y)))
+		 ;; The EQ? tests are just a fast path around the method
+		 ;; lookup for the leaves, which are usually immediates.
+		 (and (or (eq? xa ya) (%equal-bounded? xa ya d))
+		      (let ((xd (cdr x))
+			    (yd (cdr y)))
+			(or (eq? xd yd)
+			    (%equal-bounded? xd yd d)))))))))
+
+(add-method (equal? (pair) x y)
+  (%equal-bounded? x y *equal-depth-limit*))
 
 (add-method (equal? (object) x y)
   (eq? x y))

@@ -41,6 +41,19 @@
 	(print obj s))))
   #f)
 
+;;; Rename a file, answering #T if it worked and #F if it did not.  The
+;;; file compiler uses this to move a freshly written .oa into place
+;;; only once it is complete, so that an interrupted compile cannot
+;;; leave a truncated object under the real name.
+
+(define (rename-file old-name new-name)
+  (let ((old-name (#^string old-name))
+	(new-name (#^string new-name)))
+    ((%stream-primitive 14)
+     (make-locative (%vref old-name 0)) (length old-name)
+     (make-locative (%vref new-name 0)) (length new-name))))
+
+
 (define (dofile file op)
   (with-open-file (s file in)
     (iterate aux ()

@@ -284,34 +284,89 @@ static void upcase_str(char *s)
         *s = toupper((unsigned char)*s);
 }
 
+/* Read one atom.  The Oaklisp printer writes a symbol that needs
+   slashification either in the "t-compatible" style used for .oa files,
+   a backslash before every character, or between vertical bars, so both
+   escapes are understood here.  An escaped character stands for itself:
+   it is neither upcased nor allowed to end the token, and its presence
+   means the token is a symbol rather than a number.  Without this, the
+   \. and \.\.\. that the compiler writes for the symbols . and ...
+   would intern under those literal two- and six-character names. */
 static sexp_t *parse_atom(parser_t *p, int first_char)
 {
     char buf[4096];
+    char esc[4096];             /* was buf[i] written through an escape? */
     int len = 0;
-    buf[len++] = first_char;
+    int escaped = 0;            /* any escape seen in this token at all */
+    int c = first_char;
+
+#define ATOM_PUSH(ch, was_escaped)					\
+    do {								\
+	if (len >= (int)sizeof(buf) - 1) {				\
+	    buf[len] = '\0';						\
+	    fprintf(stderr, "Token too long (over %d characters): %s...\n",	\
+		    (int)sizeof(buf) - 1, buf);				\
+	    exit(1);							\
+	}								\
+	esc[len] = (char)(was_escaped);					\
+	buf[len++] = (char)(ch);					\
+    } while (0)
 
     for (;;) {
-        int c = pgetc(p);
-        if (c == EOF || isspace(c) || c == '(' || c == ')') {
-            if (c != EOF) pungetc(p, c);
+        if (c == EOF)
+            break;
+        if (isspace(c) || c == '(' || c == ')') {
+            pungetc(p, c);
             break;
         }
-        if (len < (int)sizeof(buf) - 1)
-            buf[len++] = c;
+        if (c == '\\') {
+            /* Single escape: the next character stands for itself. */
+            int q = pgetc(p);
+            if (q == EOF)
+                break;
+            escaped = 1;
+            ATOM_PUSH(q, 1);
+        } else if (c == '|') {
+            /* Multiple escape: everything up to the matching bar. */
+            escaped = 1;
+            for (;;) {
+                int q = pgetc(p);
+                if (q == EOF || q == '|')
+                    break;
+                if (q == '\\') {
+                    q = pgetc(p);
+                    if (q == EOF)
+                        break;
+                }
+                ATOM_PUSH(q, 1);
+            }
+        } else {
+            ATOM_PUSH(c, 0);
+        }
+        c = pgetc(p);
     }
     buf[len] = '\0';
 
-    /* Try to parse as integer */
-    if ((buf[0] == '-' && len > 1 && isdigit((unsigned char)buf[1])) ||
-        isdigit((unsigned char)buf[0])) {
+#undef ATOM_PUSH
+
+    /* Try to parse as integer.  An escaped token is always a symbol. */
+    if (!escaped &&
+        ((buf[0] == '-' && len > 1 && isdigit((unsigned char)buf[1])) ||
+         isdigit((unsigned char)buf[0]))) {
         char *end;
         long long val = strtoll(buf, &end, 10);
         if (*end == '\0')
             return make_int(val);
     }
 
-    /* It's a symbol — upcase it */
-    upcase_str(buf);
+    /* It's a symbol; upcase the characters that were not escaped */
+    {
+        int i;
+
+        for (i = 0; i < len; i++)
+            if (!esc[i])
+                buf[i] = (char)toupper((unsigned char)buf[i]);
+    }
     return make_sym(buf);
 }
 
@@ -328,8 +383,12 @@ static sexp_t *parse_hash(parser_t *p)
         for (;;) {
             c = pgetc(p);
             if (c == EOF || isspace(c)) break;
-            if (tlen < (int)sizeof(type_buf) - 1)
-                type_buf[tlen++] = c;
+            if (tlen >= (int)sizeof(type_buf) - 1) {
+                fprintf(stderr, "Type name in #[...] is too long"
+                        " (over %d characters)\n", (int)sizeof(type_buf) - 1);
+                exit(1);
+            }
+            type_buf[tlen++] = c;
         }
         type_buf[tlen] = '\0';
 
@@ -338,29 +397,38 @@ static sexp_t *parse_hash(parser_t *p)
         c = pgetc(p);
         char name_buf[4096];
         int nlen = 0;
+#define NAME_PUSH(ch)							\
+	do {								\
+	    if (nlen >= (int)sizeof(name_buf) - 1) {			\
+		fprintf(stderr, "Symbol name in #[...] is too long"	\
+			" (over %d characters)\n",			\
+			(int)sizeof(name_buf) - 1);			\
+		exit(1);						\
+	    }								\
+	    name_buf[nlen++] = (char)(ch);				\
+	} while (0)
+
         if (c == '"') {
             for (;;) {
                 c = pgetc(p);
                 if (c == '\\') {
                     c = pgetc(p);
                     if (c == '"') {
-                        if (nlen < (int)sizeof(name_buf) - 1)
-                            name_buf[nlen++] = '"';
+                        NAME_PUSH('"');
                     } else {
-                        if (nlen < (int)sizeof(name_buf) - 1)
-                            name_buf[nlen++] = '\\';
-                        if (c != EOF && nlen < (int)sizeof(name_buf) - 1)
-                            name_buf[nlen++] = c;
+                        NAME_PUSH('\\');
+                        if (c != EOF)
+                            NAME_PUSH(c);
                     }
                 } else if (c == '"' || c == EOF) {
                     break;
                 } else {
-                    if (nlen < (int)sizeof(name_buf) - 1)
-                        name_buf[nlen++] = c;
+                    NAME_PUSH(c);
                 }
             }
         }
         name_buf[nlen] = '\0';
+#undef NAME_PUSH
 
         /* Skip to closing ] */
         while ((c = pgetc(p)) != ']' && c != EOF)
@@ -394,8 +462,12 @@ static sexp_t *parse_hash(parser_t *p)
                     if (c2 != EOF) pungetc(p, c2);
                     break;
                 }
-                if (len < (int)sizeof(buf) - 1)
-                    buf[len++] = c2;
+                if (len >= (int)sizeof(buf) - 1) {
+                    fprintf(stderr, "Character name is too long"
+                            " (over %d characters)\n", (int)sizeof(buf) - 1);
+                    exit(1);
+                }
+                buf[len++] = c2;
             }
         } else {
             if (c2 != EOF) pungetc(p, c2);
@@ -455,8 +527,12 @@ static sexp_t *parse_hash(parser_t *p)
                 if (c2 != EOF) pungetc(p, c2);
                 break;
             }
-            if (len < (int)sizeof(buf) - 1)
-                buf[len++] = c2;
+            if (len >= (int)sizeof(buf) - 1) {
+                fprintf(stderr, "Token too long (over %d characters)\n",
+                        (int)sizeof(buf) - 1);
+                exit(1);
+            }
+            buf[len++] = c2;
         }
         buf[len] = '\0';
         upcase_str(buf);
@@ -482,8 +558,12 @@ static sexp_t *parse_hash(parser_t *p)
                 if (c2 != EOF) pungetc(p, c2);
                 break;
             }
-            if (len < (int)sizeof(buf) - 1)
-                buf[len++] = c2;
+            if (len >= (int)sizeof(buf) - 1) {
+                fprintf(stderr, "Token too long (over %d characters)\n",
+                        (int)sizeof(buf) - 1);
+                exit(1);
+            }
+            buf[len++] = c2;
         }
         buf[len] = '\0';
         upcase_str(buf);
@@ -513,8 +593,12 @@ static sexp_t *parse_string_lit(parser_t *p)
             else if (c == 'r') c = '\r';
             /* else literal backslash-escape */
         }
-        if (len < (int)sizeof(buf) - 1)
-            buf[len++] = c;
+        if (len >= (int)sizeof(buf) - 1) {
+            fprintf(stderr, "String literal is too long (over %d characters)\n",
+                    (int)sizeof(buf) - 1);
+            exit(1);
+        }
+        buf[len++] = (char)c;
     }
     buf[len] = '\0';
     return make_string(buf);

@@ -19,6 +19,15 @@
 
 ;;; Read eval print loop for Oaklisp.
 
+;;; #*UP-A-DEBUG-LEVEL is bound below by each REPL to its own escape
+;;; tag.  It needs a top level value as well: command line switches are
+;;; processed by a warm boot action that runs before (TOP-LEVEL), so an
+;;; error there enters the debugger with no enclosing REPL, and reading
+;;; an unbound fluid at that point would signal again and cascade into
+;;; the nested debugger limit instead of reporting the real error.
+
+(set! #*up-a-debug-level #f)
+
 (define (read-eval-print-loop)
   (format #t "~&Oaklisp evaluation loop.~%")
   (bind (;; Exiting:
@@ -82,9 +91,16 @@
                                          (if (= die 1) (format #t "one last time.~%")
                                                        (format #t "~a more times.~%" die)))
 				       (aux (+ eof-exit-i 1)))))
-			       (else
+			       (out-of-here
 				(write-char standard-output #\newline)
-				(throw out-of-here #f))))
+				(throw out-of-here #f))
+			       (else
+				;; A debugger with no enclosing REPL to
+				;; return to; there is nowhere to go but out.
+				(format #t "~&Exiting: EOF at debug level ~D.~%"
+					#*debug-level)
+				(flush standard-output)
+				(exit))))
 			(else
 			 (set! #*- r)
 			 (let ((m (bind-error-handler

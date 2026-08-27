@@ -1441,7 +1441,11 @@ static int _cdr_debug_count = 0;
 	      /* Grab the continuation. */
 
 	      POPVAL(x);
-	      /* CHECKTAG1(x,PTR_TAG,1); */
+	      /* %CONTINUE's method is declared on (CONTINUATION), but the
+		 operation is open coded, so a compiled call site reaches
+		 this instruction with whatever it was handed.  Without
+		 this check the REF_SLOT reads below run off it. */
+	      CHECKTAG1(x, PTR_TAG, 2);
 	      y = PEEKVAL();
 	      /* Pull the crap out of it. */
 
@@ -1602,7 +1606,10 @@ static int _cdr_debug_count = 0;
 
 	    case 71:		/* TEST-AND-SET-LOCATIVE */
 	      POPVAL(x);
-	      CHECKTAG1(x, LOC_TAG, 2);
+	      /* Three arguments, not two: the new value is still on the
+		 value stack under the locative and the old value, so the
+		 trap handler has to be given all three. */
+	      CHECKTAG1(x, LOC_TAG, 3);
 	      POPVAL(y);
 #ifdef THREADS
 	      if (oak_mutex_trylock(&test_and_set_locative_lock) != 0) {
@@ -2429,6 +2436,30 @@ static int _cdr_debug_count = 0;
 		  }
 		  /* if there is no chdir() then use this: */
 		  /* PEEKVAL() = e_nil; */
+		  GOTO_TOP;
+
+		case 14:	/* rename a file */
+		  {
+		    /* Arguments are pushed last first, so the top of the
+		       stack is the first one: old-loc, old-len, new-loc,
+		       new-len, reading down. */
+		    ref_t z;
+		    char *from, *to;
+
+		    POPVAL(x);	/* locative to the old name */
+		    POPVAL(y);	/* length of the old name */
+		    POPVAL(z);	/* locative to the new name */
+		    from = oak_c_string((ref_t *) LOC_TO_PTR(x),
+					REF_TO_INT(y));
+		    to = oak_c_string((ref_t *) LOC_TO_PTR(z),
+				      REF_TO_INT(PEEKVAL()));
+
+		    if (trace_files)
+		      printf("About to rename '%s' to '%s'.\n", from, to);
+		    PEEKVAL() = rename(from, to) == 0 ? e_t : e_nil;
+		    free(from);
+		    free(to);
+		  }
 		  GOTO_TOP;
 
 		default:

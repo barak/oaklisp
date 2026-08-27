@@ -60,7 +60,7 @@ dump world to file upon exit
 synonym for \-\-dump
 .TP
 .B \-\-dump-base b
-0=ascii, 2=binary; default=2
+16=ascii, 2=binary; default=2
 .TP
 .B \-\-predump-gc b
 0=no, 1=yes; default=1
@@ -86,6 +86,9 @@ maximum flushed segment len, n is in refs
 synonym for \-\-trace-gc
 .TP
 .B \-\-trace-traps
+.TP
+.B \-\-batch
+disable trapping of SIGINT
 .TP
 .B \-\-trace-files
 trace filesystem operations

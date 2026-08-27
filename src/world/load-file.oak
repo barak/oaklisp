@@ -105,7 +105,14 @@
   (load-code-segment
    locale
    (with-open-file (s (append file ".oa") in)
-      (make-oa-list (read-oaf-list s)))))
+     (let ((segment (make-oa-list (read-oaf-list s))))
+       ;; The object has to be the whole file.  A truncation that
+       ;; happened to land where every bracket was already closed would
+       ;; otherwise load a prefix of the definitions and report success.
+       (skip-whitespace s)
+       (unless (eq? the-eof-token (peek-char s))
+	 (error "Garbage after the object in ~A.oa." file))
+       segment))))
 
 
 #||

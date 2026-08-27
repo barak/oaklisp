@@ -168,8 +168,11 @@
 				   (else (scan.5 i c c-syntax)))))))
 
 		  ((n3 i)
-		   ;; Before required digit of the last block of digits
-		   (if (= i l) #f
+		   ;; Before required digit of the last block of digits.
+		   ;; Running out here means the name ends in the '/' of a
+		   ;; ratio or is just a '.', neither of which the reader
+		   ;; will take back unescaped, so it needs slashifying.
+		   (if (= i l) #t
 		       (let* ((c (nth print-name i))
 			      (c-syntax (nth standard-read-table c)))
 			 (if (and (or (eq? c-syntax 'constituent)

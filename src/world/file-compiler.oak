@@ -119,15 +119,23 @@
 			    forms))
 		     identity)))
 
-	(write-file
-	 (append file-name compiler-to-extension)
-	 (block0 (s4 (s3 (s2b (s12
-			       (after-reading
-				(read-file
-				 (append file-name compiler-from-extension)))))))
-		 (when (> #*compiler-noisiness 1)
-		   (format #t " writing...")
-		   (flush standard-output))))
+	;; Write to a temporary name and move it into place once it is
+	;; complete, so a compile stopped by a full disk or a killed
+	;; process leaves no truncated object under the real name.
+	(let* ((out-name (append file-name compiler-to-extension))
+	       (tmp-name (append out-name "-tmp")))
+	  (write-file
+	   tmp-name
+	   (block0 (s4 (s3 (s2b (s12
+				 (after-reading
+				  (read-file
+				   (append file-name
+					   compiler-from-extension)))))))
+		   (when (> #*compiler-noisiness 1)
+		     (format #t " writing...")
+		     (flush standard-output))))
+	  (unless (rename-file tmp-name out-name)
+	    (error "Unable to rename ~A to ~A." tmp-name out-name)))
 	(when (> #*compiler-noisiness 0)
 	  (format #t "~&"))
 	#f))))
