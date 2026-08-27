@@ -33,6 +33,17 @@
 				  (let ((stuff (head (cdr args) n)))
 				    (catch-errors (general-error
 						   (lambda (err)
+						     ;; Remember that this
+						     ;; run did not do what
+						     ;; it was asked, so it
+						     ;; does not exit 0 and
+						     ;; leave a make rule
+						     ;; linking whatever
+						     ;; stale object the
+						     ;; failed --compile
+						     ;; left behind.
+						     (set! command-line-failures
+							   (+ command-line-failures 1))
 						     (format standard-error
 							     "~&An error occurred while processing switch ~A args ~S~%"
 							     a stuff)

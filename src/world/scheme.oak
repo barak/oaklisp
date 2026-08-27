@@ -107,7 +107,12 @@
 (define string-fill! fill!)
 
 
-(define (make-vector n) (make simple-vector n))
+;;; R3RS makes the fill optional; without one the elements are whatever
+;;; MAKE leaves behind, which is what this always did.
+
+(define (make-vector n . fill)
+  (let ((v (make simple-vector n)))
+    (if (null? fill) v (fill! v (car fill)))))
 
 (define vector-length length)
 (define vector-ref nth)

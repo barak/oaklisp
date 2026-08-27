@@ -64,17 +64,20 @@ Example:
 		   (set! #*current-locale
 			 (eval (read (make string-input-stream x))
 			       #*current-locale))))
+    ;; A warning that terminates the process is not a warning; the
+    ;; switches after this one still get their turn.
     ("pthreads" 1 ,(lambda (x)
-		     (unless (%threads-enabled?)
-		       (format #t "Warning: --pthreads ignored (emulator compiled without thread support).~%")
-		       (exit 1 ""))
-		     (set! heavyweight-thread-count
-			   (read (make string-input-stream x)))
-		     (unless (integer? heavyweight-thread-count)
-		       (exit 1 "--pthreads option takes integer argument.~%"))
-		     (setup-initial-process-object)))
+		     (cond ((not (%threads-enabled?))
+			    (format standard-error
+				    "~&Warning: --pthreads ignored (emulator compiled without thread support).~%"))
+			   (else
+			    (set! heavyweight-thread-count
+				  (read (make string-input-stream x)))
+			    (unless (integer? heavyweight-thread-count)
+			      (exit 1 "--pthreads option takes integer argument.~%"))
+			    (setup-initial-process-object)))))
     ("exit" 0 ,(lambda ()
-		 (exit 0 "")))))
+		 (exit (if (zero? command-line-failures) 0 1) "")))))
 
 (define (cmdline-eat)
   (set! argline

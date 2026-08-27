@@ -26,6 +26,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #undef NDEBUG
 #include <assert.h>
 #include "config.h"
@@ -57,8 +58,26 @@ xmalloc(size_t size)
 void
 alloc_space(space_t * pspace, size_t size_requested)
 {
-  /* size_requested measures references */
-  void *ptr = xmalloc(sizeof(ref_t) * size_requested);
+  /* size_requested measures references, and the byte count handed to
+     malloc is sizeof(ref_t) times that.  A request big enough to wrap
+     that multiplication would ask for a small block -- a multiple of
+     2^61 refs asks for exactly zero bytes -- and then hand the VM a
+     space whose recorded size and end pointer describe the block it
+     meant to get, so nothing would ever trigger a GC and every
+     allocation would run off the end of it.  Check here rather than at
+     the call sites: --size-heap is only one of them, and gc() computes
+     the next new space size arithmetically. */
+  void *ptr;
+
+  if (size_requested > SIZE_MAX / sizeof(ref_t))
+    {
+      fprintf(stderr,
+	      "ERROR(alloc_space): %lu references is too large a space.\n",
+	      (unsigned long)size_requested);
+      exit(EXIT_FAILURE);
+    }
+
+  ptr = xmalloc(sizeof(ref_t) * size_requested);
   pspace->start = (ref_t *) ptr;
 
   pspace->size = size_requested;

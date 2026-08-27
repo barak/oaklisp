@@ -79,7 +79,17 @@
 ; this code depends on bignums
 
 (define (tagize-int x)
-  (let ((fixnum-bits (if target-64bit 62 30)))
+  (let* ((fixnum-bits (if target-64bit 62 30))
+	 (limit (expt 2 (- fixnum-bits 1))))
+    ;; Oaklisp arithmetic is exact, so an out-of-range constant would
+    ;; not wrap here the way it does in C -- it would be written to the
+    ;; .cold file as a number too wide for a ref, which the emulator
+    ;; then reads as something else again.  The cold world has no way to
+    ;; build a bignum, so refuse rather than emit a malformed world.
+    ;; oak-cold-linker makes the same check.
+    (when (or (< x (- limit)) (> x (- limit 1)))
+      (error "Integer constant ~D does not fit in a ~D-bit fixnum."
+	     x fixnum-bits))
     (+ int-tag (* 4 (if (negative? x)
 			(+ x (expt 2 fixnum-bits))
 			x)))))
@@ -795,6 +805,14 @@
 
 
 (define	(write-world-header outfile)
+  ;; Word size marker, matching COLD_WORLD_TAG in the emulator's
+  ;; worldio.c and the line oak-cold-linker writes.  A cold world is
+  ;; byte order neutral -- the emulator swaps the halves of a
+  ;; ^-prefixed opcode cell when it needs to -- but its tagged values
+  ;; are shifted by the target's ref shift, so loading one into an
+  ;; emulator of the other word size has to be refused rather than
+  ;; discovered by crashing.
+  (format outfile "oakcold~D~%" (if target-64bit 64 32))
   (bind ((#*print-radix 16))
     (print-hex value-stack-size #f outfile)
     (format outfile " ")

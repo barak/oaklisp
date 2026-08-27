@@ -24,8 +24,10 @@
 #ifndef _CMDLINE_H_INCLUDED
 #define _CMDLINE_H_INCLUDED
 
+#include <sys/types.h>
+
 extern void parse_cmd_line(int argc, char **argv);
-extern int program_arg_char(int arg_index, int char_index);
+extern int program_arg_char(ssize_t arg_index, ssize_t char_index);
 extern void clear_program_args(void);
 
 #endif

@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <limits.h>
 #include <string.h>
 #include "oak-getopt.h"
 #include "config.h"
@@ -61,6 +62,29 @@ positive_arg(char *arg, const char *what)
     {
       fprintf(stderr, "Error (command line parser): %s requires a"
 	      " positive argument, not \"%s\".\n", what, arg);
+      exit(EXIT_FAILURE);
+    }
+  return value;
+}
+
+
+/* Like positive_arg, but for a size the emulator goes on to do
+   arithmetic with.  The stack sizing check below adds 255 (or a
+   context frame) to --size-seg-max, and both sides of that comparison
+   are ints, so an argument near INT_MAX made the sum overflow: it
+   wrapped negative, the comparison came out false, and the guarantee
+   the check exists to enforce was silently skipped.  Reject anything
+   that cannot take the addition instead. */
+
+static int
+bounded_arg(char *arg, const char *what, int limit)
+{
+  int value = positive_arg(arg, what);
+
+  if (value > limit)
+    {
+      fprintf(stderr, "Error (command line parser): %s must be at most"
+	      " %d, not \"%s\".\n", what, limit, arg);
       exit(EXIT_FAILURE);
     }
   return value;
@@ -132,8 +156,13 @@ usage(char *prog)
 static int program_argc;
 static char **program_argv;
 
+/* The indices come off the Oaklisp stack as full width integers, so
+   they are taken as such: narrowing them to int first would make an
+   index congruent to a valid one mod 2^32 alias onto it and answer a
+   character where the bounds check below should have answered #f. */
+
 int
-program_arg_char(int arg_index, int char_index)
+program_arg_char(ssize_t arg_index, ssize_t char_index)
 {
   char *a;
   if (arg_index < 0 || arg_index >= program_argc)
@@ -289,7 +318,10 @@ parse_cmd_line(int argc, char **argv)
 	  break;
 
 	case MAX_SEG_ARG:
-	  max_segment_size = positive_arg(optarg, "--size-seg-max");
+	  max_segment_size =
+	    bounded_arg(optarg, "--size-seg-max",
+			INT_MAX - (255 > CONTEXT_FRAME_SIZE
+				   ? 255 : CONTEXT_FRAME_SIZE));
 	  break;
 
 	case VERBOSE_GC_ARG:

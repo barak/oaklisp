@@ -28,20 +28,30 @@
 ;;; Try to make only one empty string.  The following works, because the
 ;;; world builder makes only one empty string.
 
-(define (make-string len)
+;;; The fill character is optional, as R3RS MAKE-STRING has it; without
+;;; one the string is filled with nulls, which is what this always did.
+
+(define (make-string len . rest)
   (cond ((negative? len)
 	 (error "Cannot make a string of ~D characters." len))
 	((zero? len) "")
 	(else
-	 (let* ((word-count
+	 (let* ((fill-char (if (null? rest) #\NULL (car rest)))
+		(byte (if (char? fill-char)
+			  (bit-and #xFF (%character->fixnum fill-char))
+			  ;; %CHARACTER->FIXNUM would happily take the
+			  ;; data field apart of whatever it was handed.
+			  (error "~S is not a character to fill a string with."
+				 fill-char)))
+		(word (bit-or byte
+			      (bit-or (ash-left byte 8)
+				      (ash-left byte 16))))
+		(word-count
 		 (quotient (+ len (- %chars-per-word 1)) %chars-per-word))
 		(s (make string word-count len))
 		(loc (make-locative (%vref s 0))))
 	   (dotimes (i word-count s)
-	     (set! (contents (%increment-locative loc i))
-		   (bit-or (#^number #\NULL)
-			   (bit-or (ash-left (#^number #\NULL) 8)
-				   (ash-left (#^number #\NULL) 16)))))))))
+	     (set! (contents (%increment-locative loc i)) word))))))
 
 ;;; LEN is both the length the string reports and the bound NTH and
 ;;; (SETTER NTH) check against, while WORD-COUNT is how many cells were
@@ -86,7 +96,8 @@
 	     (bit-or (bit-and (%vref self m)
 			      (bit-and #xFFFFFF
 				       (bit-not (ash-left #xFF i))))
-		     (ash-left (%character->fixnum new-c) i))))))
+		     (ash-left (bit-and #xFF (%character->fixnum new-c))
+			       i))))))
 |#
 
 ;;;;;;;;;;;;;;;;;
@@ -111,11 +122,19 @@
       (error "Index ~D into ~S out of bounds." n self)
       (let ((m (quotient n %chars-per-word))
 	    (i (* (modulo n %chars-per-word) 8)))
+	;; The character being deposited is masked to its own byte, not
+	;; just the hole it goes into.  A character type is wider than a
+	;; byte -- %FIXNUM->CHARACTER will build one from any fixnum --
+	;; and an unmasked code above 255 would shift its high bits
+	;; straight into the byte belonging to the next character of the
+	;; same word, silently corrupting a character the caller never
+	;; wrote to.  NTH masks on the way out, so the damage would show
+	;; up only at the neighbour.
 	(set! (%vref-nocheck self m)
 	      (bit-or (bit-and (%vref-nocheck self m)
 			       (bit-and #xFFFFFF
 					(bit-not (ash-left #xFF i))))
-		      (ash-left (%character->fixnum new-c) i)))
+		      (ash-left (bit-and #xFF (%character->fixnum new-c)) i)))
 	new-c)))
 
 
@@ -164,23 +183,29 @@
 
   (add-method (fill-string (variable-length-mixin) s l len)
 
+    ;; Each code is masked to its own byte for the same reason
+    ;; (SETTER NTH) masks: a character whose code exceeds 255 would
+    ;; otherwise spill into the byte of the character packed after it.
     (iterate aux ((i 0)(l l)(to-do len))
       (cond ((zero? to-do)
 	     s)
 	    ((= 1 to-do)
-	     (set! (%load-bp-i i) (%character->fixnum (car l)))
+	     (set! (%load-bp-i i)
+		   (bit-and #xFF (%character->fixnum (car l))))
 	     s)
 	    ((= 2 to-do)
 	     (set! (%load-bp-i i)
-		   (bit-or (%character->fixnum (car l))
-			   (ash-left (%character->fixnum (cadr l)) 8)))
+		   (bit-or (bit-and #xFF (%character->fixnum (car l)))
+			   (ash-left (bit-and #xFF
+					      (%character->fixnum (cadr l)))
+				     8)))
 	     s)
 	    (else
-	     (let* ((c0 (%character->fixnum (car l)))
+	     (let* ((c0 (bit-and #xFF (%character->fixnum (car l))))
 		    (l1 (cdr l))
-		    (c1 (%character->fixnum (car l1)))
+		    (c1 (bit-and #xFF (%character->fixnum (car l1))))
 		    (l2 (cdr l1))
-		    (c2 (%character->fixnum (car l2))))
+		    (c2 (bit-and #xFF (%character->fixnum (car l2)))))
 	       (set! (%load-bp-i i)
 		     (bit-or c0 (bit-or (ash-left c1 8) (ash-left c2 16))))
 	       (aux (+ i 1) (cdr l2) (- to-do %chars-per-word)))))))

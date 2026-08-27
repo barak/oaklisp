@@ -78,6 +78,14 @@ static bool input_is_binary;
 #define ASCII_WORLD_TAG \
   "oak" STRINGIFY(__WORDSIZE) ASCII_WORLD_ENDIAN
 
+/* First token of a cold world written by oak-cold-linker or tool.oak.
+   A cold world is byte order neutral -- read_ref() swaps the halves of
+   a ^-prefixed opcode cell on a little endian machine, so the same file
+   boots either way -- but its tagged values are shifted by the target's
+   ref shift, so the word size still has to match. */
+#define COLD_WORLD_TAG \
+  "oakcold" STRINGIFY(__WORDSIZE)
+
 
 /* These are for making the world zero-based and contiguous in dumps. */
 
@@ -406,9 +414,10 @@ read_world(char *str)
       input_is_binary = 0;
 
       /* An ascii world dumped by this emulator starts with a word size
-	 and byte order marker.  A cold world written by oak-cold-linker
-	 has none, so its absence is not an error, but a marker that
-	 disagrees with this emulator is. */
+	 and byte order marker, and a cold world starts with a word size
+	 one.  Worlds written before either marker existed have none, so
+	 its absence is not an error, but a marker that disagrees with
+	 this emulator is. */
       if (magichar == (int)'o')
 	{
 	  char tag[16];
@@ -418,10 +427,12 @@ read_world(char *str)
 	      printf("Error: cannot read world file header of \"%s\".\n", str);
 	      exit(EXIT_FAILURE);
 	    }
-	  if (strcmp(tag, ASCII_WORLD_TAG) != 0)
+	  if (strcmp(tag, ASCII_WORLD_TAG) != 0
+	      && strcmp(tag, COLD_WORLD_TAG) != 0)
 	    {
-	      printf("Error: ascii world \"%s\" is %s, this emulator is %s.\n",
-		     str, tag, ASCII_WORLD_TAG);
+	      printf("Error: world \"%s\" is %s;"
+		     " this emulator reads %s and %s.\n",
+		     str, tag, ASCII_WORLD_TAG, COLD_WORLD_TAG);
 	      exit(EXIT_FAILURE);
 	    }
 	}

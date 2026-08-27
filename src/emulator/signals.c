@@ -55,12 +55,32 @@ intr_proc(int sig)
 }
 
 
+/* SIGINT stays trapped for the life of the run: the polling flag is
+   read and cleared by the interpreter, and the next ^C has to set it
+   again.  signal() does not promise that -- under System V semantics
+   the disposition reverts to SIG_DFL as the handler is entered, so the
+   second ^C would kill the process -- so ask for the behaviour we want
+   explicitly, the way the crash handlers below do. */
+
 void
 enable_signal_polling(void)
 {
   signal_poll_flag = 0;
+#if defined(_MSC_VER) && !defined(__MINGW32__)
   if (signal(SIGINT, intr_proc) == SIG_ERR)
     fprintf(stderr, "Cannot enable signal polling.\n");
+#else
+  {
+    struct sigaction sa;
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = intr_proc;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;	/* stay installed; restart syscalls */
+    if (sigaction(SIGINT, &sa, NULL) != 0)
+      fprintf(stderr, "Cannot enable signal polling.\n");
+  }
+#endif
 }
 
 #if 0				/* the following is not used and commented out */
