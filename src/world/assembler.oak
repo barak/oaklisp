@@ -557,12 +557,19 @@
 
 ;;; List all the instructions with certain attributes.
 
+;;; The answer is sorted by name: the hash table's own order depends on
+;;; the object hashes of the opcode symbols, which is to say on the
+;;; history of the world the compiler runs in, and PEEPHOLE.OAK
+;;; compiles this list into its matchers, so the object file would
+;;; otherwise differ from one compiling world to the next.
+
 (define (instructions-with attributes)
-  (iterate aux ((l (#^list-type opcode-notation-hash-table))
-		(yes '()))
-    (cond ((null? l) yes)
-	  ((subset? attributes (cdr (car l)))
-	   (aux (cdr l) (cons (caar l) yes)))
-	  (else (aux (cdr l) yes)))))
+  (sort (iterate aux ((l (#^list-type opcode-notation-hash-table))
+		      (yes '()))
+	  (cond ((null? l) yes)
+		((subset? attributes (cdr (car l)))
+		 (aux (cdr l) (cons (caar l) yes)))
+		(else (aux (cdr l) yes))))
+	(lambda (a b) (< (#^string a) (#^string b)))))
 
 ;;; eof

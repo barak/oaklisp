@@ -65,6 +65,8 @@ Option              Default   Description
 --enable-docs       yes       Build LaTeX documentation
 --enable-ndebug     yes       High-speed mode (sets -DFAST)
 --enable-threads    no        Native thread support with concurrent GC
+--enable-bootstrap  no        Compile the world from .oak source with the Guile-hosted
+                              compiler instead of using prebuilt/ (needs guile3.0)
 --with-world=PATH   search    Path to bootstrap oakworld.bin (for recompiling .oa files)
 --with-oaklisp=OAK  no        Path to existing oaklisp for bootstrapping
 
@@ -161,6 +163,32 @@ oakworld.bin is needed for a fresh build.
 For development, if you have a working Oaklisp (either just-built or
 installed), .oak files will be recompiled from source automatically.
 If compilation fails, the build falls back to prebuilt .oa copies.
+
+Building from source alone
+--------------------------
+
+The prebuilt .oa files are themselves compiled Oaklisp, so a build that
+uses them is trusting objects it cannot rebuild.  To build with nothing
+but the .oak sources and a C compiler, install Guile 3 and configure
+with
+
+	./configure --enable-bootstrap
+
+The Guile-hosted compiler in src/cold-compiler then compiles every
+object the world build needs (the cold files, the macro and runtime
+files, the compiler and the Scheme compatibility files) before the
+cold world is linked; prebuilt/ is not used.  It is not a separate
+compiler: it hosts enough of Oaklisp in Guile to load the world's own
+macros and compiler from their sources and runs those, so its objects
+are byte for byte the ones a native Oaklisp produces.  The bootstrap
+chain becomes:
+
+	src/world/*.oak → oak-bootstrap.scm → *.oa → oak-cold-linker → new.cold → boot → oakworld.bin
+
+Compiling everything takes about a minute.  Whether or not the build
+uses it, `make check-bootstrap' in src/world compares its output with
+prebuilt/ and is one of the release checks, next to check-prebuilt and
+check-cold-linker.  See src/cold-compiler/README.md for how it works.
 
 To use a specific world for recompiling .oa files from source:
 

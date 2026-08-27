@@ -72,6 +72,16 @@ AS_IF([test x${with_oaklisp} = xcheck || test x${with_oaklisp} = xyes],
                            [AC_MSG_ERROR([no oaklisp executable found])],
                            [no])])])
 
+AC_MSG_CHECKING([enable_bootstrap])
+AC_ARG_ENABLE([bootstrap],
+       [AS_HELP_STRING([--enable-bootstrap],[compile the world from .oak source with the Guile-hosted compiler instead of using prebuilt/ (default=no)])],,
+       [enable_bootstrap=no])
+AC_MSG_RESULT([$enable_bootstrap])
+AC_PATH_PROGS([GUILE], [guile3.0 guile], [no])
+AS_IF([test x${enable_bootstrap} = xyes && test x${GUILE} = xno],
+      [AC_MSG_ERROR([--enable-bootstrap needs Guile 3 (guile3.0)])])
+AM_CONDITIONAL([BOOTSTRAP], [test x${enable_bootstrap} = xyes])
+
 AS_IF([test x${enable_64bit} = xyes],
       [eight_if_allowed=8],
       [eight_if_allowed=6uuBsNCtBTXDAYKXc9i])
