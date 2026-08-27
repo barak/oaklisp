@@ -43,6 +43,12 @@ int gc_ready[MAX_THREAD_COUNT];
    without this a dead thread's gc_ready flag would stay 0 forever and
    stall every subsequent stop-the-world handshake. */
 int gc_thread_dead[MAX_THREAD_COUNT];
+/* Slots whose thread has exited and whose stacks, registers and TLAB
+   have all been released.  get_next_index hands these back out, so the
+   number of threads a process can create over its lifetime is bounded
+   by how many run at once rather than by MAX_THREAD_COUNT.  Guarded by
+   index_lock.  Slot 0 is the main thread and is never recycled. */
+static int slot_reusable[MAX_THREAD_COUNT];
 register_set_t* register_array[MAX_THREAD_COUNT];
 oakstack *value_stack_array[MAX_THREAD_COUNT];
 oakstack *cntxt_stack_array[MAX_THREAD_COUNT];
@@ -116,6 +122,7 @@ typedef struct {
 
 #ifdef THREADS
 static void *init_thread(void *info_p);
+static void release_thread_slot(int i);
 #endif
 
 int create_thread(ref_t start_operation)
@@ -124,11 +131,17 @@ int create_thread(ref_t start_operation)
   oak_thread_t new_thread;
   int index;
   start_info_t *info_p = (start_info_t *)malloc(sizeof(start_info_t));
+
+  if (info_p == NULL) {
+    fprintf (stderr, "Out of memory.  No thread created\n");
+    return 0;
+  }
   index = get_next_index();
   if (index == -1) {
     fprintf (stderr,
 	     "Max thread count of %d has been exceeded.  No thread created\n",
 	     MAX_THREAD_COUNT);
+    free(info_p);
     return 0;
   }
   gc_ready[index] = 0;
@@ -138,6 +151,7 @@ int create_thread(ref_t start_operation)
   info_p->my_index = index;
   if (oak_thread_create(&new_thread, init_thread, (void *)info_p)) {
     free(info_p);
+    release_thread_slot(index);
     return 0;
   }
   else
@@ -153,15 +167,26 @@ static void *init_thread (void *info_p)
   volatile int my_index;
   int *my_index_p;
   start_info_t info;
-  my_index_p = (int *)malloc(sizeof(int));
   info = *((start_info_t *)info_p);
   free(info_p);
   /* Retrieve the next index in the thread arrays and lock it so
      another starting thread cannot get the same index */
 
+  my_index = info.my_index;
+  my_index_p = (int *)malloc(sizeof(int));
+  if (my_index_p == NULL) {
+    fprintf(stderr, "Out of memory starting thread %d.\n", (int)my_index);
+    /* Nothing is in thread-local storage yet, so free_registers will
+       not run for this thread; hand the slot back by hand. */
+    release_thread_slot(my_index);
+    return 0;
+  }
   *my_index_p = info.my_index;
-  my_index = *my_index_p;
   oak_tls_set(index_key, (void *)my_index_p);
+  /* From here on the thread-local destructor, free_registers, releases
+     whatever has been allocated and hands the slot back, so an
+     allocation failure only has to return. */
+
   /* Increment also releases the gc lock on next_index so another
      starting thread can get the lock, or a thread that is gc'ing can
      get the lock */
@@ -172,6 +197,13 @@ static void *init_thread (void *info_p)
 
   value_stack_array[my_index] = (oakstack*)malloc (sizeof (oakstack));
   cntxt_stack_array[my_index] = (oakstack*)malloc(sizeof (oakstack));
+  if (value_stack_array[my_index] == NULL || cntxt_stack_array[my_index] == NULL) {
+    fprintf(stderr, "Out of memory starting thread %d.\n", (int)my_index);
+    return 0;
+  }
+  /* free_registers frees ->bp, so it must not be left uninitialized. */
+  memset(value_stack_array[my_index], 0, sizeof (oakstack));
+  memset(cntxt_stack_array[my_index], 0, sizeof (oakstack));
 
   value_stack_array[my_index]->size = value_stack_array[0]->size;
   value_stack_array[my_index]->filltarget = value_stack_array[0]->filltarget;
@@ -180,6 +212,10 @@ static void *init_thread (void *info_p)
 
   init_stacks ();
   register_array[my_index] = (register_set_t*)malloc(sizeof (register_set_t));
+  if (register_array[my_index] == NULL) {
+    fprintf(stderr, "Out of memory starting thread %d.\n", (int)my_index);
+    return 0;
+  }
 
   memcpy(register_array[my_index], register_array[info.parent_index],
 	 sizeof(register_set_t));
@@ -236,10 +272,18 @@ int get_next_index ()
 {
   int ret = -1;
 #ifdef THREADS
+  int i;
   oak_mutex_lock(&index_lock);
-  if (next_index >= MAX_THREAD_COUNT) {
-    ret = -1;
-  } else {
+  /* Prefer the slot of a thread that has already exited: reusing keeps
+     next_index down to the high-water mark of concurrent threads,
+     which is what the stop-the-world handshake and the root scan walk. */
+  for (i = 1; i < next_index; i++)
+    if (slot_reusable[i]) {
+      slot_reusable[i] = 0;
+      ret = i;
+      break;
+    }
+  if (ret == -1 && next_index < MAX_THREAD_COUNT) {
     ret = next_index;
     next_index++;
   }
@@ -247,6 +291,21 @@ int get_next_index ()
 #endif
   return (ret);
 }
+
+#ifdef THREADS
+/* Hand a thread slot back for reuse.  Only call once the slot holds no
+   state belonging to its late occupant. */
+static void release_thread_slot (int i)
+{
+  if (i <= 0 || i >= MAX_THREAD_COUNT)
+    return;			/* slot 0 is the main thread */
+  gc_thread_dead[i] = 1;
+  gc_ready[i] = 1;
+  oak_mutex_lock(&index_lock);
+  slot_reusable[i] = 1;
+  oak_mutex_unlock(&index_lock);
+}
+#endif
 
 /* Thread-local storage destructor for index_key: runs when a thread
    exits.  Retires the thread's slot so the garbage collector stops
@@ -296,7 +355,20 @@ void free_registers (void *arg)
       register_array[i] = NULL;
     }
 
+#ifdef USE_MARK_SWEEP
+  /* Retire the TLAB here rather than leaving it for the collector: once
+     the slot is recycled the next occupant overwrites these pointers,
+     and the unused tail would then have no objstart bit for the sweep
+     to find.  Holding gc_lock means no stop-the-world pause -- and so
+     no ms_tlab_retire_all -- is running. */
+  ms_tlab_retire(tlab_cursor_array[i], tlab_end_array[i]);
+  tlab_cursor_array[i] = NULL;
+  tlab_end_array[i] = NULL;
+#endif
+
   oak_mutex_unlock(&gc_lock);
+
+  release_thread_slot(i);
 
   free(my_index_p);
 #else

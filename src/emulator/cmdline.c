@@ -26,6 +26,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include "oak-getopt.h"
 #include "config.h"
@@ -260,7 +261,21 @@ parse_cmd_line(int argc, char **argv)
 	  break;
 
 	case HEAP_ARG:
-	  original_newspace_size = 1024 * atol(optarg);
+	  {
+	    long kbytes = atol(optarg);
+
+	    /* Unlike the other size switches this one is scaled and
+	       stored in a size_t, so a negative or absurd argument
+	       would turn into a huge unsigned allocation request. */
+	    if (kbytes <= 0 || kbytes > (long)(SIZE_MAX / 1024))
+	      {
+		fprintf(stderr, "Error (command line parser): --size-heap"
+			" requires a positive argument, not \"%s\".\n",
+			optarg);
+		exit(EXIT_FAILURE);
+	      }
+	    original_newspace_size = 1024 * (size_t)kbytes;
+	  }
 	  break;
 
 	case VALSIZ_ARG:
@@ -301,16 +316,18 @@ parse_cmd_line(int argc, char **argv)
 
      Furthermore, we must be able to satisfy this by unflushing
      segments.  The unflushing routine only pulls in integral
-     segments, so we must be able to unflush a maximal segment if
-     there are only 254 elements in the buffer.
+     segments, and it stops only once the buffer holds strictly more
+     than the 255 requested -- it then writes as far as bp[255] -- so
+     we must be able to unflush a maximal segment on top of 255
+     elements.
 
      Therefore we must have:
 
-     value_stack.size >= 254 + max_segment_size
+     value_stack.size >= 255 + max_segment_size
   */
 
-  if (value_stack.size < 254 + max_segment_size) {
-    value_stack.size = 254 + max_segment_size;
+  if (value_stack.size < 255 + max_segment_size) {
+    value_stack.size = 255 + max_segment_size;
     value_stack.filltarget = value_stack.size/2;
     fprintf(stderr, "warning: using value stack of size %d.\n",
 	    value_stack.size);

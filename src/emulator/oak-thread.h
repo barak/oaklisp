@@ -142,7 +142,10 @@ static unsigned __stdcall oak_thread_trampoline_(void *p) {
     return 0;
 }
 
-/* Returns 0 on success, nonzero on failure. */
+/* Returns 0 on success, nonzero on failure.  Nothing in the VM ever
+   waits for a thread, so the handle is closed right away; the thread
+   itself keeps running, and its resources go back to the system when
+   it exits rather than piling up. */
 static __inline int oak_thread_create(oak_thread_t *t,
 				      void *(*func)(void *), void *arg) {
     oak_thread_trampoline_t *info =
@@ -153,6 +156,8 @@ static __inline int oak_thread_create(oak_thread_t *t,
     *t = (HANDLE)_beginthreadex(NULL, 0, oak_thread_trampoline_,
 				info, 0, NULL);
     if (*t == 0) { free(info); return 1; }
+    CloseHandle(*t);
+    *t = NULL;
     return 0;
 }
 
@@ -252,10 +257,21 @@ static inline void oak_tls_set(oak_tls_key_t key, void *value) {
 
 typedef pthread_t oak_thread_t;
 
-/* Returns 0 on success, nonzero on failure. */
+/* Returns 0 on success, nonzero on failure.  Nothing in the VM ever
+   joins a thread, so create it detached; a joinable thread that is
+   never joined keeps its descriptor and stack allocated after it
+   exits. */
 static inline int oak_thread_create(oak_thread_t *t,
 				    void *(*func)(void *), void *arg) {
-    return pthread_create(t, NULL, func, arg);
+    pthread_attr_t attr;
+    int rc;
+
+    if (pthread_attr_init(&attr) != 0)
+	return pthread_create(t, NULL, func, arg);
+    (void)pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    rc = pthread_create(t, &attr, func, arg);
+    pthread_attr_destroy(&attr);
+    return rc;
 }
 
 

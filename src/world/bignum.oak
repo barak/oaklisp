@@ -39,8 +39,23 @@
   (set! digits digs)
   self)
 
-(add-method (#^bignum (fixnum) x)
+;;; Build a bignum object out of a fixnum without normalizing it back
+;;; down.  Only the arithmetic traps want this: PLUS/2 and TIMES/2 are
+;;; reached when a fixnum operation overflowed, and they promote their
+;;; first argument to get at the bignum methods, so handing them back a
+;;; fixnum would send them straight round the same loop again.
+
+(define (%bignum-from-fixnum x)
   (make bignum (bignum-sign x) (bignum-digits x)))
+
+;;; The coercer itself normalizes.  Everywhere else in the tower a
+;;; bignum object holds a value too big to be a fixnum, and code counts
+;;; on it: (= b 5) answers #f for any bignum b, and (QUOTIENT n b)
+;;; shortcuts to 0 because a bignum divisor must exceed a fixnum
+;;; dividend in magnitude.
+
+(add-method (#^bignum (fixnum) x)
+  (maybe-make-bignum (bignum-sign x) (bignum-digits x)))
 
 ;;; Make a bignum unless the thing will fit in a fixnum.
 (define (maybe-make-bignum sign digits)
@@ -123,15 +138,18 @@
 	  (cond ((and xneg (not yneg)) #t)
 		((and (not xneg) yneg) #f)
 		((eq? ytype bignum)
-		 (xor xneg
-		      (let ((ydigits (bignum-digits y)))
-			(iterate aux ((xd digits) (yd ydigits))
-			  (cond ((null? xd)
-				 (if (null? yd)
-				     (samelen-digitlist-< digits ydigits)
-				     #t))
-				((null? yd) #f)
-				(else (aux (cdr xd) (cdr yd))))))))
+		 ;; Same sign, so compare magnitudes -- the other way
+		 ;; round when both are negative.  Note that this has to
+		 ;; stay a strict comparison in both directions: taking
+		 ;; the complement of |X| < |Y| for the negative case
+		 ;; would answer #t for two equal negative bignums, and
+		 ;; QUOTIENTM's (> (* a y) x) test would then take an
+		 ;; exact division for an inexact one and round down
+		 ;; once too often.
+		 (let ((ydigits (bignum-digits y)))
+		   (if xneg
+		       (digitlist-< ydigits digits)
+		       (digitlist-< digits ydigits))))
 		((subtype? ytype rational)
 		 (< (* x (denominator y)) (numerator y)))
 		(else
@@ -222,8 +240,11 @@
 
 (add-method (modulo (bignum) x y)
   (let ((a (remainder x y)))
-    (if (or (and (negative? a) (not (negative? y)))
-	    (and (negative? y) (not (negative? x)) (not (negative? a))))
+    ;; Mirrors the MODULO instruction in the emulator, whose second
+    ;; clause tests A > 0.  Testing (not (negative? a)) instead would
+    ;; also fire when Y divides X exactly, answering Y instead of 0.
+    (if (or (and (negative? a) (positive? y))
+	    (and (negative? y) (positive? x) (positive? a)))
 	(+ a y)
 	a)))
 
@@ -872,5 +893,111 @@
 
 (add-method (bit-not (bignum) x)
   (- (+ 1 x)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Bitwise operations on integers at large.
+
+;;; Bignums are signed magnitude base 10,000, so there are no bits to
+;;; get at directly.  Instead take both operands apart into two's
+;;; complement chunks -- floored division sign extends exactly the way
+;;; two's complement does, and the floored remainder of a negative
+;;; number is the unsigned chunk we want -- apply the fixnum operation
+;;; chunk by chunk, and reassemble.  Once both operands have collapsed
+;;; to 0 or -1 everything above is the infinite sign extension of the
+;;; operation applied to their sign bits, which is 0 or -PLACE.
+
+;;; The chunk is 2^24 so that a chunk, and the fixnum operation applied
+;;; to two of them, stay well inside a fixnum on a 32-bit build too.
+
+(define-constant bitop-chunk-size 16777216)
+(define-constant bitop-chunk-mask 16777215)
+
+(define (integer-bitop f x y)
+  (iterate aux ((x x) (y y) (place 1) (acc 0))
+    (if (and (or (zero? x) (= x -1))
+	     (or (zero? y) (= y -1)))
+	(if (odd? (f (if (zero? x) 0 1) (if (zero? y) 0 1)))
+	    (- acc place)
+	    acc)
+	(aux (quotientm x bitop-chunk-size)
+	     (quotientm y bitop-chunk-size)
+	     (* place bitop-chunk-size)
+	     (+ acc (* place (bit-and (f (modulo x bitop-chunk-size)
+					 (modulo y bitop-chunk-size))
+				      bitop-chunk-mask)))))))
+
+(add-method (bit-and (integer) x y)
+  (if (is-a? y integer)
+      (integer-bitop bit-and x y)
+      (error "Bad second arg (BIT-AND ~D ~D)." x y)))
+
+(add-method (bit-or (integer) x y)
+  (if (is-a? y integer)
+      (integer-bitop bit-or x y)
+      (error "Bad second arg (BIT-OR ~D ~D)." x y)))
+
+(add-method (bit-xor (integer) x y)
+  (if (is-a? y integer)
+      (integer-bitop bit-xor x y)
+      (error "Bad second arg (BIT-XOR ~D ~D)." x y)))
+
+(add-method (bit-nand (integer) x y)
+  (if (is-a? y integer)
+      (integer-bitop bit-nand x y)
+      (error "Bad second arg (BIT-NAND ~D ~D)." x y)))
+
+(add-method (bit-nor (integer) x y)
+  (if (is-a? y integer)
+      (integer-bitop bit-nor x y)
+      (error "Bad second arg (BIT-NOR ~D ~D)." x y)))
+
+(add-method (bit-equiv (integer) x y)
+  (if (is-a? y integer)
+      (integer-bitop bit-equiv x y)
+      (error "Bad second arg (BIT-EQUIV ~D ~D)." x y)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Shifts on integers at large.
+
+;;; A shift count that is itself a bignum -- or the negation of the most
+;;; negative fixnum, which is one -- can only mean an answer too big to
+;;; build, or, shifting the other way, nothing left but the sign.
+
+;;; These do their shifting with * and QUOTIENTM rather than with each
+;;; other.  ASH-LEFT and ASH-RIGHT both open code to the ASH
+;;; instruction, and the ASH instruction trapping on a bignum is how
+;;; control got here in the first place, so calling either of them on
+;;; the shifting path would trap straight back and never terminate.
+
+(add-method (ash-left (integer) x y)
+  (fselect-type y
+    ((fixnum)
+     (cond ((zero? y) x)
+	   ((positive? y) (* x (expt 2 y)))
+	   ((most-negative-fixnum? y) (if (negative? x) -1 0))
+	   (else (quotientm x (expt 2 (- y))))))
+    ((bignum)
+     (cond ((negative? y) (if (negative? x) -1 0))
+	   ((zero? x) 0)
+	   (else (error "Shift count too large: (ASH-LEFT ~D ~D).~%" x y))))
+    (otherwise (error "Illegal second arg (ASH-LEFT ~D ~D).~%" x y))))
+
+(add-method (ash-right (integer) x y)
+  (fselect-type y
+    ((fixnum)
+     (cond ((zero? y) x)
+	   ((positive? y) (quotientm x (expt 2 y)))
+	   ((most-negative-fixnum? y)
+	    (if (zero? x)
+		0
+		(error "Shift count too large: (ASH-RIGHT ~D ~D).~%" x y)))
+	   (else (* x (expt 2 (- y))))))
+    ((bignum)
+     (cond ((not (negative? y)) (if (negative? x) -1 0))
+	   ((zero? x) 0)
+	   (else (error "Shift count too large: (ASH-RIGHT ~D ~D).~%" x y))))
+    (otherwise (error "Illegal second arg (ASH-RIGHT ~D ~D).~%" x y))))
 
 ;;; eof

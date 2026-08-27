@@ -103,7 +103,8 @@ ref_t *ms_alloc_slow_locked(size_t n_words,
 /* Retire a single TLAB's unused portion so it can be swept. */
 void ms_tlab_retire(ref_t *cursor, ref_t *end);
 
-/* Retire all threads' TLABs.  Called before STW collection. */
+/* Retire all threads' TLABs.  Must be called with the world stopped:
+   the TLAB fast path in ALLOCATE_PROT takes no lock. */
 void ms_tlab_retire_all(void);
 #endif
 

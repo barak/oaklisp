@@ -138,9 +138,14 @@ maybe_dump_world(int dumpstackp)
   my_index_p = oak_tls_get(index_key);
   my_index = *(my_index_p);
 #endif
-  if (dumpstackp > 2)
-    {				/* 0,1,2 are normal exits. */
-      /* will be changed */
+  /* Dump the stacks only for an internal abort.  EXIT passes a user's
+     status straight through to HALT and accepts 0 through 10, so a
+     script returning a conventional exit code must not get several
+     hundred bytes of raw stack contents on its standard output; the
+     codes the system raises itself (69 from a cold boot failure, 333
+     from the interpreter) are all well above that range. */
+  if (dumpstackp > 10)
+    {
       dump_stack(&value_stack);
       dump_stack(&context_stack);
     }
@@ -479,7 +484,12 @@ loop(ref_t initial_tos)
   /* This is the big instruction fetch/execute loop. */
 
   if (!batch_mode) {
-    enable_signal_polling();
+    /* Signal dispositions are process wide and only thread 0 ever
+       polls signal_poll_flag (see POLL_USER_SIGNALS), so arming this
+       again from a newly started thread would accomplish nothing
+       except discarding a SIGINT that thread 0 has not yet noticed. */
+    if (1 THREADY(&& (my_index == 0)))
+      enable_signal_polling();
     enable_crash_recovery();
   }
 
@@ -806,7 +816,14 @@ loop(ref_t initial_tos)
 
 	    case 12:		/* GETC */
 	      /* Used in emergency cold load standard-input stream. */
-	      PUSHVAL_IMM(CHAR_TO_REF(getc(stdin)));
+	      {
+		int c = getc(stdin);
+
+		/* At end of file answer NIL, the way STREAM-PRIMITIVE
+		   getc does; CHAR_TO_REF(EOF) would build a "character"
+		   whose code is -1, which is not a character at all. */
+		PUSHVAL_IMM(c == EOF ? e_nil : CHAR_TO_REF(c));
+	      }
 	      GOTO_TOP;
 
 	    case 13:		/* PUTC */
@@ -1507,13 +1524,6 @@ static int _cdr_debug_count = 0;
 	      if (y == INT_TO_REF(0) ||
 		  (y == INT_TO_REF(-1) && x == MIN_REF))
 		TRAP1(2);
-	      /* Tag trickery: */
-	      /* I can't seem to get anything like this to work: */
-
-	      PEEKVAL() = INT_TO_REF((((ssize_t)x < 0) ^ ((ssize_t)y < 0))
-				     ? -(ssize_t)x / -(ssize_t)y
-				     : (ssize_t)x / (ssize_t)y);
-
 	      {
 		ssize_t a = (ssize_t)x / (ssize_t)y;
 		if (((ssize_t)x < 0 && (ssize_t)y > 0 && a * (ssize_t)y > (ssize_t)x) ||
@@ -2109,14 +2119,26 @@ static int _cdr_debug_count = 0;
 		  /* Check for cache hit: */
 #ifdef THREADS
 		  /* Atomic read: type first (acquire), then method/offset,
-		     then re-verify type hasn't changed (seqlock pattern). */
+		     then re-verify type hasn't changed (seqlock pattern).
+		     All three slots are read atomically: another thread can
+		     be filling this same cache entry concurrently, and a
+		     plain read of a word being written is a data race.
+
+		     The type slot is the guard, and it is only ever moved
+		     between distinct values -- a miss means the cached type
+		     differs from ours, and %INSTALL-METHOD-WITH-ENV parks it
+		     at fixnum 0 when it invalidates -- so seeing the same
+		     type before and after means the method and offset go
+		     together. */
 		  {
 		    ref_t cached_type = OAK_ATOMIC_LOAD_REF(
 		      &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF));
 		    if (y_type == cached_type)
 		      {
-			ref_t cached_meth = REF_SLOT(x, OPERATION_CACHE_METH_OFF);
-			ref_t cached_off = REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF);
+			ref_t cached_meth = OAK_ATOMIC_LOAD_REF(
+			  &REF_SLOT(x, OPERATION_CACHE_METH_OFF));
+			ref_t cached_off = OAK_ATOMIC_LOAD_REF(
+			  &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF));
 			/* Re-verify type to ensure consistent read. */
 			if (y_type == OAK_ATOMIC_LOAD_REF(
 			      &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF)))
@@ -2174,8 +2196,12 @@ static int _cdr_debug_count = 0;
 		         (type acts as commit flag for readers). */
 #ifdef THREADS
 		      SATB_BARRIER(&REF_SLOT(x, OPERATION_CACHE_METH_OFF));
-		      REF_SLOT(x, OPERATION_CACHE_METH_OFF) = e_current_method;
-		      REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF) = offset;
+		      OAK_ATOMIC_STORE_REF(
+			&REF_SLOT(x, OPERATION_CACHE_METH_OFF),
+			e_current_method);
+		      OAK_ATOMIC_STORE_REF(
+			&REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF),
+			offset);
 		      SATB_BARRIER(&REF_SLOT(x, OPERATION_CACHE_TYPE_OFF));
 		      OAK_ATOMIC_STORE_REF(
 			&REF_SLOT(x, OPERATION_CACHE_TYPE_OFF),
@@ -2566,6 +2592,11 @@ static int _cdr_debug_count = 0;
   /*************/
  arg0_tt:
   /*************/
+
+  /* Reserve room for the pushes below: one ref for an argless
+     instruction, two for a parametric one.  TRAP0 jumps straight here
+     without reserving anything, so this cannot be left to the caller. */
+  CHECKVAL_PUSH(2);
 
 #ifndef FAST
   if (trace_traps)

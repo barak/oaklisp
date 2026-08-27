@@ -44,26 +44,43 @@
 ;;; Syntax: (CATCH-ERRORS (error-type [error-lambda [non-error-lambda]])
 ;;;		. body)
 
+;;; The handler installed below does nothing but throw the error object
+;;; back out to the catch point, wrapped in a freshly consed marker that
+;;; nothing else can be EQ? to.  ERROR-LAMBDA is then applied out here,
+;;; where THROW has already restored the fluid bindings this construct
+;;; made, so this handler is no longer installed while ERROR-LAMBDA runs.
+;;; Applying it inside the handler instead -- as this macro used to --
+;;; means an error signalled while reporting an error re-enters the same
+;;; handler, which signals again, and so on without bound.
+
 (define-syntax (catch-errors (error-type . more-stuff) . body)
-  (let ((v (genvar)))
+  (let ((v (genvar))
+	(m (genvar))
+	(r (genvar)))
     (destructure** more-stuff
       (() `(native-catch ,v
 	     (bind-error-handler
 		 (,error-type (lambda (err) (throw ,v #f)))
 	       ,@body)))
       ((error-lambda)
-       `(native-catch ,v
-	  (bind-error-handler
-	      (,error-type
-	       (lambda (err) (throw ,v (,error-lambda err))))
-	    ,@body)))
+       `(let ((,m (cons #f #f)))
+	  (let ((,r (native-catch ,v
+		      (bind-error-handler
+			  (,error-type
+			   (lambda (err) (throw ,v (cons ,m err))))
+			,@body))))
+	    (if (and (pair? ,r) (eq? (car ,r) ,m))
+		(,error-lambda (cdr ,r))
+		,r))))
       ((error-lambda noerror-lambda)
-       `(native-catch ,v
-	  (,noerror-lambda
-	   (bind-error-handler
-	       (,error-type
-		(lambda (err)
-		  (throw ,v (,error-lambda err))))
-	     ,@body)))))))
+       `(let ((,m (cons #f #f)))
+	  (let ((,r (native-catch ,v
+		      (bind-error-handler
+			  (,error-type
+			   (lambda (err) (throw ,v (cons ,m err))))
+			,@body))))
+	    (if (and (pair? ,r) (eq? (car ,r) ,m))
+		(,error-lambda (cdr ,r))
+		(,noerror-lambda ,r))))))))
 
 ;;; eof

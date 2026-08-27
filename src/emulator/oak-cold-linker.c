@@ -38,6 +38,55 @@
 #endif
 
 /* ================================================================
+ * Checked allocation.  Nothing here can carry on without memory, and
+ * an unchecked malloc turns exhaustion into a null dereference.
+ * ================================================================ */
+
+static void *xmalloc_(size_t n)
+{
+    void *p = malloc(n);
+
+    if (!p) {
+        fprintf(stderr, "oak-cold-linker: out of memory\n");
+        exit(1);
+    }
+    return p;
+}
+
+static void *xcalloc_(size_t n, size_t sz)
+{
+    void *p = calloc(n, sz);
+
+    if (!p) {
+        fprintf(stderr, "oak-cold-linker: out of memory\n");
+        exit(1);
+    }
+    return p;
+}
+
+static void *xrealloc_(void *p, size_t n)
+{
+    void *q = realloc(p, n);
+
+    if (!q) {
+        fprintf(stderr, "oak-cold-linker: out of memory\n");
+        exit(1);
+    }
+    return q;
+}
+
+static char *xstrdup_(const char *str)
+{
+    char *p = strdup(str);
+
+    if (!p) {
+        fprintf(stderr, "oak-cold-linker: out of memory\n");
+        exit(1);
+    }
+    return p;
+}
+
+/* ================================================================
  * Constants (from tool.oak)
  * ================================================================ */
 
@@ -98,9 +147,9 @@ static int sexp_pool_used = SEXP_POOL_BLOCK; /* force first alloc */
 static sexp_t *sexp_alloc(void)
 {
     if (sexp_pool_used >= SEXP_POOL_BLOCK) {
-        sexp_pools = realloc(sexp_pools,
-                             (sexp_pool_count + 1) * sizeof(sexp_t *));
-        sexp_pools[sexp_pool_count] = malloc(SEXP_POOL_BLOCK * sizeof(sexp_t));
+        sexp_pools = xrealloc_(sexp_pools,
+                               (sexp_pool_count + 1) * sizeof(sexp_t *));
+        sexp_pools[sexp_pool_count] = xmalloc_(SEXP_POOL_BLOCK * sizeof(sexp_t));
         sexp_pool_count++;
         sexp_pool_used = 0;
     }
@@ -122,7 +171,7 @@ static sexp_t *make_sym(const char *name)
 {
     sexp_t *s = sexp_alloc();
     s->type = S_SYM;
-    s->u.sval = strdup(name);
+    s->u.sval = xstrdup_(name);
     return s;
 }
 
@@ -138,7 +187,7 @@ static sexp_t *make_string(const char *str)
 {
     sexp_t *s = sexp_alloc();
     s->type = S_STRING;
-    s->u.sval = strdup(str);
+    s->u.sval = xstrdup_(str);
     return s;
 }
 
@@ -574,7 +623,7 @@ static void ht_init(hashtable_t *ht)
 {
     ht->size = HT_INIT_SIZE;
     ht->count = 0;
-    ht->buckets = calloc(ht->size, sizeof(ht_entry_t *));
+    ht->buckets = xcalloc_(ht->size, sizeof(ht_entry_t *));
 }
 
 static unsigned ht_hash(const char *key, int size)
@@ -595,8 +644,8 @@ static int ht_probe(hashtable_t *ht, const char *key, ht_entry_t **out)
             return 1;
         }
     }
-    ht_entry_t *e = malloc(sizeof(ht_entry_t));
-    e->key = strdup(key);
+    ht_entry_t *e = xmalloc_(sizeof(ht_entry_t));
+    e->key = xstrdup_(key);
     e->val = 0;
     e->has_val = 0;
     e->next = ht->buckets[h];
@@ -636,7 +685,7 @@ typedef struct {
 static void iht_init(ihashtable_t *ht)
 {
     ht->size = HT_INIT_SIZE;
-    ht->buckets = calloc(ht->size, sizeof(iht_entry_t *));
+    ht->buckets = xcalloc_(ht->size, sizeof(iht_entry_t *));
 }
 
 static iht_entry_t *iht_get(ihashtable_t *ht, long key)
@@ -650,7 +699,7 @@ static iht_entry_t *iht_get(ihashtable_t *ht, long key)
 static iht_entry_t *iht_put(ihashtable_t *ht, long key, long val, int kind)
 {
     unsigned h = (unsigned long)key % ht->size;
-    iht_entry_t *e = malloc(sizeof(iht_entry_t));
+    iht_entry_t *e = xmalloc_(sizeof(iht_entry_t));
     e->key = key;
     e->val = val;
     e->kind = kind;
@@ -736,7 +785,7 @@ static int pair_cache_lookup(sexp_t *key, uint64_t *val)
 static void pair_cache_insert(sexp_t *key, uint64_t val)
 {
     unsigned h = sexp_hash(key) % PC_SIZE;
-    pc_entry_t *e = malloc(sizeof(pc_entry_t));
+    pc_entry_t *e = xmalloc_(sizeof(pc_entry_t));
     e->key = key;
     e->val = val;
     e->next = pair_cache[h];
@@ -1131,7 +1180,7 @@ static sexp_t *read_oa_file(const char *filename)
     int nsyms = sexp_list_len(sym_list);
     sexp_t **sym_vec = NULL;
     if (nsyms > 0) {
-        sym_vec = malloc(nsyms * sizeof(sexp_t *));
+        sym_vec = xmalloc_(nsyms * sizeof(sexp_t *));
         sexp_t *sl = sym_list;
         for (int i = 0; i < nsyms; i++) {
             sym_vec[i] = sl->u.pair.car;
@@ -1215,7 +1264,7 @@ static void count_variable(const char *name)
             fprintf(stderr, "Too many variables\n");
             exit(1);
         }
-        var_list[var_list_len++] = strdup(name);
+        var_list[var_list_len++] = xstrdup_(name);
     }
     count_symbol(name);
 }
@@ -1240,9 +1289,15 @@ static void count_data(sexp_t *d)
     case S_BOOL:
         break;
     case S_PAIR:
-        dat_count += PAIR_SIZE;
-        count_data(d->u.pair.car);
-        count_data(d->u.pair.cdr);
+        /* Iterate down the cdr rather than recursing: a long list is
+           ordinary here, and an unoptimized build would otherwise use
+           a C stack frame per element. */
+        while (d && d->type == S_PAIR) {
+            dat_count += PAIR_SIZE;
+            count_data(d->u.pair.car);
+            d = d->u.pair.cdr;
+        }
+        count_data(d);
         break;
     case S_STRING:
         dat_count += string_size(d->u.sval);
@@ -1348,7 +1403,7 @@ static void compute_base_addresses(void)
 
 static void init_world(void)
 {
-    world = calloc(world_array_size, sizeof(cell_t));
+    world = xcalloc_(world_array_size, sizeof(cell_t));
     if (!world) {
         fprintf(stderr, "Cannot allocate world of %ld cells\n", world_array_size);
         exit(1);
@@ -1729,7 +1784,7 @@ static void dump_tables(const char *filename)
     /* Walk sym-table (reverse order like tool.oak) */
     /* Build list first, then reverse */
     typedef struct sym_pair { char *name; long addr; } sym_pair_t;
-    sym_pair_t *spairs = malloc(sym_table.count * sizeof(sym_pair_t));
+    sym_pair_t *spairs = xmalloc_(sym_table.count * sizeof(sym_pair_t));
     int sp_count = 0;
     for (int i = 0; i < sym_table.size; i++)
         for (ht_entry_t *e = sym_table.buckets[i]; e; e = e->next)
@@ -1757,13 +1812,27 @@ static void usage(const char *prog)
     exit(1);
 }
 
+/* Collect an input file basename, growing the vector as needed. */
+
+static void add_infile(char ***vec, int *n, int *cap, char *name)
+{
+    if (*n == *cap) {
+        *cap = *cap ? 2 * *cap : 64;
+        *vec = xrealloc_(*vec, (size_t)*cap * sizeof **vec);
+    }
+    (*vec)[(*n)++] = name;
+}
+
 int main(int argc, char **argv)
 {
     const char *outbase = NULL;
     char **infiles = NULL;
-    int ninfiles = 0;
+    int ninfiles = 0, infiles_cap = 0;
 
-    /* Parse arguments */
+    /* Parse arguments.  Options and input files may be interleaved:
+       stopping option parsing at the first file would silently take a
+       later "-o out" for two more input basenames.  "--" ends option
+       parsing, for a file whose name begins with a dash. */
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--64bit")) {
             bits64 = 1;
@@ -1772,13 +1841,13 @@ int main(int argc, char **argv)
         } else if (!strcmp(argv[i], "-o")) {
             if (++i >= argc) usage(argv[0]);
             outbase = argv[i];
+        } else if (!strcmp(argv[i], "--")) {
+            while (++i < argc)
+                add_infile(&infiles, &ninfiles, &infiles_cap, argv[i]);
         } else if (argv[i][0] == '-') {
             usage(argv[0]);
         } else {
-            /* Remaining args are input files */
-            infiles = &argv[i];
-            ninfiles = argc - i;
-            break;
+            add_infile(&infiles, &ninfiles, &infiles_cap, argv[i]);
         }
     }
 
@@ -1801,8 +1870,8 @@ int main(int argc, char **argv)
     /* Read input files */
     fprintf(stderr, "reading ...");
     nfiles = ninfiles;
-    files = malloc(nfiles * sizeof(oa_file_t));
-    file_names = malloc(nfiles * sizeof(char *));
+    files = xmalloc_(nfiles * sizeof(oa_file_t));
+    file_names = xmalloc_(nfiles * sizeof(char *));
 
     for (int i = 0; i < nfiles; i++) {
         char fname[4096];

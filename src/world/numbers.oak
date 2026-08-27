@@ -104,13 +104,13 @@
 
 (add-method (plus/2 (fixnum) x y)
   (cond ((eq? (get-type y) fixnum)
-	 (plus/2 (#^bignum x) y))
+	 (plus/2 (%bignum-from-fixnum x) y))
 	(else
 	 (plus/2 y x))))
 
 (add-method (times/2 (fixnum) x y)
   (cond ((eq? (get-type y) fixnum)
-	 (times/2 (#^bignum x) y))
+	 (times/2 (%bignum-from-fixnum x) y))
 	(else
 	 (times/2 y x))))
 
@@ -192,7 +192,10 @@
 	  ((eq? (get-type y) fixnum)
 	   (remainder x y))
 	  ((eq? (get-type y) bignum)
-	   (remainder (#^bignum x) y))
+	   ;; A bignum divisor always exceeds a fixnum dividend in
+	   ;; magnitude, so the truncated quotient is zero and the
+	   ;; remainder is the dividend itself.
+	   x)
 	  (else
 	   ;;(error "Illegal second arg: (REMAINDER ~D ~D).~%" x y)
 	   (^super integer remainder x y)
@@ -208,7 +211,11 @@
 	  ((eq? (get-type y) fixnum)
 	   (modulo x y))
 	  ((eq? (get-type y) bignum)
-	   (modulo (#^bignum x) y))
+	   ;; Likewise the floored remainder, which differs from the
+	   ;; truncated one only when the signs disagree.
+	   (cond ((zero? x) 0)
+		 ((negative? x) (if (negative? y) x (+ x y)))
+		 (else (if (negative? y) (+ x y) x))))
 	  (else (^super integer modulo x y)))))
 
 
@@ -253,6 +260,13 @@
 	   (if (and (most-negative-fixnum? x) (= y -1))
 	       (- x)
 	       (quotientm x y)))
+	  ((eq? (get-type y) bignum)
+	   ;; A bignum divisor always exceeds a fixnum dividend in
+	   ;; magnitude, so the truncated quotient is zero; flooring it
+	   ;; gives -1 exactly when the signs differ and X isn't zero.
+	   (cond ((zero? x) 0)
+		 ((negative? x) (if (negative? y) 0 -1))
+		 (else (if (negative? y) -1 0))))
 	  (else (error "Illegal second arg: (QUOTIENTM ~D ~D).~%" x y)))))
 
 (define-constant zero?
@@ -378,7 +392,7 @@
        (if (negative? y)
 	   (ash-right x (- y))
 	   (* x (expt 2 y))))
-      (otherwise (error "Illegal second arg (ASH-LEFT ~D ~D).~%" x y)))))
+      (otherwise (^super integer ash-left x y)))))
 
 (define-constant ash-right
   (add-method ((make-fancy-open-coded-operation
@@ -386,7 +400,9 @@
 		      backwards-args-mixin)
 		'((negate)(swap 1)(ash)) 2 1)
 	       (fixnum) x y)
-    (ash-left x (- y))))
+    (fselect-type y
+      ((fixnum) (ash-left x (- y)))
+      (otherwise (^super integer ash-right x y)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Bitwise operations
@@ -405,7 +421,7 @@
 	       (fixnum) x y)
     (fselect-type y
       ((fixnum) (bit-and y x))
-      (otherwise (error "Bad second arg (BIT-AND ~D ~D)." x y)))))
+      (otherwise (^super integer bit-and x y)))))
 
 (define-constant bit-or
   (add-method ((make-fancy-open-coded-operation
@@ -414,7 +430,7 @@
 	       (fixnum) x y)
     (fselect-type y
       ((fixnum) (bit-or y x))
-      (otherwise (error "Bad second arg (BIT-OR ~D ~D)." x y)))))
+      (otherwise (^super integer bit-or x y)))))
 
 (define-constant bit-xor
   (add-method ((make-fancy-open-coded-operation
@@ -423,7 +439,7 @@
 	       (fixnum) x y)
     (fselect-type y
       ((fixnum) (bit-xor y x))
-      (otherwise (error "Bad second arg (BIT-XOR ~D ~D)." x y)))))
+      (otherwise (^super integer bit-xor x y)))))
 
 (define-constant bit-nand
   (add-method ((make-fancy-open-coded-operation
@@ -432,7 +448,7 @@
 	       (fixnum) x y)
     (fselect-type y
       ((fixnum) (bit-nand y x))
-      (otherwise (error "Bad second arg (BIT-NAND ~D ~D)." x y)))))
+      (otherwise (^super integer bit-nand x y)))))
 
 (define-constant bit-andca
   (add-method ((make-fancy-open-coded-operation
@@ -448,7 +464,7 @@
 	       (fixnum) x y)
     (fselect-type y
       ((fixnum) (bit-nor y x))
-      (otherwise (error "Bad second arg (BIT-NOR ~D ~D)." x y)))))
+      (otherwise (^super integer bit-nor x y)))))
 
 (define-constant bit-equiv
   (add-method ((make-fancy-open-coded-operation
@@ -457,7 +473,7 @@
 	       (fixnum) x y)
     (fselect-type y
       ((fixnum) (bit-equiv y x))
-      (otherwise (error "Bad second arg (BIT-EQUIV ~D ~D)." x y)))))
+      (otherwise (^super integer bit-equiv x y)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

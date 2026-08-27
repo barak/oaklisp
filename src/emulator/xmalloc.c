@@ -154,8 +154,17 @@ oak_c_string(ref_t * oakstr, int len)
   /* Converts an Oaklisp string, given by a pointer to its
      start and a length, to an equivalent C-string.
      The storage allocated by this routine must be free()-ed.
+
+     The length comes from a value on the Oaklisp stack, so it is not
+     necessarily sane.  A negative one would ask xmalloc for fewer than
+     the two bytes oak_c_string_fill goes on to touch, so clamp it: an
+     empty C string is the sensible reading of "no characters".
    */
-  char *const cstring = xmalloc(len + 1);
+  char *cstring;
+
+  if (len < 0)
+    len = 0;
+  cstring = xmalloc((size_t)len + 1);
   oak_c_string_fill(oakstr, cstring, len);
   return cstring;
 }

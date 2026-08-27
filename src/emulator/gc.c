@@ -107,6 +107,15 @@ ref_t *gc_examine_ptr = gc_examine_buffer;
   (x) = LOC_TO_PTR(loc_touch0(PTR_TO_LOC(x),1));	\
 }
 
+/* As above, but without complaining when the cell has to be moved on
+   its own.  Use this where a pointer to the containing object is not
+   in fact guaranteed to exist. */
+
+#define LOC_TOUCH_PTR_QUIET(x)				\
+{							\
+  (x) = LOC_TO_PTR(loc_touch0(PTR_TO_LOC(x),0));	\
+}
+
 void
 printref(FILE * fd, ref_t refin)
 {
@@ -557,8 +566,8 @@ gc_top:
 	GC_TOUCH (e_object_type);
 	GC_TOUCH (e_segment_type);
 	FORTHREADS {
-	  /* e_bp is a locative, but a pointer to the object should exist, so we
-	     need only touch it in the locative pass. */
+	  /* e_bp is a locative into the current method's SELF, so it is
+	     dealt with in the locative pass below rather than here. */
 	  GC_TOUCH_PTR(e_env, 0);
 	  GC_TOUCH (e_code_segment);
 	  GC_TOUCH (e_current_method);
@@ -610,7 +619,13 @@ gc_top:
     if (!pre_dump)
       {
 	FORTHREADS {
-	  LOC_TOUCH_PTR (e_bp);
+	  /* e_bp points into the current method's SELF.  A pointer to
+	     SELF itself need not still exist -- a method that has
+	     finished with its own arguments, such as DUMP-WORLD's,
+	     leaves e_bp as the only reference -- so moving the cell on
+	     its own here is ordinary rather than suspicious, and must
+	     not print a warning on a normal operation. */
+	  LOC_TOUCH_PTR_QUIET (e_bp);
 	  e_pc = pc_touch (e_pc);
 
 	  LOC_TOUCH(e_uninitialized);
