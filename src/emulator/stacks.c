@@ -350,10 +350,14 @@ init_stacks(void)
   my_index = *my_index_p;
 #endif
 
-  ptr = (ref_t *) xmalloc((value_stack.size + 2)
+  /* The +2 and the byte count are computed in size_t: value_stack.size
+     is an int straight off the command line, so at INT_MAX the addition
+     would overflow and the size passed to xmalloc -- and printed in its
+     diagnostic -- would be meaningless. */
+  ptr = (ref_t *) xmalloc(((size_t)value_stack.size + 2)
 			  * sizeof(ref_t));
   *ptr = PATTERN;
-  ptr[value_stack.size + 1] = PATTERN;
+  ptr[(size_t)value_stack.size + 1] = PATTERN;
   value_stack.bp = ptr + 1;
   value_stack.sp = value_stack.bp;
   *value_stack.bp = INT_TO_REF(1234);
@@ -365,10 +369,10 @@ init_stacks(void)
   /* Initialise context stack */
 
 
-  ptr = (ref_t *) xmalloc((context_stack.size + 2)
+  ptr = (ref_t *) xmalloc(((size_t)context_stack.size + 2)
 			  * sizeof(ref_t));
   *ptr = PATTERN;
-  ptr[context_stack.size + 1] = PATTERN;
+  ptr[(size_t)context_stack.size + 1] = PATTERN;
   context_stack.bp = ptr + 1;
   context_stack.sp = context_stack.bp;
   *context_stack.bp = INT_TO_REF(1234);

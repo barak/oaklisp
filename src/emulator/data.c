@@ -50,7 +50,7 @@ ref_t e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type,
   *e_arged_tag_trap_table, *e_argless_tag_trap_table,
   e_uninitialized, e_method_type, e_operation_type = 0;
 size_t e_next_newspace_size;
-size_t original_newspace_size = 128 * 1024;
+size_t original_newspace_size = DEFAULT_NEWSPACE * 1024;
 
 #else
 

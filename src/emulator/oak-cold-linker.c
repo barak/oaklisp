@@ -354,9 +354,24 @@ static sexp_t *parse_atom(parser_t *p, int first_char)
         ((buf[0] == '-' && len > 1 && isdigit((unsigned char)buf[1])) ||
          isdigit((unsigned char)buf[0]))) {
         char *end;
-        long long val = strtoll(buf, &end, 10);
-        if (*end == '\0')
+        long long val;
+
+        /* A literal too big for long long saturates to LLONG_MAX with
+           *end still at the terminator, so without the errno test the
+           token is accepted as an integer and tagize_int() then turns
+           it into a plausible looking wrong fixnum.  The ordinary
+           loader builds a bignum for such a literal; the cold world has
+           no way to, so say so rather than link something wrong. */
+        errno = 0;
+        val = strtoll(buf, &end, 10);
+        if (*end == '\0') {
+            if (errno == ERANGE) {
+                fprintf(stderr, "oak-cold-linker: integer constant %s is"
+                        " out of range for a cold world fixnum.\n", buf);
+                exit(1);
+            }
             return make_int(val);
+        }
     }
 
     /* It's a symbol; upcase the characters that were not escaped */
@@ -953,6 +968,15 @@ static const char *vars_to_preload[] = {
 static uint64_t tagize_int(long long x)
 {
     uint64_t v;
+    /* The shift below drops anything above the target's fixnum width,
+       so an out-of-range constant would be written to the cold world as
+       a different, entirely plausible, number. */
+    long long limit = (long long)1 << (fixnum_bits - 1);
+    if (x < -limit || x > limit - 1) {
+        fprintf(stderr, "oak-cold-linker: integer constant %lld does not"
+                " fit in a %d-bit fixnum.\n", x, fixnum_bits);
+        exit(1);
+    }
     if (x < 0) {
         /* Two's complement in fixnum_bits range */
         uint64_t mod = (uint64_t)1 << fixnum_bits;
@@ -1824,6 +1848,14 @@ static void dump_world(const char *filename)
     }
 
     long actual_size = next_free_dat;
+
+    /* Word size marker, matching COLD_WORLD_TAG in worldio.c.  Without
+       it a 32-bit cold world loaded into a 64-bit emulator (or the
+       reverse) has every tagged value shifted by the wrong amount, and
+       the emulator only finds out by crashing somewhere unrelated.  A
+       cold world is byte order neutral, so the tag names the word size
+       alone.  tool.oak writes the same line. */
+    fprintf(fp, "oakcold%d\n", bits64 ? 64 : 32);
 
     /* Header */
     print_hex(fp, VALUE_STACK_SIZE);

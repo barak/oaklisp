@@ -233,7 +233,12 @@ gc_touch0(ref_t r)
 	    ms_record_transport(new_place);
 #endif
 
-#ifndef FAST
+	    /* One comparison against a pointer that is already in a
+	       register, on the path that is about to copy len words
+	       through it.  It is what stands between a GC sizing bug --
+	       or a heap that was never really allocated -- and an
+	       out-of-bounds write, so it is not compiled out of the
+	       fast build. */
 	    if (free_point >= new_space.end)
 	      {
 		fprintf(stderr,
@@ -243,7 +248,6 @@ gc_touch0(ref_t r)
 			".\n; This indicates a bug in the garbage collector.\n");
 		exit(EXIT_FAILURE);
 	      }
-#endif
 	    for (i = 0; i < len; i++, p0++, q0++)
 	      {
 		*q0 = *p0;
@@ -323,7 +327,6 @@ loc_touch0(ref_t r, bool warn_if_unmoved)
 	  ms_record_transport(new_place);
 #endif
 
-#ifndef FAST
 	  if (free_point >= new_space.end)
 	    {
 	      fprintf(stderr,
@@ -333,7 +336,6 @@ loc_touch0(ref_t r, bool warn_if_unmoved)
 		      ".\n; This indicates a bug in the garbage collector.\n");
 	      exit(EXIT_FAILURE);
 	    }
-#endif
 	  *p = new_r;		/* Record the transportation. */
 
 	  /* Put the right value in the new cell. */

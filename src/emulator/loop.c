@@ -569,6 +569,10 @@ loop(ref_t initial_tos)
 		 context_stack.pushed_count);
 	}
 
+      /* Unlike the other checks that used to live behind FAST, this one
+	 runs on every instruction dispatch: measured at about 30% of
+	 the interpreter's running time on the tak benchmark, so it
+	 stays a debug-build check. */
       {
 	long val_buffer_count = local_value_sp - value_stack_bp + 1;
 	long cxt_buffer_count = local_context_sp - context_stack_bp + 1;
@@ -1733,14 +1737,18 @@ static int _cdr_debug_count = 0;
 	      THREADY(oak_mutex_unlock(&dump_lock));
 	      GOTO_TOP;
 
-#ifndef FAST
+	      /* An unassigned opcode means a corrupt world or a
+		 miscompiled instruction.  Without this label it falls
+		 out of the switch and runs as a no-op, with the PC
+		 already advanced, so the damage surfaces somewhere
+		 else entirely; a jump table costs nothing to give it a
+		 default, so the fast build keeps it too. */
 	    default:
 	      printf("\nError (vm interpreter): "
 		     "Illegal argless instruction %d.\n", arg_field);
 	      UNLOCALIZE_ALL();
 	      maybe_dump_world(333);
 	      exit(EXIT_FAILURE);
-#endif
 	    }
 
 	}
@@ -2550,14 +2558,12 @@ static int _cdr_debug_count = 0;
 					       REF_SLOT(x, METHOD_CODE_OFF));
 	      GOTO_TOP;
 
-#ifndef FAST
 	    default:
 	      printf("\nError (vm interpreter): "
 		     "Illegal parametric instruction %d\n", op_field);
 	      UNLOCALIZE_ALL();
 	      maybe_dump_world(333);
 	      exit(EXIT_FAILURE);
-#endif
 	    }
 	}
     }

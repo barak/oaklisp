@@ -153,6 +153,19 @@ leave the user in a read-eval-print loop in the scheme locale.
 
 .B oaklisp \-\- \-\-locale scheme\-locale \-\-compile myfile
 
+.SH EXIT STATUS
+0 if everything asked for on the command line succeeded, and 1 if a
+switch could not be processed \(em an unknown switch, or one whose
+action signalled, such as a
+.B \-\-compile
+of a file that does not compile.
+.PP
+A world can name its own status with
+.BR "(exit " \fIn\fP ")" ,
+for any
+.I n
+from 0 to 255.
+
 .SH ENVIRONMENT
 The environment variable OAKWORLD will override the default compiled
 into the executable, but itself can be overridden on the command line.

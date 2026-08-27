@@ -81,7 +81,12 @@
 			 (cond ((not (interactive? standard-input))
 				(format #t "~&Exiting: EOF on non-interactive control stream.~%")
 				(flush standard-output)
-				(exit))
+				;; A switch that failed earlier has to
+				;; reach the shell as a nonzero status
+				;; even when no --exit was given.
+				(exit (if (zero? command-line-failures)
+					  #*debug-level
+					  1)))
 			       ((zero? #*debug-level)
                                 (cond ((= eof-exit-i #*eof-exit-limit)
                                        (exit))
