@@ -70,8 +70,17 @@
 	(else
 	 (write-char stream self))))
 
+;;; Strings pack three characters to a word, a byte each, so a character
+;;; code outside 0-255 has nowhere to live once it is stored in one.
+;;; The string writers mask what they deposit rather than corrupt the
+;;; neighbouring character, but that loses the code silently, so the
+;;; coercer -- which is R3RS INTEGER->CHAR -- rejects it here instead.
+;;; %FIXNUM->CHARACTER remains unchecked for the internal fast paths.
+
 (add-method (#^character (fixnum) x)
-  (%crunch (ash-left x 6) 1))
+  (if (or (negative? x) (> x 255))
+      (error "~D is not a character code." x)
+      (%crunch (ash-left x 6) 1)))
 
 (add-method (#^number (character) x)
   (ash-left (%data x) -6))

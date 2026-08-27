@@ -117,15 +117,26 @@
 ||#
 
 ;;; Maybe the following will speed up reading:
+
+;;; The bytes of the last word above character CHAR-COUNT are padding
+;;; and belong to no character, so they are masked off before they reach
+;;; the hash.  STRING-GUTS-EQUAL? in strings.oak masks the same word the
+;;; same way; the two have to agree, or EQUAL? strings would land in
+;;; different buckets.
+
 (add-method (string-hash-key (string char-count) s)
   (if (eq? char-count 0) 0
       (let ((n (quotient (+ char-count (- %chars-per-word 1)) %chars-per-word))
+	    (last-mask (%string-last-word-mask char-count))
 	    (p0 (make-locative (%vref s 0))))
 	(iterate aux ((i 0) (k 0))
 	  (if (= i n) k
 	      (aux (+ i 1)
 		   (bit-xor (rot-left k (- (* 8 %chars-per-word) 1))
-			    (contents (%increment-locative p0 i)))))))))
+			    (let ((w (contents (%increment-locative p0 i))))
+			      (if (= i (- n 1))
+				  (bit-and last-mask w)
+				  w)))))))))
 
 
 
@@ -198,13 +209,30 @@
 (define (tree-hash x)
   (tree-hash-aux x 0))
 
+;;; The fallback hash for anything TREE-HASH-AUX does not take apart
+;;; itself.  OBJECT-HASH, the default method, is object identity, which
+;;; agrees with EQUAL? for immediates and for interned symbols but not
+;;; for any boxed object whose EQUAL? compares values -- a bignum, a
+;;; fraction, a complex number, or a user type with its own EQUAL?
+;;; method.  Such a type has to add a method here as well, or two keys
+;;; EQUAL? to each other will hash into different buckets and an
+;;; EQUAL-HASH-TABLE will never find the entry it holds.  The numeric
+;;; types do so where they are defined; see bignum.oak, rational.oak and
+;;; complex.oak.  Whenever an EQUAL? method changes, this has to change
+;;; with it.
+
+(define-instance hash-key operation)
+
+(add-method (hash-key (object) x)
+  (object-hash x))
+
 (define (tree-hash-aux x d)
   (cond ((= d 4) #x162534)
 	((pair? x) (bit-xor (tree-hash-aux (car x) (+ d 1))
 			    (rot-left (tree-hash-aux (cdr x) (+ d 1)) 17)))
 	((string? x) (string-hash-key x))
 	((vector? x) (vector-hash-key-aux x d))
-	(else (object-hash x))))
+	(else (hash-key x))))
 
 (define (vector-hash-key-aux x d)
   (let ((l (length x)))

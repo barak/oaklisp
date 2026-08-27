@@ -69,7 +69,7 @@
 (define-instance fluid-bindings settable-operation)
 (define-instance copy-fluid-bindings operation)
 
-(define trace-processes #t)
+(define trace-processes #f)
 
 (add-method (initialize (process pid process-fluid-binding-list) self)
   (when trace-processes
@@ -138,7 +138,7 @@
 
 (add-method (acquire-mutex (mutex access-cons) self)
   (let loop ()
-    (unless (%test-and-set-locative (car access-cons) #f #t)
+    (unless (%test-and-set-locative (make-locative (car access-cons)) #f #t)
       (%thread-yield)
       (loop))))
 
@@ -166,22 +166,56 @@
 ;;; redefine fluid operations ater the first...
 ;;; --------------------------------------------------
 
+(define %threads-initialized #f)
+
+(define (init-process-object)
+  ;;; Give this virtual machine a process object.  Anything that reaches
+  ;;; the scheduler -- PROCESS-ID, PAUSE, PROCESS-RUN-FN, FORCE of a
+  ;;; future -- needs one, and unlike the mutexes below this is harmless
+  ;;; on its own, so it is a warm boot action.
+  ;;; The test is on the register rather than on a flag: the process
+  ;;; register is not part of a dumped world, so it comes back as the
+  ;;; fixnum 0 on every boot while a flag would come back set.
+  (when (eq? (%load-process) 0)
+    (%store-process (make process))))
+
+(define (init-thread-infrastructure)
+  ;;; Initialize mutexes, process register, and per-process fluid bindings.
+  ;;; Safe to call multiple times; only runs once.
+  (unless %threads-initialized
+    (init-process-object)
+    (set! %no-threading #f)
+    (set! *symbol-table-mutex* (make mutex))
+    (set! *add-method-mutex* (make mutex))
+    (set! *expression-table-mutex* (make mutex))
+    (set! *stream-primitive-mutex* (make mutex))
+    (set! *locale-mutex* (make mutex))
+    (set! *fluid-table-mutex* (make mutex))
+    (add-method (initialize (process pid process-fluid-binding-list) self)
+      (set! pid (new-pid))
+      (set! process-fluid-binding-list
+	    (copy-fluid-bindings (current-process)))
+      self)
+    (set! %threads-initialized #t)))
+
 (define (setup-initial-process-object)
-  (%store-process (make process))
-  (set! %no-threading #f)
-  ;;; Enable thread-safe symbol table and add-method now that threading is active.
-  (set! *symbol-table-mutex* (make mutex))
-  (set! *add-method-mutex* (make mutex))
-  (add-method (initialize (process pid process-fluid-binding-list) self)
-    (set! pid (new-pid))
-    (set! process-fluid-binding-list
-	  (copy-fluid-bindings (current-process)))
-    self)
+  ;;; Initialize thread infrastructure (if not already done) and spawn
+  ;;; any extra heavyweight threads requested via --pthreads.
+  (init-thread-infrastructure)
   (spawn-heavyweight-threads))
 
-;;; Call (setup-initial-process-object) to enable threading.
-;;; Not added as a warm boot action by default because the mutexes and
-;;; process register are only needed when heavyweight threads are in use.
+;;; The mutexes are NOT auto-initialized at warm boot: the compiler
+;;; deadlocks when they are active (branch-instruction compilation
+;;; re-enters mutex-protected code).  Call (setup-initial-process-object)
+;;; or use --pthreads to enable them explicitly.  The process object is
+;;; another matter -- without it the process register holds the fixnum 0
+;;; and the scheduler, and so DELAY/FORCE, cannot run at all -- so that
+;;; much does happen at every warm boot.
+
+;;; Before CMDLINE-EAT, so that an --eval or a --load can already use
+;;; the scheduler.
+
+(add-warm-boot-action-first init-process-object)
 
 
 ;;--------------------------------------------------

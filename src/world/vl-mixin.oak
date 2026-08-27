@@ -123,15 +123,18 @@
 
 
 
-#|
+;;; doc/lang/sequences.tex documents this coercer over any sequence,
+;;; and only the LIST-TYPE method below was live, so the documented
+;;; coercion had no implementation.  Coercing a STRING still answers
+;;; the string: STRING is a subtype of SIMPLE-VECTOR here, so the
+;;; identity method COERCABLE-TYPE gives every type is the more
+;;; specific of the two.
 
 (add-method (#^simple-vector (sequence) x)
   (let* ((len (length x))
 	 (v (make simple-vector len)))
     (dotimes (i len v)
       (set! (nth v i) (nth x i)))))
-
-|#
 
 
 (let ((filler (make operation)))

@@ -26,8 +26,10 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <limits.h>
 #include <string.h>
-#include <getopt.h>
+#include "oak-getopt.h"
 #include "config.h"
 #include "data.h"
 #include "cmdline.h"
@@ -48,6 +50,45 @@ enum {
   MAX_SEG_ARG,
   VERBOSE_GC_ARG,
 };
+
+
+/* Parse a command line argument that must be a positive integer. */
+static int
+positive_arg(char *arg, const char *what)
+{
+  int value = atoi(arg);
+
+  if (value <= 0)
+    {
+      fprintf(stderr, "Error (command line parser): %s requires a"
+	      " positive argument, not \"%s\".\n", what, arg);
+      exit(EXIT_FAILURE);
+    }
+  return value;
+}
+
+
+/* Like positive_arg, but for a size the emulator goes on to do
+   arithmetic with.  The stack sizing check below adds 255 (or a
+   context frame) to --size-seg-max, and both sides of that comparison
+   are ints, so an argument near INT_MAX made the sum overflow: it
+   wrapped negative, the comparison came out false, and the guarantee
+   the check exists to enforce was silently skipped.  Reject anything
+   that cannot take the addition instead. */
+
+static int
+bounded_arg(char *arg, const char *what, int limit)
+{
+  int value = positive_arg(arg, what);
+
+  if (value > limit)
+    {
+      fprintf(stderr, "Error (command line parser): %s must be at most"
+	      " %d, not \"%s\".\n", what, limit, arg);
+      exit(EXIT_FAILURE);
+    }
+  return value;
+}
 
 
 static void
@@ -74,7 +115,7 @@ usage(char *prog)
 	  "\t                      %s\n"
 	  "\t--dump file          dump world to file upon exit\n"
 	  "\t--d file             synonym for --dump\n"
-	  "\t--dump-base b        10 or 16=ascii, 2=binary; default=2\n"
+	  "\t--dump-base b        16=ascii, 2=binary; default=2\n"
 	  "\t--predump-gc b       0=no, 1=yes; default=1\n"
 	  "\n"
 	  "\t--size-heap n        n is in kilo-refs, default %d\n"
@@ -115,16 +156,33 @@ usage(char *prog)
 static int program_argc;
 static char **program_argv;
 
+/* The indices come off the Oaklisp stack as full width integers, so
+   they are taken as such: narrowing them to int first would make an
+   index congruent to a valid one mod 2^32 alias onto it and answer a
+   character where the bounds check below should have answered #f. */
+
 int
-program_arg_char(int arg_index, int char_index)
+program_arg_char(ssize_t arg_index, ssize_t char_index)
 {
   char *a;
-  if (arg_index >= program_argc)
+  if (arg_index < 0 || arg_index >= program_argc)
     return -1;
   a = program_argv[arg_index];
-  if (char_index > strlen(a))
+  if (char_index < 0 || (size_t)char_index > strlen(a))
     return -1;
   return a[char_index];
+}
+
+
+/* Forget the command line arguments passed to the world.  Used after
+   LOAD-WORLD so the freshly booted world does not re-execute the
+   switches (--load, --eval, ...) that were meant for the old one,
+   which would otherwise reboot forever. */
+
+void
+clear_program_args(void)
+{
+  program_argc = 0;
 }
 
 
@@ -141,7 +199,7 @@ parse_cmd_line(int argc, char **argv)
      about threads ... ? */
   int my_index;
   int *my_index_p;
-  my_index_p = pthread_getspecific (index_key);
+  my_index_p = oak_tls_get(index_key);
   my_index = *my_index_p;
 #endif
 
@@ -216,10 +274,13 @@ parse_cmd_line(int argc, char **argv)
 	case DUMP_BASE_ARG:
 	  dump_flag = true;
 	  dump_base = atoi(optarg);
-	  if (dump_base != 2 && dump_base != 10 && dump_base != 16)
+	  /* Base 10 is not supported: ascii worlds are read back with
+	     "%llx", so a decimal dump could never be reloaded. */
+	  if (dump_base != 2 && dump_base != 16)
 	    {
 	      fprintf(stderr, "Error (command line parser): invalid"
-		      " dump base %s.\n", optarg);
+		      " dump base %s; use 16 (ascii) or 2 (binary).\n",
+		      optarg);
 	      exit(EXIT_FAILURE);
 	    }
 	  break;
@@ -229,21 +290,38 @@ parse_cmd_line(int argc, char **argv)
 	  break;
 
 	case HEAP_ARG:
-	  original_newspace_size = 1024 * atol(optarg);
+	  {
+	    long kbytes = atol(optarg);
+
+	    /* Unlike the other size switches this one is scaled and
+	       stored in a size_t, so a negative or absurd argument
+	       would turn into a huge unsigned allocation request. */
+	    if (kbytes <= 0 || kbytes > (long)(SIZE_MAX / 1024))
+	      {
+		fprintf(stderr, "Error (command line parser): --size-heap"
+			" requires a positive argument, not \"%s\".\n",
+			optarg);
+		exit(EXIT_FAILURE);
+	      }
+	    original_newspace_size = 1024 * (size_t)kbytes;
+	  }
 	  break;
 
 	case VALSIZ_ARG:
-	  value_stack.size = atoi(optarg);
+	  value_stack.size = positive_arg(optarg, "--size-val-stk");
 	  value_stack.filltarget = value_stack.size/2;
 	  break;
 
 	case CXTSIZ_ARG:
-	  context_stack.size = atoi(optarg);
+	  context_stack.size = positive_arg(optarg, "--size-cxt-stk");
 	  context_stack.filltarget = context_stack.size/2;
 	  break;
 
 	case MAX_SEG_ARG:
-	  max_segment_size = atoi(optarg);
+	  max_segment_size =
+	    bounded_arg(optarg, "--size-seg-max",
+			INT_MAX - (255 > CONTEXT_FRAME_SIZE
+				   ? 255 : CONTEXT_FRAME_SIZE));
 	  break;
 
 	case VERBOSE_GC_ARG:
@@ -270,18 +348,34 @@ parse_cmd_line(int argc, char **argv)
 
      Furthermore, we must be able to satisfy this by unflushing
      segments.  The unflushing routine only pulls in integral
-     segments, so we must be able to unflush a maximal segment if
-     there are only 254 elements in the buffer.
+     segments, and it stops only once the buffer holds strictly more
+     than the 255 requested -- it then writes as far as bp[255] -- so
+     we must be able to unflush a maximal segment on top of 255
+     elements.
 
      Therefore we must have:
 
-     value_stack.size >= 254 + max_segment_size
+     value_stack.size >= 255 + max_segment_size
   */
 
-  if (value_stack.size < 254 + max_segment_size) {
-    value_stack.size = 254 + max_segment_size;
+  if (value_stack.size < 255 + max_segment_size) {
+    value_stack.size = 255 + max_segment_size;
+    value_stack.filltarget = value_stack.size/2;
     fprintf(stderr, "warning: using value stack of size %d.\n",
 	    value_stack.size);
+  }
+
+  /* The context stack needs the same guarantee.  The deepest pop it
+     ever has to satisfy is a whole context frame (CONTEXT_FRAME_SIZE),
+     and unflushing only pulls in entire segments, so the buffer must
+     be able to hold a maximal segment on top of a frame's worth of
+     entries. */
+
+  if (context_stack.size < CONTEXT_FRAME_SIZE + max_segment_size) {
+    context_stack.size = CONTEXT_FRAME_SIZE + max_segment_size;
+    context_stack.filltarget = context_stack.size/2;
+    fprintf(stderr, "warning: using context stack of size %d.\n",
+	    context_stack.size);
   }
 
   /* put remainder of command line in variables accessed by Oaklisp-level

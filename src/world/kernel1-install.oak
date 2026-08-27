@@ -49,7 +49,7 @@
   ;; flush the method cache
   (set! ((%slot 2) op) 0)
   ;; create and install the method (critical section)
-  (when *add-method-mutex* (acquire-mutex *add-method-mutex*))
+  (if *add-method-mutex* (acquire-mutex *add-method-mutex*))
   (let ((the-method (%allocate %method 3)))
     (set! ((%slot 1) the-method) code-body)
     (set! ((%slot 2) the-method) env)
@@ -68,7 +68,7 @@
 		      (set! (cdr the-ass) the-method)
 		      (set! operation-method-alist
 			   (cons (cons op the-method) operation-method-alist)))))))
-  (when *add-method-mutex* (release-mutex *add-method-mutex*))
+  (if *add-method-mutex* (release-mutex *add-method-mutex*))
   op)
 
 

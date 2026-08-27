@@ -31,8 +31,47 @@
 #include "xmalloc.h"
 #include "gc.h"
 #include "stacks.h"
+#include "threads.h"
 
 int max_segment_size = 256;
+
+
+/* Called when a stack has to be unflushed but the flushed segment list
+   is empty, i.e. when more values are needed than the stack ever held.
+   Does not return. */
+
+static void
+stack_underflow(oakstack * stack_p, int n)
+{
+  const char *which;
+
+#ifdef THREADS
+  int *my_index_p = (int *)oak_tls_get(index_key);
+  int my_index = (my_index_p == NULL) ? 0 : *my_index_p;
+
+  /* A spawned thread starts with an empty context stack, so the RETURN
+     that leaves its thunk's outermost frame has no context to pop.
+     That is a thunk running to completion rather than a VM error: leave
+     the interpreter and let the thread exit. */
+  if (stack_p == cntxt_stack_array[my_index] && oak_thread_can_exit())
+    oak_thread_exit_unwind();	/* does not return */
+
+  which = (stack_p == cntxt_stack_array[my_index]) ? "context" : "value";
+  fprintf(stderr,
+	  "Fatal error (vm): %s stack underflow in thread %d: %d value%s "
+	  "wanted, none flushed.\n",
+	  which, my_index, n, (n == 1) ? "" : "s");
+#else
+  which = (stack_p == &context_stack) ? "context" : "value";
+  fprintf(stderr,
+	  "Fatal error (vm): %s stack underflow: %d value%s wanted, "
+	  "none flushed.\n",
+	  which, n, (n == 1) ? "" : "s");
+#endif
+
+  fflush(stderr);
+  exit(EXIT_FAILURE);
+}
 
 
 void
@@ -100,11 +139,31 @@ stack_flush(oakstack * stack_p, int amount_to_leave)
 }
 
 
+/* Called when more values are asked for than the buffer can hold.  The
+   caller has to pop through the segments in more than one pass instead;
+   see stack_pop_n.  Does not return. */
+
+static void
+stack_overunflush(oakstack * stack_p, long wanted)
+{
+  fprintf(stderr,
+	  "Fatal error (vm): unflush of %ld values into a %d value stack "
+	  "buffer.\n", wanted, stack_p->size);
+  fflush(stderr);
+  exit(EXIT_FAILURE);
+}
+
+
 /* This routine grabs some segments that have been flushed from the buffer
    and puts them back in.  Because the segments might be small, it
    may have to put more than one segment back in.  It grabs enough so that
    the buffer has at least n+1 values in it, so that at least n values could
-   be popped off without underflow. */
+   be popped off without underflow.
+
+   The caller must not ask for more values than the buffer holds: the
+   command line code guarantees room for a maximal segment on top of the
+   deepest access any instruction makes, and anything that has to reach
+   further down than that goes through stack_pop_n. */
 
 void
 stack_unflush(oakstack * stack_p, int n)
@@ -112,7 +171,8 @@ stack_unflush(oakstack * stack_p, int n)
   long i, number_to_pull = 0;
   long count = stack_p->sp - stack_p->bp + 1;
   long new_count = count;
-  segment_t *s = (segment_t *) REF_TO_PTR(stack_p->segment);
+  ref_t seg = stack_p->segment;
+  segment_t *s;
   ref_t *dest;
 
 #ifndef FAST
@@ -120,9 +180,18 @@ stack_unflush(oakstack * stack_p, int n)
 #endif
 
   /* First, figure out how many segments to pull. */
-  for (; new_count <= n; s = (segment_t *) REF_TO_PTR(s->previous_segment))
+  for (; new_count <= n; seg = s->previous_segment)
     {
-      int this_one = REF_TO_INT(s->length_field) - SEGMENT_HEADER_LENGTH;
+      int this_one;
+
+      /* Nothing left to pull in.  Walking off the end of the list would
+	 read nil's second slot as a segment length and copy a wild
+	 amount of data, so report the underflow instead. */
+      if (seg == e_nil)
+	stack_underflow(stack_p, n);
+
+      s = (segment_t *) REF_TO_PTR(seg);
+      this_one = REF_TO_INT(s->length_field) - SEGMENT_HEADER_LENGTH;
 
 #ifndef FAST
       if (trace_segs) printf("%d-", this_one);
@@ -135,6 +204,12 @@ stack_unflush(oakstack * stack_p, int n)
 #ifndef FAST
   if (trace_segs) printf("(%ld)-", number_to_pull);
 #endif
+
+  /* The shuffle below and the segment copy after it both write as far
+     as bp[new_count-1], so refuse to start rather than run off the end
+     of the buffer. */
+  if (new_count > stack_p->size)
+    stack_overunflush(stack_p, new_count);
 
   /* Copy the data in the buffer up to its new home. */
   dest = &stack_p->bp[new_count - 1];
@@ -165,6 +240,76 @@ stack_unflush(oakstack * stack_p, int n)
   if (trace_segs)
     printf(".\n");
 #endif
+}
+
+
+/* Pop n values off a stack.  Unlike unflushing and then moving the
+   pointer, this does not require the values to be in the buffer all at
+   once: whole flushed segments that fall entirely within the pop are
+   dropped rather than copied back in, and only the segment the boundary
+   lands in is unflushed.  A deep unwind -- a THROW or an error escape
+   out of a recursion thousands of frames deep -- pops far more values
+   than the buffer holds, and asking stack_unflush for them wrote past
+   the end of it. */
+
+void
+stack_pop_n(oakstack * stack_p, long n)
+{
+  long count = stack_p->sp - stack_p->bp + 1;
+
+  if (n <= 0)
+    return;
+
+  /* Everything to pop is in the buffer, and popping it leaves the top
+     of the stack visible. */
+  if (n < count)
+    {
+      stack_p->sp -= n;
+      return;
+    }
+
+  /* Otherwise throw the whole buffer away and work through the
+     segments. */
+  n -= count;
+  stack_p->sp = stack_p->bp - 1;
+
+  while (n > 0)
+    {
+      segment_t *s;
+      long this_one;
+
+      if (stack_p->segment == e_nil)
+	stack_underflow(stack_p, (int)n);
+
+      s = (segment_t *) REF_TO_PTR(stack_p->segment);
+      this_one = REF_TO_INT(s->length_field) - SEGMENT_HEADER_LENGTH;
+
+      /* The boundary falls inside this segment; leave it to the
+	 unflush below. */
+      if (this_one > n)
+	break;
+
+      stack_p->segment = s->previous_segment;
+      stack_p->pushed_count -= (int)this_one;
+      n -= this_one;
+
+#ifndef FAST
+      if (trace_segs) printf("seg:drop-%ld.\n", this_one);
+#endif
+    }
+
+  /* Pull one segment back in so the top of the stack is visible again
+     and the remainder can be popped from the buffer.  A segment never
+     exceeds max_segment_size, which the buffer is sized to hold.  With
+     nothing left to pull in there is nothing under the pop either,
+     which is the underflow the ordinary pop path reports. */
+  if (n > 0 || stack_p->segment != e_nil)
+    {
+      stack_unflush(stack_p, (int)n);
+      stack_p->sp -= n;
+    }
+  else
+    stack_underflow(stack_p, 1);
 }
 
 
@@ -201,14 +346,18 @@ init_stacks(void)
 
   /* Initialise value stack */
 #ifdef THREADS
-  my_index_p = pthread_getspecific (index_key);
+  my_index_p = oak_tls_get(index_key);
   my_index = *my_index_p;
 #endif
 
-  ptr = (ref_t *) xmalloc((value_stack.size + 2)
+  /* The +2 and the byte count are computed in size_t: value_stack.size
+     is an int straight off the command line, so at INT_MAX the addition
+     would overflow and the size passed to xmalloc -- and printed in its
+     diagnostic -- would be meaningless. */
+  ptr = (ref_t *) xmalloc(((size_t)value_stack.size + 2)
 			  * sizeof(ref_t));
   *ptr = PATTERN;
-  ptr[value_stack.size + 1] = PATTERN;
+  ptr[(size_t)value_stack.size + 1] = PATTERN;
   value_stack.bp = ptr + 1;
   value_stack.sp = value_stack.bp;
   *value_stack.bp = INT_TO_REF(1234);
@@ -220,10 +369,10 @@ init_stacks(void)
   /* Initialise context stack */
 
 
-  ptr = (ref_t *) xmalloc((context_stack.size + 2)
+  ptr = (ref_t *) xmalloc(((size_t)context_stack.size + 2)
 			  * sizeof(ref_t));
   *ptr = PATTERN;
-  ptr[context_stack.size + 1] = PATTERN;
+  ptr[(size_t)context_stack.size + 1] = PATTERN;
   context_stack.bp = ptr + 1;
   context_stack.sp = context_stack.bp;
   *context_stack.bp = INT_TO_REF(1234);

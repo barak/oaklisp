@@ -56,7 +56,7 @@
 ;;;
 
 (define (errorful-macro-reader stream char)
-  (warning "a '~A' in an illegal context was ignored.~%" char)
+  (signal stray-terminator char)
   the-unread-object)
 
 ;;; Let there be readable lists:

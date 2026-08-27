@@ -79,7 +79,17 @@
 ; this code depends on bignums
 
 (define (tagize-int x)
-  (let ((fixnum-bits (if target-64bit 62 30)))
+  (let* ((fixnum-bits (if target-64bit 62 30))
+	 (limit (expt 2 (- fixnum-bits 1))))
+    ;; Oaklisp arithmetic is exact, so an out-of-range constant would
+    ;; not wrap here the way it does in C -- it would be written to the
+    ;; .cold file as a number too wide for a ref, which the emulator
+    ;; then reads as something else again.  The cold world has no way to
+    ;; build a bignum, so refuse rather than emit a malformed world.
+    ;; oak-cold-linker makes the same check.
+    (when (or (< x (- limit)) (> x (- limit 1)))
+      (error "Integer constant ~D does not fit in a ~D-bit fixnum."
+	     x fixnum-bits))
     (+ int-tag (* 4 (if (negative? x)
 			(+ x (expt 2 fixnum-bits))
 			x)))))
@@ -119,6 +129,7 @@
 (set! var-table #f)
 ;impose an ordering on variables
 (set! var-list #f)
+(set! sym-list #f)
 (set! blk-table #f)
 (set! sym-table #f)
 (set! pair-table #f)
@@ -127,6 +138,7 @@
 
 (define (init-tables)
   (set! var-list '())
+  (set! sym-list '())
   (set! the-empty-string #f)
   (set! var-table (make-eq-hash-table))
   (set! blk-table (make-eq-hash-table))
@@ -224,6 +236,7 @@
 		  (else
 		   (error "bad inline patch keyword ~S.~&" keyword))))))))
   (set! var-list (reverse! var-list))
+  (set! sym-list (reverse! sym-list))
   (set! var-count (length var-table))
   (set! sym-count (length sym-table))
   (set! dat-count (+ dat-count (handbuilt-data-size)))
@@ -245,9 +258,17 @@
   (count-symbol v))
 
 
+;;; SYM-LIST records the symbols in the order they are first seen, the
+;;; way VAR-LIST does for variables.  Everything that lays symbols out
+;;; below walks that rather than the hash table, so the addresses do not
+;;; depend on the hash function -- which is what made oak-cold-linker,
+;;; whose hash function is a different one, build a world equivalent to
+;;; this one but not identical to it.
+
 (define (count-symbol v)
   (set! dat-count (+ (string-size (#^string v)) dat-count))
-  (toble-probe v sym-table))
+  (if (not (toble-probe v sym-table))
+      (push sym-list v)))
 
 
 (define (count-data d)
@@ -310,19 +331,21 @@
       (set! nextsym (+ nextsym symbol-size))
       (toble-set name nextvar var-table)
       (set! nextvar (+ nextvar cell-size)))
-    (toble-walk (lambda (name addr)
-		  (if (not addr)
-		      (block (toble-set name nextsym sym-table)
-			     (set! nextsym (+ nextsym symbol-size)))))
-		sym-table)))
+    (dolist (name sym-list)
+      (if (not (toble-get name sym-table))
+	  (block (toble-set name nextsym sym-table)
+		 (set! nextsym (+ nextsym symbol-size)))))))
 
+
+;;; This allocates the name strings too, so the walk order decides where
+;;; they land in dat space.
 
 (define (patch-symbols)
-  (toble-walk (lambda (name addr)
-		(store-world-ptr where-nil-lives addr)
-		(store-world-word (string-alloc (#^string name))
-				  (+ 1 addr)))
-	      sym-table))
+  (dolist (name sym-list)
+    (let ((addr (toble-get name sym-table)))
+      (store-world-ptr where-nil-lives addr)
+      (store-world-word (string-alloc (#^string name))
+			(+ 1 addr)))))
 
 
 
@@ -782,6 +805,14 @@
 
 
 (define	(write-world-header outfile)
+  ;; Word size marker, matching COLD_WORLD_TAG in the emulator's
+  ;; worldio.c and the line oak-cold-linker writes.  A cold world is
+  ;; byte order neutral -- the emulator swaps the halves of a
+  ;; ^-prefixed opcode cell when it needs to -- but its tagged values
+  ;; are shifted by the target's ref shift, so loading one into an
+  ;; emulator of the other word size has to be refused rather than
+  ;; discovered by crashing.
+  (format outfile "oakcold~D~%" (if target-64bit 64 32))
   (bind ((#*print-radix 16))
     (print-hex value-stack-size #f outfile)
     (format outfile " ")
@@ -796,7 +827,7 @@
 
 (define (dump-tables filename)
   (write-file filename `((variables ,(ordered-toble->alist var-table var-list))
-			 (symbols   ,(reverse (toble->alist sym-table))))))
+			 (symbols   ,(ordered-toble->alist sym-table sym-list)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

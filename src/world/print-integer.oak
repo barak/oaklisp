@@ -64,7 +64,9 @@
 	 ;;  Have to add another digit here is FIXNUMS get bigger, and take one
 	 ;;  off if they get smaller.  Because this goes in the cold world,
 	 ;;  none of these can be bignums, as the world builder doesn't know
-	 ;;  how to format them in memory.
+	 ;;  how to format them in memory.  The same object file builds both
+	 ;;  the 32- and the 64-bit cold world, so that rules out 10^9 as
+	 ;;  well: it is a bignum in a 30-bit-fixnum world.
 
 	 (labels ((d9 (lambda (q) (d8 (print-place q 100000000 stream))))
 		  (d8 (lambda (q) (d7 (print-place q 10000000 stream))))
@@ -84,7 +86,9 @@
 		 ((< self 1000000) (d6 self))
 		 ((< self 10000000) (d7 self))
 		 ((< self 100000000) (d8 self))
-		 ((< self 1000000000) (d9 self))
+		 ;; i.e. (< self 1000000000), written so the literal
+		 ;; stays inside a 32-bit world's fixnum range.
+		 ((< (quotient self 10) 100000000) (d9 self))
 		 ;; For 64-bit fixnums (10+ digits), use generic method.
 		 (else (^super integer print self stream)))))
 

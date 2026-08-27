@@ -48,7 +48,7 @@ AM_CONDITIONAL([NDEBUG], [test x${enable_ndebug} = xyes])
 
 AC_MSG_CHECKING([enable_threads])
 AC_ARG_ENABLE([threads],
-       [AS_HELP_STRING([--enable-threads],[enable thread support (default=no)])],,
+       [AS_HELP_STRING([--enable-threads],[enable native thread support with concurrent GC (default=no)])],,
        [enable_threads=no])
 AC_MSG_RESULT([$enable_threads])
 AM_CONDITIONAL([ENABLE_THREADS], [test x${enable_threads} = xyes])
@@ -71,6 +71,16 @@ AS_IF([test x${with_oaklisp} = xcheck || test x${with_oaklisp} = xyes],
                     [AS_IF([test x${with_oaklisp} = xyes],
                            [AC_MSG_ERROR([no oaklisp executable found])],
                            [no])])])
+
+AC_MSG_CHECKING([enable_bootstrap])
+AC_ARG_ENABLE([bootstrap],
+       [AS_HELP_STRING([--enable-bootstrap],[compile the world from .oak source with the Guile-hosted compiler instead of using prebuilt/ (default=no)])],,
+       [enable_bootstrap=no])
+AC_MSG_RESULT([$enable_bootstrap])
+AC_PATH_PROGS([GUILE], [guile3.0 guile], [no])
+AS_IF([test x${enable_bootstrap} = xyes && test x${GUILE} = xno],
+      [AC_MSG_ERROR([--enable-bootstrap needs Guile 3 (guile3.0)])])
+AM_CONDITIONAL([BOOTSTRAP], [test x${enable_bootstrap} = xyes])
 
 AS_IF([test x${enable_64bit} = xyes],
       [eight_if_allowed=8],
@@ -127,12 +137,17 @@ AS_IF([test x${enable_docs} = xyes],
  [AC_CHECK_PROGS([LATEXMK],[latexmk],[false])])
 
 # Checks for libraries.
+# On Windows (MSVC), threads are in kernel32 — no -lpthread needed.
+# On POSIX (including MinGW with winpthreads), link -lpthread.
 AS_IF([test x$enable_threads = xyes],
- [AC_SEARCH_LIBS([pthread_create],[pthread])])
+ [AC_SEARCH_LIBS([pthread_create],[pthread],[],
+   [AC_MSG_WARN([pthread_create not found; threads may use Windows native API])])])
 
 # Checks for header files.
 AC_CHECK_HEADERS([stddef.h stdlib.h string.h sys/time.h unistd.h],,
  [AC_MSG_ERROR([required header file unavailable])])
+# Optional headers for portability detection.
+AC_CHECK_HEADERS([stdatomic.h windows.h],,,)
 
 # Checks for typedefs, structures, and compiler characteristics.
 AX_CFLAGS_WARN_ALL
@@ -146,6 +161,19 @@ AX_C_LONG_LONG
 AC_TYPE_SIZE_T
 AC_C_BIGENDIAN
 AC_CHECK_TYPES([__int128])
+
+# Ensure __WORDSIZE is defined.  It is glibc-specific and may not be
+# available on macOS, MSVC, or other platforms.
+AC_MSG_CHECKING([whether __WORDSIZE is defined])
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([[#include <limits.h>
+                     #include <stdint.h>]],
+                   [[int x = __WORDSIZE;]])],
+  [AC_MSG_RESULT([yes])],
+  [AC_MSG_RESULT([no, defining based on sizeof(void *)])
+   AS_IF([test x${ac_cv_sizeof_void_p} = x8],
+     [AC_DEFINE([__WORDSIZE], [64], [Define to word size if not provided by system headers.])],
+     [AC_DEFINE([__WORDSIZE], [32], [Define to word size if not provided by system headers.])])])
 
 AS_CASE([${ac_cv_c_bigendian}_${ac_cv_sizeof_void_p}],
  [yes_4],[worldsubdir=eb32],

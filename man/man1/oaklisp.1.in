@@ -60,7 +60,7 @@ dump world to file upon exit
 synonym for \-\-dump
 .TP
 .B \-\-dump-base b
-0=ascii, 2=binary; default=2
+16=ascii, 2=binary; default=2
 .TP
 .B \-\-predump-gc b
 0=no, 1=yes; default=1
@@ -86,6 +86,9 @@ maximum flushed segment len, n is in refs
 synonym for \-\-trace-gc
 .TP
 .B \-\-trace-traps
+.TP
+.B \-\-batch
+disable trapping of SIGINT
 .TP
 .B \-\-trace-files
 trace filesystem operations
@@ -150,6 +153,19 @@ leave the user in a read-eval-print loop in the scheme locale.
 
 .B oaklisp \-\- \-\-locale scheme\-locale \-\-compile myfile
 
+.SH EXIT STATUS
+0 if everything asked for on the command line succeeded, and 1 if a
+switch could not be processed \(em an unknown switch, or one whose
+action signalled, such as a
+.B \-\-compile
+of a file that does not compile.
+.PP
+A world can name its own status with
+.BR "(exit " \fIn\fP ")" ,
+for any
+.I n
+from 0 to 255.
+
 .SH ENVIRONMENT
 The environment variable OAKWORLD will override the default compiled
 into the executable, but itself can be overridden on the command line.
@@ -177,10 +193,11 @@ in.)
 
 The memory format does not support uninterpreted "blobs".
 
-Porting the system to 64-bit machines has not been done, and would be
-quite difficult.
-
-POSIX threads in the emulator never got quite finished.
+Thread support is available via the \fB--enable-threads\fP configure
+option.  When enabled, thread infrastructure (mutexes, process
+register, per-process fluid bindings) is automatically initialized
+at warm boot.  Use \fB--pthreads N\fP to spawn additional native
+threads.
 
 Bug reports and enhancements can be filed on the
 .URL https://github.com/barak/oaklisp "github issue tracker" .
