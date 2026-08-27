@@ -8,6 +8,9 @@ Below is the normal README for Oaklisp.  I cloned it and, with the help of Claud
 6. Added the ability to load a world at runtime (see Dump.md)
 7. Added full support for native threads (green threads were already supported)
 8. Added a concurrent GC
+9. Bootstrap from source alone: `./configure --enable-bootstrap` compiles the
+    world's objects from the .oak sources with a Guile-hosted copy of the real
+    Oaklisp compiler, so no prebuilt .oa files are needed (see BUILD.md)
 
 This repo is located at:  https://github.com/blakemcbride/oaklisp
 

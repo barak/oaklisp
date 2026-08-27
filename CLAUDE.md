@@ -45,6 +45,7 @@ make install
 - **64-bit by default:** On 64-bit platforms, builds natively with 64-bit pointers and 62-bit fixnums. Use `--disable-64-bit` to force 32-bit mode (adds `-m32`).
 - **Endian- and word-size-sensitive:** Binary world images (`.bin`) are not portable across endianness or word size, but prebuilt `.oa` files are architecture-independent.
 - **Source-only bootstrap:** No prebuilt `oakworld.bin` is needed. The build uses `oak-cold-linker` (built from C alongside the emulator) to link prebuilt `.oa` files from `prebuilt/src/world/` into a cold world. For development, `.oak` files are recompiled from source if a working Oaklisp is available, falling back to prebuilt `.oa` copies otherwise.
+- **No prebuilt objects at all:** `./configure --enable-bootstrap` (needs `guile3.0`) compiles every `.oa` from `.oak` with the Guile-hosted compiler in `src/cold-compiler/` before linking the cold world; `prebuilt/` is then unused. `make check-bootstrap` in `src/world` verifies that compiler reproduces `prebuilt/` byte for byte (a release check, alongside `check-prebuilt` and `check-cold-linker`).
 
 ## Architecture
 
@@ -209,6 +210,17 @@ Where `ref_shift` is 2 for 32-bit, 3 for 64-bit.
 ### String packing
 
 Strings are stored as: `[type-ptr, total-word-count, char-count, packed-chars...]`. Characters are packed 3 per word, low byte first: `c0 | (c1 << 8) | (c2 << 16)`. Total size = `3 + ceil(strlen / 3)`.
+
+## Bootstrap Compiler (`src/cold-compiler/`)
+
+`oak-bootstrap.scm` plus `host/*.scm` is an Oaklisp hosted in Guile 3. It is not a reimplementation of the compiler: it provides the VM-level parts of the world natively (types with the emulator's exact slot layout, method dispatch, `%slot`/`%crunch`, strings, streams, hash tables, `%catch`/`%throw`) and loads everything else — the macros (`macros0.oak` ...), the runtime (`mapping.oak`, `sort.oak`, `locales.oak`, ...) and the compiler (`mac-compiler*.oak`, `assembler.oak`, `peephole.oak`, `file-compiler.oak`) — from `src/world/*.oak`, then runs `compile-file`. Its output is byte-identical to a native Oaklisp's, and `make check-bootstrap` depends on that.
+
+Things to know when touching it:
+
+- Compiler output depends on world state: frozen globals (`define-constant`) are inlined, open-coded operations emit instructions, `ivar-heuristic` reads real type ivar-lists, foldable operations (`%slot`, `%register`, `setter`, arithmetic) are applied at compile time. So `host/world.scm` must load (or mirror, for the natively provided files) every definition the compiler can see, including constants from MISCFILES such as `%load-process`.
+- `host/world.scm` is the load plan: which world files load from source, which are `skip`ped (provided natively) and which contribute just some `forms`. A new `define-constant`/`define-instance ... type` in a skipped file must be mirrored there.
+- Natively locked operations (`native-locked!`) keep their host implementation when the world redefines them; the hooks in `runtime.scm` (`on-define!`) do that by global name.
+- `instructions-with` in `assembler.oak` sorts its result so `peephole.oa` does not depend on hash-table order; keep it that way.
 
 ## Key Technical Constraints
 

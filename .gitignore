@@ -16,6 +16,8 @@
 /man/man1/oaklisp.1
 /missing
 /src/world/system-version.oak
+/src/world/bootstrap.stamp
+/src/world/bootstrap-check/
 /stamp-h1
 Makefile
 Makefile.in
