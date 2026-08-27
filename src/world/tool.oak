@@ -119,6 +119,7 @@
 (set! var-table #f)
 ;impose an ordering on variables
 (set! var-list #f)
+(set! sym-list #f)
 (set! blk-table #f)
 (set! sym-table #f)
 (set! pair-table #f)
@@ -127,6 +128,7 @@
 
 (define (init-tables)
   (set! var-list '())
+  (set! sym-list '())
   (set! the-empty-string #f)
   (set! var-table (make-eq-hash-table))
   (set! blk-table (make-eq-hash-table))
@@ -224,6 +226,7 @@
 		  (else
 		   (error "bad inline patch keyword ~S.~&" keyword))))))))
   (set! var-list (reverse! var-list))
+  (set! sym-list (reverse! sym-list))
   (set! var-count (length var-table))
   (set! sym-count (length sym-table))
   (set! dat-count (+ dat-count (handbuilt-data-size)))
@@ -245,9 +248,17 @@
   (count-symbol v))
 
 
+;;; SYM-LIST records the symbols in the order they are first seen, the
+;;; way VAR-LIST does for variables.  Everything that lays symbols out
+;;; below walks that rather than the hash table, so the addresses do not
+;;; depend on the hash function -- which is what made oak-cold-linker,
+;;; whose hash function is a different one, build a world equivalent to
+;;; this one but not identical to it.
+
 (define (count-symbol v)
   (set! dat-count (+ (string-size (#^string v)) dat-count))
-  (toble-probe v sym-table))
+  (if (not (toble-probe v sym-table))
+      (push sym-list v)))
 
 
 (define (count-data d)
@@ -310,19 +321,21 @@
       (set! nextsym (+ nextsym symbol-size))
       (toble-set name nextvar var-table)
       (set! nextvar (+ nextvar cell-size)))
-    (toble-walk (lambda (name addr)
-		  (if (not addr)
-		      (block (toble-set name nextsym sym-table)
-			     (set! nextsym (+ nextsym symbol-size)))))
-		sym-table)))
+    (dolist (name sym-list)
+      (if (not (toble-get name sym-table))
+	  (block (toble-set name nextsym sym-table)
+		 (set! nextsym (+ nextsym symbol-size)))))))
 
+
+;;; This allocates the name strings too, so the walk order decides where
+;;; they land in dat space.
 
 (define (patch-symbols)
-  (toble-walk (lambda (name addr)
-		(store-world-ptr where-nil-lives addr)
-		(store-world-word (string-alloc (#^string name))
-				  (+ 1 addr)))
-	      sym-table))
+  (dolist (name sym-list)
+    (let ((addr (toble-get name sym-table)))
+      (store-world-ptr where-nil-lives addr)
+      (store-world-word (string-alloc (#^string name))
+			(+ 1 addr)))))
 
 
 
@@ -796,7 +809,7 @@
 
 (define (dump-tables filename)
   (write-file filename `((variables ,(ordered-toble->alist var-table var-list))
-			 (symbols   ,(reverse (toble->alist sym-table))))))
+			 (symbols   ,(ordered-toble->alist sym-table sym-list)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

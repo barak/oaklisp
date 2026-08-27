@@ -695,12 +695,19 @@ typedef struct ht_entry {
     long val;
     int has_val;          /* 0 = probed but no value set yet */
     struct ht_entry *next;
+    struct ht_entry *order_next;  /* chain in order of first insertion */
 } ht_entry_t;
 
 typedef struct {
     ht_entry_t **buckets;
     int size;
     int count;
+    /* Anything laid out by walking a table has to walk it in the order
+       the keys were first seen, not in bucket order: bucket order
+       depends on the hash function, and tool.oak's hash function is not
+       this one, so the two would assign different addresses to the same
+       symbols and produce different -- though equivalent -- worlds. */
+    ht_entry_t *order_head, *order_tail;
 } hashtable_t;
 
 static void ht_init(hashtable_t *ht)
@@ -708,6 +715,7 @@ static void ht_init(hashtable_t *ht)
     ht->size = HT_INIT_SIZE;
     ht->count = 0;
     ht->buckets = xcalloc_(ht->size, sizeof(ht_entry_t *));
+    ht->order_head = ht->order_tail = NULL;
 }
 
 static unsigned ht_hash(const char *key, int size)
@@ -733,7 +741,13 @@ static int ht_probe(hashtable_t *ht, const char *key, ht_entry_t **out)
     e->val = 0;
     e->has_val = 0;
     e->next = ht->buckets[h];
+    e->order_next = NULL;
     ht->buckets[h] = e;
+    if (ht->order_tail)
+        ht->order_tail->order_next = e;
+    else
+        ht->order_head = e;
+    ht->order_tail = e;
     ht->count++;
     *out = e;
     return 0;
@@ -1520,14 +1534,13 @@ static void layout_symbols_and_variables(void)
         nextvar += CELL_SIZE;
     }
 
-    /* Pass 2: non-variable symbols */
-    for (int i = 0; i < sym_table.size; i++) {
-        for (ht_entry_t *e = sym_table.buckets[i]; e; e = e->next) {
-            if (!e->has_val) {
-                e->val = nextsym;
-                e->has_val = 1;
-                nextsym += SYMBOL_SIZE;
-            }
+    /* Pass 2: non-variable symbols, in the order they were first seen
+       while reading the .oa files -- the same order tool.oak uses. */
+    for (ht_entry_t *e = sym_table.order_head; e; e = e->order_next) {
+        if (!e->has_val) {
+            e->val = nextsym;
+            e->has_val = 1;
+            nextsym += SYMBOL_SIZE;
         }
     }
 }
@@ -1594,12 +1607,12 @@ static void layout_handbuilt_data(void)
 
 static void patch_symbols(void)
 {
-    for (int i = 0; i < sym_table.size; i++) {
-        for (ht_entry_t *e = sym_table.buckets[i]; e; e = e->next) {
-            long addr = e->val;
-            store_world_ptr(where_nil_lives, addr);
-            store_world_word(string_alloc(e->key), addr + 1);
-        }
+    /* First-seen order again: this is what allocates the name strings,
+       so walking buckets would put them in dat-space in hash order. */
+    for (ht_entry_t *e = sym_table.order_head; e; e = e->order_next) {
+        long addr = e->val;
+        store_world_ptr(where_nil_lives, addr);
+        store_world_word(string_alloc(e->key), addr + 1);
     }
 }
 
@@ -1865,21 +1878,10 @@ static void dump_tables(const char *filename)
     }
     fprintf(fp, ")\n (symbols");
 
-    /* Walk sym-table (reverse order like tool.oak) */
-    /* Build list first, then reverse */
-    typedef struct sym_pair { char *name; long addr; } sym_pair_t;
-    sym_pair_t *spairs = xmalloc_(sym_table.count * sizeof(sym_pair_t));
-    int sp_count = 0;
-    for (int i = 0; i < sym_table.size; i++)
-        for (ht_entry_t *e = sym_table.buckets[i]; e; e = e->next)
-            spairs[sp_count++] = (sym_pair_t){ e->key, e->val };
-
-    /* Reverse them */
-    for (int i = sp_count - 1; i >= 0; i--)
-        fprintf(fp, " (%s . %ld)", spairs[i].name, spairs[i].addr);
+    for (ht_entry_t *e = sym_table.order_head; e; e = e->order_next)
+        fprintf(fp, " (%s . %ld)", e->key, e->val);
 
     fprintf(fp, "))\n");
-    free(spairs);
     fclose(fp);
 }
 

@@ -124,6 +124,8 @@ The world is built in stages from `.oak` source files:
 
 `src/emulator/oak-cold-linker.c` is a standalone C program (~1200 lines) that links compiled `.oa` bytecode files into a cold world image (`.cold`). It replicates the algorithm of `src/world/tool.oak` entirely in C, breaking the circular dependency that normally requires a running Oaklisp to build the cold world.
 
+The two must agree byte for byte; `make check-cold-linker` in `src/world` is the release check for that (it needs a built `oakworld.bin`). Both lay symbols out in the order they are first seen while reading the `.oa` files, not in hash table order — otherwise the two hash functions assign different sym-space slots to the same symbols and the worlds come out equivalent but not identical.
+
 ### Building and running
 
 ```sh
