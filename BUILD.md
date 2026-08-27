@@ -65,8 +65,9 @@ Option              Default   Description
 --enable-docs       yes       Build LaTeX documentation
 --enable-ndebug     yes       High-speed mode (sets -DFAST)
 --enable-threads    no        Native thread support with concurrent GC
---enable-bootstrap  no        Compile the world from .oak source with the Guile-hosted
-                              compiler instead of using prebuilt/ (needs guile3.0)
+--enable-bootstrap  no        Optional: compile the world from .oak source with the
+                              Guile-hosted compiler instead of using the prebuilt
+                              .oa files (needs guile3.0).  Off by default.
 --with-world=PATH   search    Path to bootstrap oakworld.bin (for recompiling .oa files)
 --with-oaklisp=OAK  no        Path to existing oaklisp for bootstrapping
 
@@ -152,25 +153,28 @@ this circular dependency, prebuilt .oa files (portable compiled
 bytecode, architecture-independent ASCII S-expressions) are included
 in prebuilt/src/world/.
 
-The bootstrap chain is:
+This is the default, and the way every ordinary build works.  The
+bootstrap chain is:
 
 	prebuilt/*.oa → oak-cold-linker → new.cold → boot → oakworld.bin
 
 oak-cold-linker is a standalone C program (built alongside the
 emulator) that links .oa files into a cold world.  No existing
-oakworld.bin is needed for a fresh build.
+oakworld.bin is needed for a fresh build, and nothing beyond a C
+compiler is needed either.
 
 For development, if you have a working Oaklisp (either just-built or
 installed), .oak files will be recompiled from source automatically.
 If compilation fails, the build falls back to prebuilt .oa copies.
 
-Building from source alone
---------------------------
+Building from source alone (optional)
+-------------------------------------
 
 The prebuilt .oa files are themselves compiled Oaklisp, so a build that
-uses them is trusting objects it cannot rebuild.  To build with nothing
-but the .oak sources and a C compiler, install Guile 3 and configure
-with
+uses them is trusting objects it cannot rebuild.  As an option, the
+system can instead be built with nothing but the .oak sources and a C
+compiler.  This is off by default and never happens on its own: it
+needs Guile 3 (guile3.0) installed and must be asked for explicitly:
 
 	./configure --enable-bootstrap
 
