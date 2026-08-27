@@ -151,13 +151,29 @@
 (define-instance general-for-each operation)
 (define-instance for-each-cdr operation)
 (define-instance map! operation)
+(define-instance map!1 operation)
+
+;;; The manual documents MAP, FOR-EACH and MAP! over sequences, not
+;;; just lists (doc/lang/control.tex), so the dispatchers below send
+;;; anything that is not a list to the by-index methods in
+;;; sequences.oak.  The test is an operation rather than (list? l)
+;;; because the cold world loads this file long before predicates.oak.
+
+(define-instance %list-arg? operation)
+(add-method (%list-arg? (object) self) #f)
+(add-method (%list-arg? (list-type) self) #t)
+
+(define-instance general-sequence-map operation)
+(define-instance general-sequence-for-each operation)
+(define-instance general-sequence-map! operation)
 
 (add-method (mapcdr (operation) op l)
   (cond ((null? l) '())
 	(else (cons (op l) (mapcdr op (cdr l))))))
 
 (add-method (map (operation) op l . args)
-  ((cond ((= 0 (rest-length args)) map1)
+  ((cond ((not (%list-arg? l)) general-sequence-map)
+	 ((= 0 (rest-length args)) map1)
 	 ((= 1 (rest-length args)) map2)
 	 ((= 2 (rest-length args)) map3)
 	 ((= 3 (rest-length args)) map4)
@@ -271,7 +287,8 @@
 
 
 (add-method (for-each (operation) op l . args)
-  ((cond ((= 0 (rest-length args)) for-each1)
+  ((cond ((not (%list-arg? l)) general-sequence-for-each)
+	 ((= 0 (rest-length args)) for-each1)
 	 ((= 1 (rest-length args)) for-each2)
 	 ((= 2 (rest-length args)) for-each3)
 	 ((= 3 (rest-length args)) for-each4)
@@ -303,10 +320,16 @@
   (if l (block (op l)
 	       (for-each-cdr op (cdr l)))))
 
-(add-method (map! (operation) op l)
+(add-method (map! (operation) op l . args)
+  ((if (and (%list-arg? l) (= 0 (rest-length args)))
+       map!1
+       general-sequence-map!)
+   op l . args))
+
+(add-method (map!1 (operation) op l)
   (cond ((null? l) '())
 	(else (set! (car l) (op (car l)))
-	      (map! op (cdr l))
+	      (map!1 op (cdr l))
 	      l)))
 
 (define-instance every? operation)

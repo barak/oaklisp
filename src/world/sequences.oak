@@ -27,7 +27,9 @@
 	  (iterate loop1 ((i1 0))
 	    (if (>= i1 l1)
 		i2
-		(if (eq? (nth s1 i1) (nth s2 (+ i1 i2)))
+		;; EQUAL?, as everywhere else that compares sequence
+		;; elements; EQ? here quietly failed for anything boxed.
+		(if (equal? (nth s1 i1) (nth s2 (+ i1 i2)))
 		    (loop1 (1+ i1))
 		    (loop2 (1+ i2)))))))))
 
@@ -189,13 +191,66 @@
   (subseq-indexes self 0 index))
 
 (add-method (last (sequence) self)
-  (nth self (- (length self) 1)))
+  (let ((len (length self)))
+    (if (zero? len)
+	(error "LAST of the empty sequence ~S." self)
+	(nth self (- len 1)))))
 
 (add-method (#^list-type (sequence) v)
   (let ((len (length v)))
     (iterate aux ((i (- len 1))(l '()))
       (if (= i -1) l
 	  (aux (- i 1) (cons (nth v i) l))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Mapping over sequences.
+
+;;; doc/lang/control.tex documents MAP, FOR-EACH and MAP! over
+;;; sequences, but mapping.oak walks cars and cdrs, so a vector or a
+;;; string got "no method for CAR".  These are the paths the
+;;; dispatchers there take when the first argument is not a list: the
+;;; sequences are walked by index, the shortest one bounding the walk,
+;;; and MAP answers a sequence of the type of the first, as the manual
+;;; says it does.  Lists are sequences too, so a MAP! over more than one
+;;; of them lands here rather than being an arity error.
+
+(define (%shortest-length seqs)
+  (iterate step ((l (cdr seqs)) (m (length (car seqs))))
+    (if (null? l)
+	m
+	(step (cdr l) (min m (length (car l)))))))
+
+(define (%nths seqs i)
+  (if (null? seqs)
+      '()
+      (cons (nth (car seqs) i) (%nths (cdr seqs) i))))
+
+(add-method (general-sequence-map (operation) op s . args)
+  (listify-args
+   (lambda (seqs)
+     (let ((n (%shortest-length seqs)))
+       ((coercer (get-type (car seqs)))
+	(iterate step ((i (- n 1)) (acc '()))
+	  (if (negative? i)
+	      acc
+	      (step (- i 1) (cons (apply op (%nths seqs i)) acc)))))))
+   s . args))
+
+(add-method (general-sequence-for-each (operation) op s . args)
+  (listify-args
+   (lambda (seqs)
+     (dotimes (i (%shortest-length seqs))
+       (apply op (%nths seqs i))))
+   s . args))
+
+(add-method (general-sequence-map! (operation) op s . args)
+  (listify-args
+   (lambda (seqs)
+     (let ((target (car seqs)))
+       (dotimes (i (%shortest-length seqs) target)
+	 (set! (nth target i) (apply op (%nths seqs i))))))
+   s . args))
+
 
 ;;; Selection
 (add-method (remove (pair) x y)

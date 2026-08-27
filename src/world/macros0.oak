@@ -126,25 +126,53 @@
 	 ,(build-lambda-rest-let (cdr proper-args) rest-var
 				 `(cdr ,listvar) body))))
 
-;;; True when FORM uses REST-VAR the way the language manual says a rest
-;;; name may be used: at the end of a call that passes the extra
-;;; arguments along, (f a . rest), or in a (rest-length rest) form.
-;;; Such a body wants the native binding, in which the name stands for
-;;; the extra arguments where they sit on the stack.  Any other body
-;;; wants the R3RS binding, in which the name is an ordinary variable
-;;; holding a list.  Quoted structure is data, not code, so it is not
-;;; examined.
+;;; True when FORM hands REST-VAR on, as the terminal member of the
+;;; argument list of a call: (f a . rest).
+;;;
+;;; That is the one thing a body may do with the native binding, in
+;;; which the name stands for the extra arguments where they sit on the
+;;; stack.  A method that receives extra arguments has no way to pop a
+;;; run time number of them on the way out -- the compiler emits a
+;;; constant sized blt-stack from the fixed part of the argument list --
+;;; so it has to leave that to whatever its tail call eventually
+;;; reaches.  See "Variable Numbers of Arguments" in the implementation
+;;; manual.  (rest-length rest) on its own does not qualify: a body that
+;;; only asks how many extra arguments there are and then returns leaves
+;;; every one of them on the value stack, which is what made
+;;; (define (f a . args) (rest-length args)) return junk and crash.
+;;;
+;;; A body that does not hand the extra arguments on gets the R3RS
+;;; binding instead, in which the name is an ordinary variable holding a
+;;; list.  Quoted structure is data, not code, so it is not examined.
 
-(define (native-rest-use? form rest-var)
+(define (rest-passed-on? form rest-var)
   (cond ((not (pair? form)) nil)
 	((eq? (car form) 'quote) nil)
+	((eq? (improper-list? form) rest-var) #t)
+	(else (any? (lambda (sub) (rest-passed-on? sub rest-var))
+		    (make-proper form)))))
+
+
+;;; Under the R3RS binding REST-VAR is an ordinary list, so the
+;;; (rest-length rest) the user wrote -- which the compiler turns into a
+;;; bare reference to the magic stack token -- has to become an ordinary
+;;; (length rest).  Quoted structure is left alone.
+
+(define (rewrite-rest-length form rest-var)
+  (cond ((not (pair? form)) form)
+	((eq? (car form) 'quote) form)
 	((and (eq? (car form) 'rest-length)
 	      (pair? (cdr form))
-	      (eq? (car (cdr form)) rest-var))
-	 #t)
-	((eq? (improper-list? form) rest-var) #t)
-	(else (any? (lambda (sub) (native-rest-use? sub rest-var))
-		    (make-proper form)))))
+	      (eq? (car (cdr form)) rest-var)
+	      (null? (cdr (cdr form))))
+	 `(length ,rest-var))
+	(else (rewrite-rest-length-list form rest-var))))
+
+(define (rewrite-rest-length-list forms rest-var)
+  (if (pair? forms)
+      (cons (rewrite-rest-length (car forms) rest-var)
+	    (rewrite-rest-length-list (cdr forms) rest-var))
+      forms))
 
 (define-syntax (lambda varlist . body)
   (let ((improper-part (improper-list? varlist)))
@@ -154,7 +182,7 @@
 	       (not (every? symbol? varlist)))
 	   (error "Malformed formal parameter list ~S." varlist))
 	  ((and improper-part
-		(any? (lambda (form) (native-rest-use? form improper-part))
+		(any? (lambda (form) (rest-passed-on? form improper-part))
 		      body))
 	   ;; Native rest args: the body hands them on rather than
 	   ;; naming them, so pass them straight to the method.  This is
@@ -164,14 +192,17 @@
 	      ,@body))
 	  (improper-part
 	   ;; Rest args: use listify-args to collect stack args into a
-	   ;; proper list, then destructure into the named bindings.
+	   ;; proper list, then destructure into the named bindings.  A
+	   ;; (rest-length rest) in the body becomes (length rest), since
+	   ;; the name is a list here rather than the native stack token.
 	   (let ((proper-args (make-proper varlist))
 		 (auxvar (genvar))
 		 (listvar (genvar)))
 	     `(let ((,auxvar
 		     (lambda (,listvar)
-		       ,(build-lambda-rest-let proper-args improper-part
-					       listvar body))))
+		       ,(build-lambda-rest-let
+			 proper-args improper-part listvar
+			 (rewrite-rest-length-list body improper-part)))))
 		(add-method ((',make ',operation) . ,improper-part)
 		  (listify-args ,auxvar . ,improper-part)))))
 	  (else `(add-method ((',make ',operation) ,@varlist)

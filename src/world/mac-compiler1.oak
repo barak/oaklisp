@@ -196,6 +196,18 @@
     (set! heaplist nil)
     (set! primitivep (eq? kind-o-method '_%add-method))
     (set! rest-name (improper-list? args))
+    ;; A method that receives extra arguments has no way to pop a run
+    ;; time number of them on the way out -- the epilogue is a constant
+    ;; sized blt-stack over the fixed part of the argument list -- so
+    ;; the only thing it may do with the rest name is hand it on at the
+    ;; end of a call.  See "Variable Numbers of Arguments" in the
+    ;; implementation manual.  A body that never does leaves the extra
+    ;; arguments on the value stack under the caller's frame.  LAMBDA
+    ;; gives such a body the listified binding instead, so what is left
+    ;; to catch here is ADD-METHOD written out by hand.
+    (when (and rest-name (not (rest-passed-on? bod rest-name)))
+      (warning "Method with rest argument ~S never passes it along, so extra arguments will be left on the stack.~%"
+	       rest-name))
     ;; rest-name goes on front of arglist:
     (set! arglist (if rest-name (cons rest-name (make-proper args))
 		     args))

@@ -29,18 +29,32 @@
 ;;; world builder makes only one empty string.
 
 (define (make-string len)
-  (if (zero? len) ""
-      (let* ((word-count
-	      (quotient (+ len (- %chars-per-word 1)) %chars-per-word))
-	     (s (make string word-count len))
-	     (loc (make-locative (%vref s 0))))
-	(dotimes (i word-count s)
-	  (set! (contents (%increment-locative loc i))
-		(bit-or (#^number #\NULL)
-			(bit-or (ash-left (#^number #\NULL) 8)
-				(ash-left (#^number #\NULL) 16))))))))
+  (cond ((negative? len)
+	 (error "Cannot make a string of ~D characters." len))
+	((zero? len) "")
+	(else
+	 (let* ((word-count
+		 (quotient (+ len (- %chars-per-word 1)) %chars-per-word))
+		(s (make string word-count len))
+		(loc (make-locative (%vref s 0))))
+	   (dotimes (i word-count s)
+	     (set! (contents (%increment-locative loc i))
+		   (bit-or (#^number #\NULL)
+			   (bit-or (ash-left (#^number #\NULL) 8)
+				   (ash-left (#^number #\NULL) 16)))))))))
+
+;;; LEN is both the length the string reports and the bound NTH and
+;;; (SETTER NTH) check against, while WORD-COUNT is how many cells were
+;;; actually allocated.  A LEN those cells cannot hold would let the
+;;; caller read and write past the end of the object, so the two have to
+;;; be checked against each other here -- this is the ordinary MAKE
+;;; protocol, not a %-prefixed primitive, so the check belongs in it.
 
 (add-method (initialize (string char-count) self word-count len)
+  (when (or (negative? len)
+	    (> len (* word-count %chars-per-word)))
+    (error "Cannot make a string of ~D characters out of ~D words."
+	   len word-count))
   (set! char-count len)
   self)
 

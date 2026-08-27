@@ -40,6 +40,26 @@
 
 (set! #*compiling-a-file? #f)
 
+;;; The names a file installs as macros at load time, which is what
+;;; DEFINE-SYNTAX does; LOCAL-SYNTAX and DEFINE-LOCAL-SYNTAX install
+;;; theirs at compile time instead.  A file that uses its own
+;;; DEFINE-SYNTAX macro further down compiles that use as a call to an
+;;; undefined variable, which is only discovered when the object is
+;;; loaded, so the compiler says so while it still has the file in
+;;; front of it.  See GEN-ACCESS in mac-code.oak.
+
+(set! #*file-load-time-macros '())
+
+(define (load-time-macro-names forms)
+  (cond ((null? forms) '())
+	((and (pair? (car forms))
+	      (eq? (car (car forms)) 'define-syntax)
+	      (pair? (cdr (car forms))))
+	 (let ((sym (car (cdr (car forms)))))
+	   (cons (if (pair? sym) (car sym) sym)
+		 (load-time-macro-names (cdr forms)))))
+	(else (load-time-macro-names (cdr forms)))))
+
 
 (define (print-appropriate-noise form)
   (when (> #*compiler-noisiness 0)
@@ -123,14 +143,15 @@
 	;; complete, so a compile stopped by a full disk or a killed
 	;; process leaves no truncated object under the real name.
 	(let* ((out-name (append file-name compiler-to-extension))
-	       (tmp-name (append out-name "-tmp")))
+	       (tmp-name (append out-name "-tmp"))
+	       (forms (after-reading
+		       (read-file (append file-name
+					  compiler-from-extension)))))
 	  (write-file
 	   tmp-name
-	   (block0 (s4 (s3 (s2b (s12
-				 (after-reading
-				  (read-file
-				   (append file-name
-					   compiler-from-extension)))))))
+	   (block0 (bind ((#*file-load-time-macros
+			   (load-time-macro-names forms)))
+		     (s4 (s3 (s2b (s12 forms)))))
 		   (when (> #*compiler-noisiness 1)
 		     (format #t " writing...")
 		     (flush standard-output))))

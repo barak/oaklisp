@@ -66,6 +66,18 @@ void xfread(void *ptr, size_t size, size_t nmemb, FILE *stream)
 
 static bool input_is_binary;
 
+/* First token of an ascii world dumped by this emulator; see
+   dump_ascii_world and read_world. */
+#ifdef WORDS_BIGENDIAN
+#define ASCII_WORLD_ENDIAN "be"
+#else
+#define ASCII_WORLD_ENDIAN "le"
+#endif
+#define STRINGIFY_(x) #x
+#define STRINGIFY(x) STRINGIFY_(x)
+#define ASCII_WORLD_TAG \
+  "oak" STRINGIFY(__WORDSIZE) ASCII_WORLD_ENDIAN
+
 
 /* These are for making the world zero-based and contiguous in dumps. */
 
@@ -74,18 +86,29 @@ contig(ref_t r, bool just_new)
 {
   ref_t *p = ANY_TO_PTR(r);
 
+  /* A reference that points outside both spaces cannot be made
+     relative, so the dump would be written with a wild pointer in it
+     and the damage only found at the next boot.  The other failures in
+     this file exit; so does this one. */
+
   if (just_new)
-    if (NEW_PTR(p))
-      return ((ref_t) (p - new_space.start) << REF_SHIFT) | (r & TAG_MASK);
-    else
-      printf("Non-new pointer %zu found.\n", (size_t)r);
+    {
+      if (NEW_PTR(p))
+	return ((ref_t) (p - new_space.start) << REF_SHIFT) | (r & TAG_MASK);
+      fprintf(stderr,
+	      "Error (dumping world): non-new pointer %zu found.\n",
+	      (size_t)r);
+    }
   else if (SPATIC_PTR(p))
     return ((ref_t) (p - spatic.start) << REF_SHIFT) | (r & TAG_MASK);
   else if (NEW_PTR(p))
     return ((ref_t) (p - new_space.start + spatic.size) << REF_SHIFT) | (r & TAG_MASK);
   else
-    printf("Non-new or spatic pointer %zu found.\n", (size_t)r);
-  return r;
+    fprintf(stderr,
+	    "Error (dumping world): non-new or spatic pointer %zu found.\n",
+	    (size_t)r);
+  fflush(stderr);
+  exit(EXIT_FAILURE);
 }
 
 #define contigify(r) ((r)&PTR_MASK ? contig((r),just_new) : (r))
@@ -260,6 +283,14 @@ dump_ascii_world(bool just_new)
       exit(EXIT_FAILURE);
     }
 
+  /* Word size and byte order marker.  A binary world carries one in
+     its magic bytes, and read_world refuses a world that does not
+     match; an ascii world had none, so a 32-bit one loaded into a
+     64-bit emulator with every tagged value shifted by the wrong
+     amount and no complaint.  Cold worlds written by oak-cold-linker
+     still have no marker, and read_world still accepts that. */
+  fprintf(wfp, "%s\n", ASCII_WORLD_TAG);
+
   fprintf(wfp, control_string, (size_t)0 /*val_stk_size */ );
   fprintf(wfp, control_string, (size_t)0 /*cxt_stk_size */ );
   fprintf(wfp, control_string, (size_t)contigify(e_boot_code));
@@ -373,6 +404,28 @@ read_world(char *str)
     {
       ungetc(magichar, d);
       input_is_binary = 0;
+
+      /* An ascii world dumped by this emulator starts with a word size
+	 and byte order marker.  A cold world written by oak-cold-linker
+	 has none, so its absence is not an error, but a marker that
+	 disagrees with this emulator is. */
+      if (magichar == (int)'o')
+	{
+	  char tag[16];
+
+	  if (fscanf(d, "%15s", tag) != 1)
+	    {
+	      printf("Error: cannot read world file header of \"%s\".\n", str);
+	      exit(EXIT_FAILURE);
+	    }
+	  if (strcmp(tag, ASCII_WORLD_TAG) != 0)
+	    {
+	      printf("Error: ascii world \"%s\" is %s, this emulator is %s.\n",
+		     str, tag, ASCII_WORLD_TAG);
+	      exit(EXIT_FAILURE);
+	    }
+	}
+
 #ifdef WORDS_BIGENDIAN
       printf("Big Endian.\n");
 #else
@@ -386,7 +439,23 @@ read_world(char *str)
 
   e_boot_code = read_ref(d);
 
-  spatic.size = (size_t) read_ref(d);
+  /* The word count comes out of the file and goes straight into
+     xmalloc(sizeof(ref_t) * count), so a count near SIZE_MAX/8 would
+     wrap to a small allocation that the read below then overruns.  The
+     weak pointer count further down is range checked the same way. */
+  {
+    ref_t world_size = read_ref(d);
+
+    if ((ssize_t)world_size < 0
+	|| (size_t)world_size > SIZE_MAX / sizeof(ref_t))
+      {
+	fprintf(stderr,
+		"Error (loading world): bogus world size %zu.\n",
+		(size_t)world_size);
+	exit(EXIT_FAILURE);
+      }
+    spatic.size = (size_t) world_size;
+  }
   alloc_space(&spatic, spatic.size);
 
   e_boot_code += (ref_t) spatic.start;
