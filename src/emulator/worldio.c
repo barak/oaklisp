@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <limits.h>
 #include "config.h"
 #include "data.h"
 #include "xmalloc.h"
@@ -130,6 +131,25 @@ read_ref(FILE * d)
 
 static ref_t refbuf[REFBUFSIZ];
 
+/* Close the world file, reporting anything that went wrong on the way
+   out.  Unchecked writes turn a full disk into a silently truncated
+   world image, which only fails at the next boot. */
+
+static void
+finish_world_file(FILE *wfp)
+{
+  int bad = ferror(wfp);
+
+  if (fclose(wfp) != 0)
+    bad = 1;
+  if (bad)
+    {
+      fprintf(stderr, "error: writing \"%s\" failed;"
+	      " the world image is incomplete.\n", dump_file_name);
+      exit(EXIT_FAILURE);
+    }
+}
+
 static void
 dump_binary_world(bool just_new)
 {
@@ -216,7 +236,7 @@ dump_binary_world(bool just_new)
       fwrite((const void *)&theref, sizeof(ref_t), 1, wfp);
     }
 
-  fclose(wfp);
+  finish_world_file(wfp);
 }
 
 
@@ -285,7 +305,7 @@ dump_ascii_world(bool just_new)
       eighter = (eighter + 1) % 8;
     }
 
-  fclose(wfp);
+  finish_world_file(wfp);
 }
 
 void
@@ -393,16 +413,22 @@ read_world(char *str)
 	  --load_count;
 	}
 
-    /* Load the weak pointer table. */
-    wp_index = read_ref(d);
+    /* Load the weak pointer table.  The count comes out of the world
+       file, so it has to be checked before it is narrowed to the int
+       wp_index is: a truncated or corrupt world naming a count above
+       INT_MAX would wrap to a negative and slip past the test. */
+    {
+      ref_t wp_count = read_ref(d);
 
-    if (wp_index < 0)
-      {
-	fprintf(stderr,
-		"Error (loading world): bogus weak pointer count %d.\n",
-		wp_index);
-	exit(EXIT_FAILURE);
-      }
+      if ((ssize_t)wp_count < 0 || wp_count >= (ref_t)INT_MAX)
+	{
+	  fprintf(stderr,
+		  "Error (loading world): bogus weak pointer count %zu.\n",
+		  (size_t)wp_count);
+	  exit(EXIT_FAILURE);
+	}
+      wp_index = (int)wp_count;
+    }
 
     /* The tables grow on demand, so a world with more weak pointers
        than the current capacity is fine; just make room for them. */

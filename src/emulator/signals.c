@@ -95,7 +95,7 @@ clear_signal(void)
 
 OAK_THREAD_LOCAL oak_jmp_buf crash_jmpbuf;
 OAK_THREAD_LOCAL volatile sig_atomic_t crash_signal = 0;
-int crash_recovery_installed = 0;
+OAK_THREAD_LOCAL int crash_recovery_installed = 0;
 OAK_THREAD_LOCAL volatile sig_atomic_t crash_count = 0;
 
 #define MAX_CONSECUTIVE_CRASHES 3

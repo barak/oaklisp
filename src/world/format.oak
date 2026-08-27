@@ -216,7 +216,10 @@
 
 (define-format-control #\C 1
   (lambda (the-list colon? atsign? char stream arg)
-    (print arg stream)))
+    ;; Like ~A, and unlike leaving it to whatever #*PRINT-ESCAPE
+    ;; happens to be bound to out here.
+    (bind ((#*print-escape #f))
+      (print arg stream))))
 
 (define-format-control #\P 1
   (lambda (the-list colon? atsign? char stream arg)

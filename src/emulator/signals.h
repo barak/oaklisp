@@ -67,7 +67,9 @@ extern volatile sig_atomic_t signal_poll_flag;
 extern OAK_THREAD_LOCAL oak_jmp_buf crash_jmpbuf;
 extern OAK_THREAD_LOCAL volatile sig_atomic_t crash_signal;
 extern OAK_THREAD_LOCAL volatile sig_atomic_t crash_count;
-extern int crash_recovery_installed;
+/* Per thread: each thread has its own recovery point, so whether
+   recovery is armed is a property of the thread, not of the process. */
+extern OAK_THREAD_LOCAL int crash_recovery_installed;
 void enable_crash_recovery(void);
 void reinstall_crash_handler(void);
 void reset_crash_count(void);

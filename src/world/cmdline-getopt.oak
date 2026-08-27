@@ -36,8 +36,25 @@
 						     (format standard-error
 							     "~&An error occurred while processing switch ~A args ~S~%"
 							     a stuff)
-						     (report err standard-error)
-						     (format standard-error "~%")))
+						     ;; Reporting the error can
+						     ;; itself signal, since it
+						     ;; prints the offending
+						     ;; object and that object
+						     ;; may be the half
+						     ;; initialized thing whose
+						     ;; INITIALIZE just failed.
+						     ;; Contain that here: a
+						     ;; switch that cannot even
+						     ;; be described must not
+						     ;; stop the switches after
+						     ;; it from being processed.
+						     (catch-errors
+						      (general-error
+						       (lambda (err2)
+							 (format standard-error
+								 "~&(this error could not be reported)~%")))
+						      (report err standard-error)
+						      (format standard-error "~%"))))
 						  (apply f stuff)))
 				  (aux (tail (cdr args) n)))))
 			  (else (format standard-error  "~&error: unknown switch: ~A" a)

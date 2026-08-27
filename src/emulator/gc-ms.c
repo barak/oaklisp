@@ -1090,15 +1090,20 @@ ms_collect(bool pre_dump, char *reason, size_t amount)
     if (trace_gc > 1)
 	fprintf(stderr, "\n; Mark-sweep GC due to %s.\n", reason);
 
-    /* --- Retire TLABs --- */
-#ifdef THREADS
-    ms_tlab_retire_all();
-#endif
-
     /* Save the current free_point as the sweep limit.  Objects
        allocated above this point during concurrent mark are
-       implicitly live and will not be swept. */
+       implicitly live and will not be swept.
+
+       With threads, both this snapshot and the TLAB retirement happen
+       inside the initial-mark pause below instead of here: the TLAB
+       fast path in ALLOCATE_PROT deliberately takes no lock, so doing
+       either while the other mutators are still running races them --
+       the collector can zero a TLAB tail an instant after a mutator
+       has handed out an object in it, leaving a live object whose type
+       slot reads as zero. */
+#ifndef THREADS
     sweep_limit = free_point;
+#endif
 
     /* --- Mark phase --- */
     if (trace_gc > 1) {
@@ -1113,7 +1118,9 @@ ms_collect(bool pre_dump, char *reason, size_t amount)
 
     /* Disable crash recovery during GC so that any SIGSEGV from bad
        pointers results in an immediate abort rather than longjmping
-       back to the interpreter loop (which would re-trigger GC). */
+       back to the interpreter loop (which would re-trigger GC).
+       crash_recovery_installed is thread-local, so this only covers
+       the collecting thread. */
     int saved_crash_recovery = crash_recovery_installed;
     crash_recovery_installed = 0;
 
@@ -1132,6 +1139,12 @@ ms_collect(bool pre_dump, char *reason, size_t amount)
 
 	if (trace_gc > 1)
 	    fprintf(stderr, "\n; STW initial mark...");
+
+	/* The world is stopped, so no mutator can be inside the TLAB
+	   fast path.  Retire the TLABs and take the sweep_limit
+	   snapshot now. */
+	ms_tlab_retire_all();
+	sweep_limit = free_point;
 
 	ms_mark_roots();
 	if (trace_gc > 1) { fprintf(stderr, " roots"); fflush(stderr); }

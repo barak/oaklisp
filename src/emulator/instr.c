@@ -37,15 +37,29 @@ print_pc(instr_t *e_progc)
 		   + sizeof(ref_t) * spatic.size));
 }
 
+/* ARG_FIELD runs to 255 and OP_FIELD to 63, but the tables generated
+   into instr-data.c are only as long as there are instructions, so a
+   malformed code vector would otherwise be traced by dereferencing
+   whatever follows them. */
+
+#define NELEM(a) ((int)(sizeof (a) / sizeof (a)[0]))
+
 void
 print_instr(int op_field, int arg_field, instr_t *e_progc)
 {
   print_pc(e_progc);
 
   if (op_field == 0)
-    fprintf(stdout, "%s\n", argless_instr_name[arg_field]);
-  else
+    {
+      if (arg_field >= 0 && arg_field < NELEM(argless_instr_name))
+	fprintf(stdout, "%s\n", argless_instr_name[arg_field]);
+      else
+	fprintf(stdout, "<unknown argless instruction %d>\n", arg_field);
+    }
+  else if (op_field > 0 && op_field < NELEM(instr_name))
     fprintf(stdout, "%s %d\n", instr_name[op_field], arg_field);
+  else
+    fprintf(stdout, "<unknown instruction %d> %d\n", op_field, arg_field);
 }
 
 #endif

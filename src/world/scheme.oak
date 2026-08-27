@@ -171,4 +171,131 @@
 
 #| (add-method (read (object)) (read standard-input)) |#
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Numeric type predicates.
+
+;;; Oaklisp's numeric tower is exact throughout, and R3RS says COMPLEX?
+;;; is true of every number.
+
+(define rational? (type-pred rational))
+(define real? (type-pred real))
+(define complex? (type-pred number))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Character classification.
+
+;;; Done on character codes rather than on the reader's table, so that
+;;; these mean the same thing whatever the read table happens to say.
+
+(define (char-alphabetic? c)
+  (let ((n (char->integer c)))
+    (or (and (>= n 65) (<= n 90))
+	(and (>= n 97) (<= n 122)))))
+
+(define (char-numeric? c)
+  (let ((n (char->integer c)))
+    (and (>= n 48) (<= n 57))))
+
+(define (char-upper-case? c)
+  (let ((n (char->integer c)))
+    (and (>= n 65) (<= n 90))))
+
+(define (char-lower-case? c)
+  (let ((n (char->integer c)))
+    (and (>= n 97) (<= n 122))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Numbers to strings and back.
+
+(define (number->string n . rest)
+  (let ((s (make string-output-stream)))
+    (bind ((#*print-radix (if (null? rest) 10 (car rest)))
+	   (#*print-escape #f))
+      (print n s))
+    (#^string s)))
+
+;;; The value of C as a digit in RADIX, or #f if it isn't one.
+
+(define (char->digit c radix)
+  (let* ((n (char->integer c))
+	 (v (cond ((and (>= n 48) (<= n 57)) (- n 48))	;0-9
+		  ((and (>= n 97) (<= n 122)) (- n 87))	;a-z
+		  ((and (>= n 65) (<= n 90)) (- n 55))	;A-Z
+		  (else #f))))
+    (and v (< v radix) v)))
+
+;;; R3RS wants #f rather than an error for anything that is not a
+;;; number in RADIX.  Accepts the #b #o #d #x radix prefixes and the
+;;; #e #i exactness prefixes -- every number here is exact already, so
+;;; #i is accepted and ignored -- a sign, and an integer or a ratio.
+
+(define (string->number str . rest)
+  (let ((end (length str)))
+    (labels
+	(((digits i j radix)
+	  (and (< i j)
+	       (iterate aux ((i i) (acc 0))
+		 (if (= i j)
+		     acc
+		     (let ((d (char->digit (nth str i) radix)))
+		       (and d (aux (+ i 1) (+ (* acc radix) d))))))))
+
+	 ((unsigned i j radix)
+	  (iterate look ((k i))
+	    (cond ((= k j) (digits i j radix))
+		  ((eq? (nth str k) #\/)
+		   (let ((num (digits i k radix))
+			 (den (digits (+ k 1) j radix)))
+		     (and num den (not (zero? den)) (/ num den))))
+		  (else (look (+ k 1))))))
+
+	 ((signed i j radix)
+	  (cond ((= i j) #f)
+		((eq? (nth str i) #\-)
+		 (let ((v (unsigned (+ i 1) j radix)))
+		   (and v (- v))))
+		((eq? (nth str i) #\+) (unsigned (+ i 1) j radix))
+		(else (unsigned i j radix))))
+
+	 ((prefixed i j radix)
+	  (if (and (< (+ i 1) j) (eq? (nth str i) #\#))
+	      (let ((c (downcase (nth str (+ i 1)))))
+		(cond ((eq? c #\b) (prefixed (+ i 2) j 2))
+		      ((eq? c #\o) (prefixed (+ i 2) j 8))
+		      ((eq? c #\d) (prefixed (+ i 2) j 10))
+		      ((eq? c #\x) (prefixed (+ i 2) j 16))
+		      ((eq? c #\e) (prefixed (+ i 2) j radix))
+		      ((eq? c #\i) (prefixed (+ i 2) j radix))
+		      (else #f)))
+	      (signed i j radix))))
+
+      (prefixed 0 end (if (null? rest) 10 (car rest))))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; More ports.
+
+;;; None of this implementation's input streams can block waiting for a
+;;; character that never arrives, and R3RS only requires CHAR-READY? to
+;;; answer #t when READ-CHAR will not have to wait.
+
+(define (char-ready? . rest) #t)
+
+(define (with-input-from-file string thunk)
+  (let ((s (open-input-file string))
+	(old standard-input))
+    (wind-protect (set! standard-input s)
+		  (thunk)
+		  (block (set! standard-input old) (close s)))))
+
+(define (with-output-to-file string thunk)
+  (let ((s (open-output-file string))
+	(old standard-output))
+    (wind-protect (set! standard-output s)
+		  (thunk)
+		  (block (set! standard-output old) (close s)))))
+
 ;;; eof
