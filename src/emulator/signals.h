@@ -50,9 +50,23 @@ extern volatile sig_atomic_t signal_poll_flag;
 #define oak_longjmp(buf, val) siglongjmp(buf, val)
 #endif
 
-extern oak_jmp_buf crash_jmpbuf;
-extern volatile sig_atomic_t crash_signal;
-extern volatile sig_atomic_t crash_count;
+/* Each thread runs its own copy of loop() and its own recovery point,
+   so the jump buffer and the per-recovery counters have to be
+   thread-local; a shared one would siglongjmp a faulting thread onto
+   another thread's (possibly dead) stack frame. */
+#ifdef THREADS
+#if defined(_MSC_VER) && !defined(__MINGW32__)
+#define OAK_THREAD_LOCAL __declspec(thread)
+#else
+#define OAK_THREAD_LOCAL __thread
+#endif
+#else
+#define OAK_THREAD_LOCAL
+#endif
+
+extern OAK_THREAD_LOCAL oak_jmp_buf crash_jmpbuf;
+extern OAK_THREAD_LOCAL volatile sig_atomic_t crash_signal;
+extern OAK_THREAD_LOCAL volatile sig_atomic_t crash_count;
 extern int crash_recovery_installed;
 void enable_crash_recovery(void);
 void reinstall_crash_handler(void);

@@ -218,7 +218,7 @@ ms_tlab_refill(size_t min_words, ref_t **out_end)
     if (tlab_words < min_words)
 	tlab_words = min_words;
 
-    if (free_point + tlab_words >= new_space.end)
+    if (tlab_words >= (size_t)(new_space.end - free_point))
 	return NULL;
 
     ref_t *start = free_point;
@@ -259,7 +259,7 @@ ms_alloc_slow_locked(size_t n_words,
     }
 
     /* 3. Try global bump pointer (large allocs or TLAB refill failed). */
-    if (free_point + n_words < new_space.end) {
+    if (n_words < (size_t)(new_space.end - free_point)) {
 	p = free_point;
 	free_point += n_words;
 	ms_bump_alloc_notify(p, n_words);
@@ -294,6 +294,8 @@ ms_tlab_retire_all(void)
     int n = next_index;   /* snapshot under alloc_lock */
 
     for (int i = 0; i < n; i++) {
+	/* A dead thread's TLAB is still worth retiring so the sweep can
+	   reclaim it; only its stacks have gone away. */
 	ms_tlab_retire(tlab_cursor_array[i], tlab_end_array[i]);
 	tlab_cursor_array[i] = NULL;
 	tlab_end_array[i] = NULL;
@@ -308,13 +310,49 @@ ms_tlab_retire_all(void)
 
 int gc_satb_active = 0;
 
+/*
+ * The buffers grow on demand.  Dropping an entry would break the
+ * snapshot-at-the-beginning invariant: an object whose last remaining
+ * reference was overwritten during concurrent mark would never be
+ * marked and would then be swept while still live.  A mutator can
+ * easily overwrite more than SATB_BUFFER_SIZE pointer slots in one
+ * mark phase, so the buffer has to be able to hold them all.
+ *
+ * Each buffer is private to one thread: only that thread appends to
+ * it, and it is drained during a stop-the-world pause.
+ */
+
 #ifdef THREADS
-ref_t  satb_buffer_array[MAX_THREAD_COUNT][SATB_BUFFER_SIZE];
+ref_t *satb_buffer_array[MAX_THREAD_COUNT];
 size_t satb_count_array[MAX_THREAD_COUNT];
+size_t satb_size_array[MAX_THREAD_COUNT];
 #else
-ref_t  satb_buffer[SATB_BUFFER_SIZE];
+ref_t *satb_buffer;
 size_t satb_count = 0;
+size_t satb_size = 0;
 #endif
+
+/* Make room for one more entry in a SATB buffer. */
+static void
+satb_room(ref_t **bufp, size_t count, size_t *sizep)
+{
+    size_t new_size;
+    ref_t *bigger;
+
+    if (count < *sizep)
+	return;
+
+    new_size = *sizep ? 2 * *sizep : SATB_BUFFER_SIZE;
+    bigger = (ref_t *)realloc(*bufp, new_size * sizeof(ref_t));
+    if (bigger == NULL) {
+	fprintf(stderr,
+		"\nFatal error: out of memory growing a GC write barrier"
+		" buffer to %zu entries.\n", new_size);
+	exit(EXIT_FAILURE);
+    }
+    *bufp = bigger;
+    *sizep = new_size;
+}
 
 void
 satb_log_old(ref_t *addr)
@@ -326,13 +364,15 @@ satb_log_old(ref_t *addr)
 	return;
 
 #ifdef THREADS
-    int idx = *(int *)oak_tls_get(index_key);
-    if (satb_count_array[idx] < SATB_BUFFER_SIZE)
+    {
+	int idx = *(int *)oak_tls_get(index_key);
+	satb_room(&satb_buffer_array[idx], satb_count_array[idx],
+		  &satb_size_array[idx]);
 	satb_buffer_array[idx][satb_count_array[idx]++] = old_val;
-    /* If full, silently drop.  Phase 4 will add proper flushing. */
+    }
 #else
-    if (satb_count < SATB_BUFFER_SIZE)
-	satb_buffer[satb_count++] = old_val;
+    satb_room(&satb_buffer, satb_count, &satb_size);
+    satb_buffer[satb_count++] = old_val;
 #endif
 }
 
@@ -402,7 +442,7 @@ stw_request_pause(int my_index_val)
 	while (!ready) {
 	    ready = true;
 	    for (int i = 0; i < gc_thread_count; i++) {
-		if (gc_ready[i] == 0) {
+		if (gc_ready[i] == 0 && !gc_thread_dead[i]) {
 		    ready = false;
 		    oak_thread_yield();
 		    break;
@@ -468,37 +508,33 @@ ms_record_transport(ref_t *new_place)
 
 
 /* ------------------------------------------------------------------ */
-/*  Object length (for sweep — no forwarding pointers to follow)       */
+/*  Object extent (from the object-start bitmap)                       */
 /* ------------------------------------------------------------------ */
 
+/* Extent of the object starting at obj, taken from the object-start
+   bitmap.  This is the authoritative record of allocation boundaries:
+   a naked cell (from MAKE-CELL) holds an arbitrary value in word[0],
+   which a type-directed length lookup would happily read as a type
+   pointer and derive a length from the *next* object's memory. */
 static size_t
-ms_get_length(ref_t *obj)
+ms_objstart_extent(ref_t *obj)
 {
-    ref_t typ_ref = obj[0];
-    if (!TAG_IS(typ_ref, PTR_TAG))
-	return 1;   /* bare cell or corrupt — treat as 1 word */
+    ref_t *limit = free_point;
+    size_t heap_words;
+    size_t idx, next;
 
-    ref_t *typ = REF_TO_PTR(typ_ref);
+    if (limit > new_space.end)
+	limit = new_space.end;
+    heap_words = (size_t)(limit - new_space.start);
 
-    /* The type object itself must be in a valid heap region. */
-    if (!SPATIC_PTR(typ) && !NEW_PTR(typ))
-	return 1;   /* type pointer is outside known heaps */
+    idx = BM_IDX(obj);
+    if (idx + 1 >= heap_words)
+	return 1;
 
-    ref_t vlen_p = typ[TYPE_VAR_LEN_P_OFF];
-
-    if (vlen_p == e_nil || vlen_p == 0) {
-	/* Fixed-length type. */
-	size_t len = (size_t)REF_TO_INT(typ[TYPE_LEN_OFF]);
-	if (len == 0 || len > new_space.size)
-	    return 1;
-	return len;
-    } else {
-	/* Variable-length: length is in slot 1. */
-	size_t len = (size_t)REF_TO_INT(obj[1]);
-	if (len == 0 || len > new_space.size)
-	    return 1;
-	return len;
-    }
+    next = idx + 1;
+    while (next < heap_words && !BM_TEST(objstart_bitmap, next))
+	next++;
+    return next - idx;
 }
 
 
@@ -614,7 +650,7 @@ ms_trace(void)
 {
     while (mark_stack_top > 0) {
 	ref_t *obj = mark_stack_pop();
-	size_t len = ms_get_length(obj);
+	size_t len = ms_objstart_extent(obj);
 
 	/* Sanity: clamp length so we don't read past the heap. */
 	if (obj + len > new_space.end)
@@ -672,7 +708,7 @@ ms_trace_concurrent(void)
 {
     while (mark_stack_top > 0) {
 	ref_t *obj = mark_stack_pop();
-	size_t len = ms_get_length(obj);
+	size_t len = ms_objstart_extent(obj);
 
 	if (obj + len > new_space.end)
 	    len = (size_t)(new_space.end - obj);
@@ -721,7 +757,9 @@ ms_mark_roots(void)
 #ifdef THREADS
     int my_index;
     int gc_thread_count = next_index;
-#define FORTHREADS for (my_index=0; my_index<gc_thread_count; my_index++)
+    /* Skip the slots of threads that have exited: their stacks are gone. */
+#define FORTHREADS for (my_index=0; my_index<gc_thread_count; my_index++)	\
+		     if (!gc_thread_dead[my_index])
 #else
 #define FORTHREADS
 #endif
@@ -1007,14 +1045,21 @@ ms_collect(bool pre_dump, char *reason, size_t amount)
        collection), wait for it to complete and return.  The caller's
        ALLOCATE_PROT will retry the allocation after we return. */
     if (gc_concurrent_in_progress) {
+	int parked_index = *(int *)oak_tls_get(index_key);
+
 	oak_mutex_unlock(&alloc_lock);
+	/* Advertise that we are parked for the whole time we are out of
+	   action, including while re-acquiring the allocator lock.  The
+	   coordinator's stop-the-world handshake spins until every
+	   thread's gc_ready flag is set, so a thread that parks here
+	   without setting it deadlocks the collection. */
+	gc_ready[parked_index] = 1;
 	ms_wait_concurrent_gc();
-	oak_mutex_lock(&alloc_lock);
+	while (oak_mutex_trylock(&alloc_lock) != 0)
+	    oak_thread_yield();
+	gc_ready[parked_index] = 0;
 	return;
     }
-
-    /* We are the GC coordinator for this cycle. */
-    gc_concurrent_in_progress = 1;
 #endif
 
     /* Finish any lazy sweep remaining from the previous cycle.
@@ -1022,17 +1067,20 @@ ms_collect(bool pre_dump, char *reason, size_t amount)
     ms_lazy_sweep_finish();
 
     /* For world dumps, use the copying GC which produces a contiguous
-       heap suitable for serialization. */
+       heap suitable for serialization.  Note that we have deliberately
+       not claimed gc_concurrent_in_progress: that flag tells gc() that
+       the mutators are already parked, and here they are not, so it has
+       to run its own stop-the-world handshake. */
     if (pre_dump) {
 	gc(pre_dump, true, reason, amount);
-#ifdef THREADS
-	oak_mutex_lock(&gc_concurrent_lock);
-	gc_concurrent_in_progress = 0;
-	oak_cond_broadcast(&gc_concurrent_done_cv);
-	oak_mutex_unlock(&gc_concurrent_lock);
-#endif
+	ms_reinit();
 	return;
     }
+
+#ifdef THREADS
+    /* We are the GC coordinator for this cycle. */
+    gc_concurrent_in_progress = 1;
+#endif
 
     old_used = (long)(free_point - new_space.start) -
 	(long)free_list_total_words;
@@ -1252,8 +1300,16 @@ ms_collect(bool pre_dump, char *reason, size_t amount)
 		    }
 		}
 
+		/* The mutators were released by stw_release() above, so
+		   the object-relocating copying collector must do its own
+		   stop-the-world handshake.  Drop the coordinator flag
+		   (without broadcasting: threads parked in
+		   ms_wait_concurrent_gc still have their gc_ready flags
+		   set, which is exactly what the handshake needs). */
+		gc_concurrent_in_progress = 0;
 		gc(false, true, "mark-sweep fallback", amount);
 		ms_reinit();
+		gc_concurrent_in_progress = 1;
 	    }
 	}
 
@@ -1358,6 +1414,20 @@ ms_reinit(void)
 {
     ms_destroy();
     ms_init();
+
+#ifdef THREADS
+    /* The heap has been replaced, so every thread-local allocation
+       buffer points into the freed one. */
+    for (int i = 0; i < MAX_THREAD_COUNT; i++) {
+	tlab_cursor_array[i] = NULL;
+	tlab_end_array[i] = NULL;
+    }
+#endif
+
+    /* Likewise any sweep that was still in progress. */
+    lazy_sweep_active = false;
+    lazy_sweep_cursor = 0;
+    sweep_limit = NULL;
 
     /* Apply objstart bits recorded during the copying GC's transport
        phase.  Without this, objects copied by gc() would have no

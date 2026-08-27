@@ -68,11 +68,13 @@ OAKFLAGS =
 	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) -- $(OAKLOCALE) --compile $* --exit \
 	|| cp $(srcdir)/../../prebuilt/src/world/$@ $@
 
-# Cold files are bootstrap-sensitive: freshly compiled versions may use
-# different bytecode patterns (rest-args, format strings) than the
-# installed compiler expects, causing warm-boot hangs.  Always use
-# prebuilt versions.  To update prebuilt .oa files after modifying cold
-# .oak sources, build a working world first, then recompile with it.
+# Cold files come from prebuilt/ rather than being compiled here, so
+# that a tree with no working Oaklisp can still be built.  To update a
+# prebuilt .oa after modifying a cold .oak source, build a working world
+# first and recompile with it.  Recompiling an unmodified cold source
+# reproduces its prebuilt object byte for byte; if it does not, the
+# compiler and the prebuilt objects have drifted apart and the
+# regenerated object should not be shipped without checking why.
 $(COLDFILES): %.oa: %.oak
 	cp $(srcdir)/../../prebuilt/src/world/$@ $@
 

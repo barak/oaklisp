@@ -132,12 +132,17 @@ extern int gc_satb_active;
 
 #define SATB_BUFFER_SIZE 1024
 
+/* SATB_BUFFER_SIZE is the initial capacity; the buffers grow rather
+   than dropping entries (dropping one would let a live object be
+   swept). */
 #ifdef THREADS
-extern ref_t  satb_buffer_array[][SATB_BUFFER_SIZE];
+extern ref_t *satb_buffer_array[];
 extern size_t satb_count_array[];
+extern size_t satb_size_array[];
 #else
-extern ref_t  satb_buffer[];
+extern ref_t *satb_buffer;
 extern size_t satb_count;
+extern size_t satb_size;
 #endif
 
 /* Log the old value at *addr to the per-thread SATB buffer.

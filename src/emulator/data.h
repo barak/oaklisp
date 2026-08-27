@@ -247,10 +247,17 @@ extern bool_int trace_files;
 #define CHAR_TO_REF(c)  (((ref_t)(c)<<8) | IMM_TAG)
 #endif
 
+/* The shift is done in an unsigned type: left-shifting a negative
+   signed value is undefined behavior in C99/C11, and fixnums are
+   routinely negative.  The unsigned result has the two's complement
+   bit pattern we want.  (REF_TO_INT's arithmetic right shift of a
+   negative value is merely implementation-defined, and every compiler
+   we target sign-extends, so it is left alone.) */
+
 #ifndef OR_TAG
-#define INT_TO_REF(i)	((ref_t)(((ssize_t)(i)<<TAGSIZE) + INT_TAG))
+#define INT_TO_REF(i)	((ref_t)((((size_t)(ssize_t)(i))<<TAGSIZE) + INT_TAG))
 #else
-#define INT_TO_REF(i)   ((ref_t)(((ssize_t)(i)<<TAGSIZE) | INT_TAG))
+#define INT_TO_REF(i)   ((ref_t)((((size_t)(ssize_t)(i))<<TAGSIZE) | INT_TAG))
 #endif
 
 #define BOOL_TO_REF(x)   ( (x) ? e_t : e_false )
@@ -437,7 +444,7 @@ if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
     }							\
   }							\
   if (!(p)) {						\
-    if (free_point + (words) < new_space.end) {		\
+    if ((size_t)(words) < (size_t)(new_space.end - free_point)) {	\
       /* Bump pointer has space. */			\
       (p) = free_point;				\
       free_point += (words);				\
@@ -455,7 +462,7 @@ if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 	}						\
       }							\
       if (!(p)) {					\
-	if (free_point + (words) < new_space.end) {	\
+	if ((size_t)(words) < (size_t)(new_space.end - free_point)) { \
 	  (p) = free_point;				\
 	  free_point += (words);			\
 	  ms_bump_alloc_notify((p), (words));		\
@@ -486,7 +493,10 @@ if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 	      }						\
       }							\
   )							\
-  if (free_point + (words) >= new_space.end)            \
+  /* Compare word counts, not pointers: free_point+words can wrap  \
+     around the address space, which is undefined behavior and lets \
+     an absurd length slip through. */			\
+  if ((size_t)(words) >= (size_t)(new_space.end - free_point))	\
     {							\
       before;						\
       gc(false, false, (reason), (words));		\

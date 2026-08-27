@@ -41,7 +41,10 @@
 #endif
 
 
-#define FORTHREADS THREADY( for (my_index=0; my_index<gc_thread_count; my_index++) )
+/* Iterate over the live threads only: an exited thread's slot still
+   sits inside the scan range but its stacks have been released. */
+#define FORTHREADS THREADY( for (my_index=0; my_index<gc_thread_count; my_index++) \
+			      if (!gc_thread_dead[my_index]) )
 
 
 
@@ -480,7 +483,7 @@ gc(bool pre_dump, bool full_gc, char *reason, size_t amount)
     while (ready == false) {
       ready = true;
       for (i = 0; i < gc_thread_count; i++) {
-	if (gc_ready[i] == 0) {
+	if (gc_ready[i] == 0 && !gc_thread_dead[i]) {
 	    ready = false;
 	    break;
 	}
@@ -713,9 +716,11 @@ gc_top:
   }
 #endif /* not defined(FAST) */
 
-  /* Hopefully there are no more references into old space. */
-  if (!pre_dump)
-    free_space(&old_space);
+  /* Hopefully there are no more references into old space.  This holds
+     for a pre-dump collection too: everything reachable from e_nil and
+     e_boot_code has been transported, and the stacks are deliberately
+     discarded, so old space can be released either way. */
+  free_space(&old_space);
 
   if (!pre_dump && full_gc)
     free_space(&spatic);
@@ -746,9 +751,14 @@ gc_top:
     long old_total = old_taken + (full_gc ? old_spatic_taken : 0);
     long reclaimed = old_total - new_taken;
 
+    /* old_total is zero right after a full GC, since new space was
+       freshly allocated and nothing has been consed into it yet.
+       Guard the percentages so we do not divide by zero. */
+    long percent_reclaimed = old_total > 0 ? (100 * reclaimed) / old_total : 0;
+
     if (trace_gc == 1)
       {
-	fprintf(stderr, ":%ld%%", (100 * reclaimed) / old_total);
+	fprintf(stderr, ":%ld%%", percent_reclaimed);
       }
     if (trace_gc > 1)
       {
@@ -756,7 +766,7 @@ gc_top:
 	if (full_gc)
 	  fprintf(stderr, "(%ld+%ld) ", old_spatic_taken, old_taken);
 	fprintf(stderr, "compacted to %ld; %ld (%ld%%) garbage.\n",
-		new_taken, reclaimed, (100 * reclaimed) / old_total);
+		new_taken, reclaimed, percent_reclaimed);
       }
 
     /* Make the next new space bigger if the current was too small. */

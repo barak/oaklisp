@@ -60,7 +60,13 @@
 (set! (nth %argless-tag-trap-table 5) times/2)
 (set! (nth %argless-tag-trap-table 7) quotient)
 (set! (nth %argless-tag-trap-table 8) zero?)
-(set! (nth %argless-tag-trap-table 11) %crunch)
+;;; Slot 11 must not be bound to %CRUNCH itself: the CRUNCH instruction
+;;; traps when its data word is negative or outside the heap, and
+;;; %CRUNCH's own method is that very instruction, so re-issuing it here
+;;; would trap again forever.
+(set! (nth %argless-tag-trap-table 11)
+      (lambda (x y)
+	(error "Illegal args (%CRUNCH ~S ~S).~%" x y)))
 (set! (nth %argless-tag-trap-table 12) %read-char) ;These are for noise at
 (set! (nth %argless-tag-trap-table 13) %write-char); cold boot time.
 (set! (nth %argless-tag-trap-table 14) contents)
@@ -72,7 +78,12 @@
 (set! (nth %argless-tag-trap-table 21) rot-left)
 ;(set! (nth %argless-tag-trap-table 22) (setter %load-bp-i))
 ;(set! (nth %argless-tag-trap-table 23) %load-bp-i)
-;(set! (nth %argless-tag-trap-table 25) %allocate)
+;;; And slot 25, for the same reason as 11 and 53: ALLOCATE traps on a
+;;; bad type or on a length too small to hold the type slot, and
+;;; %ALLOCATE's method is the instruction itself.
+(set! (nth %argless-tag-trap-table 25)
+      (lambda (type size)
+	(error "Illegal args (%ALLOCATE ~S ~S).~%" type size)))
 (set! (nth %argless-tag-trap-table 26) %assq)
 ;(set! (nth %argless-tag-trap-table 28) %peek)
 ;(set! (nth %argless-tag-trap-table 29) (setter %peek))
@@ -92,7 +103,12 @@
 (set! (nth %argless-tag-trap-table 50) object-unhash)
 ;(set! (nth %argless-tag-trap-table 51) %gc)
 ;(set! (nth %argless-tag-trap-table 52) big-endian?)
-(set! (nth %argless-tag-trap-table 53) %varlen-allocate)
+;;; Likewise for slot 53: VLEN-ALLOCATE traps on a bad type or a length
+;;; too small to hold the type and length slots, and %VARLEN-ALLOCATE's
+;;; method is the instruction itself.
+(set! (nth %argless-tag-trap-table 53)
+      (lambda (type size)
+	(error "Illegal args (%VARLEN-ALLOCATE ~S ~S).~%" type size)))
 (set! (nth %argless-tag-trap-table 54) %increment-locative)
 (set! (nth %argless-tag-trap-table 55) %fill-continuation)
 (set! (nth %argless-tag-trap-table 56) %continue)

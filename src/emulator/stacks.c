@@ -31,8 +31,47 @@
 #include "xmalloc.h"
 #include "gc.h"
 #include "stacks.h"
+#include "threads.h"
 
 int max_segment_size = 256;
+
+
+/* Called when a stack has to be unflushed but the flushed segment list
+   is empty, i.e. when more values are needed than the stack ever held.
+   Does not return. */
+
+static void
+stack_underflow(oakstack * stack_p, int n)
+{
+  const char *which;
+
+#ifdef THREADS
+  int *my_index_p = (int *)oak_tls_get(index_key);
+  int my_index = (my_index_p == NULL) ? 0 : *my_index_p;
+
+  /* A spawned thread starts with an empty context stack, so the RETURN
+     that leaves its thunk's outermost frame has no context to pop.
+     That is a thunk running to completion rather than a VM error: leave
+     the interpreter and let the thread exit. */
+  if (stack_p == cntxt_stack_array[my_index] && oak_thread_can_exit())
+    oak_thread_exit_unwind();	/* does not return */
+
+  which = (stack_p == cntxt_stack_array[my_index]) ? "context" : "value";
+  fprintf(stderr,
+	  "Fatal error (vm): %s stack underflow in thread %d: %d value%s "
+	  "wanted, none flushed.\n",
+	  which, my_index, n, (n == 1) ? "" : "s");
+#else
+  which = (stack_p == &context_stack) ? "context" : "value";
+  fprintf(stderr,
+	  "Fatal error (vm): %s stack underflow: %d value%s wanted, "
+	  "none flushed.\n",
+	  which, n, (n == 1) ? "" : "s");
+#endif
+
+  fflush(stderr);
+  exit(EXIT_FAILURE);
+}
 
 
 void
@@ -112,7 +151,8 @@ stack_unflush(oakstack * stack_p, int n)
   long i, number_to_pull = 0;
   long count = stack_p->sp - stack_p->bp + 1;
   long new_count = count;
-  segment_t *s = (segment_t *) REF_TO_PTR(stack_p->segment);
+  ref_t seg = stack_p->segment;
+  segment_t *s;
   ref_t *dest;
 
 #ifndef FAST
@@ -120,9 +160,18 @@ stack_unflush(oakstack * stack_p, int n)
 #endif
 
   /* First, figure out how many segments to pull. */
-  for (; new_count <= n; s = (segment_t *) REF_TO_PTR(s->previous_segment))
+  for (; new_count <= n; seg = s->previous_segment)
     {
-      int this_one = REF_TO_INT(s->length_field) - SEGMENT_HEADER_LENGTH;
+      int this_one;
+
+      /* Nothing left to pull in.  Walking off the end of the list would
+	 read nil's second slot as a segment length and copy a wild
+	 amount of data, so report the underflow instead. */
+      if (seg == e_nil)
+	stack_underflow(stack_p, n);
+
+      s = (segment_t *) REF_TO_PTR(seg);
+      this_one = REF_TO_INT(s->length_field) - SEGMENT_HEADER_LENGTH;
 
 #ifndef FAST
       if (trace_segs) printf("%d-", this_one);

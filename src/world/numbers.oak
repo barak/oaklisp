@@ -228,9 +228,14 @@
 	  ((eq? (get-type y) bignum)
 	   0)
 	  ((eq? (get-type y) fixnum)
-	   ;; Watch it, this can cause an infinite loop.
-	   ;(warning "Call to (QUOTIENT ~D ~D).~%" x y)
-	   (quotient x y))
+	   ;; The DIV instruction traps on exactly one pair of fixnums:
+	   ;; the most negative fixnum divided by -1, whose quotient is
+	   ;; the one quotient of two fixnums that is not itself a
+	   ;; fixnum.  Re-issuing the instruction here would trap again,
+	   ;; forever, so answer that case directly.
+	   (if (and (most-negative-fixnum? x) (= y -1))
+	       (- x)
+	       (quotient x y)))
 	  (else (error "Illegal second arg: (QUOTIENT ~D ~D).~%" x y)))))
 
 (define-old-name div quotient)
@@ -243,9 +248,11 @@
     (cond ((zero? y)
 	   (error "Illegal second arg: (QUOTIENTM ~D ~D).~%" x y))
 	  ((eq? (get-type y) fixnum)
-	   ;; Watch it, this can cause an infinite loop.
-	   ;(warning "Call to (QUOTIENTM ~D ~D).~%" x y)
-	   (quotientm x y))
+	   ;; Same trap as QUOTIENT above: the most negative fixnum over
+	   ;; -1 is the one case the instruction cannot represent.
+	   (if (and (most-negative-fixnum? x) (= y -1))
+	       (- x)
+	       (quotientm x y)))
 	  (else (error "Illegal second arg: (QUOTIENTM ~D ~D).~%" x y)))))
 
 (define-constant zero?
@@ -361,7 +368,16 @@
 		'((ash)) 2 1)
 	       (fixnum) x y)
     (fselect-type y
-      ((fixnum) (ash-left x y))
+      ((fixnum)
+       ;; The ASH instruction traps when a left shift would not fit in
+       ;; a fixnum, just as PLUS and TIMES do, so that the answer can
+       ;; be promoted here instead of being silently truncated.
+       ;; Multiplication does the promotion for us.  Right shifts never
+       ;; trap, so a negative count can only get here via a first class
+       ;; call of this operation.
+       (if (negative? y)
+	   (ash-right x (- y))
+	   (* x (expt 2 y))))
       (otherwise (error "Illegal second arg (ASH-LEFT ~D ~D).~%" x y)))))
 
 (define-constant ash-right

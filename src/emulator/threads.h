@@ -29,6 +29,13 @@ extern oak_mutex_t alloc_lock;
 extern oak_mutex_t test_and_set_locative_lock;
 extern oak_mutex_t wp_lock;
 extern oak_mutex_t dump_lock;
+
+/* A spawned thread runs its thunk with an empty context stack, so when
+   the thunk returns from its outermost frame there is no context to pop.
+   The stack machinery notices the underflow and unwinds back to
+   init_thread through these.  */
+extern int oak_thread_can_exit(void);
+extern void oak_thread_exit_unwind(void);
 #endif
 
 

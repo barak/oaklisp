@@ -34,7 +34,7 @@ print_pc(instr_t *e_progc)
   else
     fprintf(stdout, "%7ld[new   ] ",
 	    (long)((char *)e_progc - (char *)new_space.start
-		   + 4 * spatic.size));
+		   + sizeof(ref_t) * spatic.size));
 }
 
 void
