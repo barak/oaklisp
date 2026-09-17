@@ -15,10 +15,19 @@ doc/lim/            Implementation manual (LaTeX)
 doc/summary/        Concise programmer reference (LaTeX)
 doc/examples/       Example Oaklisp programs
 man/man1/           Man page template (oaklisp.1.in)
-prebuilt/           Prebuilt bootstrap artifacts (worlds, PDFs, instr-data.c)
+prebuilt/           Prebuilt bootstrap artifacts, on the "prebuilt" branch only
 debian/             Debian packaging
-m4/                 Autoconf macros
 ```
+
+### Branches
+
+- `devel` — development; no `prebuilt/` directory
+- `prebuilt` — `devel` plus `prebuilt/` (bytecode, world images, PDFs, instr-data.c)
+- `master` — release branch
+- `pristine-tar` — Debian pristine-tar data
+
+Older `devel-32-el`, `devel-64-el`, `prebuilt-32-el`, `prebuilt-64-el`
+branches predate the multi-architecture layout.
 
 ## Build System
 
@@ -37,14 +46,47 @@ make install
 - `--enable-docs` — Build LaTeX documentation (default: yes)
 - `--enable-ndebug` — High-speed mode, disables debug tracing (default: yes, sets -DFAST)
 - `--enable-threads` — Thread support (default: no, experimental)
-- `--with-world=PATH` — Path to oakworld.bin for recompiling .oa files from source
-- `--with-oaklisp=OAKLISP` — Path to existing oaklisp executable for bootstrapping
+- `--with-world[=PATH]` — World image to bootstrap from (default: search `prebuilt/src/world/<arch>/` and installed locations; `no` forces bootstrapping from bytecode)
+- `--with-oaklisp=OAKLISP` — Existing emulator to run the bootstrap world with (default: the one being built)
+- `--with-bytecode[=DIR]` — Prebuilt `.oa` directory to bootstrap from when no world is available (default: search `prebuilt/src/world/bc2-64`, then `bc2-32`)
+
+### Architectures
+
+An Oaklisp architecture is (instructions per ref, word size, byte order):
+
+| Name | Meaning |
+|------|---------|
+| `bc2-32`, `bc2-64` | bytecode: 2 instructions/ref, 32- or 64-bit refs (byte-order independent) |
+| `bc2-el32`, `bc2-eb32`, `bc2-el64`, `bc2-eb64` | world/emulator: little/big endian, 32/64-bit |
+
+These names are used for `prebuilt/src/world/<arch>/`, for `--target`, and in
+file header lines (see below). `configure` sets `OAK_HOST_ARCH` (e.g. `bc2-el64`)
+and `OAK_BYTECODE_ARCH` (e.g. `bc2-64`). Bytecode compiled for `bc2-32` is
+usable on 64-bit systems too (the fixnum range only affects integer constants).
+
+In Oaklisp, `src/world/architecture.oak` defines `host-architecture` (an alist
+with keys `word-size`, `instructions-per-ref`, `endian`) and the fluid
+`#*target-architecture` which the compiler (assembler) uses; `--target ARCH`
+sets it. The cold linkers store `%%word-size` and `%%instructions-per-ref`
+in the world, which is how the running system knows its own word size
+(`most-negative-fixnum` in bignum.oak is derived from it).
+
+### Bootstrap modes (chosen by configure; `BOOTSTRAP_FROM_WORLD` automake conditional)
+
+- **From a world** (normal dev build): `.oak` → `.oa` with `$(OAK) --world W -- --target ARCH --compile`; cold world linked by `tool.oak` running in that world; new emulator boots it.
+- **From bytecode** (no suitable world): prebuilt `.oa` copied; cold world linked by `oak-cold-linker --target ARCH`; `system-version.oa` is the prebuilt one with its version string replaced by sed.
+
+Either way the compiler reaches a fixpoint: the built system recompiles the sources to identical bytecode.
+
+`make prebuilt` refreshes `prebuilt/` (bytecode as `bc2-32`, this machine's world, instr-data.c, PDFs).
 
 ### Important build notes
 
 - **64-bit by default:** On 64-bit platforms, builds natively with 64-bit pointers and 62-bit fixnums. Use `--disable-64-bit` to force 32-bit mode (adds `-m32`).
-- **Endian- and word-size-sensitive:** Binary world images (`.bin`) are not portable across endianness or word size, but prebuilt `.oa` files are architecture-independent.
-- **Source-only bootstrap:** No prebuilt `oakworld.bin` is needed. The build uses `oak-cold-linker` (built from C alongside the emulator) to link prebuilt `.oa` files from `prebuilt/src/world/` into a cold world. For development, `.oak` files are recompiled from source if a working Oaklisp is available, falling back to prebuilt `.oa` copies otherwise.
+- **Big-endian works** for both word sizes (tested under qemu-user with s390x and powerpc cross compilers, `./configure --host=s390x-linux-gnu CC=... LDFLAGS=-static`). On 64-bit big-endian, instructions live in the *high* 32 bits of each code ref (first in memory order); see `code-vector.oak`, `fasl.oak`, and `read_ref()` in `worldio.c`.
+- **Cold-world files can't contain bignums:** the linkers range-check integer constants against the target fixnum size. Don't write literals ≥ 2^29 in files listed in `COLDFILES`.
+- **Shifts are not constant-folded:** `ash-left`/`ash-right`/`rot-*` wrap modulo the fixnum size, so folding them would make compiled code depend on the compiling host's word size. They deliberately lack `foldable-mixin` (numbers.oak).
+- **Rest args are not lists:** `(define (f a . rest) ...)` follows the documented Oaklisp semantics (rest args live on the stack; use `listify-args`/`rest-length`). A change making `lambda` auto-listify was reverted because it broke `^super`, `exit`, etc. when the world was recompiled.
 
 ## Architecture
 
@@ -122,23 +164,23 @@ The world is built in stages from `.oak` source files:
 
 ## Bootstrap Linker (`oak-cold-linker`)
 
-`src/emulator/oak-cold-linker.c` is a standalone C program (~1200 lines) that links compiled `.oa` bytecode files into a cold world image (`.cold`). It replicates the algorithm of `src/world/tool.oak` entirely in C, breaking the circular dependency that normally requires a running Oaklisp to build the cold world.
+`src/emulator/oak-cold-linker.c` is a standalone C program (~1200 lines) that links compiled `.oa` bytecode files into a cold world image (`.cold`). It replicates the algorithm of `src/world/tool.oak` entirely in C, breaking the circular dependency that normally requires a running Oaklisp to build the cold world. It is used only when bootstrapping from bytecode; when a running Oaklisp is available the build uses `tool.oak` (`(tool-files '(files...) 'new "bc2-64")`). Both linkers produce equivalent (not byte-identical: data is laid out in hash-table order) worlds and must be kept in sync. Header parsing is shared via `src/emulator/oak-header.h` (header-only, so the linker still builds as one translation unit).
 
 ### Building and running
 
 ```sh
-# Build (no dependencies beyond libc)
+# Build (no dependencies beyond libc; oak-header.h must be alongside)
 gcc -O2 -o oak-cold-linker src/emulator/oak-cold-linker.c
 
 # Generate cold world (COLDFILESD list from src/world/Makefile-vars)
 cd src/world
-../../oak-cold-linker --64bit -o new cold-booting kernel0 do kernel0types ...
+../../oak-cold-linker --target bc2-64 -o new cold-booting kernel0 do kernel0types ...
 
 # Then boot as usual
 ../../src/emulator/oaklisp --world new.cold --dump oakworld-1.bin
 ```
 
-The `--64bit` flag (default) produces 64-bit worlds; `--32bit` produces 32-bit worlds. File arguments are basenames; `.oa` is appended automatically.
+`--target ARCH` selects the word size (`--64bit`/`--32bit` are accepted abbreviations; default bc2-64). File arguments are basenames; `.oa` is appended automatically. The linker checks each `.oa` header's `instructions-per-ref`, range-checks integer constants against the target fixnum size, and writes `;oaklisp-world format=cold ...` as the first line of the `.cold` file. Its reader follows the Oaklisp reader: `\` quotes the next character in both tokens and strings (no C-style escapes).
 
 ### Cold world memory layout
 
@@ -153,9 +195,10 @@ The linker arranges memory in four contiguous regions:
 
 ### .oa file format
 
-Compiled `.oa` files use the "old" format:
+Compiled `.oa` files start with an optional header line, then use the "old" format:
 
 ```
+;oaklisp-bytecode word-size=32 instructions-per-ref=2
 (SYMBOL-LIST (BLOCK1 BLOCK2 ...))
 ```
 
@@ -171,6 +214,7 @@ Compiled `.oa` files use the "old" format:
 ### .cold file format
 
 ```
+;oaklisp-world format=cold word-size=64 instructions-per-ref=2
 VSTKSIZE CSTKSIZE BOOTMETHOD WORLDSIZE    (4 hex values, header)
 
  HEX HEX ^HI16LO16 HEX ...               (8 values per line)
@@ -180,7 +224,9 @@ VSTKSIZE CSTKSIZE BOOTMETHOD WORLDSIZE    (4 hex values, header)
 
 - Plain numbers: ` ` prefix + uppercase hex
 - Opcode pairs: `^` prefix + hex(hi16) + zero-padded-4-digit-hex(lo16)
-- The emulator's `read_ref()` in `worldio.c` swaps the two 16-bit halves of `^`-prefixed values on little-endian machines
+- The emulator's `read_ref()` in `worldio.c` swaps the two 16-bit halves of `^`-prefixed values on little-endian machines, and on 64-bit big-endian machines shifts them into the high 32 bits, so the first opcode always comes first in memory
+
+Binary worlds (`.bin`) start with `;oaklisp-world format=binary endian=little word-size=64 instructions-per-ref=2\n` followed by raw refs; the emulator refuses worlds whose header doesn't match it. Legacy binary worlds start with four `\002` (32-bit) or `\004` (64-bit) bytes.
 
 ### Tag encoding in the cold world
 
@@ -212,9 +258,9 @@ Strings are stored as: `[type-ptr, total-word-count, char-count, packed-chars...
 
 - **No floating point** — Rationals are used instead
 - **No FFI** — No foreign function interface for calling C from Oaklisp
-- **2 instructions per ref** — 16-bit bytecodes packed two per ref cell (32- or 64-bit); on 64-bit, upper 32 bits of each cell are unused
-- **`Makefile-vars`** in `src/world/` is auto-generated by `make-makefile.oak`; do not edit by hand. Contains `COLDFILESD` (194 entries with interleaved marker files `st`, `da`, `pl`, `do`, `em`), `MISCFILES`, `COMPFILES`, `RNRSFILES`.
-- **`system-version.oak`** is generated from `system-version.oak.in` by configure
+- **2 instructions per ref** — 16-bit bytecodes packed two per ref cell (32- or 64-bit); on 64-bit, the other 32 bits of each cell are unused (the low half on big-endian). The assembler is parameterized on `instructions-per-ref` of `#*target-architecture`; `fasl.oak`, `code-vector.oak`, `tool.oak`, and the emulator assume 2 and would need work for a 4-instruction packing.
+- **`Makefile-vars`** in `src/world/` is auto-generated by `make-makefile.oak` from `files.oak`; regenerate with `make Makefile-vars` after changing `files.oak`. Contains `COLDFILESD` (with interleaved marker files `st`, `da`, `pl`, `do`, `em`), `MISCFILES`, `COMPFILES`, `RNRSFILES`.
+- **`system-version.oak`** is generated from `system-version.oak.in` by configure (a bytecode bootstrap has no compiler for it and patches the version string into the prebuilt `system-version.oa` instead)
 
 ## Running Oaklisp
 
@@ -232,6 +278,7 @@ oaklisp --world path/to/oakworld.bin -- [oaklisp-options]
 --eval EXPR        Evaluate expression
 --load FILE        Load file
 --compile FILE     Compile file
+--target ARCH      Compile for architecture ARCH (bc2-32, bc2-64)
 --locale LOCALE    Set current locale
 --exit             Exit after processing
 --help             Show help
@@ -267,5 +314,6 @@ Build with: `dpkg-buildpackage` or `debuild` (requires `gcc-multilib` for 32-bit
 ## Git Branches
 
 - `master` — Main release branch
-- `devel` — Development branch (merged into master)
+- `devel` — Development branch (merged into master); has no `prebuilt/`
+- `prebuilt` — `devel` plus the `prebuilt/` bootstrap material
 - `pristine-tar` — Debian pristine-tar data

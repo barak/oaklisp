@@ -1,5 +1,12 @@
 # Oaklisp 64-bit Port: Mode (b) — 2 Instructions per 64-bit Ref
 
+*Historical note (September 2026): this documents the original port.
+Since then the build has been reorganized around named architectures
+(bc2-el64 etc.), architecture header lines in .oa/.cold/.bin files, a
+`#*target-architecture` fluid replacing tool.oak's `target-64bit`, and
+big-endian 64-bit support.  See BUILD.md for the current state; where
+this file and BUILD.md disagree, BUILD.md is right.*
+
 ## Overview
 
 This documents the port of Oaklisp from 32-bit to 64-bit using "mode (b)":
