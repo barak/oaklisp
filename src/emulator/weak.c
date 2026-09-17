@@ -26,11 +26,17 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <limits.h>
 #include "config.h"
 #include "data.h"
 #include "xmalloc.h"
 #include "gc.h"
 #include "weak.h"
+#include "threads.h"
+
+#ifdef THREADS
+oak_mutex_t wp_lock = OAK_MUTEX_INITIALIZER;
+#endif
 
 
 /*
@@ -47,8 +53,11 @@
  */
 
 
-const int wp_table_size = 3000;
-const int wp_hashtable_size = 3017;
+/* These are not constant: both tables grow on demand.  See
+   grow_wp_tables() below. */
+
+int wp_table_size = 3000;
+int wp_hashtable_size = 3017;
 
 
 ref_t *wp_table;		/* wp -> ref */
@@ -78,6 +87,23 @@ wp_hashtable_entry;
 wp_hashtable_entry *wp_hashtable;
 
 
+/* Slots emptied by post_gc_wp(), available for reuse.  Without this the
+   weak pointer table grows with the number of objects ever hashed rather
+   than with the number currently live, and since eq hash tables call
+   OBJECT-HASH on every key they are handed, an ordinary long running
+   program grows it without bound.
+
+   A weak pointer is the slot index itself, so a slot may only be handed
+   out again once nothing can be holding the old index; post_gc_wp()
+   empties a slot exactly when the object it named has been collected,
+   which is the point at which the old index has become permanently
+   dead. */
+
+static int *wp_free_list = NULL;
+static int wp_free_count = 0;
+static int wp_free_size = 0;
+
+
 
 /* Fibonacci hashing: floor( 2^N * (sqrt(5)-1)/2 ) for N-bit words. */
 #if OAK_WORD_SIZE == 64
@@ -96,37 +122,178 @@ init_weakpointer_tables(void)
 }
 
 
-/* Register r as having weak pointer wp. */
+/* Return a prime at least as large as n, for use as a hash table size. */
+static int
+next_hash_prime(int n)
+{
+  int candidate;
+
+  if (n < 17)
+    n = 17;
+  for (candidate = n | 1;; candidate += 2)
+    {
+      int d;
+      bool composite = false;
+
+      for (d = 3; d <= candidate / d; d += 2)
+	if (candidate % d == 0)
+	  {
+	    composite = true;
+	    break;
+	  }
+      if (!composite)
+	return candidate;
+    }
+}
+
+
+/* Register r as having weak pointer wp.  The caller guarantees that
+   the hash table has at least one free slot, so the probe terminates. */
 static void
 enter_wp(ref_t r, ref_t wp)
 {
   long i = wp_key(r) % wp_hashtable_size;
+  long probes;
 
-  while (1)			/* forever */
-    if (wp_hashtable[i].obj == e_false)
-      {
-	wp_hashtable[i].obj = r;
-	wp_hashtable[i].wp = wp;
-	return;
-      }
-    else if (++i == wp_hashtable_size)
-      i = 0;
+  for (probes = 0; probes < wp_hashtable_size; probes++)
+    {
+      if (wp_hashtable[i].obj == e_false)
+	{
+	  wp_hashtable[i].obj = r;
+	  wp_hashtable[i].wp = wp;
+	  return;
+	}
+      if (++i == wp_hashtable_size)
+	i = 0;
+    }
+
+  /* Unreachable unless the table was allowed to fill up completely. */
+  fprintf(stderr,
+	  "\nFatal error: the weak pointer hash table is full"
+	  " (%d entries).\n", wp_hashtable_size);
+  exit(EXIT_FAILURE);
 }
 
 
-/* Rebuild the weak pointer hash table from the information in the table
-   that takes weak pointers to objects. */
-void
-rebuild_wp_hashtable(void)
+/* Record slot I as free.  Running out of memory here is not fatal: the
+   slot simply stays unused, which is the old behaviour. */
+static void
+free_wp_slot(int i)
+{
+  if (wp_free_count >= wp_free_size)
+    {
+      int new_size = wp_free_size < 64 ? 64 : wp_free_size * 2;
+      int *bigger;
+
+      if (wp_free_size > INT_MAX / 2)
+	return;
+      bigger = (int *) realloc(wp_free_list, (size_t)new_size * sizeof(int));
+      if (bigger == NULL)
+	return;
+      wp_free_list = bigger;
+      wp_free_size = new_size;
+    }
+  wp_free_list[wp_free_count++] = i;
+}
+
+
+/* Rebuild the weak pointer hash table, and the list of reusable slots,
+   from the information in the table that takes weak pointers to objects.
+   The caller holds wp_lock. */
+static void
+rebuild_wp_hashtable_locked(void)
 {
   long i;
 
   for (i = 0; i < wp_hashtable_size; i++)
     wp_hashtable[i].obj = e_false;
 
+  wp_free_count = 0;
+
   for (i = 0; i < wp_index; i++)
     if (wp_table[1 + i] != e_false)
       enter_wp(wp_table[1 + i], INT_TO_REF(i));
+    else
+      free_wp_slot((int)i);
+}
+
+
+void
+rebuild_wp_hashtable(void)
+{
+  THREADY(oak_mutex_lock(&wp_lock));
+  rebuild_wp_hashtable_locked();
+  THREADY(oak_mutex_unlock(&wp_lock));
+}
+
+
+/* Grow both tables so that at least new_table_size weak pointers fit,
+   then rehash.  The caller holds wp_lock.  The hash table is kept at
+   roughly twice the capacity of the weak pointer table so that the
+   open-addressing probe sequence stays short and always terminates. */
+static void
+grow_wp_tables(int needed)
+{
+  int new_table_size = wp_table_size;
+  ref_t *new_wp_table;
+  wp_hashtable_entry *new_hashtable;
+  int new_hashtable_size;
+
+  if (new_table_size < 1)
+    new_table_size = 3000;
+  while (new_table_size < needed)
+    {
+      if (new_table_size > INT_MAX / 2)
+	{
+	  fprintf(stderr,
+		  "\nFatal error: too many weak pointers (%d requested).\n",
+		  needed);
+	  exit(EXIT_FAILURE);
+	}
+      new_table_size *= 2;
+    }
+
+  new_hashtable_size = next_hash_prime(2 * new_table_size + 1);
+
+  new_wp_table =
+    (ref_t *) realloc(wp_table, (size_t)(new_table_size + 1) * sizeof(ref_t));
+  if (new_wp_table == NULL)
+    {
+      fprintf(stderr,
+	      "\nERROR: unable to grow the weak pointer table to %d entries.\n",
+	      new_table_size);
+      exit(EXIT_FAILURE);
+    }
+  wp_table = new_wp_table;
+  wp_table_size = new_table_size;
+
+  new_hashtable =
+    (wp_hashtable_entry *) realloc(wp_hashtable,
+				   (size_t)new_hashtable_size
+				   * sizeof(wp_hashtable_entry));
+  if (new_hashtable == NULL)
+    {
+      fprintf(stderr,
+	      "\nERROR: unable to grow the weak pointer hash table to"
+	      " %d entries.\n", new_hashtable_size);
+      exit(EXIT_FAILURE);
+    }
+  wp_hashtable = new_hashtable;
+  wp_hashtable_size = new_hashtable_size;
+
+  rebuild_wp_hashtable_locked();
+}
+
+
+/* Make room for at least n entries in the weak pointer table.  Used by
+   the world loader, which knows up front how many it needs. */
+void
+ensure_wp_capacity(int n)
+{
+  THREADY(oak_mutex_lock(&wp_lock));
+  if (n > wp_table_size)
+    grow_wp_tables(n);
+  THREADY(oak_mutex_unlock(&wp_lock));
 }
 
 
@@ -137,9 +304,12 @@ ref_to_wp(ref_t r)
 {
   long i;
   ref_t temp;
+  ref_t result;
 
   if (r == e_false)
     return INT_TO_REF(-1);
+
+  THREADY(oak_mutex_lock(&wp_lock));
   i = wp_key(r) % wp_hashtable_size;
 
   while (1)			/* forever */
@@ -147,13 +317,39 @@ ref_to_wp(ref_t r)
       temp = wp_hashtable[i].obj;
       if (temp == r)
 	{
-	  return wp_hashtable[i].wp;
+	  result = wp_hashtable[i].wp;
+	  THREADY(oak_mutex_unlock(&wp_lock));
+	  return result;
 	}
       else if (temp == e_false)
 	{
-	  /* Make a new weak pointer, installing it in both tables: */
-	  wp_hashtable[i].obj = wp_table[1 + wp_index] = r;
-	  return wp_hashtable[i].wp = INT_TO_REF(wp_index++);
+	  /* Make a new weak pointer, installing it in both tables.  A
+	     slot freed by a previous collection is reused in preference
+	     to extending the table.  Only when there is none does the
+	     table grow, and then it may need to grow first if it is full
+	     or the hash table is getting crowded; growing rehashes, so
+	     the probe has to be restarted afterwards. */
+	  int slot;
+
+	  if (wp_free_count > 0)
+	    slot = wp_free_list[--wp_free_count];
+	  else
+	    {
+	      if (wp_index >= wp_table_size
+		  || 2 * (wp_index + 1) >= wp_hashtable_size)
+		{
+		  grow_wp_tables(wp_index + 1);
+		  i = wp_key(r) % wp_hashtable_size;
+		  while (wp_hashtable[i].obj != e_false)
+		    if (++i == wp_hashtable_size)
+		      i = 0;
+		}
+	      slot = wp_index++;
+	    }
+	  wp_hashtable[i].obj = wp_table[1 + slot] = r;
+	  result = wp_hashtable[i].wp = INT_TO_REF(slot);
+	  THREADY(oak_mutex_unlock(&wp_lock));
+	  return result;
 	}
       else if (++i == wp_hashtable_size)
 	{
@@ -208,6 +404,8 @@ post_gc_wp(void)
   long i;
   unsigned long discard_count = 0;
 
+  THREADY(oak_mutex_lock(&wp_lock));
+
   for (i = 0; i < wp_index; i++)
     {
       ref_t r = wp_table[1 + i], *p;
@@ -222,13 +420,18 @@ post_gc_wp(void)
 	    }
 	  else
 	    {
+	      /* The object is gone, so nothing can be holding this index
+		 any more; the rebuild below puts the slot back on the
+		 free list to be handed out again. */
 	      wp_table[1 + i] = e_false;
 	      discard_count += 1;
 	    }
 	}
     }
 
-  rebuild_wp_hashtable();
+  rebuild_wp_hashtable_locked();
+
+  THREADY(oak_mutex_unlock(&wp_lock));
 
   return discard_count;
 }

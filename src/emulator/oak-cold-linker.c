@@ -40,6 +40,60 @@
 
 #include "oak-header.h"
 
+/* MSVC names strdup with a leading underscore. */
+#if defined(_MSC_VER) && !defined(strdup)
+#define strdup _strdup
+#endif
+
+/* ================================================================
+ * Checked allocation.  Nothing here can carry on without memory, and
+ * an unchecked malloc turns exhaustion into a null dereference.
+ * ================================================================ */
+
+static void *xmalloc_(size_t n)
+{
+    void *p = malloc(n);
+
+    if (!p) {
+        fprintf(stderr, "oak-cold-linker: out of memory\n");
+        exit(1);
+    }
+    return p;
+}
+
+static void *xcalloc_(size_t n, size_t sz)
+{
+    void *p = calloc(n, sz);
+
+    if (!p) {
+        fprintf(stderr, "oak-cold-linker: out of memory\n");
+        exit(1);
+    }
+    return p;
+}
+
+static void *xrealloc_(void *p, size_t n)
+{
+    void *q = realloc(p, n);
+
+    if (!q) {
+        fprintf(stderr, "oak-cold-linker: out of memory\n");
+        exit(1);
+    }
+    return q;
+}
+
+static char *xstrdup_(const char *str)
+{
+    char *p = strdup(str);
+
+    if (!p) {
+        fprintf(stderr, "oak-cold-linker: out of memory\n");
+        exit(1);
+    }
+    return p;
+}
+
 /* ================================================================
  * Constants (from tool.oak)
  * ================================================================ */
@@ -101,9 +155,9 @@ static int sexp_pool_used = SEXP_POOL_BLOCK; /* force first alloc */
 static sexp_t *sexp_alloc(void)
 {
     if (sexp_pool_used >= SEXP_POOL_BLOCK) {
-        sexp_pools = realloc(sexp_pools,
-                             (sexp_pool_count + 1) * sizeof(sexp_t *));
-        sexp_pools[sexp_pool_count] = malloc(SEXP_POOL_BLOCK * sizeof(sexp_t));
+        sexp_pools = xrealloc_(sexp_pools,
+                               (sexp_pool_count + 1) * sizeof(sexp_t *));
+        sexp_pools[sexp_pool_count] = xmalloc_(SEXP_POOL_BLOCK * sizeof(sexp_t));
         sexp_pool_count++;
         sexp_pool_used = 0;
     }
@@ -125,7 +179,7 @@ static sexp_t *make_sym(const char *name)
 {
     sexp_t *s = sexp_alloc();
     s->type = S_SYM;
-    s->u.sval = strdup(name);
+    s->u.sval = xstrdup_(name);
     return s;
 }
 
@@ -141,7 +195,7 @@ static sexp_t *make_string(const char *str)
 {
     sexp_t *s = sexp_alloc();
     s->type = S_STRING;
-    s->u.sval = strdup(str);
+    s->u.sval = xstrdup_(str);
     return s;
 }
 
@@ -238,48 +292,104 @@ static void upcase_str(char *s)
         *s = toupper((unsigned char)*s);
 }
 
-/* Read a token.  As in the Oaklisp reader, a backslash escapes the
-   following character, which is taken literally (not upcased), and
-   a token containing an escape is always a symbol. */
+/* Read one atom.  The Oaklisp printer writes a symbol that needs
+   slashification either in the "t-compatible" style used for .oa files,
+   a backslash before every character, or between vertical bars, so both
+   escapes are understood here.  An escaped character stands for itself:
+   it is neither upcased nor allowed to end the token, and its presence
+   means the token is a symbol rather than a number.  Without this, the
+   \. and \.\.\. that the compiler writes for the symbols . and ...
+   would intern under those literal two- and six-character names. */
 static sexp_t *parse_atom(parser_t *p, int first_char)
 {
     char buf[4096];
+    char esc[4096];             /* was buf[i] written through an escape? */
     int len = 0;
-    int escaped = 0;
+    int escaped = 0;            /* any escape seen in this token at all */
     int c = first_char;
 
+#define ATOM_PUSH(ch, was_escaped)					\
+    do {								\
+	if (len >= (int)sizeof(buf) - 1) {				\
+	    buf[len] = '\0';						\
+	    fprintf(stderr, "Token too long (over %d characters): %s...\n",	\
+		    (int)sizeof(buf) - 1, buf);				\
+	    exit(1);							\
+	}								\
+	esc[len] = (char)(was_escaped);					\
+	buf[len++] = (char)(ch);					\
+    } while (0)
+
     for (;;) {
-        if (c == '\\') {
-            c = pgetc(p);
-            if (c == EOF) {
-                fprintf(stderr, "EOF after backslash in token\n");
-                exit(1);
-            }
-            escaped = 1;
-        } else {
-            c = toupper(c);
-        }
-        if (len < (int)sizeof(buf) - 1)
-            buf[len++] = c;
-        c = pgetc(p);
-        if (c == EOF || isspace(c) || c == '(' || c == ')' || c == '"'
-            || c == ';') {
-            if (c != EOF) pungetc(p, c);
+        if (c == EOF)
+            break;
+        if (isspace(c) || c == '(' || c == ')') {
+            pungetc(p, c);
             break;
         }
+        if (c == '\\') {
+            /* Single escape: the next character stands for itself. */
+            int q = pgetc(p);
+            if (q == EOF)
+                break;
+            escaped = 1;
+            ATOM_PUSH(q, 1);
+        } else if (c == '|') {
+            /* Multiple escape: everything up to the matching bar. */
+            escaped = 1;
+            for (;;) {
+                int q = pgetc(p);
+                if (q == EOF || q == '|')
+                    break;
+                if (q == '\\') {
+                    q = pgetc(p);
+                    if (q == EOF)
+                        break;
+                }
+                ATOM_PUSH(q, 1);
+            }
+        } else {
+            ATOM_PUSH(c, 0);
+        }
+        c = pgetc(p);
     }
     buf[len] = '\0';
 
-    /* Try to parse as integer */
+#undef ATOM_PUSH
+
+    /* Try to parse as integer.  An escaped token is always a symbol. */
     if (!escaped &&
         ((buf[0] == '-' && len > 1 && isdigit((unsigned char)buf[1])) ||
          isdigit((unsigned char)buf[0]))) {
         char *end;
-        long long val = strtoll(buf, &end, 10);
-        if (*end == '\0')
+        long long val;
+
+        /* A literal too big for long long saturates to LLONG_MAX with
+           *end still at the terminator, so without the errno test the
+           token is accepted as an integer and tagize_int() then turns
+           it into a plausible looking wrong fixnum.  The ordinary
+           loader builds a bignum for such a literal; the cold world has
+           no way to, so say so rather than link something wrong. */
+        errno = 0;
+        val = strtoll(buf, &end, 10);
+        if (*end == '\0') {
+            if (errno == ERANGE) {
+                fprintf(stderr, "oak-cold-linker: integer constant %s is"
+                        " out of range for a cold world fixnum.\n", buf);
+                exit(1);
+            }
             return make_int(val);
+        }
     }
 
+    /* It's a symbol; upcase the characters that were not escaped */
+    {
+        int i;
+
+        for (i = 0; i < len; i++)
+            if (!esc[i])
+                buf[i] = (char)toupper((unsigned char)buf[i]);
+    }
     return make_sym(buf);
 }
 
@@ -296,8 +406,12 @@ static sexp_t *parse_hash(parser_t *p)
         for (;;) {
             c = pgetc(p);
             if (c == EOF || isspace(c)) break;
-            if (tlen < (int)sizeof(type_buf) - 1)
-                type_buf[tlen++] = c;
+            if (tlen >= (int)sizeof(type_buf) - 1) {
+                fprintf(stderr, "Type name in #[...] is too long"
+                        " (over %d characters)\n", (int)sizeof(type_buf) - 1);
+                exit(1);
+            }
+            type_buf[tlen++] = c;
         }
         type_buf[tlen] = '\0';
 
@@ -306,29 +420,38 @@ static sexp_t *parse_hash(parser_t *p)
         c = pgetc(p);
         char name_buf[4096];
         int nlen = 0;
+#define NAME_PUSH(ch)							\
+	do {								\
+	    if (nlen >= (int)sizeof(name_buf) - 1) {			\
+		fprintf(stderr, "Symbol name in #[...] is too long"	\
+			" (over %d characters)\n",			\
+			(int)sizeof(name_buf) - 1);			\
+		exit(1);						\
+	    }								\
+	    name_buf[nlen++] = (char)(ch);				\
+	} while (0)
+
         if (c == '"') {
             for (;;) {
                 c = pgetc(p);
                 if (c == '\\') {
                     c = pgetc(p);
                     if (c == '"') {
-                        if (nlen < (int)sizeof(name_buf) - 1)
-                            name_buf[nlen++] = '"';
+                        NAME_PUSH('"');
                     } else {
-                        if (nlen < (int)sizeof(name_buf) - 1)
-                            name_buf[nlen++] = '\\';
-                        if (c != EOF && nlen < (int)sizeof(name_buf) - 1)
-                            name_buf[nlen++] = c;
+                        NAME_PUSH('\\');
+                        if (c != EOF)
+                            NAME_PUSH(c);
                     }
                 } else if (c == '"' || c == EOF) {
                     break;
                 } else {
-                    if (nlen < (int)sizeof(name_buf) - 1)
-                        name_buf[nlen++] = c;
+                    NAME_PUSH(c);
                 }
             }
         }
         name_buf[nlen] = '\0';
+#undef NAME_PUSH
 
         /* Skip to closing ] */
         while ((c = pgetc(p)) != ']' && c != EOF)
@@ -362,8 +485,12 @@ static sexp_t *parse_hash(parser_t *p)
                     if (c2 != EOF) pungetc(p, c2);
                     break;
                 }
-                if (len < (int)sizeof(buf) - 1)
-                    buf[len++] = c2;
+                if (len >= (int)sizeof(buf) - 1) {
+                    fprintf(stderr, "Character name is too long"
+                            " (over %d characters)\n", (int)sizeof(buf) - 1);
+                    exit(1);
+                }
+                buf[len++] = c2;
             }
         } else {
             if (c2 != EOF) pungetc(p, c2);
@@ -423,8 +550,12 @@ static sexp_t *parse_hash(parser_t *p)
                 if (c2 != EOF) pungetc(p, c2);
                 break;
             }
-            if (len < (int)sizeof(buf) - 1)
-                buf[len++] = c2;
+            if (len >= (int)sizeof(buf) - 1) {
+                fprintf(stderr, "Token too long (over %d characters)\n",
+                        (int)sizeof(buf) - 1);
+                exit(1);
+            }
+            buf[len++] = c2;
         }
         buf[len] = '\0';
         upcase_str(buf);
@@ -438,6 +569,28 @@ static sexp_t *parse_hash(parser_t *p)
             return make_bool(0);
         }
         pungetc(p, c2);
+        /* #f followed by more chars — a symbol starting with #F, the
+           same way #t is handled above. */
+        char buf[4096];
+        buf[0] = '#';
+        buf[1] = c;
+        int len = 2;
+        for (;;) {
+            c2 = pgetc(p);
+            if (c2 == EOF || isspace(c2) || c2 == '(' || c2 == ')') {
+                if (c2 != EOF) pungetc(p, c2);
+                break;
+            }
+            if (len >= (int)sizeof(buf) - 1) {
+                fprintf(stderr, "Token too long (over %d characters)\n",
+                        (int)sizeof(buf) - 1);
+                exit(1);
+            }
+            buf[len++] = c2;
+        }
+        buf[len] = '\0';
+        upcase_str(buf);
+        return make_sym(buf);
     }
 
     fprintf(stderr, "Unknown hash syntax: #%c\n", c);
@@ -458,61 +611,85 @@ static sexp_t *parse_string_lit(parser_t *p)
             break;
         if (c == '\\') {
             /* As in the Oaklisp reader, a backslash simply quotes
-               the next character. */
+               the next character; there are no C-style escapes. */
             c = pgetc(p);
             if (c == EOF) {
                 fprintf(stderr, "EOF after backslash in string\n");
                 exit(1);
             }
         }
-        if (len < (int)sizeof(buf) - 1)
-            buf[len++] = c;
+        if (len >= (int)sizeof(buf) - 1) {
+            fprintf(stderr, "String literal is too long (over %d characters)\n",
+                    (int)sizeof(buf) - 1);
+            exit(1);
+        }
+        buf[len++] = (char)c;
     }
     buf[len] = '\0';
     return make_string(buf);
 }
 
+/* Parse the elements of a list, up to and including the closing paren.
+   The elements are accumulated iteratively rather than by recursing on
+   the tail: a .oa opcode list can hold tens of thousands of elements,
+   which would otherwise exhaust the C stack. */
 static sexp_t *parse_list(parser_t *p)
 {
-    skip_whitespace(p);
-    int c = pgetc(p);
-    if (c == ')') return SEXP_NIL;
-    pungetc(p, c);
+    sexp_t *head = SEXP_NIL;
+    sexp_t *tail = NULL;        /* last pair of head, NULL while empty */
 
-    sexp_t *car = parse_sexp(p);
-    skip_whitespace(p);
+#define LIST_APPEND(x)						\
+    do {							\
+	sexp_t *_cell = make_pair((x), SEXP_NIL);		\
+	if (tail) tail->u.pair.cdr = _cell; else head = _cell;	\
+	tail = _cell;						\
+    } while (0)
 
-    c = pgetc(p);
-    if (c == '.') {
-        int c2 = pgetc(p);
-        if (c2 != EOF && !isspace(c2) && c2 != '(' && c2 != ')') {
-            /* Dot followed by non-delimiter — symbol like "..." or ".FOO" */
-            pungetc(p, c2);
-            sexp_t *sym = parse_atom(p, '.');
-            sexp_t *rest = parse_list(p);
-            return make_pair(car, make_pair(sym, rest));
-        }
-        /* Standalone dot: could be dotted-pair or a symbol named ".".
-           Try dotted-pair: parse one sexp, check for closing ")".
-           If ")" doesn't follow, it was actually the symbol ".". */
-        if (c2 != EOF) pungetc(p, c2);
-        sexp_t *next = parse_sexp(p);
+    for (;;) {
         skip_whitespace(p);
-        c = pgetc(p);
-        if (c == ')') {
-            /* (car . next) — genuine dotted pair */
-            return make_pair(car, next);
-        }
-        /* Not a dotted pair — "." was a symbol.  We already parsed
-           "next" as the element after it; continue with rest of list. */
+        int c = pgetc(p);
+        if (c == ')' || c == EOF) return head;
         pungetc(p, c);
-        sexp_t *rest = parse_list(p);
-        return make_pair(car, make_pair(make_sym("."), make_pair(next, rest)));
-    }
-    pungetc(p, c);
 
-    sexp_t *cdr = parse_list(p);
-    return make_pair(car, cdr);
+        sexp_t *car = parse_sexp(p);
+        skip_whitespace(p);
+
+        c = pgetc(p);
+        if (c == '.') {
+            int c2 = pgetc(p);
+            if (c2 != EOF && !isspace(c2) && c2 != '(' && c2 != ')') {
+                /* Dot followed by non-delimiter — symbol like "..." or ".FOO" */
+                pungetc(p, c2);
+                sexp_t *sym = parse_atom(p, '.');
+                LIST_APPEND(car);
+                LIST_APPEND(sym);
+                continue;
+            }
+            /* Standalone dot: could be dotted-pair or a symbol named ".".
+               Try dotted-pair: parse one sexp, check for closing ")".
+               If ")" doesn't follow, it was actually the symbol ".". */
+            if (c2 != EOF) pungetc(p, c2);
+            sexp_t *next = parse_sexp(p);
+            skip_whitespace(p);
+            c = pgetc(p);
+            if (c == ')') {
+                /* (... car . next) — genuine dotted pair */
+                sexp_t *cell = make_pair(car, next);
+                if (tail) tail->u.pair.cdr = cell; else head = cell;
+                return head;
+            }
+            /* Not a dotted pair — "." was a symbol.  We already parsed
+               "next" as the element after it; continue with rest of list. */
+            pungetc(p, c);
+            LIST_APPEND(car);
+            LIST_APPEND(make_sym("."));
+            LIST_APPEND(next);
+            continue;
+        }
+        pungetc(p, c);
+        LIST_APPEND(car);
+    }
+#undef LIST_APPEND
 }
 
 static sexp_t *parse_sexp(parser_t *p)
@@ -543,19 +720,27 @@ typedef struct ht_entry {
     long val;
     int has_val;          /* 0 = probed but no value set yet */
     struct ht_entry *next;
+    struct ht_entry *order_next;  /* chain in order of first insertion */
 } ht_entry_t;
 
 typedef struct {
     ht_entry_t **buckets;
     int size;
     int count;
+    /* Anything laid out by walking a table has to walk it in the order
+       the keys were first seen, not in bucket order: bucket order
+       depends on the hash function, and tool.oak's hash function is not
+       this one, so the two would assign different addresses to the same
+       symbols and produce different -- though equivalent -- worlds. */
+    ht_entry_t *order_head, *order_tail;
 } hashtable_t;
 
 static void ht_init(hashtable_t *ht)
 {
     ht->size = HT_INIT_SIZE;
     ht->count = 0;
-    ht->buckets = calloc(ht->size, sizeof(ht_entry_t *));
+    ht->buckets = xcalloc_(ht->size, sizeof(ht_entry_t *));
+    ht->order_head = ht->order_tail = NULL;
 }
 
 static unsigned ht_hash(const char *key, int size)
@@ -576,12 +761,18 @@ static int ht_probe(hashtable_t *ht, const char *key, ht_entry_t **out)
             return 1;
         }
     }
-    ht_entry_t *e = malloc(sizeof(ht_entry_t));
-    e->key = strdup(key);
+    ht_entry_t *e = xmalloc_(sizeof(ht_entry_t));
+    e->key = xstrdup_(key);
     e->val = 0;
     e->has_val = 0;
     e->next = ht->buckets[h];
+    e->order_next = NULL;
     ht->buckets[h] = e;
+    if (ht->order_tail)
+        ht->order_tail->order_next = e;
+    else
+        ht->order_head = e;
+    ht->order_tail = e;
     ht->count++;
     *out = e;
     return 0;
@@ -617,7 +808,7 @@ typedef struct {
 static void iht_init(ihashtable_t *ht)
 {
     ht->size = HT_INIT_SIZE;
-    ht->buckets = calloc(ht->size, sizeof(iht_entry_t *));
+    ht->buckets = xcalloc_(ht->size, sizeof(iht_entry_t *));
 }
 
 static iht_entry_t *iht_get(ihashtable_t *ht, long key)
@@ -631,7 +822,7 @@ static iht_entry_t *iht_get(ihashtable_t *ht, long key)
 static iht_entry_t *iht_put(ihashtable_t *ht, long key, long val, int kind)
 {
     unsigned h = (unsigned long)key % ht->size;
-    iht_entry_t *e = malloc(sizeof(iht_entry_t));
+    iht_entry_t *e = xmalloc_(sizeof(iht_entry_t));
     e->key = key;
     e->val = val;
     e->kind = kind;
@@ -655,23 +846,42 @@ static pc_entry_t *pair_cache[PC_SIZE];
 
 static int sexp_equal(sexp_t *a, sexp_t *b);
 
+/* The cdr chain is walked iteratively (recursing once per list element
+   would exhaust the C stack on a long opcode list); only the car is
+   recursed into, and nesting depth is small.  The value is identical to
+   the natural recursive definition. */
 static unsigned sexp_hash(sexp_t *s)
 {
-    if (!s) return 0;
-    switch (s->type) {
-    case S_NIL:    return 1;
-    case S_INT:    return (unsigned)(s->u.ival * 2654435761ULL);
-    case S_SYM:    return ht_hash(s->u.sval, 1000000007);
-    case S_CHAR:   return s->u.cval * 7919;
-    case S_STRING: return ht_hash(s->u.sval, 1000000007) ^ 0xDEAD;
-    case S_BOOL:   return s->u.bval ? 42 : 43;
-    case S_PAIR:   return sexp_hash(s->u.pair.car) * 31 + sexp_hash(s->u.pair.cdr);
+    unsigned acc = 0;
+
+    while (s && s->type == S_PAIR) {
+        acc += sexp_hash(s->u.pair.car) * 31;
+        s = s->u.pair.cdr;
     }
-    return 0;
+
+    if (!s) return acc;
+    switch (s->type) {
+    case S_NIL:    return acc + 1;
+    case S_INT:    return acc + (unsigned)(s->u.ival * 2654435761ULL);
+    case S_SYM:    return acc + ht_hash(s->u.sval, 1000000007);
+    case S_CHAR:   return acc + s->u.cval * 7919;
+    case S_STRING: return acc + (ht_hash(s->u.sval, 1000000007) ^ 0xDEAD);
+    case S_BOOL:   return acc + (s->u.bval ? 42 : 43);
+    case S_PAIR:   break;   /* not reachable: the loop consumed pairs */
+    }
+    return acc;
 }
 
 static int sexp_equal(sexp_t *a, sexp_t *b)
 {
+    /* Walk both cdr chains in step, for the same reason. */
+    while (a != b && a && b && a->type == S_PAIR && b->type == S_PAIR) {
+        if (!sexp_equal(a->u.pair.car, b->u.pair.car))
+            return 0;
+        a = a->u.pair.cdr;
+        b = b->u.pair.cdr;
+    }
+
     if (a == b) return 1;
     if (!a || !b) return 0;
     if (a->type != b->type) return 0;
@@ -682,8 +892,7 @@ static int sexp_equal(sexp_t *a, sexp_t *b)
     case S_CHAR:   return a->u.cval == b->u.cval;
     case S_STRING: return !strcmp(a->u.sval, b->u.sval);
     case S_BOOL:   return a->u.bval == b->u.bval;
-    case S_PAIR:   return sexp_equal(a->u.pair.car, b->u.pair.car) &&
-                          sexp_equal(a->u.pair.cdr, b->u.pair.cdr);
+    case S_PAIR:   break;   /* not reachable: the loop consumed pairs */
     }
     return 0;
 }
@@ -699,7 +908,7 @@ static int pair_cache_lookup(sexp_t *key, uint64_t *val)
 static void pair_cache_insert(sexp_t *key, uint64_t val)
 {
     unsigned h = sexp_hash(key) % PC_SIZE;
-    pc_entry_t *e = malloc(sizeof(pc_entry_t));
+    pc_entry_t *e = xmalloc_(sizeof(pc_entry_t));
     e->key = key;
     e->val = val;
     e->next = pair_cache[h];
@@ -771,11 +980,13 @@ static const char *vars_to_preload[] = {
 static uint64_t tagize_int(long long x)
 {
     uint64_t v;
-    long long lim = (long long)1 << (fixnum_bits - 1);
-    if (x >= lim || x < -lim) {
-        fprintf(stderr,
-                "Integer constant %lld does not fit in a %d-bit fixnum.\n",
-                x, fixnum_bits);
+    /* The shift below drops anything above the target's fixnum width,
+       so an out-of-range constant would be written to the cold world as
+       a different, entirely plausible, number. */
+    long long limit = (long long)1 << (fixnum_bits - 1);
+    if (x < -limit || x > limit - 1) {
+        fprintf(stderr, "oak-cold-linker: integer constant %lld does not"
+                " fit in a %d-bit fixnum.\n", x, fixnum_bits);
         exit(1);
     }
     if (x < 0) {
@@ -946,13 +1157,38 @@ static uint64_t constant_refgen(sexp_t *c);
  * Pair allocation
  * ================================================================ */
 
+/* Lay out a pair, and its cdr chain, in the data space.  The chain is
+   walked iteratively: recursing once per element would exhaust the C
+   stack on a long constant list.  Allocation order, and the sharing
+   provided by the pair cache, are the same as with the natural
+   recursive formulation. */
 static uint64_t pair_alloc(sexp_t *c)
 {
-    long newpair = alloc_dat(PAIR_SIZE);
-    store_world_ptr(where_cons_pair_lives, newpair);
-    store_world_word(constant_refgen(c->u.pair.car), newpair + 1);
-    store_world_word(constant_refgen(c->u.pair.cdr), newpair + 2);
-    return tagize_ptr(newpair);
+    long first = alloc_dat(PAIR_SIZE);
+    long cur = first;
+
+    for (;;) {
+        sexp_t *cdr = c->u.pair.cdr;
+        uint64_t cdr_ref;
+
+        store_world_ptr(where_cons_pair_lives, cur);
+        store_world_word(constant_refgen(c->u.pair.car), cur + 1);
+
+        if (cdr && cdr->type == S_PAIR
+            && !pair_cache_lookup(cdr, &cdr_ref)) {
+            long next = alloc_dat(PAIR_SIZE);
+            cdr_ref = tagize_ptr(next);
+            pair_cache_insert(cdr, cdr_ref);
+            store_world_word(cdr_ref, cur + 2);
+            cur = next;
+            c = cdr;
+            continue;
+        }
+        if (!(cdr && cdr->type == S_PAIR))
+            cdr_ref = constant_refgen(cdr);
+        store_world_word(cdr_ref, cur + 2);
+        return tagize_ptr(first);
+    }
 }
 
 static uint64_t caching_pair_alloc(sexp_t *c)
@@ -1042,7 +1278,9 @@ static sexp_t *read_oa_file(const char *filename)
         exit(1);
     }
 
-    /* An optional header line identifies the bytecode architecture. */
+    /* An optional header line identifies the bytecode architecture.
+       The word size need not match: integer constants are range
+       checked by tagize_int. */
     int c = fgetc(fp);
     if (c == ';') {
         oak_header_t h;
@@ -1058,8 +1296,6 @@ static sexp_t *read_oa_file(const char *filename)
                         filename, h.instrs_per_ref, instrs_per_ref);
                 exit(1);
             }
-            /* The word size need not match: integer constants are
-               range checked by tagize_int. */
         }
         /* A non-header comment line was skipped, which is harmless. */
     } else {
@@ -1102,7 +1338,7 @@ static sexp_t *read_oa_file(const char *filename)
     int nsyms = sexp_list_len(sym_list);
     sexp_t **sym_vec = NULL;
     if (nsyms > 0) {
-        sym_vec = malloc(nsyms * sizeof(sexp_t *));
+        sym_vec = xmalloc_(nsyms * sizeof(sexp_t *));
         sexp_t *sl = sym_list;
         for (int i = 0; i < nsyms; i++) {
             sym_vec[i] = sl->u.pair.car;
@@ -1186,7 +1422,7 @@ static void count_variable(const char *name)
             fprintf(stderr, "Too many variables\n");
             exit(1);
         }
-        var_list[var_list_len++] = strdup(name);
+        var_list[var_list_len++] = xstrdup_(name);
     }
     count_symbol(name);
 }
@@ -1211,9 +1447,15 @@ static void count_data(sexp_t *d)
     case S_BOOL:
         break;
     case S_PAIR:
-        dat_count += PAIR_SIZE;
-        count_data(d->u.pair.car);
-        count_data(d->u.pair.cdr);
+        /* Iterate down the cdr rather than recursing: a long list is
+           ordinary here, and an unoptimized build would otherwise use
+           a C stack frame per element. */
+        while (d && d->type == S_PAIR) {
+            dat_count += PAIR_SIZE;
+            count_data(d->u.pair.car);
+            d = d->u.pair.cdr;
+        }
+        count_data(d);
         break;
     case S_STRING:
         dat_count += string_size(d->u.sval);
@@ -1240,6 +1482,15 @@ static void count_things(void)
     for (int fi = 0; fi < nfiles; fi++) {
         sexp_t *fil = files[fi].data;
         int nblks = sexp_list_len(fil);
+        if (nblks < 1) {
+            /* The layout arithmetic below (and build_blk_table) assumes
+               at least a top level block; without this check an empty
+               object file makes the opcode count go negative and the
+               block table walk backwards. */
+            fprintf(stderr, "%s: object file contains no code blocks\n",
+                    file_names[fi]);
+            exit(1);
+        }
         opc_count += TOP_CODE_DELTA + REG_CODE_DELTA * (nblks - 1);
         if (nblks > max_blks)
             max_blks = nblks;
@@ -1310,7 +1561,7 @@ static void compute_base_addresses(void)
 
 static void init_world(void)
 {
-    world = calloc(world_array_size, sizeof(cell_t));
+    world = xcalloc_(world_array_size, sizeof(cell_t));
     if (!world) {
         fprintf(stderr, "Cannot allocate world of %ld cells\n", world_array_size);
         exit(1);
@@ -1343,14 +1594,13 @@ static void layout_symbols_and_variables(void)
         nextvar += CELL_SIZE;
     }
 
-    /* Pass 2: non-variable symbols */
-    for (int i = 0; i < sym_table.size; i++) {
-        for (ht_entry_t *e = sym_table.buckets[i]; e; e = e->next) {
-            if (!e->has_val) {
-                e->val = nextsym;
-                e->has_val = 1;
-                nextsym += SYMBOL_SIZE;
-            }
+    /* Pass 2: non-variable symbols, in the order they were first seen
+       while reading the .oa files -- the same order tool.oak uses. */
+    for (ht_entry_t *e = sym_table.order_head; e; e = e->order_next) {
+        if (!e->has_val) {
+            e->val = nextsym;
+            e->has_val = 1;
+            nextsym += SYMBOL_SIZE;
         }
     }
 }
@@ -1424,12 +1674,12 @@ static void layout_handbuilt_data(void)
 
 static void patch_symbols(void)
 {
-    for (int i = 0; i < sym_table.size; i++) {
-        for (ht_entry_t *e = sym_table.buckets[i]; e; e = e->next) {
-            long addr = e->val;
-            store_world_ptr(where_nil_lives, addr);
-            store_world_word(string_alloc(e->key), addr + 1);
-        }
+    /* First-seen order again: this is what allocates the name strings,
+       so walking buckets would put them in dat-space in hash order. */
+    for (ht_entry_t *e = sym_table.order_head; e; e = e->order_next) {
+        long addr = e->val;
+        store_world_ptr(where_nil_lives, addr);
+        store_world_word(string_alloc(e->key), addr + 1);
     }
 }
 
@@ -1642,9 +1892,16 @@ static void dump_world(const char *filename)
 
     long actual_size = next_free_dat;
 
-    /* Header */
+    /* Architecture header, matching read_world in worldio.c.  Without
+       it a 32-bit cold world loaded into a 64-bit emulator (or the
+       reverse) has every tagged value shifted by the wrong amount, and
+       the emulator only finds out by crashing somewhere unrelated.  A
+       cold world is byte order neutral, so the header names no
+       endianness.  tool.oak writes the same line. */
     fprintf(fp, ";oaklisp-world format=cold word-size=%d instructions-per-ref=%d\n",
             fixnum_bits + 2, instrs_per_ref);
+
+    /* Header */
     print_hex(fp, VALUE_STACK_SIZE);
     fprintf(fp, " ");
     print_hex(fp, CONTEXT_STACK_SIZE);
@@ -1697,21 +1954,10 @@ static void dump_tables(const char *filename)
     }
     fprintf(fp, ")\n (symbols");
 
-    /* Walk sym-table (reverse order like tool.oak) */
-    /* Build list first, then reverse */
-    typedef struct sym_pair { char *name; long addr; } sym_pair_t;
-    sym_pair_t *spairs = malloc(sym_table.count * sizeof(sym_pair_t));
-    int sp_count = 0;
-    for (int i = 0; i < sym_table.size; i++)
-        for (ht_entry_t *e = sym_table.buckets[i]; e; e = e->next)
-            spairs[sp_count++] = (sym_pair_t){ e->key, e->val };
-
-    /* Reverse them */
-    for (int i = sp_count - 1; i >= 0; i--)
-        fprintf(fp, " (%s . %ld)", spairs[i].name, spairs[i].addr);
+    for (ht_entry_t *e = sym_table.order_head; e; e = e->order_next)
+        fprintf(fp, " (%s . %ld)", e->key, e->val);
 
     fprintf(fp, "))\n");
-    free(spairs);
     fclose(fp);
 }
 
@@ -1730,13 +1976,27 @@ static void usage(const char *prog)
     exit(1);
 }
 
+/* Collect an input file basename, growing the vector as needed. */
+
+static void add_infile(char ***vec, int *n, int *cap, char *name)
+{
+    if (*n == *cap) {
+        *cap = *cap ? 2 * *cap : 64;
+        *vec = xrealloc_(*vec, (size_t)*cap * sizeof **vec);
+    }
+    (*vec)[(*n)++] = name;
+}
+
 int main(int argc, char **argv)
 {
     const char *outbase = NULL;
     char **infiles = NULL;
-    int ninfiles = 0;
+    int ninfiles = 0, infiles_cap = 0;
 
-    /* Parse arguments */
+    /* Parse arguments.  Options and input files may be interleaved:
+       stopping option parsing at the first file would silently take a
+       later "-o out" for two more input basenames.  "--" ends option
+       parsing, for a file whose name begins with a dash. */
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--64bit")) {
             bits64 = 1;
@@ -1758,13 +2018,13 @@ int main(int argc, char **argv)
         } else if (!strcmp(argv[i], "-o")) {
             if (++i >= argc) usage(argv[0]);
             outbase = argv[i];
+        } else if (!strcmp(argv[i], "--")) {
+            while (++i < argc)
+                add_infile(&infiles, &ninfiles, &infiles_cap, argv[i]);
         } else if (argv[i][0] == '-') {
             usage(argv[0]);
         } else {
-            /* Remaining args are input files */
-            infiles = &argv[i];
-            ninfiles = argc - i;
-            break;
+            add_infile(&infiles, &ninfiles, &infiles_cap, argv[i]);
         }
     }
 
@@ -1787,8 +2047,8 @@ int main(int argc, char **argv)
     /* Read input files */
     fprintf(stderr, "reading ...");
     nfiles = ninfiles;
-    files = malloc(nfiles * sizeof(oa_file_t));
-    file_names = malloc(nfiles * sizeof(char *));
+    files = xmalloc_(nfiles * sizeof(oa_file_t));
+    file_names = xmalloc_(nfiles * sizeof(char *));
 
     for (int i = 0; i < nfiles; i++) {
         char fname[4096];

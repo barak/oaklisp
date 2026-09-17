@@ -272,6 +272,16 @@ printed representations, like operations.
 
 \end{itemize}
 
+The numbers before a directive are the Common Lisp \emph{mincol} and
+\emph{padchar} parameters.  With a \emph{mincol} the output of
+\texttt{A}, \texttt{S} and \texttt{C} is padded on the right to that
+width, and the output of \texttt{B}, \texttt{D}, \texttt{O} and
+\texttt{X} is padded on the left.  A second parameter gives the
+character to pad with, so \texttt{\~}\texttt{5,'0D} prints 42 as
+\texttt{00042}.  Since \texttt{\~}\emph{n}\texttt{R} already takes the
+base as its first parameter, its \emph{mincol} and \emph{padchar} are
+its second and third.
+
 A tilde followed by a newline is ignored; this construct is used for
 making \emph{control-string} more readable by breaking it across lines.}
 

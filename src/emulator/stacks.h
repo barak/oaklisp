@@ -64,6 +64,7 @@ extern oakstack context_stack;
 extern void init_stacks(void);
 extern void stack_flush(oakstack * stack_p, int amount_to_leave);
 extern void stack_unflush(oakstack * stack_p, int n);
+extern void stack_pop_n(oakstack * stack_p, long n);
 extern void dump_stack(oakstack * stack_p);
 
 #endif

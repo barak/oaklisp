@@ -143,12 +143,19 @@
 		 (signal eof-after-slash (#^string (reverse r-charlist))))
 	       (simple-symbol (read-char stream) (cons c r-charlist) #t) )
 
+	     ( (no-denominator c r-charlist)
+	       ;; A '/' with no digits after it.  Reading it as a symbol
+	       ;; leaves a token that does not print back as itself, so
+	       ;; signal; proceeding interns it as a symbol as before.
+	       (signal missing-denominator (#^string (reverse r-charlist)))
+	       (intern-it c r-charlist #t) )
+
 	     ( (digits2 c r-charlist n numerator)
 	       ;; We're reading the block of digits following the '/' in
 	       ;; a fraction.
 	       (if (eq? c the-eof-token)
 		   (if (eq? (car r-charlist) #\/)
-		       (intern-it c r-charlist nil)
+		       (no-denominator c r-charlist)
 		       (block (unread-char stream c)
 			      (/ numerator n)))
 		   (let ((c-syntax (%vref/ci standard-read-table c)))
@@ -169,7 +176,7 @@
 			   ((or (eq? c-syntax 'whitespace)
 				(eq? (car c-syntax) 'terminating-macro))
 			    (if (eq? (car r-charlist) #\/)
-				(intern-it c r-charlist nil)
+				(no-denominator c r-charlist)
 				(block (unread-char stream c)
 				       (/ numerator n))))
 			   (else

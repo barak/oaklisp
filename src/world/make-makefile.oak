@@ -76,6 +76,13 @@
       (for-each (lambda (f)
 		  (format outfile "~a.oa " (downcase (#^string f))))
 		compiler-files)
-      (format outfile ": OAKLOCALE=--locale compiler-locale~%")))
+      (format outfile ": OAKLOCALE=--locale compiler-locale~%")
+
+      (format outfile "~%# The Scheme compatibility files are compiled in scheme-locale, whose~%")
+      (format outfile "# macros give dotted argument lists their R3RS meaning.~%~%")
+      (for-each (lambda (f)
+		  (format outfile "~a.oa " (downcase (#^string f))))
+		scheme-files)
+      (format outfile ": OAKLOCALE=--locale scheme-locale~%")))
 
   name)

@@ -20,10 +20,17 @@
 ;;; Define the ^super operation, which is basically written in
 ;;; microcode.  One day ^super should be open coded everywhere.
 
-(define (^super the-type the-op self . args)
-  ;; Hack NARGS and tail off to the ^SUPER opcode.
-  ;; This leaves an unnecessary (RETURN) in the object file.
-  (set! ((%register 'nargs)) (- ((%register 'nargs)) 2))
-  (%^super-tail the-type the-op self))
+;;; Written with ADD-METHOD rather than DEFINE because the rest args
+;;; have to stay on the stack for the ^SUPER opcode to pass along: this
+;;; is the one place in the world where a rest name is never mentioned
+;;; and yet must not be listified, which is what LAMBDA does with a rest
+;;; name its body makes no native use of.
+
+(define ^super
+  (add-method ((make operation) the-type the-op self . args)
+    ;; Hack NARGS and tail off to the ^SUPER opcode.
+    ;; This leaves an unnecessary (RETURN) in the object file.
+    (set! ((%register 'nargs)) (- ((%register 'nargs)) 2))
+    (%^super-tail the-type the-op self)))
 
 ;;; eof

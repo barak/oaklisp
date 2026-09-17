@@ -26,6 +26,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #undef NDEBUG
 #include <assert.h>
 #include "config.h"
@@ -57,8 +58,26 @@ xmalloc(size_t size)
 void
 alloc_space(space_t * pspace, size_t size_requested)
 {
-  /* size_requested measures references */
-  void *ptr = xmalloc(sizeof(ref_t) * size_requested);
+  /* size_requested measures references, and the byte count handed to
+     malloc is sizeof(ref_t) times that.  A request big enough to wrap
+     that multiplication would ask for a small block -- a multiple of
+     2^61 refs asks for exactly zero bytes -- and then hand the VM a
+     space whose recorded size and end pointer describe the block it
+     meant to get, so nothing would ever trigger a GC and every
+     allocation would run off the end of it.  Check here rather than at
+     the call sites: --size-heap is only one of them, and gc() computes
+     the next new space size arithmetically. */
+  void *ptr;
+
+  if (size_requested > SIZE_MAX / sizeof(ref_t))
+    {
+      fprintf(stderr,
+	      "ERROR(alloc_space): %lu references is too large a space.\n",
+	      (unsigned long)size_requested);
+      exit(EXIT_FAILURE);
+    }
+
+  ptr = xmalloc(sizeof(ref_t) * size_requested);
   pspace->start = (ref_t *) ptr;
 
   pspace->size = size_requested;
@@ -82,24 +101,28 @@ free_space(space_t * pspace)
 void
 realloc_space(space_t * pspace, size_t size_requested)
 {
-  void *ptr = (void *)pspace->start;
-  void *newptr = realloc(ptr, sizeof(ref_t) * (size_requested));
+  /* This is called during a full GC to convert the old new space into
+     the new spatic space.  Any unallocated tail is trimmed.
 
-  if (ptr == NULL)
+     The live world holds absolute pointers into this block, so it must
+     not move.  realloc() gives no such guarantee even when shrinking
+     (glibc's mremap path for large mmap'ed chunks is free to relocate,
+     and ASan relocates unconditionally), so we do not call it at all:
+     we simply keep the oversized malloc block and shrink the space's
+     logical extent.  The tail is wasted until the space is freed, which
+     is always safe. */
+
+  if (pspace->start == NULL)
     {
       fprintf(stderr, "error: realloc_space() does not expect a null pointer\n");
       exit(EXIT_FAILURE);
     }
 
-  /* This is called during a full GC to convert the old new space to
-     the new spatic space.  Any unallocated new space is trimmed.  So
-     this should be decreasing the size, or at worst leaving it the
-     same.  For that reason we do not expect the storage to be moved.
-     If it is: uh oh! */
-
-  if (ptr != newptr) 
+  if (size_requested > pspace->size)
     {
-      fprintf(stderr, "error: realloc() with decreased size moved storage in realloc_space()\n");
+      fprintf(stderr, "error: realloc_space() cannot grow a space in place"
+	      " (%lu -> %lu refs)\n",
+	      (unsigned long)pspace->size, (unsigned long)size_requested);
       exit(EXIT_FAILURE);
     }
 
@@ -150,8 +173,17 @@ oak_c_string(ref_t * oakstr, int len)
   /* Converts an Oaklisp string, given by a pointer to its
      start and a length, to an equivalent C-string.
      The storage allocated by this routine must be free()-ed.
+
+     The length comes from a value on the Oaklisp stack, so it is not
+     necessarily sane.  A negative one would ask xmalloc for fewer than
+     the two bytes oak_c_string_fill goes on to touch, so clamp it: an
+     empty C string is the sensible reading of "no characters".
    */
-  char *const cstring = xmalloc(len + 1);
+  char *cstring;
+
+  if (len < 0)
+    len = 0;
+  cstring = xmalloc((size_t)len + 1);
   oak_c_string_fill(oakstr, cstring, len);
   return cstring;
 }

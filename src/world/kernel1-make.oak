@@ -40,10 +40,20 @@
 ;;; This %varlen-allocate instruction exists to close a tiny GC
 ;;; window.
 
+;;; NCELLS has to be checked here rather than in the VLEN-ALLOCATE
+;;; instruction: the instruction sees only the total length, and can
+;;; therefore do no better than insist that there be room for the type
+;;; and length slots.  For a type that adds instance variables -- STRING
+;;; and %CODE-VECTOR both do -- a negative NCELLS can still pass that
+;;; test, and INITIALIZE then writes past the end of the object and
+;;; leaves it with a length field of the caller's choosing.
+
 (add-method (%varlen-make (type instance-length) self ncells . args)
-  (let* ((guylen (+ instance-length ncells))
-	 (new-guy (%varlen-allocate self guylen)))
-    (initialize new-guy ncells . args)))
+  (if (negative? ncells)
+      (error "Negative cell count ~S in (MAKE ~S ...)." ncells self)
+      (let* ((guylen (+ instance-length ncells))
+	     (new-guy (%varlen-allocate self guylen)))
+	(initialize new-guy ncells . args))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

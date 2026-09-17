@@ -183,6 +183,7 @@
     alarm
     multi-em
     multiproc
+    dump-world
     ))
 
 ;;; Loaded into system-locale after the compiler; populates oaklisp-locale.
