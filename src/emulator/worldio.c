@@ -33,6 +33,7 @@
 #include "xmalloc.h"
 #include "worldio.h"
 #include "weak.h"
+#include "oak-header.h"
 
 
 void xfread(void *ptr, size_t size, size_t nmemb, FILE *stream)
@@ -51,6 +52,8 @@ void xfread(void *ptr, size_t size, size_t nmemb, FILE *stream)
 /*
  * Format of Oaklisp world image:
  *
+ * OPTIONAL: ;oaklisp-world format=... word-size=... instructions-per-ref=... [endian=...]
+ *
  * UNUSED: <size of value stack>
  * UNUSED: <size of context stack>
  * <reference to method for booting>
@@ -60,10 +63,63 @@ void xfread(void *ptr, size_t size, size_t nmemb, FILE *stream)
  *
  * <size of weak pointer table>
  * <contents of weak pointer table>
+ *
+ * The header line (see oak-header.h) identifies the architecture the
+ * world is for.  Its format field is "binary" for raw refs in native
+ * byte order, "cold" for the hex text produced by the cold linkers
+ * (in which cells holding a pair of opcodes are marked with a ^ and
+ * are byte-order independent), or "hex"/"decimal" for text dumps of
+ * raw refs.  Worlds without a header are legacy: four bytes of \002
+ * (32-bit) or \004 (64-bit) introduce a binary world, anything else
+ * is a cold world.
  */
 
 
 static bool input_is_binary;
+static bool input_is_decimal;
+
+static const char *
+world_header(const char *format)
+{
+  static char buf[OAK_HEADER_MAX];
+  snprintf(buf, sizeof(buf),
+	   ";oaklisp-world format=%s endian=%s word-size=%d instructions-per-ref=%d\n",
+	   format, OAK_ENDIAN_NAME, OAK_WORD_SIZE, INSTRS_PER_REF);
+  return buf;
+}
+
+/* Check a world header against this emulator, exiting on mismatch. */
+static void
+check_world_header(const char *file, oak_header_t *h)
+{
+  if (strcmp(h->kind, "world") != 0)
+    {
+      fprintf(stderr, "error: \"%s\" is an oaklisp-%s file, not a world.\n",
+	      file, h->kind);
+      exit(EXIT_FAILURE);
+    }
+  if (h->word_size != 0 && h->word_size != OAK_WORD_SIZE)
+    {
+      fprintf(stderr,
+	      "error: world \"%s\" is for %d-bit refs but this emulator uses %d-bit refs.\n",
+	      file, h->word_size, OAK_WORD_SIZE);
+      exit(EXIT_FAILURE);
+    }
+  if (h->instrs_per_ref != 0 && h->instrs_per_ref != INSTRS_PER_REF)
+    {
+      fprintf(stderr,
+	      "error: world \"%s\" has %d instructions per ref but this emulator uses %d.\n",
+	      file, h->instrs_per_ref, INSTRS_PER_REF);
+      exit(EXIT_FAILURE);
+    }
+  if (h->endian[0] != '\0' && strcmp(h->endian, OAK_ENDIAN_NAME) != 0)
+    {
+      fprintf(stderr,
+	      "error: world \"%s\" is %s-endian but this emulator is %s-endian.\n",
+	      file, h->endian, OAK_ENDIAN_NAME);
+      exit(EXIT_FAILURE);
+    }
+}
 
 
 /* These are for making the world zero-based and contiguous in dumps. */
@@ -111,16 +167,24 @@ read_ref(FILE * d)
       fscanf(d, " ");
       bool swapem = (c = getc(d)) == '^';
       if (!swapem) ungetc(c, d);
-      if (fscanf(d, "%llx", &b) != 1)
+      if (fscanf(d, input_is_decimal ? "%llu" : "%llx", &b) != 1)
 	{
 	  printf("Error reading cold load file, might be truncated.\n");
 	  exit(EXIT_FAILURE);
 	}
       a = (ref_t)b;
-#ifndef WORDS_BIGENDIAN
+      /* A ^-marked cell holds two opcodes, written as the first
+	 opcode in the high 16 bits and the second in the low 16 bits
+	 of a 32-bit quantity.  Arrange them so that the first opcode
+	 comes first in memory. */
       if (swapem)
-	a = ((a&0xFFFF) << 16 | (a&0xFFFF0000) >> 16);
+	{
+#ifdef WORDS_BIGENDIAN
+	  a <<= (OAK_WORD_SIZE - 32);
+#else
+	  a = ((a&0xFFFF) << 16 | (a&0xFFFF0000) >> 16);
 #endif
+	}
       return a;
     }				/* input_is_binary */
 }
@@ -155,18 +219,7 @@ dump_binary_world(bool just_new)
   if (!just_new)
     worlsiz += spatic.size;
 
-  /* Magic bytes: \002\002\002\002 for 32-bit, \004\004\004\004 for 64-bit */
-#if __WORDSIZE == 64
-  putc('\004', wfp);
-  putc('\004', wfp);
-  putc('\004', wfp);
-  putc('\004', wfp);
-#else
-  putc('\002', wfp);
-  putc('\002', wfp);
-  putc('\002', wfp);
-  putc('\002', wfp);
-#endif
+  fputs(world_header("binary"), wfp);
 
   /* Header information. */
   fwrite((const void *)&DUMMY, sizeof(ref_t), 1, wfp);
@@ -237,6 +290,8 @@ dump_ascii_world(bool just_new)
       fprintf(stderr, "error: cannot open \"%s\"\n", dump_file_name);
       exit(EXIT_FAILURE);
     }
+
+  fputs(world_header(dump_base == 10 ? "decimal" : "hex"), wfp);
 
   fprintf(wfp, control_string, (size_t)0 /*val_stk_size */ );
   fprintf(wfp, control_string, (size_t)0 /*cxt_stk_size */ );
@@ -326,22 +381,37 @@ read_world(char *str)
       exit(EXIT_FAILURE);
     }
   magichar = getc(d);
-  if (magichar == (int)'\002' || magichar == (int)'\004')
+  input_is_binary = 0;
+  input_is_decimal = 0;
+  if (magichar == (int)';')
     {
-      /* Verify world matches our pointer size */
-#if __WORDSIZE == 64
-      if (magichar != (int)'\004')
+      oak_header_t h;
+      if (!oak_read_header(d, &h))
 	{
-	  printf("Error: 32-bit world loaded into 64-bit emulator.\n");
+	  printf("Error: \"%s\" does not start with an Oaklisp header.\n", str);
 	  exit(EXIT_FAILURE);
 	}
-#else
-      if (magichar != (int)'\002')
+      check_world_header(str, &h);
+      if (!strcmp(h.format, "binary"))
+	input_is_binary = 1;
+      else if (!strcmp(h.format, "decimal"))
+	input_is_decimal = 1;
+      else if (strcmp(h.format, "cold") && strcmp(h.format, "hex"))
 	{
-	  printf("Error: 64-bit world loaded into 32-bit emulator.\n");
+	  printf("Error: world \"%s\" has unknown format \"%s\".\n", str, h.format);
 	  exit(EXIT_FAILURE);
 	}
-#endif
+    }
+  else if (magichar == (int)'\002' || magichar == (int)'\004')
+    {
+      /* Legacy binary world; the magic byte encodes the ref size. */
+      int world_bits = (magichar == (int)'\004') ? 64 : 32;
+      if (world_bits != OAK_WORD_SIZE)
+	{
+	  printf("Error: %d-bit world loaded into %d-bit emulator.\n",
+		 world_bits, OAK_WORD_SIZE);
+	  exit(EXIT_FAILURE);
+	}
       getc(d);
       getc(d);
       getc(d);
@@ -349,13 +419,10 @@ read_world(char *str)
     }
   else
     {
+      /* Legacy cold world, no header. */
       ungetc(magichar, d);
-      input_is_binary = 0;
-#ifdef WORDS_BIGENDIAN
-      printf("Big Endian.\n");
-#else
-      printf("Little Endian.\n");
-#endif
+      printf("%s-endian %d-bit.\n",
+	     OAK_ENDIAN_NAME[0] == 'b' ? "Big" : "Little", OAK_WORD_SIZE);
     }
 
   /* Obsolescent: read val_space_size and cxt_space_size: */

@@ -166,11 +166,39 @@ extern bool_int trace_files;
 
 #define TAGSIZE 2
 
+/* Architecture description, as used in file headers and in the names
+   of prebuilt/ subdirectories.  The bytecode architecture name is
+   "bc<instructions-per-ref>-<word-size>", e.g. "bc2-64", and the world
+   architecture name adds endianness, e.g. "bc2-el64".  Keep these in
+   sync with src/world/architecture.oak and oak-cold-linker.c. */
+
+#if SIZEOF_VOID_P == 8
+#define OAK_WORD_SIZE  64
+#else
+#define OAK_WORD_SIZE  32
+#endif
+
+#ifdef WORDS_BIGENDIAN
+#define OAK_ENDIAN_NAME "big"
+#define OAK_ENDIAN_ABBREV "eb"
+#else
+#define OAK_ENDIAN_NAME "little"
+#define OAK_ENDIAN_ABBREV "el"
+#endif
+
+#define OAK_STRINGIFY_(x) #x
+#define OAK_STRINGIFY(x) OAK_STRINGIFY_(x)
+
+#define OAK_BYTECODE_ARCH_NAME \
+  "bc" OAK_STRINGIFY(INSTRS_PER_REF) "-" OAK_STRINGIFY(OAK_WORD_SIZE)
+#define OAK_WORLD_ARCH_NAME \
+  "bc" OAK_STRINGIFY(INSTRS_PER_REF) "-" OAK_ENDIAN_ABBREV OAK_STRINGIFY(OAK_WORD_SIZE)
+
 /* REF_SHIFT = log2(sizeof(ref_t)).  On 32-bit this equals TAGSIZE (2),
    but on 64-bit it is 3.  Used for converting word indices to byte
    offsets when constructing or deconstructing zero-based tagged refs
    in world image I/O. */
-#if __WORDSIZE == 64
+#if OAK_WORD_SIZE == 64
 #define REF_SHIFT 3
 #else
 #define REF_SHIFT 2
@@ -179,9 +207,11 @@ extern bool_int trace_files;
 /* Number of 16-bit instructions packed per ref (logical), and
    number of instr_t units per ref (physical stride). On 32-bit these
    are equal (2); on 64-bit there is a gap: 2 instructions occupy the
-   low 32 bits of each 64-bit ref, with upper 32 bits empty. */
+   first 32 bits (in memory order) of each 64-bit ref, with the other
+   32 bits empty.  That is the low half of the ref value on little-endian
+   machines and the high half on big-endian ones. */
 #define INSTRS_PER_REF  2
-#if __WORDSIZE == 64
+#if OAK_WORD_SIZE == 64
 #define INSTR_STRIDE    4
 #else
 #define INSTR_STRIDE    2
@@ -252,7 +282,7 @@ extern bool_int trace_files;
    positive fixnum, an asymmetry inherent in a twos complement
    representation. */
 
-#define MIN_REF     ((ref_t)((ref_t)0x1<<(__WORDSIZE-1)))
+#define MIN_REF     ((ref_t)((ref_t)0x1<<(OAK_WORD_SIZE-1)))
 #define MAX_REF     ((ref_t)-((ssize_t)MIN_REF+1))
 
 /* Check if high three bits are equal. */
@@ -260,7 +290,7 @@ extern bool_int trace_files;
 /*
 #define OVERFLOWN_INT(i,code)					\
 { register int highcrap						\
-	= ((u_int32_t)(i)) >> (__WORDSIZE-(TAGSIZE+1));		\
+	= ((u_int32_t)(i)) >> (OAK_WORD_SIZE-(TAGSIZE+1));		\
 if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 */
 
@@ -268,7 +298,7 @@ if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 
 #define OVERFLOWN_INT(i,code)					\
 { unsigned int highcrap						\
-	= ((size_t)(i)) >> (__WORDSIZE-(TAGSIZE+1));		\
+	= ((size_t)(i)) >> (OAK_WORD_SIZE-(TAGSIZE+1));		\
 if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 
 /*
