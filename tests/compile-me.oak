@@ -1,0 +1,12 @@
+;;; A little program to compile and load in the compile test.
+(define-instance counter type '(n) (list object))
+(add-method (initialize (counter n) self) (set! n 0) self)
+(define-instance bump settable-operation)
+(add-method (bump (counter n) self) (set! n (+ n 1)) n)
+(define (count-to k)
+  (let ((c (make counter)))
+    (let loop ((i 0))
+      (if (< i k) (block (bump c) (loop (+ i 1))) (bump c)))))
+(define big-constant 123456789)
+(define (bigger) (* big-constant big-constant))
+(define (rest-test a . rest) (listify-args (lambda (l) (cons a l)) . rest))

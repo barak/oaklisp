@@ -1,0 +1,6 @@
+;;; The compiler and evaluator: compile and run small expressions.
+(define (bench)
+  (let loop ((i 0) (s 0))
+    (if (= i 1500)
+	s
+	(loop (+ i 1) (+ s (eval `(let ((x ,i)) (if (odd? x) (* x 2) (+ x (car (list x))))) system-locale))))))

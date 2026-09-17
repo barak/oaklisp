@@ -1,0 +1,3 @@
+;;; Naive fib: non-tail recursion and fixnum addition.
+(define (fib n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))
+(define (bench) (fib 30))

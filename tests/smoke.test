@@ -1,0 +1,12 @@
+#!/bin/sh
+# The emulator runs, names its architecture, and the world boots.
+. "$(dirname "$0")/testlib.sh"
+set -e
+"$OAKLISP" --version | grep -q 'Oaklisp .* (bc[0-9]*-e[bl][0-9]*)' || fail "--version does not name the architecture"
+head -c 100 "$OAKWORLD" | head -n 1 | grep -q '^;oaklisp-world format=binary' || fail "world lacks a header line"
+out=$(oak -- --eval '(print (+ 1 2) standard-output)' --exit 2>&1)
+echo "$out"
+printf '%s' "$out" | grep -q '3$' || fail "(+ 1 2) did not print 3"
+out=$(oak -- --eval '(print (list (architecture-name host-architecture) system-version) standard-output)' --exit 2>&1)
+echo "$out"
+printf '%s' "$out" | grep -q '"bc[0-9]*-e[bl][0-9]*" "Oaklisp' || fail "architecture or version wrong"

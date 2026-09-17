@@ -1,0 +1,8 @@
+;;; Strings and symbols: building, comparing, interning.
+(define (bench)
+  (let loop ((i 0) (n 0))
+    (if (= i 30000)
+	n
+	(let* ((s (append "sym-" (format #f "~D" (modulo i 300))))
+	       (sym (intern (upcase s))))
+	  (loop (+ i 1) (+ n (length (#^string sym)) (if (equal? s (downcase (#^string sym))) 1 0)))))))

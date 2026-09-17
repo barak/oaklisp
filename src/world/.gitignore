@@ -3,3 +3,6 @@
 *.oa
 *.sym
 prebuilt-tmp/
+guile.stamp
+fixpoint-check/
+guile-check/

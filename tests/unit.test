@@ -1,0 +1,15 @@
+#!/bin/sh
+# The unit testing framework in src/misc and its self-tests, run in
+# system-locale and in user-locale.
+. "$(dirname "$0")/testlib.sh"
+for loc in system-locale user-locale; do
+  out=$(oak -- --locale $loc --load "$top_srcdir/src/misc/unit-testing" \
+	--load "$top_srcdir/src/misc/testing-tests" \
+	--eval "(run-all-tests unit-tests)" --exit 2>&1)
+  status=$?
+  echo "$out"
+  test "$status" = 0 || fail "unit tests in $loc: exit status $status"
+  printf '%s\n' "$out" | grep -q '\*\*\* \|An error occurred' && fail "unit tests in $loc reported failures"
+  test "$(printf '%s\n' "$out" | grep -c 'Completed Tests for')" = 2 || fail "unit tests in $loc did not complete"
+done
+echo "unit tests pass in system-locale and user-locale"

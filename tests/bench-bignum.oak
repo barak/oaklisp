@@ -1,0 +1,8 @@
+;;; Bignums: factorial, multiplication and division of big numbers.
+(define (fact n) (let loop ((n n) (a 1)) (if (= n 0) a (loop (- n 1) (* a n)))))
+(define (bench)
+  (let* ((f (fact 1500))
+	 (g (fact 750)))
+    (+ (length (format #f "~D" f))
+       (length (format #f "~D" (quotient f g)))
+       (length (format #f "~D" (* g g))))))

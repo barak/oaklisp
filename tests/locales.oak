@@ -1,0 +1,42 @@
+;;; Run in user-locale: what user code sees.
+
+(define (check name got expected)
+  (if (equal? got expected)
+      (format #t "PASS ~A~%" name)
+      (format #t "FAIL ~A: got ~S expected ~S~%" name got expected))
+  (flush standard-output))
+
+;;; LOAD binds these to abbreviate its progress reports; not wanted here.
+(set! #*print-length #f)
+(set! #*print-level #f)
+
+(check "in user-locale" (eq? #*current-locale user-locale) #t)
+(check "car visible" (not (not (variable? user-locale 'car))) #t)
+(check "map visible" (not (not (variable? user-locale 'map))) #t)
+(check "format visible" (not (not (variable? user-locale 'format))) #t)
+(check "define-instance macro visible" (not (not (macro? user-locale 'define-instance))) #t)
+(check "internal %tag hidden" (variable? user-locale '%tag) #f)
+(check "internal subeval hidden" (variable? user-locale 'subeval) #f)
+(check "reader internals hidden" (variable? user-locale 'read-token) #f)
+(check "oaklisp-locale has no superiors" (variable? oaklisp-locale 'subeval) #f)
+(check "system-locale reachable by name" (not (not (variable? system-locale '%tag))) #t)
+(check "user definition local" (block (define my-user-var 5) (list (not (not (variable-here? user-locale 'my-user-var))) (variable? system-locale 'my-user-var))) '(#t ()))
+(check "frozen car open-codes" (not (not (frozen? user-locale 'car))) #t)
+(check "catch works here" (catch tag (tag 'ok)) 'ok)
+(check "wind-protect works here" (let ((x #f)) (catch t (wind-protect #f (t 0) (set! x 'unwound))) x) 'unwound)
+(check "errors work here" (catch-errors (general-error (lambda (e) 'caught)) (error "x")) 'caught)
+(check "fluids work here" (bind ((#*print-radix 2)) (format #f "~S" 5)) "101")
+(check "objects work here" (block (define-instance t1 type '(a) (list object)) (add-method (initialize (t1 a) self v) (set! a v) self) (define-instance get-a operation) (add-method (get-a (t1 a) self) a) (get-a (make t1 7))) 7)
+(check "hash tables work here" (let ((h (make-eq-hash-table))) (set! (table-entry h 'k) 'v) (table-entry h 'k)) 'v)
+(check "streams work here" (let ((s (make string-output-stream))) (format s "~A" 12) (#^string s)) "12")
+(check "compile-file visible" (not (not (variable? user-locale 'compile-file))) #t)
+(check "load visible" (not (not (variable? user-locale 'load))) #t)
+(check "eval in user-locale" (eval '(+ 1 2) user-locale) 3)
+
+;;; scheme-locale: R3RS dotted arguments are lists.
+(check "scheme rest args are lists" (eval '(let ((f (lambda (a . rest) (list a rest)))) (f 1 2 3)) scheme-locale) '(1 (2 3)))
+(check "scheme define rest" (block (eval '(define (scheme-test-g . xs) (length xs)) scheme-locale) (eval '(scheme-test-g 1 2 3 4) scheme-locale)) 4)
+(check "scheme inherits system" (eval '(car (list 1)) scheme-locale) 1)
+(check "scheme make-vector" (eval '(vector-length (make-vector 3 'x)) scheme-locale) 3)
+(check "scheme string->number" (eval '(string->number "1234") scheme-locale) 1234)
+(check "scheme n-ary >" (eval '(list (> 3 2 1) (> 3 1 2)) scheme-locale) '(#t ()))
