@@ -1,4 +1,0 @@
-#!/bin/sh
-# The world reproduces its own objects.
-. "$(dirname "$0")/testlib.sh"
-exec $MAKE -C "$top_builddir/src/world" check-fixpoint

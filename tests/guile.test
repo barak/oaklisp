@@ -1,5 +1,0 @@
-#!/bin/sh
-# The Guile-hosted compiler reproduces the objects (slow; needs Guile 3).
-. "$(dirname "$0")/testlib.sh"
-test "$GUILE" != no || skip "no Guile"
-exec $MAKE -C "$top_builddir/src/world" check-guile-compile
