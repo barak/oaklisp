@@ -1,0 +1,3 @@
+#!/bin/sh
+. "$(dirname "$0")/testlib.sh"
+run_oak_test bignum.oak

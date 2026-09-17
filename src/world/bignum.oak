@@ -74,12 +74,25 @@
       (make bignum sign digits)))
 
 
-;;; Base 10,000, little endian, signed magnitude.
+;;; Little endian, signed magnitude, in a power of ten base: 10,000 on
+;;; a 32-bit system and 1,000,000,000 on a 64-bit one.
+;;;
+;;; The base B is the largest power of ten such that the digit
+;;; arithmetic below stays within fixnums: a product of two digits
+;;; plus two carries, (B-1)^2 + 2(B-1), must be a fixnum, so B may be
+;;; at most 23170 with 30-bit fixnums and 1518500249 with 62-bit
+;;; ones.  Powers of ten keep printing and reading simple.
+;;;
+;;; BIGNUM-BASE is deliberately not a constant: a constant would be
+;;; folded into the compiled code by the compiling system, and
+;;; bytecode compiled on a 64-bit system for a 32-bit one (or the
+;;; other way round) would then carry the wrong base.  As a variable
+;;; it is looked up when this file is loaded into the system that
+;;; will run it.
 
-;;; If you change this you have to change PRINT-4-BIGNUM-DECIMAL-DIGITS
-(define decimal-digits-per-bignum-chunk 4)
+(define decimal-digits-per-bignum-chunk (if (= %%word-size 64) 9 4))
 
-(define-constant bignum-base (expt 10 decimal-digits-per-bignum-chunk))
+(define bignum-base (expt 10 decimal-digits-per-bignum-chunk))
 
 (set! #*bignum-debug #f)
 
@@ -95,16 +108,20 @@
 	 (let ((rdigs (reverse digits)))
 	   (print (car rdigs) stream)
 	   (dolist (d (cdr rdigs) self)
-	     (print-4-bignum-decimal-digits d stream))))
+	     (print-bignum-chunk d stream))))
 
 	(else
 	 (^super integer print self stream))))
 
-(define (print-4-bignum-decimal-digits q stream)
-  (let* ((q (print-place q 1000 stream))
-	 (q (print-place q 100 stream))
-	 (q (print-place q 10 stream)))
-    (write-char stream (digit->char q))))
+;;; Print one digit in the bignum base as exactly
+;;; DECIMAL-DIGITS-PER-BIGNUM-CHUNK decimal digits, leading zeros
+;;; included.
+
+(define (print-bignum-chunk q stream)
+  (iterate aux ((q q) (place (quotient bignum-base 10)))
+    (if (= place 1)
+	(write-char stream (digit->char q))
+	(aux (print-place q place stream) (quotient place 10)))))
 
 
 
@@ -695,46 +712,30 @@
 	     (let* ((rev-inlist (reverse inlist))
 		    (inlist-hi  (car rev-inlist))
 		    (divisor-hi (car rev-divisor))
+		    ;; Estimate the digit from the leading digits of
+		    ;; both, scaled up by S so that the estimate has as
+		    ;; much precision as a fixnum allows: the top two
+		    ;; digits of the dividend, and of the divisor when
+		    ;; it is as long, plus the fraction the third digit
+		    ;; contributes.  Everything stays below B^2, which
+		    ;; is a fixnum by the choice of B.
+		    (s (iterate aux ((s 1))
+			 (if (< (fx-times inlist-hi (fx-times s 10)) bignum-base)
+			     (aux (fx-times s 10))
+			     s)))
 		    (guessdig
-		     (cond ((> inlist-hi 999)
-			    (quotient (fx-plus (fx-times 10000 inlist-hi)
-					       (cadr rev-inlist))
-				      (if (= lenin lendiv)
-					  (fx-plus (fx-times 10000 divisor-hi)
-						   (cadr rev-divisor))
-					  divisor-hi)))
-
-			   ((> inlist-hi 99)
-			    (quotient (fx-plus (fx-times 100000 inlist-hi)
-					       (fx-plus (fx-times 10 (cadr rev-inlist))
-							(quotient (caddr rev-inlist) 1000)))
-				      (if (= lenin lendiv)
-					  (fx-plus (fx-times 100000 divisor-hi)
-						   (fx-plus (fx-times 10 (cadr rev-divisor))
-							    (quotient (caddr rev-divisor) 1000)))
-					  (fx-plus (fx-times 10 divisor-hi)
-						   (quotient (cadr rev-divisor) 1000)))))
-
-			   ((> inlist-hi 9)
-			    (quotient (fx-plus (fx-times 1000000 inlist-hi)
-					       (fx-plus (fx-times 100 (cadr rev-inlist))
-							(quotient (caddr rev-inlist) 100)))
-				      (if (= lenin lendiv)
-					  (fx-plus (fx-times 1000000 divisor-hi)
-						   (fx-plus (fx-times 100 (cadr rev-divisor))
-							    (quotient (caddr rev-divisor) 100)))
-					  (fx-plus (fx-times 100 divisor-hi)
-						   (quotient (cadr rev-divisor) 100)))))
-			   (else
-			    (quotient (fx-plus (fx-times 10000000 inlist-hi)
-					       (fx-plus (fx-times 1000 (cadr rev-inlist))
-							(quotient (caddr rev-inlist) 10)))
-				      (if (= lenin lendiv)
-					  (fx-plus (fx-times 10000000 divisor-hi)
-						   (fx-plus (fx-times 1000 (cadr rev-divisor))
-							    (quotient (caddr rev-divisor) 10)))
-					  (fx-plus (fx-times 1000 divisor-hi)
-						   (quotient (cadr rev-divisor) 10)))))))
+		     (quotient (fx-plus (fx-times (fx-times inlist-hi s) bignum-base)
+					(fx-plus (fx-times (cadr rev-inlist) s)
+						 (quotient (fx-times (caddr rev-inlist) s)
+							   bignum-base)))
+			       (if (= lenin lendiv)
+				   (fx-plus (fx-times (fx-times divisor-hi s) bignum-base)
+					    (fx-plus (fx-times (cadr rev-divisor) s)
+						     (quotient (fx-times (caddr rev-divisor) s)
+							       bignum-base)))
+				   (fx-plus (fx-times divisor-hi s)
+					    (quotient (fx-times (cadr rev-divisor) s)
+						      bignum-base)))))
 
 		    (guessdig		; adjust in case rounding threw us out of bounds
 		     (cond ((< guessdig 1)
