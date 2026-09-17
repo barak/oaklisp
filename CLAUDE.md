@@ -46,9 +46,12 @@ make install
 - `--enable-docs` — Build LaTeX documentation (default: yes)
 - `--enable-ndebug` — High-speed mode, disables debug tracing (default: yes, sets -DFAST)
 - `--enable-threads` — Thread support (default: no, experimental)
-- `--with-world[=PATH]` — World image to bootstrap from (default: search `prebuilt/src/world/<arch>/` and installed locations; `no` forces bootstrapping from bytecode)
+- `--with-compile=world|prebuilt|guile|check` — how `.oak` becomes `.oa` (default `check`: first available in that order)
+- `--with-cold-link=world|c|guile|check` — how the cold world is linked: `tool.oak` in the bootstrap world, `oak-cold-linker`, or `tool.oak` in the Guile host (default: `world` when compiling with one, else `c`)
+- `--with-world[=PATH]` — World image to bootstrap from (default: search `prebuilt/src/world/<arch>/` and installed locations; `no`: none)
 - `--with-oaklisp=OAKLISP` — Existing emulator to run the bootstrap world with (default: the one being built)
-- `--with-bytecode[=DIR]` — Prebuilt `.oa` directory to bootstrap from when no world is available (default: search `prebuilt/src/world/bc2-64`, then `bc2-32`)
+- `--with-bytecode[=DIR]` — Prebuilt `.oa` directory (default: search `prebuilt/src/world/bc2-64`, then `bc2-32`)
+- `--with-guile[=GUILE]` — Guile 3 for the Guile-hosted Oaklisp in `src/cold-compiler/` (default: search)
 
 ### Architectures
 
@@ -71,12 +74,18 @@ sets it. The cold linkers store `%%word-size` and `%%instructions-per-ref`
 in the world, which is how the running system knows its own word size
 (`most-negative-fixnum` in bignum.oak is derived from it).
 
-### Bootstrap modes (chosen by configure; `BOOTSTRAP_FROM_WORLD` automake conditional)
+### Bootstrap methods (chosen by configure; automake conditionals `COMPILE_WORLD/PREBUILT/GUILE`, `COLD_LINK_WORLD/C/GUILE`)
 
-- **From a world** (normal dev build): `.oak` → `.oa` with `$(OAK) --world W -- --target ARCH --compile`; cold world linked by `tool.oak` running in that world; new emulator boots it.
-- **From bytecode** (no suitable world): prebuilt `.oa` copied; cold world linked by `oak-cold-linker --target ARCH`; `system-version.oa` is the prebuilt one with its version string replaced by sed.
+- **Compile with a world** (normal dev build): `.oak` → `.oa` with `$(OAK) --world W -- --locale compiler-locale --load assembler --locale system-locale --target ARCH --compile`. The freshly compiled assembler is preloaded so an older bootstrap world can compile sources using new instructions; `multiproc.oa` also preloads `multi-em`, `file-io.oa` preloads `streams` (for `(%stream-primitive 14)`). A new open-coded primitive used from another file needs the same treatment, otherwise the first-pass world calls it generically and fails.
+- **Prebuilt bytecode**: `.oa` copied from `prebuilt/`; `system-version.oa` is the prebuilt one with its version string replaced by sed.
+- **Guile**: `src/cold-compiler/oak-bootstrap.scm` compiles everything in one run (`guile.stamp`); it hosts the world's own compiler, so output is byte-identical. It has `--target`, `--load`, `--eval`, and a `scheme-locale` with scheme-macros and scheme loaded (scheme.oak is compiled in scheme-locale, against its own definitions).
+- **Cold link**: `tool.oak` (in the world or under Guile) or `oak-cold-linker`; all three produce byte-identical `.cold` files (symbols laid out in first-seen order).
 
-Either way the compiler reaches a fixpoint: the built system recompiles the sources to identical bytecode.
+The compiler reaches a fixpoint: `make check` runs `check-fixpoint`, `check-cold-linkers`, `check-guile-compile` in `src/world`.
+
+### Tests and benchmarks
+
+`make check` runs `tests/*.test` (automake test driver; logs in `tests/*.log`). Test programs `tests/*.oak` print `PASS`/`FAIL` lines; `tests/testlib.sh` has the helpers. `make bench` runs `tests/bench.sh` (`-r N`, `-o file`, `-c old new`). Note that `--load` binds `#*print-length`/`#*print-level`; the test programs reset them.
 
 `make prebuilt` refreshes `prebuilt/` (bytecode as `bc2-32`, this machine's world, instr-data.c, PDFs).
 
@@ -86,7 +95,8 @@ Either way the compiler reaches a fixpoint: the built system recompiles the sour
 - **Big-endian works** for both word sizes (tested under qemu-user with s390x and powerpc cross compilers, `./configure --host=s390x-linux-gnu CC=... LDFLAGS=-static`). On 64-bit big-endian, instructions live in the *high* 32 bits of each code ref (first in memory order); see `code-vector.oak`, `fasl.oak`, and `read_ref()` in `worldio.c`.
 - **Cold-world files can't contain bignums:** the linkers range-check integer constants against the target fixnum size. Don't write literals ≥ 2^29 in files listed in `COLDFILES`.
 - **Shifts are not constant-folded:** `ash-left`/`ash-right`/`rot-*` wrap modulo the fixnum size, so folding them would make compiled code depend on the compiling host's word size. They deliberately lack `foldable-mixin` (numbers.oak).
-- **Rest args are not lists:** `(define (f a . rest) ...)` follows the documented Oaklisp semantics (rest args live on the stack; use `listify-args`/`rest-length`). A change making `lambda` auto-listify was reverted because it broke `^super`, `exit`, etc. when the world was recompiled.
+- **Rest args are not lists:** `(define (f a . rest) ...)` follows the documented Oaklisp semantics (rest args live on the stack; use `listify-args`/`consume-args`; a bare `(rest-length rest)` leaves them on the stack and the compiler warns). A change making `lambda` auto-listify was dropped (twice) because it broke `^super`, `exit`, etc. when the world was recompiled. Exception: `scheme.oak`/`scheme-macros.oak` are compiled in `scheme-locale`, whose `add-method` gives dotted lists their R3RS meaning, so code there must be written R3RS-style.
+- **Threads:** `--enable-threads` = `-DTHREADS -DUSE_MARK_SWEEP` (they can't be separated: THREADS without mark-sweep hangs). Experimental: with `--pthreads N` the compiler deadlocks. Costs up to 5× on allocation-heavy code (`format`) even unused; numbers in BUILD.md.
 
 ## Architecture
 
@@ -165,7 +175,7 @@ The world is built in stages from `.oak` source files:
 
 ## Bootstrap Linker (`oak-cold-linker`)
 
-`src/emulator/oak-cold-linker.c` is a standalone C program (~1200 lines) that links compiled `.oa` bytecode files into a cold world image (`.cold`). It replicates the algorithm of `src/world/tool.oak` entirely in C, breaking the circular dependency that normally requires a running Oaklisp to build the cold world. It is used only when bootstrapping from bytecode; when a running Oaklisp is available the build uses `tool.oak` (`(tool-files '(files...) 'new "bc2-64")`). Both linkers produce equivalent (not byte-identical: data is laid out in hash-table order) worlds and must be kept in sync. Header parsing is shared via `src/emulator/oak-header.h` (header-only, so the linker still builds as one translation unit).
+`src/emulator/oak-cold-linker.c` is a standalone C program (~2000 lines) that links compiled `.oa` bytecode files into a cold world image (`.cold`). It replicates the algorithm of `src/world/tool.oak` entirely in C, breaking the circular dependency that normally requires a running Oaklisp to build the cold world. It is used only when bootstrapping from bytecode; when a running Oaklisp is available the build uses `tool.oak` (`(tool-files '(files...) 'new "bc2-64")`). Both linkers produce equivalent (not byte-identical: data is laid out in hash-table order) worlds and must be kept in sync. Header parsing is shared via `src/emulator/oak-header.h` (header-only, so the linker still builds as one translation unit).
 
 ### Building and running
 
