@@ -9,12 +9,12 @@
 \renewcommand{\headrulewidth}{0in}
 \rfoot{\small Page \thepage\ of \pageref{lastpage}}
 \cfoot{}
-\lfoot{\small rev. 12/26/14}
+\lfoot{\small rev. 09/17/26}
 
 \begin{document}
 
 \centerline{\Huge Oaklisp Summary}
-\centerline{Blake McBride (blake@mcbride.name)}
+\centerline{Blake McBride (blake@mcbridemail.com)}
 
 \medskip
 
@@ -111,6 +111,17 @@ type & root of all types & type \\
      & root of all objects & object \\
 \hline
 \end{tabular}}
+
+{\large \bfseries Saving and loading worlds at runtime:}
+\smallskip
+\begin{verbatim}
+    (dump-world "snapshot.bin")  ; save current world, keep running
+    (load-world "snapshot.bin")  ; replace running world (never returns)
+\end{verbatim}
+
+The running system can save its entire state with \emph{dump-world} and
+replace itself with a saved world using \emph{load-world}, which never
+returns.  The files are ordinary world images usable with \emph{--world}.
 
 \newpage
 
