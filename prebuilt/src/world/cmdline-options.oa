@@ -1,0 +1,23 @@
+((%EMPTY-ENVIRONMENT COMMANDLINE-OPTIONS CMDLINE-EAT ADD-WARM-BOOT-ACTION FORMAT EXIT CURRENT-LOCALE %FLUID STRING-INPUT-STREAM MAKE READ EVAL LOAD STANDARD-OUTPUT FLUSH GET-CURRENT-FLUID-BINDINGS COMPILER-NOISINESS SET-CURRENT-FLUID-BINDINGS COMPILE-FILE SETTER HEAVYWEIGHT-THREAD-COUNT INTEGER? UNLESS-UNDEFINED-VALUE ARGLINE GETOPT) (((5 148 3 5 144 2 5 138 2 1 134 8 5 130 0 5 124 1 1 108 7 5 104 0 2 100 "exit" 1 92 6 5 88 0 2 84 "pthreads" 1 76 5 5 72 0 2 68 "locale" 1 60 4 5 56 0 2 52 "compile" 1 44 3 5 40 0 2 36 "load" 1 28 2 5 24 0 2 20 "eval" 1 12 1 5 8 0 2 4 "help" 2 0 ()) (0 0 1536 0 0 0 40 9984 0 0 1536 0 0 0 16640 336 14592 14592 14592 1536 0 0 296 9984 0 0 1536 0 0 0 16640 336 14592 14592 14592 1536 0 0 296 9984 0 0 1536 0 0 0 16640 336 14592 14592 14592 1536 0 0 296 9984 0 0 1536 0 0 0 16640 336 14592 14592 14592 1536 0 0 296 9984 0 0 1536 0 0 0 16640 336 14592 14592 14592 1536 0 0 296 9984 0 0 1536 0 0 0 16640 336 14592 14592 14592 1536 0 0 40 9984 0 0 1536 0 0 0 16640 336 14592 14592 14592 336 14592 14592 14592 14592 14592 14592 14592 1536 0 0 3840 284 9984 0 0 0 1536 0 0 0 16640 1536 0 0 3840 284 9984 0 0 0 9984 0 0 0 348 84 284 6144)) ((5 16 5 5 8 4 2 4 "
+Oaklisp level options.
+
+        --help             Print this message & exit.
+
+        --eval expr        Evaluate Oaklisp expression, which is one arg so
+                           be sure to quote for shell.
+
+        --load file        Load a file.
+
+        --compile file     Compile file.oak yielding file.oa
+
+        --locale x         Switch to locale x, eg system-locale (default),
+                           compiler-locale, scheme-locale (for RnRS
+                           compatibility).
+
+        --pthreads         Number of pthreads to allocate.
+
+        --exit             Exit upon processing this option.
+
+Example:
+    oaklisp --trace-gc 2 -- --locale scheme-locale --compile myfile --exit
+" 2 0 ()) (0 0 96 1536 0 0 80 9984 0 0 604 84 284 40 9984 0 0 0 348 88)) ((5 30 11 5 24 10 5 18 9 5 14 8 5 8 7 7 4 6 2 0 ()) (0 0 352 1536 0 0 9984 0 0 0 348 84 320 9984 0 0 9984 0 0 0 604 84 9984 0 0 0 348 84 524 9984 0 0 604 88)) ((5 14 12 5 8 7 7 4 6 2 0 ()) (0 0 352 1536 0 0 9984 0 0 0 348 84 288 9984 0 0 604 88)) ((5 72 4 2 68 "...done.~%" 5 62 17 5 56 18 5 50 7 7 46 6 5 38 17 7 32 16 5 26 15 5 20 14 5 16 13 5 10 4 2 6 "~&Compiling ~S..." 2 0 ()) (0 0 352 64 1536 0 0 0 80 9984 0 0 860 84 284 9984 0 0 9984 0 0 0 348 84 284 9984 0 0 92 84 40 1536 0 0 4352 320 14592 9984 0 0 348 84 284 320 1536 0 0 0 9984 0 0 0 348 84 9984 0 0 0 604 84 320 9984 0 0 348 84 1052 1536 0 0 80 9984 0 0 604 88)) ((5 44 19 5 40 7 7 36 6 5 30 11 5 24 10 5 18 9 5 14 8 5 8 7 7 4 6 2 0 ()) (0 0 352 1536 0 0 9984 0 0 0 348 84 320 9984 0 0 9984 0 0 0 604 84 9984 0 0 0 348 84 9984 0 0 0 604 84 1536 0 0 0 9984 0 0 0 9984 0 0 0 348 84 780 604 88 0)) ((5 50 22 5 44 5 2 40 "-pthread option takes integer argument.~%" 5 32 21 5 28 20 5 22 20 5 16 10 5 10 9 5 6 8 2 0 ()) (0 0 352 64 9984 0 0 0 9984 0 0 0 604 84 9984 0 0 0 348 84 1536 0 0 0 3840 284 9984 0 0 0 9984 0 0 0 348 84 2836 284 1536 0 0 0 296 9984 0 0 604 88 284 9984 0 0 6144 0)) ((5 8 5 2 4 "" 2 0 ()) (0 0 96 1536 0 0 40 9984 0 0 604 88)) ((5 18 23 5 12 24 5 8 1 5 4 23 2 0 ()) (0 0 96 9984 0 0 9984 0 0 0 9984 0 0 0 604 84 1536 0 0 0 3840 6144))))
