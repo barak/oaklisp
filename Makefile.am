@@ -22,6 +22,26 @@ endif
 
 doc_DATA = README.md AUTHORS COPYING BUILD.md ChangeLog NEWS
 
+EXTRA_DIST = $(doc_DATA)
+
+# Refresh the prebuilt bootstrap material in prebuilt/ from what was
+# just built: bytecode, a world image for this architecture, the
+# emulator's instruction table, and the documentation.
+prebuilt:
+	$(MAKE) -C src/world prebuilt
+	$(MAKE) -C src/emulator prebuilt
+if DOCS
+	$(MAKE) -C doc prebuilt
+endif
+
+.PHONY: prebuilt
+
+# Ship whatever prebuilt material is present in the distribution.
+dist-hook:
+	if test -d $(srcdir)/prebuilt; then \
+	  cp -pR $(srcdir)/prebuilt $(distdir)/prebuilt; \
+	fi
+
 # Remove all generated files, restoring the tree to pre-autoreconf state.
 # (Run "autoreconf --install && ./configure" to rebuild.)
 realclean: maintainer-clean

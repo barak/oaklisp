@@ -58,7 +58,7 @@
 
       (format outfile "TOOLFILES  = tool.oa~%")
       (format outfile "FILESFILES = files.oa~%")
-      (format outfile "MAKEFILES  = make-makefile.oa~%")
+      (format outfile "MAKEMAKEFILES = make-makefile.oa~%")
       (format outfile "~%")
       (format outfile "# These are gravy.  The first two are our standard~%")
       (format outfile "# benchmarks.  The others are neat.~%")

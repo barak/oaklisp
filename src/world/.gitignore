@@ -2,3 +2,4 @@
 *.cold
 *.oa
 *.sym
+prebuilt-tmp/

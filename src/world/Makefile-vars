@@ -11,7 +11,7 @@ COMPFILES = crunch.oa mac-comp-stuff.oa mac-compiler-nodes.oa mac-compiler1.oa m
 RNRSFILES = scheme.oa scheme-macros.oa
 TOOLFILES  = tool.oa
 FILESFILES = files.oa
-MAKEFILES  = make-makefile.oa
+MAKEMAKEFILES = make-makefile.oa
 
 # These are gravy.  The first two are our standard
 # benchmarks.  The others are neat.

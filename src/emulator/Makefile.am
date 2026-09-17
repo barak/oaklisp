@@ -20,8 +20,8 @@ oak_cold_linker_SOURCES = oak-cold-linker.c
 
 oaklisp_SOURCES = cmdline.c data.c gc.c instr.c loop.c oaklisp.c	\
  signals.c stacks.c threads.c timers.c weak.c worldio.c xmalloc.c	\
- cmdline.h config.h data.h gc.h instr.h loop.h signals.h stacks.h	\
- stacks-loop.h threads.h timers.h weak.h worldio.h xmalloc.h
+ cmdline.h config.h data.h gc.h instr.h loop.h oak-header.h signals.h	\
+ stacks.h stacks-loop.h threads.h timers.h weak.h worldio.h xmalloc.h
 
 if NDEBUG
 else
@@ -49,16 +49,29 @@ endif
 # using a prebuilt copy.  Note that when -DFAST is set instr-data.c is
 # not used and this is not an issue.
 
-OAK=oaklisp
+OAK = $(OAKLISP) --batch
+OAKFLAGS =
 
 instr-data.c: instruction-table.oak
-	$(OAK) $(OAKFLAGS) -- \
+	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) -- \
 		--locale compiler-locale \
 		--load "$<" \
 		--eval '(dump-instruction-table "$@")' \
 		--exit \
-	|| cp ../prebuilt/src/emulator/instr-data.c $@
+	|| cp $(top_srcdir)/prebuilt/src/emulator/instr-data.c $@
 	-$(INDENT) $@
+
+# Refresh the prebuilt copy using the world just built.
+prebuilt:
+	$(MKDIR_P) $(top_srcdir)/prebuilt/src/emulator
+	./oaklisp --batch --world ../world/oakworld.bin -- \
+		--locale compiler-locale \
+		--load $(srcdir)/instruction-table.oak \
+		--eval '(dump-instruction-table "$(top_srcdir)/prebuilt/src/emulator/instr-data.c")' \
+		--exit
+	-$(INDENT) $(top_srcdir)/prebuilt/src/emulator/instr-data.c
+
+.PHONY: prebuilt
 
 EXTRA_DIST = instruction-table.oak instr-data.c
 
