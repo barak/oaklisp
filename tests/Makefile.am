@@ -32,11 +32,11 @@ AM_TESTS_ENVIRONMENT = \
   top_builddir='$(abs_top_builddir)'; export top_builddir; \
   MAKE='$(MAKE)'; export MAKE;
 
-TESTS = smoke.test arith.test data.test control.test objects.test	\
+TESTS = smoke.test arith.test bignum.test data.test control.test objects.test \
   io.test locales.test unit.test examples.test compile.test		\
   world.test consistency.test threads.test
 
-OAKTESTS = arith.oak data.oak control.oak objects.oak io.oak locales.oak \
+OAKTESTS = arith.oak bignum.oak data.oak control.oak objects.oak io.oak locales.oak \
   compile-me.oak
 
 BENCHES = bench-tak.oak bench-fib.oak bench-bignum.oak bench-sort.oak	\
