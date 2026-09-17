@@ -556,11 +556,11 @@ loop(ref_t initial_tos)
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
-#if __WORDSIZE == 64 && defined(HAVE___INT128)
+#if OAK_WORD_SIZE == 64 && defined(HAVE___INT128)
 	      /* Multiply integer values, check if product fits in fixnum range. */
 	      {
 		__int128 a = (__int128)REF_TO_INT(x) * (__int128)REF_TO_INT(y);
-		long highcrap = (long)(a >> (__WORDSIZE - (TAGSIZE + 1)));
+		long highcrap = (long)(a >> (OAK_WORD_SIZE - (TAGSIZE + 1)));
 		if ((highcrap != 0L) && (highcrap != -1L))
 		  TRAP1(2);
 		PEEKVAL() = INT_TO_REF((ssize_t)a);
@@ -569,7 +569,7 @@ loop(ref_t initial_tos)
 	      /* "long long" here means int64 */
 	      {
 		int64_t a = (int64_t)REF_TO_INT(x) * (int64_t)REF_TO_INT(y);
-		int highcrap = a >> (__WORDSIZE - (TAGSIZE+1));
+		int highcrap = a >> (OAK_WORD_SIZE - (TAGSIZE+1));
 		if (highcrap && highcrap+1)
 		  TRAP1(2);
 		PEEKVAL() = INT_TO_REF(a);
@@ -877,13 +877,13 @@ loop(ref_t initial_tos)
 		if (b < 0)
 		  {
 		    PEEKVAL()
-		      = (a >> -b | a << (__WORDSIZE - 2 + b)) & ~TAG_MASKL;
+		      = (a >> -b | a << (OAK_WORD_SIZE - 2 + b)) & ~TAG_MASKL;
 		    GOTO_TOP;
 		  }
 		else
 		  {
 		    PEEKVAL()
-		      = (a << b | a >> (__WORDSIZE - 2 - b)) & ~TAG_MASKL;
+		      = (a << b | a >> (OAK_WORD_SIZE - 2 - b)) & ~TAG_MASKL;
 		    GOTO_TOP;
 		  }
 	      }
