@@ -105,7 +105,34 @@
   (load-code-segment
    locale
    (with-open-file (s (append file ".oa") in)
+      (check-bytecode-header s (append file ".oa"))
       (make-oa-list (read-oaf-list s)))))
+
+;;; Read the ";oaklisp-bytecode ..." header line, if any, at the start
+;;; of a .oa file, and complain if it is for an incompatible
+;;; architecture.  Files without a header are legacy files, assumed
+;;; to be compatible.  Other leading comment lines are skipped.
+
+(define (check-bytecode-header stream name)
+  (iterate aux ()
+    (skip-whitespace stream)
+    (when (eq? (peek-char stream) #\;)
+      (let ((line (read-comment-line stream)))
+	(cond ((parse-bytecode-header line)
+	       => (lambda (arch)
+		    (unless (bytecode-compatible? arch host-architecture)
+		      (error "~A was compiled for architecture ~A, incompatible with this ~A system."
+			     name
+			     (bytecode-architecture-name arch)
+			     (architecture-name host-architecture)))))))
+      (aux))))
+
+(define (read-comment-line stream)
+  (iterate aux ((chars '()))
+    (let ((c (read-char stream)))
+      (if (or (eq? c the-eof-token) (eq? c #\newline))
+	  (#^string (reverse! chars))
+	  (aux (cons c chars))))))
 
 
 #||

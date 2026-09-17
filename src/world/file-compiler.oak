@@ -119,8 +119,10 @@
 			    forms))
 		     identity)))
 
-	(write-file
+	(write-file-with-header
 	 (append file-name compiler-to-extension)
+	 (and (not (eq? s4 identity)) ; only .oa files get a header
+	      (bytecode-header-string #*target-architecture))
 	 (block0 (s4 (s3 (s2b (s12
 			       (after-reading
 				(read-file

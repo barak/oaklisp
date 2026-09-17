@@ -132,6 +132,7 @@
     bounders do
     anonymous pl
     sort pl
+    architecture pl
     exit pl
     ))
 (define layer6
