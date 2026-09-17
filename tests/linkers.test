@@ -1,4 +1,0 @@
-#!/bin/sh
-# tool.oak, oak-cold-linker and tool.oak under Guile build identical cold worlds.
-. "$(dirname "$0")/testlib.sh"
-exec $MAKE -C "$top_builddir/src/world" check-cold-linkers

@@ -34,7 +34,7 @@ AM_TESTS_ENVIRONMENT = \
 
 TESTS = smoke.test arith.test data.test control.test objects.test	\
   io.test locales.test unit.test examples.test compile.test		\
-  world.test linkers.test fixpoint.test guile.test threads.test
+  world.test consistency.test threads.test
 
 OAKTESTS = arith.oak data.oak control.oak objects.oak io.oak locales.oak \
   compile-me.oak
