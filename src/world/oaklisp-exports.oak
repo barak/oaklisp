@@ -50,7 +50,7 @@
     do dolist dolist-count dotimes while until
     quasiquote comment
     fluid bind
-    delay force forcible future lcons
+    delay force forcible future future-obj lcons
     destructure destructure* destructure**
     select-type fselect-type eselect-type efselect-type
     listify-args consume-args
@@ -170,7 +170,7 @@
     trace-variable-in trace-variable-out trace-variable-in-out
     untrace-variable
     interactive? argline get-argline cwd
-    process current-process process-id mutex semaphore
+    process current-process process-id process-run-fn mutex semaphore
     acquire-mutex release-mutex test-and-set
     lwp wait pause
 
