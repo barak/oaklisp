@@ -1,0 +1,2 @@
+;oaklisp-bytecode word-size=32 instructions-per-ref=2
+((SYSTEM-VERSION) (((5 8 0 2 4 "Oaklisp 2.1.0" 2 0 ()) (0 0 1536 0 0 0 1536 0 0 0 3840 284 6144 0))))

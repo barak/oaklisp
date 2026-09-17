@@ -1,0 +1,2 @@
+;oaklisp-bytecode word-size=32 instructions-per-ref=2
+(() (((2 4 #\+ 2 0 ()) (0 0 1536 0 0 0 3328 284 6144 0))))
