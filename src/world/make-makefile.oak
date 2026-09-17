@@ -52,6 +52,10 @@
       (for-each aller compiler-files)
       (format outfile "~%")
 
+      (format outfile "EXPORTFILES =")
+      (for-each aller export-files)
+      (format outfile "~%")
+
       (format outfile "RNRSFILES =")
       (for-each aller scheme-files)
       (format outfile "~%")

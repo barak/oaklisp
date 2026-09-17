@@ -125,15 +125,16 @@ The world is built in stages from `.oak` source files:
 1. **Cold world** (`new.cold`) — Core runtime linked from COLDFILESD `.oa` files (kernel, types, reader, evaluator, REPL). Built by `oak-cold-linker` (default) or `tool.oak`.
 2. **oakworld-1.bin** — Boot cold world into warm world
 3. **oakworld-2.bin** — Load MISCFILES (macros, bignums, rationals, dev tools)
-4. **oakworld-3.bin** — Load COMPFILES (compiler) into `compiler-locale`
+4. **oakworld-3.bin** — Load COMPFILES (compiler) into `compiler-locale`, then EXPORTFILES (`oaklisp-exports.oak`) into `system-locale`
 5. **oakworld.bin** — Load RNRSFILES (Scheme compatibility) into `scheme-locale`
 
 ### Locales (namespaces)
 
-- `system-locale` — Default runtime
-- `compiler-locale` — Compiler internals
-- `scheme-locale` — RnRS Scheme compatibility
-- `user-locale` — Interactive use
+- `system-locale` — Everything: the language plus its implementation (default for the REPL)
+- `compiler-locale` — Compiler internals; inherits `system-locale`
+- `oaklisp-locale` — No superiors; the user-level subset of `system-locale`, populated by the explicit list in `src/world/oaklisp-exports.oak` (variables share cells and frozen status, macros share expanders). Since macros aren't hygienic, anything an exported macro expands into must be exported too — the file has a section for that.
+- `user-locale` — Inherits `oaklisp-locale` only
+- `scheme-locale` — RnRS Scheme compatibility; inherits `system-locale`
 
 ## File Extensions
 

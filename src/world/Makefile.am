@@ -29,6 +29,7 @@ ALLOAFILES += $(FILESFILES)
 ALLOAFILES += $(COLDFILES)
 ALLOAFILES += $(MISCFILES)
 ALLOAFILES += $(COMPFILES)
+ALLOAFILES += $(EXPORTFILES)
 ALLOAFILES += $(RNRSFILES)
 
 ALLOAFILESNONGEN =
@@ -38,6 +39,7 @@ ALLOAFILESNONGEN += $(FILESFILES)
 ALLOAFILESNONGEN += $(COLDFILESNONGEN)
 ALLOAFILESNONGEN += $(MISCFILES)
 ALLOAFILESNONGEN += $(COMPFILES)
+ALLOAFILESNONGEN += $(EXPORTFILES)
 ALLOAFILESNONGEN += $(RNRSFILES)
 
 # Bootstrapping is set up by configure; see the comments there.
@@ -117,17 +119,20 @@ oakworld-2.bin: oakworld-1.bin $(MISCFILES)
 	   $(foreach f, $(MISCFILES:.oa=),--load $(f)) \
 	   --exit
 
-oakworld-3.bin: oakworld-2.bin $(COMPFILES)
+oakworld-3.bin: oakworld-2.bin $(COMPFILES) $(EXPORTFILES)
 	 $(OAKBOOT) $(OAKFLAGS) --world oakworld-2.bin --dump $@ \
 	   -- \
 	   --locale compiler-locale \
 	   $(foreach f, $(COMPFILES:.oa=),--load $(f)) \
-	   --locale system-locale --exit
+	   --locale system-locale \
+	   $(foreach f, $(EXPORTFILES:.oa=),--load $(f)) \
+	   --exit
 
 oakworld.bin: oakworld-3.bin $(RNRSFILES)
 	$(OAKBOOT) $(OAKFLAGS) --world oakworld-3.bin --dump $@ \
 	  -- \
 	  --eval '(define-instance scheme-locale locale (list system-locale))'\
+	  --eval "(export-symbol system-locale oaklisp-locale 'scheme-locale)" \
 	  --locale scheme-locale \
 	  $(foreach f, $(RNRSFILES:.oa=),--load $(f)) \
 	  --locale system-locale --exit
