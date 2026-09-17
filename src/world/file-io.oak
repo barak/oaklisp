@@ -28,10 +28,19 @@
     (read-until the-eof-token #f s)))
 
 (define (write-file file obj)
+  (write-file-with-header file #f obj))
+
+;;; HEADER, if not #f, is a string written as the first line of the
+;;; file.  It is used for the ";oaklisp-bytecode ..." line of .oa files.
+
+(define (write-file-with-header file header obj)
   (error-restart
       (format #f "Try writing ~S again (optionally under another name)." file)
       ((file file))
     (with-open-file (s file out ugly)
+      (when header
+	(write-string header s)
+	(write-char s #\newline))
       (bind ((#*print-level #f)
 	     (#*print-length #f)
 	     (#*print-radix 10)

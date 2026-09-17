@@ -80,6 +80,19 @@
   (unless (eq? (car l) 'code)
     (error "Input does not appear to be a code segment: ~A." l))
 
+  ;; Addresses are in units of 16-bit instructions.  Inline arguments
+  ;; (constants, variables, code) occupy a whole ref, so they must be
+  ;; aligned to a multiple of the number of instructions per ref of
+  ;; the target architecture, and take up that many instruction slots.
+  ;; The first ref of a code vector holds its ivar map.
+
+  (let* ((ipr (architecture-instructions-per-ref #*target-architecture))
+	 (zeros (lambda (n l)
+		  (iterate aux ((n n) (l l))
+		    (if (zero? n) l (aux (- n 1) (cons 0 l))))))
+	 ;; Number of noops needed to align ADDR to a ref boundary.
+	 (padding (lambda (addr) (modulo (- ipr (modulo addr ipr)) ipr))))
+
   ;; Throw the answer to OK when done.
 
   (native-catch ok
@@ -93,7 +106,7 @@
 
 	(throw ok
 
-	       (iterate aux ((input (third l)) (addr 2) (output '(0 0))
+	       (iterate aux ((input (third l)) (addr ipr) (output (zeros ipr '()))
 					       (label-alist '()) (patch-alist '())
 					       (resolution-alist `((,constant-key 0 ,(second l)))))
 		 (cond
@@ -101,7 +114,7 @@
 		   (unless (null? patch-alist)
 		     (error "Unresolved label ~A." patch-alist))
 		   (list (reverse resolution-alist)
-			 (reverse (if (odd? addr) (cons 0 output) output))))
+			 (reverse (zeros (padding addr) output))))
 		  (else
 		   (let* ((this (car input)))
 		     (if
@@ -165,23 +178,24 @@
 					 resolution-alist)))
 
 				 (else
-				  (aux (cdr input)
-				       (+ addr (+ 1 (if (odd? addr) 2 3)))
-				       (list* 0 0
-					      (let ((new-out
-						     (cons
-						      (construct-instruction
-						       opcode-field
-						       arg-field-descriptor)
-						      output)))
-						(if (odd? addr) new-out
-						    (cons 0 new-out))))
-				       label-alist patch-alist
-				       (cons (list (encode-resolution-symbol
-						    (caddr the-opcode-descriptor))
-						   (+ addr (if (odd? addr) 1 2))
-						   (second this))
-					     resolution-alist))))))
+				  ;; Emit the instruction, pad to a ref
+				  ;; boundary, then leave room for the ref.
+				  (let* ((pad (padding (+ addr 1)))
+					 (inline-addr (+ addr 1 pad)))
+				    (aux (cdr input)
+					 (+ inline-addr ipr)
+					 (zeros (+ pad ipr)
+						(cons
+						 (construct-instruction
+						  opcode-field
+						  arg-field-descriptor)
+						 output))
+					 label-alist patch-alist
+					 (cons (list (encode-resolution-symbol
+						      (caddr the-opcode-descriptor))
+						     inline-addr
+						     (second this))
+					       resolution-alist)))))))
 			   ((eq? arg-field-descriptor 'unsigned)
 			    (aux (cdr input) (+ addr 1)
 				 (cons (construct-instruction
@@ -257,7 +271,7 @@
 			    (error
 			     "Internal error; bad arg field descriptor ~S.~%"
 			     arg-field-descriptor))))))))))))
-      (infinite-loop))))
+      (infinite-loop)))))
 
 (define (tiny-number? x)
   (and (integer? x)

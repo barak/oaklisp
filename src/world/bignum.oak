@@ -776,14 +776,11 @@
 ;;; NOTE: bignum-speed-test, balanced tree fact, etc. moved to bignum2.oak.
 
 
-;;; Convoluted code defeats constant folding.  No big numbers in bignum.oa!
-;;; On 32-bit, ash-left 1 29 wraps to the most negative fixnum (-2^29).
-;;; On 64-bit, it stays positive, so we detect and use 61 instead.
-(define most-negative-fixnum
-  (let ((try (ash-left (let ((x 1)) x) 29)))
-    (if (negative? try)
-	try
-	(ash-left (let ((x 1)) x) 61))))
+;;; The most negative fixnum has only its sign bit set.  Fixnums have
+;;; two fewer bits than the word, and ASH-LEFT wraps around and is
+;;; not constant folded, so this is computed on the machine we run
+;;; on.  No big numbers in bignum.oa!
+(define most-negative-fixnum (ash-left 1 (- %%word-size 3)))
 (define most-positive-fixnum (- (+ most-negative-fixnum 1)))
 
 (let* ((l0 (list most-positive-fixnum))
