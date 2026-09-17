@@ -185,6 +185,13 @@
     multiproc
     ))
 
+;;; Loaded into system-locale after the compiler; populates oaklisp-locale.
+
+(define export-files
+  '(
+    oaklisp-exports
+    ))
+
 (define compiler-files
   '(
     crunch
