@@ -14,7 +14,7 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-SUBDIRS = src man
+SUBDIRS = src man tests
 
 if DOCS
 SUBDIRS += doc
@@ -35,6 +35,12 @@ if DOCS
 endif
 
 .PHONY: prebuilt
+
+# "make check" runs the test suite in tests/; "make bench" the benchmarks.
+bench:
+	$(MAKE) -C tests bench
+
+.PHONY: bench
 
 # Ship whatever prebuilt material is present in the distribution.
 dist-hook:

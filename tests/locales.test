@@ -1,0 +1,5 @@
+#!/bin/sh
+# User-level code sees oaklisp-locale's exports and nothing more;
+# scheme-locale gives dotted argument lists their R3RS meaning.
+. "$(dirname "$0")/testlib.sh"
+run_oak_test locales.oak --locale user-locale

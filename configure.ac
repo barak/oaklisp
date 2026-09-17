@@ -422,5 +422,6 @@ AC_CONFIG_FILES([Makefile
                  src/Makefile
                  src/emulator/Makefile
                  src/world/Makefile
-                 src/world/system-version.oak])
+                 src/world/system-version.oak
+                 tests/Makefile])
 AC_OUTPUT

@@ -1,0 +1,11 @@
+;;; Hash tables: insertion and lookup with eq and equal keys.
+(define (bench)
+  (let ((h (make-eq-hash-table))
+	(e (make-equal-hash-table)))
+    (dotimes (i 100000)
+      (set! (table-entry h i) (* i i))
+      (set! (table-entry e (list i)) i))
+    (let loop ((i 0) (s 0))
+      (if (= i 100000)
+	  s
+	  (loop (+ i 1) (+ s (table-entry h i) (table-entry e (list i))))))))

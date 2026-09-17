@@ -1,0 +1,7 @@
+;;; Sorting: consing, list traversal, generic comparison.
+(define (pseudo-random-list n)
+  (let loop ((i 0) (x 12345) (acc '()))
+    (if (= i n) acc
+	(loop (+ i 1) (modulo (+ (* x 1103) 12345) 65536) (cons x acc)))))
+(define the-list (pseudo-random-list 100000))
+(define (bench) (car (sort the-list <)))
