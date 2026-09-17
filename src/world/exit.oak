@@ -17,6 +17,33 @@
 
 ;;; Copyright (C) 1988 Kevin J. Lang & Barak A. Pearlmutter
 
+;;; Counts the command line switches whose action signalled; see
+;;; CMDLINE-GETOPT, which does the counting.  A run that could not do
+;;; what its command line asked must not tell the shell it succeeded, so
+;;; --EXIT and the EOF exits out of the REPL turn a nonzero count into a
+;;; nonzero status.  The counter lives here because EXIT is loaded well
+;;; before the switch processor is.
+
+(define command-line-failures 0)
+
+;;; The status has to reach the VM as the HALT instruction's 8 bit
+;;; ARG-FIELD, and %HALT builds that instruction at compile time from a
+;;; literal: there is no instruction that takes the status off the
+;;; stack, and (%HALT n) applied to a runtime n falls back on a method
+;;; that calls EXIT again.  So the dispatch really does have to name
+;;; every value, and this macro writes out the whole range the VM can
+;;; express rather than the first eleven of it -- a script that reports
+;;; a specific status to its caller is doing the ordinary Unix thing.
+
+(local-syntax (halt-dispatch status)
+  (labels ((clauses
+	    (lambda (n)
+	      (if (> n 255)
+		  '()
+		  (cons `((= ,n ,status) ((%halt ,n)))
+			(clauses (+ n 1)))))))
+    `(cond ,@(clauses 0))))
+
 (let ((exit-aux
        (lambda (args)
 	 (destructure (status . format-args) args
@@ -29,21 +56,15 @@
 		 (else (apply format standard-output format-args)))
 	   (flush standard-output)
 	   (flush standard-error)
-	   (cond ((= 0 status) ((%halt 0)))
-		 ((= 1 status) ((%halt 1)))
-		 ((= 2 status) ((%halt 2)))
-		 ((= 3 status) ((%halt 3)))
-		 ((= 4 status) ((%halt 4)))
-		 ((= 5 status) ((%halt 5)))
-		 ((= 6 status) ((%halt 6)))
-		 ((= 7 status) ((%halt 7)))
-		 ((= 8 status) ((%halt 8)))
-		 ((= 9 status) ((%halt 9)))
-		 ((= 10 status) ((%halt 10)))
+	   (cond ((and (integer? status)
+		       (<= 0 status)
+		       (<= status 255))
+		  (halt-dispatch status))
 		 (else
-		  (format standard-output
-			  "(exit status ~D out of range)~%" status)
-		  (flush standard-output)
+		  ;; A diagnostic, so it goes where diagnostics go.
+		  (format standard-error
+			  "~&(exit status ~S out of range)~%" status)
+		  (flush standard-error)
 		  ((%halt 10))))))))
 
   (define (exit . args)

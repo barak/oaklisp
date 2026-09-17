@@ -166,12 +166,27 @@
 
 
 
+;;; A circular list has no length, no reverse and no copy, and the walk
+;;; that looks for one does not terminate.  R3RS leaves the case
+;;; undefined, so giving up loudly beats spinning; EQUAL? and PRINT
+;;; already bound themselves the same way.  The budget is one unit per
+;;; element, so it also caps a walk over an enormous acyclic list; raise
+;;; it if that ever matters.  See *EQUAL-DEPTH-LIMIT* in mapping.oak,
+;;; which is the same idea measured in levels of descent.
+
+(define *circular-list-limit* 1000000)
+
 (add-method (length (list-type) inlist)
 
   (labels (
 	   ((loop7 remaining count)
-	    (if (null? remaining) (+ 7 count)
-		(loop0 (cdr remaining) (+ 8 count))))
+	    (cond ((null? remaining) (+ 7 count))
+		  ;; COUNT only advances here, so this is the one place
+		  ;; the budget has to be looked at.
+		  ((> count *circular-list-limit*)
+		   (error "LENGTH gave up after ~D elements; the list may be circular."
+			  count))
+		  (else (loop0 (cdr remaining) (+ 8 count)))))
 	   ((loop6 remaining count)
 	    (if (null? remaining) (+ 6 count) (loop7 (cdr remaining) count)))
 	   ((loop5 remaining count)

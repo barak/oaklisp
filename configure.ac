@@ -48,7 +48,7 @@ AM_CONDITIONAL([NDEBUG], [test x${enable_ndebug} = xyes])
 
 AC_MSG_CHECKING([enable_threads])
 AC_ARG_ENABLE([threads],
-       [AS_HELP_STRING([--enable-threads],[enable thread support (default=no)])],,
+       [AS_HELP_STRING([--enable-threads],[enable native thread support with concurrent GC (default=no)])],,
        [enable_threads=no])
 AC_MSG_RESULT([$enable_threads])
 AM_CONDITIONAL([ENABLE_THREADS], [test x${enable_threads} = xyes])
@@ -56,25 +56,75 @@ AM_CONDITIONAL([ENABLE_THREADS], [test x${enable_threads} = xyes])
 # Bootstrapping.
 #
 # Oaklisp is written in Oaklisp, so building the world from source
-# requires a running Oaklisp: an emulator plus a world image.  There
-# are two ways to bootstrap:
+# requires a running Oaklisp, or a stand-in for one, for two steps:
+# compiling the .oak sources to .oa bytecode, and linking the cold
+# files into the cold world.  Each can be done in several ways:
 #
-#  * From a world: a working oakworld.bin (typically the prebuilt one
-#    for this architecture in prebuilt/src/world/ARCH/, or an
-#    installed one) is used to compile the .oak sources to .oa
-#    bytecode and to link the cold world with tool.oak.
+#   compile   world     a working oakworld.bin (typically the prebuilt
+#                       one for this architecture in
+#                       prebuilt/src/world/ARCH/, or an installed one),
+#                       run by the emulator being built or by
+#                       --with-oaklisp, compiles the sources;
+#             prebuilt  the prebuilt .oa files in prebuilt/src/world/BCARCH/
+#                       are used as they are;
+#             guile     the Guile-hosted Oaklisp in src/cold-compiler/
+#                       runs the world's own compiler on the sources.
 #
-#  * From bytecode: prebuilt .oa files (prebuilt/src/world/BCARCH/)
-#    are linked into a cold world by oak-cold-linker, a C program,
-#    which needs no running Oaklisp at all.
+#   cold-link world     tool.oak, the Oaklisp linker, in the bootstrap
+#                       world;
+#             c         oak-cold-linker, a C reimplementation of it;
+#             guile     tool.oak in the Guile host.
 #
-# Either way, the resulting cold world is booted and the remaining
-# layers loaded using the newly built emulator.
+# The result is the same whichever way is chosen (see the check-*
+# targets in src/world).  Either way, the resulting cold world is then
+# booted and the remaining layers loaded using the newly built emulator.
+# By default a world is used for both steps when one is found,
+# otherwise prebuilt bytecode and the C linker, and failing that Guile.
+
+AC_MSG_CHECKING([with_compile])
+AC_ARG_WITH([compile],
+       [AS_HELP_STRING([--with-compile=METHOD],
+	 [how to compile .oak sources to .oa bytecode: world, prebuilt, guile, or check (default) for the first of those that is available])],,
+       [with_compile=check])
+AC_MSG_RESULT([$with_compile])
+AS_CASE([${with_compile}],
+ [world|prebuilt|guile|check],[],
+ [AC_MSG_ERROR([--with-compile=${with_compile}: expected world, prebuilt, guile, or check])])
+
+AC_MSG_CHECKING([with_cold_link])
+AC_ARG_WITH([cold-link],
+       [AS_HELP_STRING([--with-cold-link=METHOD],
+	 [how to link the cold world: world (tool.oak in the bootstrap world), c (oak-cold-linker), guile (tool.oak in the Guile host), or check (default: world when compiling with one, else c)])],,
+       [with_cold_link=check])
+AC_MSG_RESULT([$with_cold_link])
+AS_CASE([${with_cold_link}],
+ [world|c|guile|check],[],
+ [AC_MSG_ERROR([--with-cold-link=${with_cold_link}: expected world, c, guile, or check])])
+
+AC_MSG_CHECKING([with_guile])
+AC_ARG_WITH([guile],
+       [AS_HELP_STRING([--with-guile@<:@=GUILE@:>@],
+	 [Guile 3 interpreter for the Guile-hosted Oaklisp (default: search for guile3.0, guile)])],,
+       [with_guile=check])
+AC_MSG_RESULT([$with_guile])
+AS_CASE([${with_guile}],
+ [check|yes],[AC_PATH_PROGS([GUILE], [guile3.0 guile-3.0 guile], [no])],
+ [no],[GUILE=no],
+ [GUILE=${with_guile}])
+AS_IF([test x${GUILE} != xno],
+ [AC_MSG_CHECKING([whether ${GUILE} is Guile 3])
+  AS_IF([${GUILE} -c '(exit (if (>= (string->number (major-version)) 3) 0 1))' >/dev/null 2>&1],
+	[AC_MSG_RESULT([yes])],
+	[AC_MSG_RESULT([no])
+	 AS_IF([test x${with_guile} != xcheck],
+	       [AC_MSG_ERROR([${GUILE} is not Guile 3])])
+	 GUILE=no])])
+AC_SUBST([GUILE])
 
 AC_MSG_CHECKING([with_world])
 AC_ARG_WITH([world],
        [AS_HELP_STRING([--with-world@<:@=WORLD@:>@],
-	 [bootstrap from this oakworld.bin (default: search prebuilt/ and installed locations; "no" to bootstrap from prebuilt bytecode)])],,
+	 [bootstrap world image (default: search prebuilt/ and installed locations; "no" to use none)])],,
        [with_world=check])
 AC_MSG_RESULT([$with_world])
 
@@ -88,7 +138,7 @@ AC_MSG_RESULT([$with_oaklisp])
 AC_MSG_CHECKING([with_bytecode])
 AC_ARG_WITH([bytecode],
        [AS_HELP_STRING([--with-bytecode@<:@=DIR@:>@],
-	 [directory of prebuilt .oa bytecode files to bootstrap from when no world is available (default: search prebuilt/)])],,
+	 [directory of prebuilt .oa bytecode files (default: search prebuilt/; "no" to use none)])],,
        [with_bytecode=check])
 AC_MSG_RESULT([$with_bytecode])
 
@@ -156,12 +206,19 @@ AS_IF([test x${enable_docs} = xyes],
  [AC_CHECK_PROGS([LATEXMK],[latexmk],[false])])
 
 # Checks for libraries.
+# On Windows (MSVC), threads are in kernel32 -- no -lpthread needed.
+# On POSIX (including MinGW with winpthreads), link -lpthread.
 AS_IF([test x$enable_threads = xyes],
- [AC_SEARCH_LIBS([pthread_create],[pthread])])
+ [AC_SEARCH_LIBS([pthread_create],[pthread],[],
+   [AC_MSG_WARN([pthread_create not found; threads may use Windows native API])])])
 
 # Checks for header files.
 AC_CHECK_HEADERS([stddef.h stdlib.h string.h sys/time.h unistd.h],,
  [AC_MSG_ERROR([required header file unavailable])])
+# Optional headers for portability detection.
+AC_CHECK_HEADERS([stdatomic.h windows.h],,,)
+# Optional headers for portability detection.
+AC_CHECK_HEADERS([stdatomic.h windows.h],,,)
 
 # Checks for typedefs, structures, and compiler characteristics.
 AX_CFLAGS_WARN_ALL
@@ -281,11 +338,41 @@ AS_IF([test x${with_bytecode} = xcheck || test x${with_bytecode} = xyes],
 	[AC_MSG_ERROR([no bytecode found in ${with_bytecode}])])
   with_bytecode=`cd ${with_bytecode} && pwd`])
 
-# Decide.
-AS_IF([test x${with_world} != xno],
- [oak_bootstrap=world
-  OAKLISP=${with_oaklisp}
-  AS_IF([test x${OAKLISP} = xno], [OAKLISP='$(abs_top_builddir)/src/emulator/oaklisp'])
+# Decide how to compile.
+oak_have_world=no
+AS_IF([test x${with_world} != xno], [oak_have_world=yes])
+oak_have_bytecode=no
+AS_IF([test x${with_bytecode} != xno], [oak_have_bytecode=yes])
+oak_have_guile=no
+AS_IF([test x${GUILE} != xno], [oak_have_guile=yes])
+
+AS_CASE([${with_compile}],
+ [check],[AS_IF([test x${oak_have_world} = xyes], [oak_compile=world],
+		[test x${oak_have_bytecode} = xyes], [oak_compile=prebuilt],
+		[test x${oak_have_guile} = xyes], [oak_compile=guile],
+		[AC_MSG_ERROR([no way to compile the world: no bootstrap world image, no prebuilt bytecode, and no Guile 3 found (see --with-world, --with-bytecode, --with-guile)])])],
+ [world],[AS_IF([test x${oak_have_world} = xyes], [oak_compile=world],
+		[AC_MSG_ERROR([--with-compile=world but no bootstrap world found (see --with-world)])])],
+ [prebuilt],[AS_IF([test x${oak_have_bytecode} = xyes], [oak_compile=prebuilt],
+		   [AC_MSG_ERROR([--with-compile=prebuilt but no prebuilt bytecode found (see --with-bytecode)])])],
+ [guile],[AS_IF([test x${oak_have_guile} = xyes], [oak_compile=guile],
+		[AC_MSG_ERROR([--with-compile=guile but no Guile 3 found (see --with-guile)])])])
+
+# And how to link.
+AS_CASE([${with_cold_link}],
+ [check],[AS_IF([test x${oak_compile} = xworld], [oak_cold_link=world], [oak_cold_link=c])],
+ [world],[AS_IF([test x${oak_have_world} = xyes], [oak_cold_link=world],
+		[AC_MSG_ERROR([--with-cold-link=world but no bootstrap world found (see --with-world)])])],
+ [c],[oak_cold_link=c],
+ [guile],[AS_IF([test x${oak_have_guile} = xyes], [oak_cold_link=guile],
+		[AC_MSG_ERROR([--with-cold-link=guile but no Guile 3 found (see --with-guile)])])])
+
+# The bootstrap world, if one is used for either step.
+OAKLISP='$(abs_top_builddir)/src/emulator/oaklisp'
+OAKWORLDFLAGS=
+OAKTARGETFLAGS=
+AS_IF([test x${oak_compile} = xworld || test x${oak_cold_link} = xworld],
+ [AS_IF([test x${with_oaklisp} != xno], [OAKLISP=${with_oaklisp}])
   OAKWORLDFLAGS="--world ${with_world}"
   # Does the bootstrap system understand --target?  Old worlds (those
   # without a header line) do not, but as they generate the same
@@ -301,23 +388,25 @@ AS_IF([test x${with_world} != xno],
   AC_MSG_RESULT([${oak_target_ok}])
   AS_IF([test x${oak_target_ok} = xyes],
 	[OAKTARGETFLAGS="--target ${OAK_BYTECODE_ARCH}"],
-	[OAKTARGETFLAGS=
-	 AS_IF([test x${oak_bootstrap_arch} != x${OAK_HOST_ARCH}],
-	       [AC_MSG_WARN([bootstrap system cannot cross-compile; results may differ from a native build])])])
-  AC_MSG_NOTICE([bootstrapping from world ${with_world} using ${OAKLISP}])],
- [test x${with_bytecode} != xno],
- [oak_bootstrap=bytecode
-  OAKLISP='$(abs_top_builddir)/src/emulator/oaklisp'
-  OAKWORLDFLAGS=
-  OAKTARGETFLAGS=
-  AC_MSG_NOTICE([bootstrapping from prebuilt bytecode in ${with_bytecode} using oak-cold-linker])],
- [AC_MSG_ERROR([no way to bootstrap: no world image and no prebuilt bytecode found (see --with-world and --with-bytecode)])])
+	[AS_IF([test x${oak_bootstrap_arch} != x${OAK_HOST_ARCH}],
+	       [AC_MSG_WARN([bootstrap system cannot cross-compile; results may differ from a native build])])])])
+
+AC_MSG_NOTICE([compiling the world: ${oak_compile}; linking the cold world: ${oak_cold_link}])
+AS_CASE([${oak_compile}],
+ [world],[AC_MSG_NOTICE([bootstrap world ${with_world} run by ${OAKLISP}])],
+ [prebuilt],[AC_MSG_NOTICE([prebuilt bytecode from ${with_bytecode}])],
+ [guile],[AC_MSG_NOTICE([Guile-hosted compiler using ${GUILE}])])
 
 AC_SUBST([OAKLISP])
 AC_SUBST([OAKWORLDFLAGS])
 AC_SUBST([OAKTARGETFLAGS])
 AC_SUBST([PREBUILT_BYTECODE_DIR], [${with_bytecode}])
-AM_CONDITIONAL([BOOTSTRAP_FROM_WORLD], [test x${oak_bootstrap} = xworld])
+AM_CONDITIONAL([COMPILE_WORLD], [test x${oak_compile} = xworld])
+AM_CONDITIONAL([COMPILE_PREBUILT], [test x${oak_compile} = xprebuilt])
+AM_CONDITIONAL([COMPILE_GUILE], [test x${oak_compile} = xguile])
+AM_CONDITIONAL([COLD_LINK_WORLD], [test x${oak_cold_link} = xworld])
+AM_CONDITIONAL([COLD_LINK_C], [test x${oak_cold_link} = xc])
+AM_CONDITIONAL([COLD_LINK_GUILE], [test x${oak_cold_link} = xguile])
 
 # Checks for library functions.
 AC_FUNC_MALLOC

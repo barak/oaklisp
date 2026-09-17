@@ -54,22 +54,28 @@
 		       (xj   (if (null? (cdr c))  0  (cadr c)))
 		       (rest (if (null? (cdr c)) nil (cddr c))))
 		  ;; Pack two instructions into a ref, in memory order.
-		  ;; See the comments in CODE-VECTOR.OAK.
+		  ;; See the comments in CODE-VECTOR.OAK.  FX-TIMES, not
+		  ;; ASH-LEFT: shifting a 16 bit instruction 14 bits up
+		  ;; overflows a fixnum on a 32 bit build, and ASH promotes
+		  ;; on overflow; the wrapping multiply keeps the bit
+		  ;; pattern this field layout needs.  ROT-LEFT is used
+		  ;; for the shift amounts so that no literal too big for
+		  ;; a 32 bit fixnum appears in this cold world file.
 		  (set! (%vref v i)
 		       (cond ((not (%big-endian?))
 			      ;(bit-or xi (ash-left xj 14))
-			      (%crunch (bit-or (ash-left xj 14)
+			      (%crunch (bit-or (fx-times xj 16384)
 					       (ash-right xi 2))
 				       (bit-and xi #x3)))
 			     ((= %%word-size 32)
 			      ;(bit-or (ash-left xi 14) xj)
-			      (%crunch (bit-or (ash-left xi 14)
+			      (%crunch (bit-or (fx-times xi 16384)
 					       (ash-right xj 2))
 				       (bit-and xj #x3)))
 			     (else
 			      ;; 64-bit big-endian: high 32 bits.
-			      (%crunch (bit-or (ash-left xi 46)
-					       (ash-left xj 30))
+			      (%crunch (bit-or (fx-times xi (rot-left 1 46))
+					       (fx-times xj (rot-left 1 30)))
 				       0))))
 		  (aux rest (+ i 1))))
 	       ;;((not (null? c))

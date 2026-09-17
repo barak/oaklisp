@@ -181,6 +181,16 @@
 	     ,name)))
 
 	 ((eq? var-type 'global)
+	  ;; DEFINE-SYNTAX installs its macro when the object file is
+	  ;; loaded, so a use of it further down the same file compiles
+	  ;; to a call to a variable that nothing defines.  Say so now
+	  ;; rather than at load time; DEFINE-LOCAL-SYNTAX is what makes
+	  ;; a macro available to the rest of its own compilation.
+	  (when (memq name #*file-load-time-macros)
+	    (warning "~S is a DEFINE-SYNTAX macro of this file, which takes ~
+effect only when the file is loaded, so this reference compiles as a ~
+variable.  Use DEFINE-LOCAL-SYNTAX to macroexpand it here too.~%"
+		     name))
 	  `((load-glo ,name)))
 
 	 (else (error "gen-access: Error in var-type for ~S"

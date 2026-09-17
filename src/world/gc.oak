@@ -27,6 +27,22 @@
 	       (object))
     (%full-gc)))
 
+;;; Dump the current world image to a file without exiting.
+;;; Takes a string locative and length at the VM level.
+
+(define-constant %dump-world
+  (add-method ((make-open-coded-operation '((dump-world)) 2 1)
+	       (object) str-loc len)
+    (%dump-world str-loc len)))
+
+;;; Load a new world image, replacing the current one.
+;;; The VM restarts with the new world; this call never returns.
+
+(define-constant %load-world
+  (add-method ((make-open-coded-operation '((load-world)) 2 0)
+	       (object) str-loc len)
+    (%load-world str-loc len)))
+
 ;;; Maybe there should be an interface to the next-newspace-size register
 ;;; here.  And maybe RECLAIM_FRACTION should be a register with an interface
 ;;; here instead of a C compile-time constant.

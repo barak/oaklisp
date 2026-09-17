@@ -49,7 +49,10 @@
 
 
 ; 3.1 sec for 10000    (now 2.2)
-(add-method (map! (operation) op lis)
+;;; This is the one list case of MAP!, which the dispatcher in
+;;; mapping.oak reaches; overriding MAP! itself here would take the
+;;; sequence case out again.
+(add-method (map!1 (operation) op lis)
   (iterate next ((l lis))
     (cond (l
 	   (set! (car l) (op (car l)))

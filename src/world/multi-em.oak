@@ -64,6 +64,15 @@
 	       (object))
 	      (%thread-yield)))
 
+;;
+;; Returns #t if the emulator was compiled with THREADS support,
+;; nil otherwise.  Used to auto-detect thread capability at warm boot.
+;;
+(define-constant %threads-enabled?
+  (add-method ((make-open-coded-operation '((load-reg threads-enabled?)) 0 1)
+	       (object))
+	      (%threads-enabled?)))
+
 ;; An atomic operation that tests the value in a locative and sets it
 ;; to NEW if the value is currently OLD.  A boolean is returned to
 ;; indicate success or failure.

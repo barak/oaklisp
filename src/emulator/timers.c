@@ -29,6 +29,7 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#include <stdint.h>
 #include "config.h"
 #include "timers.h"
 
@@ -67,8 +68,10 @@ get_real_time(void)
     }
   else
     {
-      result = tnow.tv_sec * 1000
-	+ tnow.tv_usec / 1000;
+      /* Compute in a 64-bit type: on a 32-bit build the seconds count
+	 alone overflows an unsigned long once multiplied by 1000. */
+      result = (unsigned long)((uint64_t)tnow.tv_sec * 1000
+			       + (uint64_t)tnow.tv_usec / 1000);
       return result;
     }
 }
@@ -87,8 +90,8 @@ get_user_time(void)
     }
   else
     {
-      result = rusage.ru_utime.tv_sec * 1000
-	+ rusage.ru_utime.tv_usec / 1000;
+      result = (unsigned long)((uint64_t)rusage.ru_utime.tv_sec * 1000
+			       + (uint64_t)rusage.ru_utime.tv_usec / 1000);
       return result;
     }
 }
@@ -99,13 +102,15 @@ get_user_time(void)
 unsigned long
 get_real_time(void)
 {
+  /* Multiply before dividing: with the POSIX CLOCKS_PER_SEC of
+     1000000, "1000 / CLOCKS_PER_SEC" is integer zero and this used to
+     return 0 always. */
 #ifdef HAVE_LONG_LONG
   unsigned long long temp;
-  temp = (unsigned long long)clock()
-    * (1000ull / CLOCKS_PER_SEC);
+  temp = (unsigned long long)clock() * 1000ull / (unsigned long long)CLOCKS_PER_SEC;
 #else
   long temp;
-  temp = (clock() * 1000) / (CLOCKS_PER_SEC);
+  temp = (clock() / (CLOCKS_PER_SEC / 1000));
 #endif
   /* caution: the clock() function on some systems with a high
      frequency clock (e.g. transputers ) give values

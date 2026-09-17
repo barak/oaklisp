@@ -60,6 +60,14 @@
 	       (continuation) self)
     (%fill-continuation self)))
 
+;;; As in catch.oak: these table slots belong with the rest in
+;;; tag-trap.oak, but the operations do not exist that early in the cold
+;;; load, so they are filled in here.  Without them a CONTINUE on
+;;; something that is not a continuation reports a call to 0.
+
+(set! (nth %argless-tag-trap-table 55) %fill-continuation)
+(set! (nth %argless-tag-trap-table 56) %continue)
+
 
 ;;; WARNING!  CAUTION!  Do not modify this definition of %CALL/CC
 ;;; unless you really know what you are doing.  It is carefully tuned

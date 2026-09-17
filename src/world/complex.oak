@@ -131,6 +131,15 @@
        (= the-real-part (real-part y))))
 
 
+;;; As for the other numeric types: EQUAL? compares the components, so
+;;; the hash has to as well.  See the comment on HASH-KEY in
+;;; hash-table.oak.
+
+(add-method (hash-key (complex the-real-part the-imag-part) self)
+  (bit-xor (rot-left (hash-key the-real-part) 11)
+	   (hash-key the-imag-part)))
+
+
 #||
 (add-method (sqrt (complex) z)
   (* (sqrt (abs z)) (cis (/ (phase z) 2))))

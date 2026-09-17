@@ -65,4 +65,8 @@
 (define procedure? (type-pred operation))
 (define vector? (type-pred simple-vector))
 
+;;; doc/lang/sequences.tex lists this beside the other sequence type
+;;; predicates, but it had never been defined.
+(define sequence? (type-pred sequence))
+
 ;null? is defined in subprimitive.oak.

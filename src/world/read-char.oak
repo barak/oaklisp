@@ -34,13 +34,17 @@
 	   (len (length str)))
       (cond ((= len 1) (nth str 0))
 	    (else
-	     (let ((token (upcase-first-char token)))
-	       (cond ((#^character token) => identity)
+	     (let ((name (upcase-first-char token)))
+	       (cond ((#^character name) => identity)
 		     (else
+		      ;; The reader upcases every character of the name
+		      ;; except the first, which the backslash escapes, so
+		      ;; STR here is the half converted "nOSUCHNAME".
+		      ;; Report the name that was actually looked up.
 		      (cerror
 		       "Supply a character to be returned instead."
-		       "The token ~S cannot be interpreted as a character."
-		       str)))))))))
+		       "The token ~A cannot be interpreted as a character."
+		       name)))))))))
 
 (define (upcase-first-char sym)
   (let* ((str (#^string sym))
