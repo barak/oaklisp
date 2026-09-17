@@ -30,6 +30,10 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
+#include <setjmp.h>
+#ifdef THREADS
+#include <sched.h>
+#endif
 
 #include "config.h"
 #include "data.h"
@@ -427,7 +431,24 @@ loop(ref_t initial_tos)
 
   /* This is the big instruction fetch/execute loop. */
 
-  if (!batch_mode) enable_signal_polling();
+  if (!batch_mode) {
+    enable_signal_polling();
+    enable_crash_recovery();
+  }
+
+  /* Set up crash recovery point.  If a fatal signal (SIGSEGV, SIGBUS,
+     SIGFPE) fires, siglongjmp returns here with a non-zero value. */
+  if (sigsetjmp(crash_jmpbuf, 1) != 0) {
+    /* Returned from a fatal signal -- recover to Oaklisp debugger. */
+    reinstall_crash_handler();
+    LOCALIZE_ALL();
+    crash_signal = 0;
+    /* Route through intr_trap using argless trap slot 126. */
+    arg_field = 126;
+    op_field = 0;
+    instr = (126 << 8);
+    goto crash_trap_entry;
+  }
 
 #define GOTO_TOP	goto top_of_loop;
 
@@ -1425,18 +1446,13 @@ static int _cdr_debug_count = 0;
 	      POPVAL(x);
 	      CHECKTAG1(x, LOC_TAG, 2);
 	      POPVAL(y);
-	      if (*LOC_TO_PTR(x) != y) {
-		// fail
-		PEEKVAL() = e_false;
-		GOTO_TOP;
-	      }
 #ifdef THREADS
 	      if (pthread_mutex_trylock(&test_and_set_locative_lock) != 0) {
 		PEEKVAL() = e_false;	/* Failed to acquire lock. */
 		GOTO_TOP;
 	      }
 	      /* Start Critical Section. */
-	      if (*(volatile ref *)LOC_TO_PTR(x) != y) {
+	      if (*LOC_TO_PTR(x) != y) {
 		// fail
 		PEEKVAL() = e_false;
 	      } else {
@@ -1448,11 +1464,22 @@ static int _cdr_debug_count = 0;
 	      /* End Critical Section. */
 	      GOTO_TOP;
 #else
+	      if (*LOC_TO_PTR(x) != y) {
+		PEEKVAL() = e_false;
+		GOTO_TOP;
+	      }
 	      *LOC_TO_PTR(x) = PEEKVAL();
 	      PEEKVAL() = e_t;
 	      GOTO_TOP;
 #endif
 
+
+	    case 72:		/* THREAD-YIELD */
+#ifdef THREADS
+	      sched_yield();
+#endif
+	      PUSHVAL(e_nil);
+	      GOTO_TOP;
 
 #ifndef FAST
 	    default:
@@ -1830,6 +1857,33 @@ static int _cdr_debug_count = 0;
 
 #ifdef OP_TYPE_METH_CACHE
 		  /* Check for cache hit: */
+#ifdef THREADS
+		  /* Atomic read: type first (acquire), then method/offset,
+		     then re-verify type hasn't changed (seqlock pattern). */
+		  {
+		    ref_t cached_type = __atomic_load_n(
+		      &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF),
+		      __ATOMIC_ACQUIRE);
+		    if (y_type == cached_type)
+		      {
+			ref_t cached_meth = REF_SLOT(x, OPERATION_CACHE_METH_OFF);
+			ref_t cached_off = REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF);
+			/* Re-verify type to ensure consistent read. */
+			if (y_type == __atomic_load_n(
+			      &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF),
+			      __ATOMIC_ACQUIRE))
+			  {
+			    maybe_put(trace_mcache, "H");
+			    e_current_method = cached_meth;
+			    e_bp = REF_TO_PTR(y) + REF_TO_INT(cached_off);
+			  }
+			else goto cache_miss;
+		      }
+		    else goto cache_miss;
+		  }
+		  if (0) { cache_miss:
+		    {
+#else
 		  if (y_type == REF_SLOT(x, OPERATION_CACHE_TYPE_OFF))
 		    {
 		      maybe_put(trace_mcache, "H");
@@ -1839,8 +1893,9 @@ static int _cdr_debug_count = 0;
 			REF_TO_INT(REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF));
 		    }
 		  else
-#endif
 		    {
+#endif
+#endif
 		      /* Search the type hierarchy. */
 		      ref_t meth_type, offset = INT_TO_REF(0);
 
@@ -1866,12 +1921,25 @@ static int _cdr_debug_count = 0;
 
 #ifdef OP_TYPE_METH_CACHE
 		      maybe_put(trace_mcache, "M");
-		      /* Cache the results of this search. */
+		      /* Cache the results of this search.
+		         Write method and offset first, then type last
+		         (type acts as commit flag for readers). */
+#ifdef THREADS
+		      REF_SLOT(x, OPERATION_CACHE_METH_OFF) = e_current_method;
+		      REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF) = offset;
+		      __atomic_store_n(
+			&REF_SLOT(x, OPERATION_CACHE_TYPE_OFF),
+			y_type, __ATOMIC_RELEASE);
+#else
 		      REF_SLOT(x, OPERATION_CACHE_TYPE_OFF) = y_type;
 		      REF_SLOT(x, OPERATION_CACHE_METH_OFF) = e_current_method;
 		      REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF) = offset;
 #endif
+#endif
 		    }
+#if defined(OP_TYPE_METH_CACHE) && defined(THREADS)
+		  }
+#endif
 		}
 	      else if (!TAG_IS(e_current_method, PTR_TAG)
 		       || REF_SLOT(e_current_method, 0) != e_method_type)
@@ -2213,6 +2281,10 @@ static int _cdr_debug_count = 0;
     /* How did we get here?  Just do a user trap to get to the debugger. */
     arg_field = op_field = instr = 0;
   }
+
+  /******************/
+ crash_trap_entry:
+  /******************/
 
 #ifndef FAST
   if (trace_traps)

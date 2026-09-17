@@ -25,8 +25,8 @@
 ;; Creates a new heavyweight thread
 ;; This method takes one argument, the function to be run in the
 ;; virtual machine running on the new heavyweight thread.
-;; The given function should loop forever.  If it returns, a seg-fault
-;; will occur (it's not a bug, it's a feature).
+;; The given function should loop forever.  If it returns, the thread
+;; will exit with a warning message.
 ;; This function returns t if the thread is created, nil if it could
 ;; not be created.
 ;;
@@ -54,6 +54,15 @@
   (add-method ((make-open-coded-operation '((store-reg process)) 1 1)
 	       (object) value)
 	      (%store-process value)))
+
+;;
+;; Yields the current thread's timeslice to other threads.
+;; Under THREADS, calls sched_yield(); otherwise a no-op.
+;;
+(define-constant %thread-yield
+  (add-method ((make-open-coded-operation '((thread-yield)) 0 1)
+	       (object))
+	      (%thread-yield)))
 
 ;; An atomic operation that tests the value in a locative and sets it
 ;; to NEW if the value is currently OLD.  A boolean is returned to
