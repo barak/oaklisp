@@ -106,7 +106,7 @@ static int wp_free_size = 0;
 
 
 /* Fibonacci hashing: floor( 2^N * (sqrt(5)-1)/2 ) for N-bit words. */
-#if __WORDSIZE == 64
+#if OAK_WORD_SIZE == 64
 #define wp_key(r) ((unsigned long) 0x9E3779B97F4A7C15UL*(r))
 #else
 #define wp_key(r) ((unsigned long) 0x9E3779BB*(r))	/* >>10, == 2654435771L */

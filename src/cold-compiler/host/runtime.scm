@@ -564,6 +564,11 @@
   (defglobal! '%ARGLESS-TAG-TRAP-TABLE (make-vector 128 '()))
   (defglobal! '%ARGED-TAG-TRAP-TABLE (make-vector 128 '()))
   (defglobal! 'MONITOR-FOR-BRUCE '())
+  ;; What the cold linker records about the architecture it linked
+  ;; for; see architecture.oak.  *word-bits* is set from --32bit
+  ;; before the world is built.
+  (defglobal! '%%WORD-SIZE *word-bits*)
+  (defglobal! '%%INSTRUCTIONS-PER-REF 2)
   (defglobal! '*LOCALE-MUTEX* '())
   (defglobal! '*ADD-METHOD-MUTEX* '())
   (set! *make-cell* (oak-loc-var (resolve-global *proto-locale* 'MAKE)))

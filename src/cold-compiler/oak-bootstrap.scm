@@ -55,7 +55,7 @@
 
 (define (usage)
   (format (current-error-port)
-	  "usage: oak-bootstrap.scm [--srcdir DIR] [--outdir DIR] [--locale L] [--32bit] [--noisy N] [--verbose] [--keep-going] [--eval EXPR] FILE...~%")
+	  "usage: oak-bootstrap.scm [--srcdir DIR] [--outdir DIR] [--locale L] [--target ARCH|--32bit] [--noisy N] [--verbose] [--keep-going] [--load FILE] [--eval EXPR] FILE...~%")
   (exit 2))
 
 (define (main args)
@@ -73,6 +73,25 @@
       (set! *debug* #t) (loop (cdr args) jobs locale-name))
      ((string=? (car args) "--32bit")
       (set! *word-bits* 32) (loop (cdr args) jobs locale-name))
+     ((string=? (car args) "--target")
+      ;; A bytecode architecture name, bc2-32 or bc2-64 (a world name
+      ;; like bc2-el64 is accepted too); see architecture.oak.
+      (let ((name (cadr args)))
+	(cond ((string-suffix? "32" name) (set! *word-bits* 32))
+	      ((string-suffix? "64" name) (set! *word-bits* 64))
+	      (else (format (current-error-port)
+			    "oak-bootstrap: bad architecture name ~A~%" name)
+		    (exit 1)))
+	(unless (string-prefix? "bc2-" name)
+	  (format (current-error-port)
+		  "oak-bootstrap: only bc2 targets are supported, not ~A~%" name)
+	  (exit 1)))
+      (loop (cddr args) jobs locale-name))
+     ((string=? (car args) "--load")
+      ;; Load FILE.oak into the current locale, as LOAD would, before
+      ;; whatever follows; e.g. --load tool to make the cold linker
+      ;; available to a later --eval.
+      (loop (cddr args) (cons (list 'load (cadr args) locale-name) jobs) locale-name))
      ((string=? (car args) "--keep-going")
       (set! *keep-going* #t) (loop (cdr args) jobs locale-name))
      ((string=? (car args) "--trace")
@@ -99,6 +118,15 @@
        (lambda (job)
 	 (cond ((eq? (car job) 'noisy)
 		(fluid-set! 'COMPILER-NOISINESS (cdr job)))
+	       ((eq? (car job) 'load)
+		(let ((locale (global-ref (caddr job))))
+		  (format (current-error-port) ";; loading ~A~%" (cadr job))
+		  (oak-load-file (string-append
+				  (if (string-index (cadr job) #\/)
+				      (cadr job)
+				      (string-append *srcdir* "/" (cadr job)))
+				  ".oak")
+				 locale make-sub-locale)))
 	       ((eq? (car job) 'eval)
 		(let ((form (oak-read (open-input-string (cadr job))))
 		      (locale (global-ref (caddr job))))

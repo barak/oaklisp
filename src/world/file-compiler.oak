@@ -147,8 +147,10 @@
 	       (forms (after-reading
 		       (read-file (append file-name
 					  compiler-from-extension)))))
-	  (write-file
+	  (write-file-with-header
 	   tmp-name
+	   (and (not (eq? s4 identity)) ; only .oa files get a header
+		(bytecode-header-string #*target-architecture))
 	   (block0 (bind ((#*file-load-time-macros
 			   (load-time-macro-names forms)))
 		     (s4 (s3 (s2b (s12 forms)))))

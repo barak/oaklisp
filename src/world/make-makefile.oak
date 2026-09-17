@@ -52,13 +52,17 @@
       (for-each aller compiler-files)
       (format outfile "~%")
 
+      (format outfile "EXPORTFILES =")
+      (for-each aller export-files)
+      (format outfile "~%")
+
       (format outfile "RNRSFILES =")
       (for-each aller scheme-files)
       (format outfile "~%")
 
       (format outfile "TOOLFILES  = tool.oa~%")
       (format outfile "FILESFILES = files.oa~%")
-      (format outfile "MAKEFILES  = make-makefile.oa~%")
+      (format outfile "MAKEMAKEFILES = make-makefile.oa~%")
       (format outfile "~%")
       (format outfile "# These are gravy.  The first two are our standard~%")
       (format outfile "# benchmarks.  The others are neat.~%")
@@ -72,6 +76,13 @@
       (for-each (lambda (f)
 		  (format outfile "~a.oa " (downcase (#^string f))))
 		compiler-files)
-      (format outfile ": OAKLOCALE=--locale compiler-locale~%")))
+      (format outfile ": OAKLOCALE=--locale compiler-locale~%")
+
+      (format outfile "~%# The Scheme compatibility files are compiled in scheme-locale, whose~%")
+      (format outfile "# macros give dotted argument lists their R3RS meaning.~%~%")
+      (for-each (lambda (f)
+		  (format outfile "~a.oa " (downcase (#^string f))))
+		scheme-files)
+      (format outfile ": OAKLOCALE=--locale scheme-locale~%")))
 
   name)

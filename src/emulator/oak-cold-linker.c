@@ -20,7 +20,13 @@
  * Replaces tool.oak for cold world generation, breaking the circular
  * dependency that requires a running Oaklisp to build a cold world.
  *
- * Usage: oak-cold-linker [--64bit|--32bit] -o OUTBASE file1 file2 ...
+ * Usage: oak-cold-linker [--target ARCH] -o OUTBASE file1 file2 ...
+ *
+ * ARCH is a bytecode architecture name like bc2-32 or bc2-64 (a world
+ * architecture name like bc2-el64 is also accepted; the endianness is
+ * ignored, as cold worlds are byte-order independent).  --64bit and
+ * --32bit are accepted as abbreviations for --target bc2-64 and
+ * --target bc2-32.
  *
  * (C) Barak A. Pearlmutter, Kevin J. Lang, 1986-2025.
  */
@@ -31,6 +37,8 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <errno.h>
+
+#include "oak-header.h"
 
 /* MSVC names strdup with a leading underscore. */
 #if defined(_MSC_VER) && !defined(strdup)
@@ -602,11 +610,13 @@ static sexp_t *parse_string_lit(parser_t *p)
         if (c == '"')
             break;
         if (c == '\\') {
+            /* As in the Oaklisp reader, a backslash simply quotes
+               the next character; there are no C-style escapes. */
             c = pgetc(p);
-            if (c == 'n') c = '\n';
-            else if (c == 't') c = '\t';
-            else if (c == 'r') c = '\r';
-            /* else literal backslash-escape */
+            if (c == EOF) {
+                fprintf(stderr, "EOF after backslash in string\n");
+                exit(1);
+            }
         }
         if (len >= (int)sizeof(buf) - 1) {
             fprintf(stderr, "String literal is too long (over %d characters)\n",
@@ -912,6 +922,7 @@ static void pair_cache_insert(sexp_t *key, uint64_t val)
 static int bits64 = 1;           /* default 64-bit */
 static int ref_shift;            /* 2 or 3 */
 static int fixnum_bits;          /* 30 or 62 */
+static int instrs_per_ref = 2;   /* only 2 is supported */
 
 static int opc_count, var_count, sym_count, dat_count;
 static int blk_count, max_blks;
@@ -957,9 +968,10 @@ static int64_t the_empty_string = -1;  /* -1 = not yet allocated */
 /* vars-to-preload */
 static const char *vars_to_preload[] = {
     "NIL", "T", "CONS-PAIR", "%CODE-VECTOR", "STRING",
-    "%%SYMLOC", "%%NSYMS", "%%SYMSIZE", "%%VARLOC", "%%NVARS"
+    "%%SYMLOC", "%%NSYMS", "%%SYMSIZE", "%%VARLOC", "%%NVARS",
+    "%%WORD-SIZE", "%%INSTRUCTIONS-PER-REF"
 };
-#define N_PRELOAD 10
+#define N_PRELOAD 12
 
 /* ================================================================
  * Tag encoding (matching tool.oak)
@@ -1264,6 +1276,30 @@ static sexp_t *read_oa_file(const char *filename)
     if (!fp) {
         fprintf(stderr, "Cannot open %s: %s\n", filename, strerror(errno));
         exit(1);
+    }
+
+    /* An optional header line identifies the bytecode architecture.
+       The word size need not match: integer constants are range
+       checked by tagize_int. */
+    int c = fgetc(fp);
+    if (c == ';') {
+        oak_header_t h;
+        if (oak_read_header(fp, &h)) {
+            if (strcmp(h.kind, "bytecode") != 0) {
+                fprintf(stderr, "%s is an oaklisp-%s file, not bytecode\n",
+                        filename, h.kind);
+                exit(1);
+            }
+            if (h.instrs_per_ref != 0 && h.instrs_per_ref != instrs_per_ref) {
+                fprintf(stderr,
+                        "%s has %d instructions per ref, target has %d\n",
+                        filename, h.instrs_per_ref, instrs_per_ref);
+                exit(1);
+            }
+        }
+        /* A non-header comment line was skipped, which is harmless. */
+    } else {
+        ungetc(c, fp);
     }
 
     parser_t p;
@@ -1622,6 +1658,13 @@ static void layout_handbuilt_data(void)
     e = ht_get(&var_table, "%%SYMSIZE");
     store_world_int(SYMBOL_SIZE, e->val);
 
+    /* Let the world know what it was linked for. */
+    e = ht_get(&var_table, "%%WORD-SIZE");
+    store_world_int(fixnum_bits + 2, e->val);
+
+    e = ht_get(&var_table, "%%INSTRUCTIONS-PER-REF");
+    store_world_int(instrs_per_ref, e->val);
+
     layout_boot_method();
 }
 
@@ -1849,13 +1892,14 @@ static void dump_world(const char *filename)
 
     long actual_size = next_free_dat;
 
-    /* Word size marker, matching COLD_WORLD_TAG in worldio.c.  Without
+    /* Architecture header, matching read_world in worldio.c.  Without
        it a 32-bit cold world loaded into a 64-bit emulator (or the
        reverse) has every tagged value shifted by the wrong amount, and
        the emulator only finds out by crashing somewhere unrelated.  A
-       cold world is byte order neutral, so the tag names the word size
-       alone.  tool.oak writes the same line. */
-    fprintf(fp, "oakcold%d\n", bits64 ? 64 : 32);
+       cold world is byte order neutral, so the header names no
+       endianness.  tool.oak writes the same line. */
+    fprintf(fp, ";oaklisp-world format=cold word-size=%d instructions-per-ref=%d\n",
+            fixnum_bits + 2, instrs_per_ref);
 
     /* Header */
     print_hex(fp, VALUE_STACK_SIZE);
@@ -1924,9 +1968,11 @@ static void dump_tables(const char *filename)
 static void usage(const char *prog)
 {
     fprintf(stderr,
-            "Usage: %s [--64bit|--32bit] -o OUTBASE file1 file2 ...\n"
-            "  Files are basenames; .oa extension appended automatically.\n"
-            "  Default: 64-bit mode.\n", prog);
+            "Usage: %s [--target ARCH] -o OUTBASE file1 file2 ...\n"
+            "  ARCH is a bytecode architecture such as bc2-32 or bc2-64\n"
+            "  (default bc2-64); --32bit and --64bit are abbreviations.\n"
+            "  Files are basenames; .oa extension appended automatically.\n",
+            prog);
     exit(1);
 }
 
@@ -1956,6 +2002,19 @@ int main(int argc, char **argv)
             bits64 = 1;
         } else if (!strcmp(argv[i], "--32bit")) {
             bits64 = 0;
+        } else if (!strcmp(argv[i], "--target")) {
+            oak_header_t h;
+            if (++i >= argc) usage(argv[0]);
+            if (!oak_parse_arch_name(argv[i], &h)) {
+                fprintf(stderr, "Bad architecture name: %s\n", argv[i]);
+                usage(argv[0]);
+            }
+            if (h.instrs_per_ref != 2) {
+                fprintf(stderr, "Only 2 instructions per ref is supported.\n");
+                exit(1);
+            }
+            bits64 = (h.word_size == 64);
+            instrs_per_ref = h.instrs_per_ref;
         } else if (!strcmp(argv[i], "-o")) {
             if (++i >= argc) usage(argv[0]);
             outbase = argv[i];
@@ -1976,8 +2035,8 @@ int main(int argc, char **argv)
     ref_shift = bits64 ? 3 : 2;
     fixnum_bits = bits64 ? 62 : 30;
 
-    fprintf(stderr, "oak-cold-linker: %d-bit mode, ref-shift=%d, fixnum-bits=%d\n",
-            bits64 ? 64 : 32, ref_shift, fixnum_bits);
+    fprintf(stderr, "oak-cold-linker: target bc%d-%d, ref-shift=%d, fixnum-bits=%d\n",
+            instrs_per_ref, bits64 ? 64 : 32, ref_shift, fixnum_bits);
 
     /* Initialize tables */
     ht_init(&var_table);

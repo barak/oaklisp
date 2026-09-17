@@ -28,10 +28,19 @@
     (read-until the-eof-token #f s)))
 
 (define (write-file file obj)
+  (write-file-with-header file #f obj))
+
+;;; HEADER, if not #f, is a string written as the first line of the
+;;; file.  It is used for the ";oaklisp-bytecode ..." line of .oa files.
+
+(define (write-file-with-header file header obj)
   (error-restart
       (format #f "Try writing ~S again (optionally under another name)." file)
       ((file file))
     (with-open-file (s file out ugly)
+      (when header
+	(write-string header s)
+	(write-char s #\newline))
       (bind ((#*print-level #f)
 	     (#*print-length #f)
 	     (#*print-radix 10)
@@ -45,6 +54,12 @@
 ;;; file compiler uses this to move a freshly written .oa into place
 ;;; only once it is complete, so that an interrupted compile cannot
 ;;; leave a truncated object under the real name.
+
+;;; The call to the primitive has to be open coded, as an operation
+;;; with no methods cannot be called any other way, and for that the
+;;; compiling world's %STREAM-PRIMITIVE has to know about number 14.
+;;; When bootstrapping from an older world the Makefile therefore
+;;; loads the freshly compiled streams.oa before compiling this file.
 
 (define (rename-file old-name new-name)
   (let ((old-name (#^string old-name))

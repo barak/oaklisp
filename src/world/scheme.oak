@@ -402,11 +402,12 @@
 		 `((pop 1) (load-imm ()) (label ,done)))))))
 	  nil 1)))
 
+    ;; This file is compiled in scheme-locale, where ADD-METHOD gives a
+    ;; dotted argument list its R3RS meaning: ARGS is a list.
     (add-method (op (object) x y . args)
       (if (binary-op x y)
-	  (listify-args (lambda (rest) (%chain-compare binary-op y rest))
-			. args)
-	  (consume-args #f . args)))
+	  (%chain-compare binary-op y args)
+	  #f))
     op))
 
 (shadow-in-current-locale '=  (%n-ary-comparison "="  =  '((=))))

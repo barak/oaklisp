@@ -132,6 +132,7 @@
     bounders do
     anonymous pl
     sort pl
+    architecture pl
     exit pl
     ))
 (define layer6
@@ -182,6 +183,14 @@
     alarm
     multi-em
     multiproc
+    dump-world
+    ))
+
+;;; Loaded into system-locale after the compiler; populates oaklisp-locale.
+
+(define export-files
+  '(
+    oaklisp-exports
     ))
 
 (define compiler-files

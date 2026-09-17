@@ -23,6 +23,26 @@
 	(set! (variable-here? destination variable) try)
 	(warning "~S not found in ~S; can't export.~%" variable source))))
 
+;;; Export SYM, whatever it is, from SOURCE to DESTINATION: a
+;;; variable shares its cell (and keeps its frozen status, so the
+;;; compiler can still open code and fold it), a macro shares its
+;;; expander.  Symbols that are neither are noted but not fatal, so
+;;; that an export list can be written before everything on it
+;;; exists.
+
+(define (export-symbol source destination sym)
+  (let ((cell (variable-here? source sym)))
+    (cond (cell
+	   (set! (variable-here? destination sym) cell)
+	   (when (frozen-here? source sym)
+	     (set! (frozen-here? destination sym) #t)))
+	  ((macro-here? source sym)
+	   => (lambda (expander)
+		(set! (macro-here? destination sym) expander)))
+	  (else
+	   (format standard-error "~&Warning: ~S not in ~S; not exported to ~S.~%"
+		   sym source destination)))))
+
 
 
 

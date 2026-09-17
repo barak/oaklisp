@@ -40,10 +40,72 @@
 
 
 
-;;; Auto-detect 64-bit from running emulator's fixnum range.
-;;; On 32-bit, most-positive-fixnum = 536870911 (2^29-1).
-;;; Override with --eval '(set! target-64bit #t)' or #f after loading.
-(set! target-64bit (not (= most-positive-fixnum 536870911)))
+;;; The target architecture: word size in bits and number of 16-bit
+;;; instructions per ref.  Set by TOOL-FILES from an architecture
+;;; name like "bc2-64" (or "bc2-el64"; endianness is irrelevant, as
+;;; cold worlds are byte-order independent), defaulting to the
+;;; architecture of the running system.
+;;;
+;;; This file is deliberately self-contained, not using
+;;; ARCHITECTURE.OAK, so that it can be loaded into an old world when
+;;; bootstrapping.
+
+(set! target-word-size 0)
+(set! target-instructions-per-ref 2)
+
+(define (set-target-architecture! name)
+  (cond ((not name)
+	 ;; Detect the running system.  Old worlds lack %%WORD-SIZE,
+	 ;; so fall back to the fixnum range: 2^29-1 on 32-bit.
+	 (set! target-word-size
+	       (if (= most-positive-fixnum 536870911) 32 64))
+	 (set! target-instructions-per-ref 2))
+	(else
+	 (let ((parsed (parse-target-name (#^string name))))
+	   (set! target-instructions-per-ref (car parsed))
+	   (set! target-word-size (cdr parsed)))))
+  (unless (= target-instructions-per-ref 2)
+    (error "Only 2 instructions per ref is supported, not ~D."
+	   target-instructions-per-ref))
+  (unless (or (= target-word-size 32) (= target-word-size 64))
+    (error "Unsupported word size ~D." target-word-size))
+  (format #t "Target: bc~D-~D~%" target-instructions-per-ref target-word-size))
+
+;;; "bc2-64" or "bc2-el64" => (2 . 64)
+
+(define (parse-target-name name)
+  (let ((chars (#^list-type name))
+	(digit? (lambda (c) (and (<= (#^number #\0) (#^number c))
+				 (<= (#^number c) (#^number #\9)))))
+	(bad (lambda ()
+	       (error "Malformed architecture name ~S; expected something like bc2-64." name))))
+    (labels (((digits l n)
+	      (if (and (not (null? l)) (digit? (car l)))
+		  (digits (cdr l) (+ (* 10 n) (- (#^number (car l)) (#^number #\0))))
+		  (cons n l))))
+      (unless (and (>= (length chars) 4)
+		   (eq? (downcase (car chars)) #\b)
+		   (eq? (downcase (cadr chars)) #\c)
+		   (digit? (caddr chars)))
+	(bad))
+      (let* ((ipr+rest (digits (cddr chars) 0))
+	     (rest (cdr ipr+rest)))
+	(unless (and (not (null? rest)) (eq? (car rest) #\-))
+	  (bad))
+	(let* ((rest (cdr rest))
+	       (rest (if (and (>= (length rest) 2)
+			      (eq? (downcase (car rest)) #\e)
+			      (or (eq? (downcase (cadr rest)) #\l)
+				  (eq? (downcase (cadr rest)) #\b)))
+			 (cddr rest)
+			 rest))
+	       (ws+rest (if (and (not (null? rest)) (digit? (car rest)))
+			    (digits rest 0)
+			    (bad))))
+	  (unless (null? (cdr ws+rest)) (bad))
+	  (cons (car ipr+rest) (car ws+rest)))))))
+
+(define (target-64bit) (= target-word-size 64))
 
 (define cell-size 1)
 (define pair-size 3)
@@ -79,24 +141,21 @@
 ; this code depends on bignums
 
 (define (tagize-int x)
-  (let* ((fixnum-bits (if target-64bit 62 30))
-	 (limit (expt 2 (- fixnum-bits 1))))
-    ;; Oaklisp arithmetic is exact, so an out-of-range constant would
-    ;; not wrap here the way it does in C -- it would be written to the
-    ;; .cold file as a number too wide for a ref, which the emulator
-    ;; then reads as something else again.  The cold world has no way to
-    ;; build a bignum, so refuse rather than emit a malformed world.
-    ;; oak-cold-linker makes the same check.
-    (when (or (< x (- limit)) (> x (- limit 1)))
+  (let* ((fixnum-bits (- target-word-size 2))
+	 (lim (expt 2 (- fixnum-bits 1))))
+    (when (or (>= x lim) (< x (- lim)))
       (error "Integer constant ~D does not fit in a ~D-bit fixnum."
 	     x fixnum-bits))
     (+ int-tag (* 4 (if (negative? x)
 			(+ x (expt 2 fixnum-bits))
 			x)))))
 
-(define (tagize-imm x) (+ imm-tag (ash-left x 2)))
-(define (tagize-ptr x) (+ ptr-tag (ash-left x (if target-64bit 3 2))))
-(define (tagize-loc x) (+ loc-tag (ash-left x (if target-64bit 3 2))))
+;;; These use * rather than ASH-LEFT because the results may be
+;;; bignums when the target has a wider word than the host.
+
+(define (tagize-imm x) (+ imm-tag (* x 4)))
+(define (tagize-ptr x) (+ ptr-tag (* x (if (target-64bit) 8 4))))
+(define (tagize-loc x) (+ loc-tag (* x (if (target-64bit) 8 4))))
 
 (define (store-world-int x word-addr) (store-world-word (tagize-int x) word-addr))
 (define (store-world-ptr x word-addr) (store-world-word (tagize-ptr x) word-addr))
@@ -146,7 +205,16 @@
   (set! pair-table (make-equal-hash-table)))
 
 
-(define (tool-files in-files out-file)
+;;; The optional third argument is the target architecture name.
+
+(define (tool-files in-files out-file . target)
+  (listify-args (lambda (target)
+		  (tool-files-for in-files out-file
+				  (if (null? target) #f (car target))))
+		. target))
+
+(define (tool-files-for in-files out-file target)
+  (set-target-architecture! target)
   (format #t "reading ...")
   (let ((in-names (map (lambda (na) (extensionize na ".oa"))
 		       in-files)))
@@ -563,7 +631,8 @@
 
 (define vars-to-preload '(nil t cons-pair %code-vector string
 			      %%symloc %%nsyms %%symsize
-			      %%varloc %%nvars))
+			      %%varloc %%nvars
+			      %%word-size %%instructions-per-ref))
 
 (set! where-nil-lives #f)
 (set! where-t-lives #f)
@@ -593,6 +662,10 @@
   (store-world-int sym-count (toble-get '%%nsyms var-table))
   (store-world-int var-count (toble-get '%%nvars var-table))
   (store-world-int symbol-size (toble-get '%%symsize var-table))
+  ;; Let the world know what it was linked for:
+  (store-world-int target-word-size (toble-get '%%word-size var-table))
+  (store-world-int target-instructions-per-ref
+		   (toble-get '%%instructions-per-ref var-table))
   (layout-boot-method)
   )
 
@@ -638,6 +711,7 @@
 
 
 (define (read-oa-file file)		;file already has an extension
+  (check-oa-file-header file)
   (let ((red (read-file file)))
     (cond ((not (null? (cdr red)))
 	   (error "File ~S, should contain but one form, but has ~A."
@@ -645,6 +719,49 @@
 	  ((and (pair? (car (car red)))
 		(pair? (caar (car red)))) (car red))
 	  (else (make-oa-list (car red))))))
+
+;;; A .oa file may start with a header line like
+;;;   ;oaklisp-bytecode word-size=32 instructions-per-ref=2
+;;; which the reader skips as a comment.  Make sure the instruction
+;;; packing matches the target.  Integer constants are range checked
+;;; by TAGIZE-INT, so the word size need not be checked here.
+
+(define (check-oa-file-header file)
+  (with-open-file (s file in)
+    (when (eq? (peek-char s) #\;)
+      (let ((line (iterate aux ((chars '()))
+		    (let ((c (read-char s)))
+		      (if (or (eq? c the-eof-token) (eq? c #\newline))
+			  (reverse! chars)
+			  (aux (cons c chars)))))))
+	(when (list-prefix? (#^list-type ";oaklisp-bytecode") line)
+	  (let ((ipr (header-value (#^list-type "instructions-per-ref=") line)))
+	    (when (and ipr (not (= ipr target-instructions-per-ref)))
+	      (error "~A has ~D instructions per ref, but the target has ~D."
+		     file ipr target-instructions-per-ref))))))))
+
+(define (list-prefix? prefix l)
+  (cond ((null? prefix) #t)
+	((null? l) #f)
+	((eq? (car prefix) (car l)) (list-prefix? (cdr prefix) (cdr l)))
+	(else #f)))
+
+;;; Find KEY= in LINE (both lists of characters) and return the
+;;; decimal number following it, or #f.
+
+(define (header-value key line)
+  (iterate aux ((l line))
+    (cond ((null? l) #f)
+	  ((list-prefix? key l)
+	   (iterate digits ((l (tail l (length key))) (n 0) (any #f))
+	     (if (and (not (null? l))
+		      (<= (#^number #\0) (#^number (car l)))
+		      (<= (#^number (car l)) (#^number #\9)))
+		 (digits (cdr l)
+			 (+ (* n 10) (- (#^number (car l)) (#^number #\0)))
+			 #t)
+		 (and any n))))
+	  (else (aux (cdr l))))))
 
 (define (make-oa-list oaf-list)
   (let ((sym-vec (#^simple-vector (first oaf-list))))
@@ -682,7 +799,7 @@
 
 (define (print-hex num ndigits outfile)
   (cond ((not ndigits)
-	 (let ((max-val (if target-64bit #xffffffffffffffff #xffffffff)))
+	 (let ((max-val (if (target-64bit) #xffffffffffffffff #xffffffff)))
 	   (when (or (negative? num)
 		     (and (not (eq? (get-type num) fixnum))
 			  (> num max-val)))
@@ -783,6 +900,8 @@
   (let ((actual-size next-free-dat)
 	(world world))
     (with-open-file (outfile filename out)
+      (format outfile ";oaklisp-world format=cold word-size=~D instructions-per-ref=~D~%"
+	      target-word-size target-instructions-per-ref)
       (write-world-header outfile)
       (bind ((#*print-radix 16))
 	(dotimes (i actual-size)
@@ -805,14 +924,6 @@
 
 
 (define	(write-world-header outfile)
-  ;; Word size marker, matching COLD_WORLD_TAG in the emulator's
-  ;; worldio.c and the line oak-cold-linker writes.  A cold world is
-  ;; byte order neutral -- the emulator swaps the halves of a
-  ;; ^-prefixed opcode cell when it needs to -- but its tagged values
-  ;; are shifted by the target's ref shift, so loading one into an
-  ;; emulator of the other word size has to be refused rather than
-  ;; discovered by crashing.
-  (format outfile "oakcold~D~%" (if target-64bit 64 32))
   (bind ((#*print-radix 16))
     (print-hex value-stack-size #f outfile)
     (format outfile " ")

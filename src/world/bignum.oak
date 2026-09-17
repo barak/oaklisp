@@ -811,17 +811,14 @@
 ;;; NOTE: bignum-speed-test, balanced tree fact, etc. moved to bignum2.oak.
 
 
-;;; Convoluted code defeats constant folding.  No big numbers in bignum.oa!
-;;; ROT-LEFT, unlike ASH-LEFT, keeps the bits it shifts off the top and
-;;; so cannot overflow: rotating 1 left by one less than the width of
-;;; the value field lands the bit in the sign position, which is exactly
-;;; the most negative fixnum.  That width is 29 on 32-bit and 61 on
-;;; 64-bit; try the smaller one first and see whether it went negative.
-(define most-negative-fixnum
-  (let ((try (rot-left (let ((x 1)) x) 29)))
-    (if (negative? try)
-	try
-	(rot-left (let ((x 1)) x) 61))))
+;;; The most negative fixnum has only its sign bit set.  ROT-LEFT,
+;;; unlike ASH-LEFT, keeps the bits it shifts off the top and so
+;;; cannot overflow: rotating 1 left by one less than the width of
+;;; the value field lands the bit in the sign position.  That width is
+;;; two less than the word, and ROT-LEFT is not constant folded, so
+;;; this is computed on the machine we run on.  No big numbers in
+;;; bignum.oa!
+(define most-negative-fixnum (rot-left 1 (- %%word-size 3)))
 (define most-positive-fixnum (- (+ most-negative-fixnum 1)))
 
 (let* ((l0 (list most-positive-fixnum))

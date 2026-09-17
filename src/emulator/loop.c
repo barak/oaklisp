@@ -677,11 +677,11 @@ loop(ref_t initial_tos)
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
-#if __WORDSIZE == 64 && defined(HAVE___INT128)
+#if OAK_WORD_SIZE == 64 && defined(HAVE___INT128)
 	      /* Multiply integer values, check if product fits in fixnum range. */
 	      {
 		__int128 a = (__int128)REF_TO_INT(x) * (__int128)REF_TO_INT(y);
-		ssize_t highcrap = (ssize_t)(a >> (__WORDSIZE - (TAGSIZE + 1)));
+		ssize_t highcrap = (ssize_t)(a >> (OAK_WORD_SIZE - (TAGSIZE + 1)));
 		if ((highcrap != 0) && (highcrap != -1))
 		  TRAP1(2);
 		PEEKVAL() = INT_TO_REF((ssize_t)a);
@@ -690,7 +690,7 @@ loop(ref_t initial_tos)
 	      /* "long long" here means int64 */
 	      {
 		int64_t a = (int64_t)REF_TO_INT(x) * (int64_t)REF_TO_INT(y);
-		int highcrap = a >> (__WORDSIZE - (TAGSIZE+1));
+		int highcrap = a >> (OAK_WORD_SIZE - (TAGSIZE+1));
 		if (highcrap && highcrap+1)
 		  TRAP1(2);
 		PEEKVAL() = INT_TO_REF(a);
@@ -923,7 +923,7 @@ loop(ref_t initial_tos)
 	      CHECKTAGS_INT_1(x, y, 2);
 	      {
 		/* Number of bits in a fixnum, sign bit included. */
-		const unsigned fixnum_width = __WORDSIZE - TAGSIZE;
+		const unsigned fixnum_width = OAK_WORD_SIZE - TAGSIZE;
 		ssize_t a = REF_TO_INT(x);
 		ssize_t b = REF_TO_INT(y);
 
@@ -970,7 +970,7 @@ loop(ref_t initial_tos)
 		 with an infinite-precision integer language model.
 		 This instr is used for computing string hashes. */
 	      {
-		const ssize_t width = __WORDSIZE - TAGSIZE;
+		const ssize_t width = OAK_WORD_SIZE - TAGSIZE;
 		size_t a = (size_t)x;
 		ssize_t b = REF_TO_INT(y);
 

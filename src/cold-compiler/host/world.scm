@@ -175,6 +175,7 @@
     ("bounders" . skip)
     ("anonymous" . skip)
     ("sort" . load)
+    ("architecture" . load)
     ("exit" . skip)
     ("cmdline" . skip)
     ("cmdline-getopt" . skip)
@@ -188,6 +189,11 @@
   '("del" "promise" "bignum" "rational" "complex" "rounding"
     "lazy-cons" "math" "trace" "apropos" "time" "bignum2" "alarm" "multi-em"
     "multiproc" "dump-world"))
+
+;;; scheme.oak shadows some of the system's operations in SCHEME-LOCALE
+;;; (an n-ary > for instance), and so, being compiled there, is
+;;; compiled against its own definitions; hence it is loaded as well.
+(define scheme-macro-files '("scheme-macros" "scheme"))
 
 (define compiler-files
   '("crunch" "mac-comp-stuff" "mac-compiler-nodes" "mac-compiler1"
@@ -263,6 +269,16 @@
   ;; The compiler goes into COMPILER-LOCALE.
   (fluid-set! 'CURRENT-LOCALE (compiler-locale))
   (for-each (lambda (f) (load-world-file f (compiler-locale))) compiler-files)
+  (fluid-set! 'CURRENT-LOCALE (system-locale))
+  ;; SCHEME-LOCALE, made in the last stage of the world build, with
+  ;; the Scheme compatibility files loaded so that they compile the
+  ;; way they do natively (the macros give dotted argument lists their
+  ;; R3RS meaning).
+  (oak-eval '(DEFINE-INSTANCE SCHEME-LOCALE LOCALE (LIST SYSTEM-LOCALE))
+	    (system-locale))
+  (fluid-set! 'CURRENT-LOCALE (global-ref 'SCHEME-LOCALE))
+  (for-each (lambda (f) (load-world-file f (global-ref 'SCHEME-LOCALE)))
+	    scheme-macro-files)
   (fluid-set! 'CURRENT-LOCALE (system-locale))
   #t)
 

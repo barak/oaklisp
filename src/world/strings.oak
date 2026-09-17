@@ -64,6 +64,9 @@
 ;;; any other way, down to the bits.
 
 (define (make-string len . rest)
+  (listify-args (lambda (rest) (make-string-filled len rest)) . rest))
+
+(define (make-string-filled len rest)
   (cond ((negative? len)
 	 (error "Cannot make a string of ~D characters." len))
 	((zero? len) "")

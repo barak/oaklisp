@@ -1,0 +1,18 @@
+#!/bin/sh
+# Native threads: only in an emulator built with --enable-threads.
+#
+# This is deliberately a smoke test.  Once --pthreads has initialized
+# the thread infrastructure, anything that invokes the compiler (an
+# --eval, or loading a .oak file) deadlocks on the guard mutexes, and
+# loading precompiled code is not reliable either (see Threads.md),
+# so all that is checked here is that the threads can be spawned and
+# the process exits cleanly.
+. "$(dirname "$0")/testlib.sh"
+enabled=$(oak -- --eval '(print (%threads-enabled?) standard-output)' --exit 2>&1 | tail -c 3)
+case $enabled in *T*) ;; *) skip "emulator built without threads";; esac
+out=$(timeout 120 "$OAKLISP" --batch --world "$OAKWORLD" -- --pthreads 3 --exit 2>&1)
+status=$?
+echo "$out"
+test "$status" = 0 || fail "exit status $status with --pthreads 3"
+printf '%s\n' "$out" | grep -q 'Spawning' || fail "no threads spawned"
+echo "threads smoke test passed"

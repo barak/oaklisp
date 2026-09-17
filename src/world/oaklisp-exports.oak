@@ -1,0 +1,205 @@
+;;; This file is part of Oaklisp.
+;;;
+;;; This program is free software; you can redistribute it and/or modify
+;;; it under the terms of the GNU General Public License as published by
+;;; the Free Software Foundation; either version 2 of the License, or
+;;; (at your option) any later version.
+;;;
+;;; This program is distributed in the hope that it will be useful,
+;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;; GNU General Public License for more details.
+;;;
+;;; The GNU GPL is available at http://www.gnu.org/licenses/gpl.html
+;;; or from the Free Software Foundation, 59 Temple Place - Suite 330,
+;;; Boston, MA 02111-1307, USA
+
+
+;;; Copyright (C) 2026 Barak A. Pearlmutter
+
+;;; Populate OAKLISP-LOCALE, the user-level view of the system.
+;;;
+;;; SYSTEM-LOCALE holds everything: the language, its implementation,
+;;; and the odd bit of debris.  OAKLISP-LOCALE has no superiors and
+;;; receives only the names listed here, each shared with
+;;; SYSTEM-LOCALE (same value cell or macro expander, and the same
+;;; frozen status so that open coding still happens).  USER-LOCALE
+;;; inherits from OAKLISP-LOCALE, so this list is what user programs
+;;; see.
+;;;
+;;; Since macros are not hygienic, everything a macro exported here
+;;; expands into must also be exported, or user code would end up
+;;; with undefined variables; the last section is for those.
+;;;
+;;; This file is loaded once, at the end of world building, after
+;;; the compiler has exported its entry points to SYSTEM-LOCALE.
+;;; (SCHEME-LOCALE, made later still, is exported by the Makefile.)
+;;;
+;;; Special forms known to the compiler (QUOTE, %IF, %LABELS, ...)
+;;; need no entry: they are not looked up in any locale.
+
+(define oaklisp-locale-exports
+  '(
+    ;; Special forms and basic syntax
+    if cond case else and or not when unless
+    block block0 let let* letrec labels iterate lambda
+    define define-constant define-instance define-constant-instance
+    define-syntax define-local-syntax local-syntax
+    set set! setter locater contents make-locative
+    modify-location swap push pop pset
+    do dolist dolist-count dotimes while until
+    quasiquote comment
+    fluid bind
+    delay force forcible future lcons
+    destructure destructure* destructure**
+    select-type fselect-type eselect-type efselect-type
+    listify-args consume-args
+    with-operations
+
+    ;; Objects, types, and methods
+    type object operation settable-operation locatable-operation
+    coercable-type coercer mixin-manager mix-types
+    make initialize add-method ^super
+    get-type is-a? subtype? has-method? type-pred inverse-type-pred
+    create-accessors create-setters create-locaters
+    define-simple-print-method
+    variable-length-mixin
+    freeze-in-current-locale
+    identity
+
+    ;; Truth and equality
+    t nil eq? eqv? equal?
+
+    ;; Numbers
+    number real rational integer fixnum bignum fraction complex float
+    number? integer? fixnum? exact? inexact?
+    zero? positive? negative? odd? even?
+    = != < <= > >= max min
+    + - * / 1+ quotient remainder modulo div mod abs signum gcd lcm
+    floor ceiling round truncate expt sqrt
+    numerator denominator real-part imag-part conjugate
+    ash-left ash-right rot-left rot-right
+    bit-and bit-or bit-xor bit-not bit-andca bit-nand bit-nor bit-equiv
+    most-positive-fixnum most-negative-fixnum
+    factor
+
+    ;; Lists and pairs
+    pair cons-pair list-type null-type
+    pair? list? null? atom? proper-list? improper-list? make-proper
+    cons car cdr
+    caar cadr cdar cddr caaar caadr cadar caddr cdaar cdadr cddar cdddr
+    caaaar caaadr caadar caaddr cadaar cadadr caddar cadddr
+    cdaaar cdaadr cdadar cdaddr cddaar cddadr cdddar cddddr
+    list list* append append! reverse reverse! length
+    first second third fourth fifth sixth seventh eighth ninth tenth
+    last last-pair nth head tail subseq
+    memq memv member mem assq assv assoc ass rass rassq cdr-assq cdr-ass
+    delq delq! del del! remove remove-if
+    map map! mapcdr for-each for-each-cdr map-and-reverse
+    any? every? position position-in-list
+    union intersection setdifference setxor subset? setequal?
+    iota iota0 sort sort! splice copy fill!
+    lazy-cons
+
+    ;; Sequences, vectors, strings, characters, symbols
+    sequence simple-vector vector-type vector vector?
+    string string? make-string upcase downcase
+    character char? digit? graphic? digit-value digit->char
+    symbol symbol? intern gensym generate-symbol genvar genvar/1
+    subsequence?
+
+    ;; Hash tables
+    hash-table eq-hash-table equal-hash-table generic-hash-table
+    make-eq-hash-table make-equal-hash-table make-string-hash-table
+    table-entry present?
+    object-hash object-unhash
+
+    ;; Streams and I/O
+    stream input-stream output-stream
+    file-stream file-input-stream file-output-stream
+    string-input-stream string-output-stream
+    standard-input standard-output standard-error
+    open-input-file open-output-file open-output-file-append close
+    with-open-file with-input-from-string
+    read read-char peek-char unread-char skip-whitespace
+    write-char write-string newline freshline flush
+    print print-list-end format
+    the-eof-token the-unread-object
+    read-file write-file dofile
+    standard-read-table read-table
+    define-macro-char define-nonterminating-macro-char
+    define-hash-macro-char define-quotelike-macro-char
+    define-quotelike-#-macro-char
+    define-format-control
+
+    ;; Control
+    catch throw native-catch call/cc call-with-current-continuation
+    continuation
+    wind-protect funny-wind-protect
+    dynamic-wind
+    apply
+    exit
+
+    ;; Errors and conditions
+    error cerror warning signal report proceed
+    bind-error-handler catch-errors error-restart error-return
+    remember-context invoke-debugger invoke-in-error-context
+    condition proceedable-condition proceedable-mixin
+    general-error generic-fatal-error generic-proceedable-error
+    proceedable-error
+    fs-error proceedable-fs-error
+    error-opening error-opening-read error-opening-write
+    error-opening-append error-changing-directory
+    read-error proceedable-read-error unexpected-eof
+    operation-not-found nargs-error
+    show-handlers dump-stack
+
+    ;; Evaluation, loading, compiling, locales
+    eval load compile-file cc
+    locale variable? variable-here? macro? macro-here?
+    frozen? frozen-here? export-sharing-cell
+    system-locale oaklisp-locale user-locale compiler-locale
+    system-version
+    host-architecture make-architecture parse-architecture-name
+    architecture-name architecture-word-size
+    architecture-instructions-per-ref architecture-endian
+
+    ;; Fluids, processes, time, and the environment
+    get-time time
+    describe deep-describe apropos
+    trace-variable-in trace-variable-out trace-variable-in-out
+    untrace-variable
+    interactive? argline get-argline cwd
+    process current-process process-id mutex semaphore
+    acquire-mutex release-mutex test-and-set
+    lwp wait pause
+
+    ;; Undefined values returned by various forms
+    generic-undefined-value if-undefined-value cond-undefined-value
+    when-undefined-value unless-undefined-value while-undefined-value
+    ivar-undefined-value variable-undefined-value
+
+    ;; Support for the expansions of the macros exported above.
+    ;; Add to this whenever a user-level macro is found to expand
+    ;; into something not already listed.
+    %fluid _add-method native-add-method %empty-environment
+    %install-method-with-env %install-method %install-lambda
+    %install-lambda-with-env
+    get-current-fluid-bindings set-current-fluid-bindings
+    fluid-binding-list
+    signal-destructure-error
+    make-undefined-variable-value
+    frozen-here? variable-here?
+    %make-cell %crunch
+    %allocate %filltag %slot escape-object %escape-object-length
+    %windings %wind-count
+    cond-undefined-value
+    catch-errors
+    mit-block
+    the-runtime
+    ))
+
+(dolist (sym oaklisp-locale-exports)
+  (export-symbol system-locale oaklisp-locale sym))
+
+;;; eof

@@ -1,0 +1,18 @@
+;;; Method dispatch: generic operations on a small type hierarchy.
+(define-instance shape type '() (list object))
+(define-instance circle type '(r) (list shape))
+(define-instance square type '(s) (list shape))
+(add-method (initialize (circle r) self x) (set! r x) self)
+(add-method (initialize (square s) self x) (set! s x) self)
+(define-instance area operation)
+(add-method (area (circle r) self) (* 3 r r))
+(add-method (area (square s) self) (* s s))
+(define-instance describe-shape operation)
+(add-method (describe-shape (shape) self) (area self))
+(add-method (describe-shape (circle) self) (+ 1 (^super shape describe-shape self)))
+(define shapes (let loop ((i 0) (acc '())) (if (= i 100) acc (loop (+ i 1) (cons (if (odd? i) (make circle i) (make square i)) acc)))))
+(define (bench)
+  (let loop ((i 0) (s 0))
+    (if (= i 20000)
+	s
+	(loop (+ i 1) (let inner ((l shapes) (s s)) (if (null? l) s (inner (cdr l) (+ s (describe-shape (car l))))))))))

@@ -31,6 +31,10 @@ Oaklisp level options.
 
         --compile file     Compile file.oak yielding file.oa
 
+        --target arch      Compile subsequent files for architecture
+                           arch, eg bc2-32 or bc2-64.  Default is that
+                           of the running system, ~A.
+
         --locale x         Switch to locale x, eg system-locale (default),
                            compiler-locale, scheme-locale (for RnRS
                            compatibility).
@@ -42,7 +46,7 @@ Oaklisp level options.
 
 Example:
     oaklisp --trace-gc 2 -- --locale scheme-locale --compile myfile --exit
-")
+" (bytecode-architecture-name host-architecture))
 		 (exit 0)))
 
     ("eval" 1 ,(lambda (x)
@@ -59,6 +63,9 @@ Example:
 		      (compile-file #*current-locale
 				    x))
 		    (format #t "...done.~%")))
+
+    ("target" 1 ,(lambda (x)
+		   (set! #*target-architecture (parse-architecture-name x))))
 
     ("locale" 1 ,(lambda (x)
 		   (set! #*current-locale

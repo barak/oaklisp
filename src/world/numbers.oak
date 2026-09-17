@@ -359,9 +359,18 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Rotations and shifts
 
+;;; Rotations of fixnums wrap around modulo the fixnum size, so their
+;;; results depend on the word size of the machine they run on.  They
+;;; are therefore deliberately not FOLDABLE: were the compiler to
+;;; evaluate (ROT-LEFT 1 61) at compile time, code compiled on a
+;;; 32-bit host for a 64-bit target would get the wrong answer.
+;;; Shifts, by contrast, are exact (the ASH instruction traps on
+;;; overflow and the result is promoted to a bignum), so they can be
+;;; folded.
+
 (define-constant rot-left
   (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin)
+		'()
 		'((rot)) 2 1)
 	       (fixnum) x y)
     (fselect-type y
@@ -370,8 +379,7 @@
 
 (define-constant rot-right
   (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin
-		      backwards-args-mixin)
+		(list backwards-args-mixin)
 		'((negate)(swap 1)(rot)) 2 1)
 	       (fixnum) x y)
     (rot-left x (- y))))

@@ -14,13 +14,39 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-SUBDIRS = src man
+SUBDIRS = src man tests
 
 if DOCS
 SUBDIRS += doc
 endif
 
 doc_DATA = README.md AUTHORS COPYING BUILD.md ChangeLog NEWS
+
+EXTRA_DIST = $(doc_DATA)
+
+# Refresh the prebuilt bootstrap material in prebuilt/ from what was
+# just built: bytecode, a world image for this architecture, the
+# emulator's instruction table, and the documentation.
+prebuilt:
+	$(MAKE) -C src/world prebuilt
+	$(MAKE) -C src/emulator prebuilt
+if DOCS
+	$(MAKE) -C doc prebuilt
+endif
+
+.PHONY: prebuilt
+
+# "make check" runs the test suite in tests/; "make bench" the benchmarks.
+bench:
+	$(MAKE) -C tests bench
+
+.PHONY: bench
+
+# Ship whatever prebuilt material is present in the distribution.
+dist-hook:
+	if test -d $(srcdir)/prebuilt; then \
+	  cp -pR $(srcdir)/prebuilt $(distdir)/prebuilt; \
+	fi
 
 # Remove all generated files, restoring the tree to pre-autoreconf state.
 # (Run "autoreconf --install && ./configure" to rebuild.)

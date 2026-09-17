@@ -16,12 +16,13 @@
 
 man_MANS = man1/oaklisp.1
 
-man1/oaklisp.1: man1/oaklisp.1.in
+man1/oaklisp.1: $(srcdir)/man1/oaklisp.1.in
+	$(MKDIR_P) man1
 	$(SED) \
 	 -e 's:[@]pkglibdir[@]:$(pkglibdir):g' \
 	 -e 's:[@]pdfdir[@]:$(pdfdir):g' \
-	 <$< >$@
+	 <$(srcdir)/man1/oaklisp.1.in >$@
 
-EXTRA_DIST = $(man_MANS)
+EXTRA_DIST = man1/oaklisp.1.in
 
 CLEANFILES = $(man_MANS)

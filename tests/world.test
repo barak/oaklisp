@@ -1,0 +1,28 @@
+#!/bin/sh
+# World images: dumping and reloading, and refusing mismatched ones.
+. "$(dirname "$0")/testlib.sh"
+rm -f dumped.bin bogus.bin
+oak --dump dumped.bin -- --eval '(define world-test-marker 4711)' --exit 2>&1 | tail -n 2
+test -s dumped.bin || fail "no world dumped"
+head -c 100 dumped.bin | head -n 1 | tee header.txt
+grep -q '^;oaklisp-world format=binary endian=\(little\|big\) word-size=[36][24] instructions-per-ref=2$' header.txt || fail "bad world header"
+out=$("$OAKLISP" --batch --world dumped.bin -- --eval '(print (+ world-test-marker 1) standard-output)' --exit 2>&1)
+echo "$out"
+printf '%s' "$out" | grep -q '4712$' || fail "reloaded world lost its definition"
+# A world claiming another architecture is refused with a message.
+case $(cat header.txt) in
+  *word-size=64*) sed '1s/word-size=64/word-size=32/' dumped.bin > bogus.bin;;
+  *) sed '1s/word-size=32/word-size=64/' dumped.bin > bogus.bin;;
+esac
+out=$("$OAKLISP" --batch --world bogus.bin -- --exit 2>&1); status=$?
+echo "$out"
+test "$status" != 0 || fail "world of the wrong word size was accepted"
+printf '%s' "$out" | grep -q 'bit refs' || fail "no useful message for the wrong word size"
+# An ascii dump reloads too.
+rm -f dumped.hex
+oak --dump dumped.hex --dump-base 16 -- --exit >/dev/null 2>&1
+head -n 1 dumped.hex | grep -q 'format=hex' || fail "hex dump lacks header"
+out=$("$OAKLISP" --batch --world dumped.hex -- --eval '(print (* 6 7) standard-output)' --exit 2>&1)
+printf '%s' "$out" | grep -q '42$' || fail "hex world did not reload"
+rm -f dumped.bin bogus.bin dumped.hex header.txt
+echo "world test passed"
