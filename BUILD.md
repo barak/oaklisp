@@ -48,6 +48,8 @@ Option                    Default   Description
 --enable-ndebug           yes       High-speed mode (sets -DFAST)
 --enable-threads          no        Native threads with concurrent GC
                                     (experimental; see below)
+--enable-cold-linker      no        Build oak-cold-linker, a C version of
+                                    the cold linker (see Bootstrapping)
 --with-guile[=GUILE]      search    Guile 3 interpreter for the hosted
                                     Oaklisp ("no": none)
 
@@ -102,7 +104,7 @@ practice of word size too, since the compiler does not fold constants
 whose value would depend on it; the word size in the name records
 the fixnum range the file's integer constants are assumed to fit,
 so bc2-32 bytecode can be used anywhere.  Cold worlds (.cold, the
-hex text produced by the cold linkers) are byte-order independent
+hex text produced by the cold linker) are byte-order independent
 but word-size specific.  Binary worlds (.bin) are specific to byte
 order and word size.
 
@@ -163,17 +165,26 @@ a target in src/world:
 	    into that world first, so an older world can compile sources
 	    that use instructions it does not know.
 	make build-from-bytecode
-	    The prebuilt .oa files are used as they are, and the cold
-	    world is linked by oak-cold-linker, a C reimplementation of
-	    tool.oak built alongside the emulator.
+	    The prebuilt .oa files are used as they are, and tool.oak
+	    links the cold world running in the Guile-hosted Oaklisp.
 	make build-from-guile
 	    The Guile-hosted Oaklisp in src/cold-compiler/ (see its
-	    README) loads the world's own macros and compiler from the
-	    sources and runs them; oak-cold-linker links.  This needs
-	    nothing but Guile 3 and a C compiler, and takes a few minutes.
+	    README) loads the world's own macros, compiler and linker
+	    from the sources and runs them.  This needs nothing but
+	    Guile 3 and a C compiler, and takes a few minutes.
+
+tool.oak is the linker; porting means porting the emulator.  There
+is also oak-cold-linker, a C reimplementation of tool.oak kept as an
+independent check on it and for bootstrapping where nothing can run
+tool.oak; ./configure --enable-cold-linker builds it, "make
+OAK_COLD_LINK=c" in src/world links with it, and "make check"
+compares its cold world with tool.oak's when it is present.  It has
+to be kept in sync with tool.oak by hand, which is why it is off by
+default.
 
 Plain "make" uses the first of these that is possible: an old world
-if OLD_WORLD exists, else prebuilt bytecode, else Guile.  OLD_WORLD
+if OLD_WORLD exists, else (with Guile) prebuilt bytecode, else Guile
+alone.  OLD_WORLD
 defaults to src/world/old-oakworld.bin (where rebuild-world saves the
 world, below) if that exists, else prebuilt/'s world for this
 machine; any world for the emulator's architecture will do, e.g. an
@@ -184,12 +195,12 @@ installed one:
 The newly built emulator then boots the cold world and loads the
 remaining layers.  The result is the same whichever way is chosen:
 the compiler is deterministic and reaches a fixpoint, so every route
-produces the same objects and all three linkers produce identical
-cold worlds ("make check" verifies this).  The two methods can also
-be combined by hand, e.g. Guile compiling and tool.oak in the Guile
-host linking:
+produces the same objects, and tool.oak links the same cold world in
+a world and under Guile ("make check" verifies this).  The methods
+can also be combined by hand, e.g. Guile compiling and tool.oak in
+an old world linking:
 
-	make -C src/world OAK_COMPILE=guile OAK_COLD_LINK=guile
+	make -C src/world OAK_COMPILE=guile OAK_COLD_LINK=world
 
 To go on from there to a self-hosted system:
 
@@ -237,9 +248,9 @@ to run the resulting emulator, e.g. qemu-user with binfmt support:
 
 	./configure --host=s390x-linux-gnu CC=s390x-linux-gnu-gcc LDFLAGS=-static
 
-Since there is no big-endian world in prebuilt/ for that word size
-this bootstraps from bytecode.  (oak-cold-linker is currently built
-with the same compiler as the emulator, so it too runs under qemu.)
+With a prebuilt world for that architecture this builds from it
+(under qemu); otherwise from bytecode or source with Guile, which
+run natively, only the boot running under qemu.
 
 Refreshing prebuilt/
 ====================

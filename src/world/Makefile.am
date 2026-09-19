@@ -46,29 +46,34 @@ ALLOAFILESNONGEN += $(EXPORTFILES)
 ALLOAFILESNONGEN += $(RNRSFILES)
 
 # Bootstrapping.  Oaklisp is written in Oaklisp, so compiling the
-# sources to bytecode and linking the cold world need a running
-# Oaklisp, or a stand-in for one.  There are three ways, each with its
-# own target, and make picks one when it runs, from what is there;
-# configure has no say in it:
+# sources to bytecode and linking the cold world (tool.oak, the
+# Oaklisp linker) need a running Oaklisp, or a stand-in for one: the
+# Guile-hosted Oaklisp in src/cold-compiler, which runs the world's
+# own compiler and linker from their sources.  There are three ways,
+# each with its own target, and make picks one when it runs, from
+# what is there; configure has no say in it:
 #
-#   build-from-old-world  compile and cold-link (tool.oak) with an
-#                         Oaklisp: the emulator just built, or
-#                         $(OAKLISP), running $(OLD_WORLD)
+#   build-from-old-world  compile and cold-link with an Oaklisp: the
+#                         emulator just built, or $(OAKLISP), running
+#                         $(OLD_WORLD)
 #   build-from-bytecode   copy the prebuilt objects from
 #                         $(PREBUILT_BYTECODE_DIR); cold-link with
-#                         oak-cold-linker
-#   build-from-guile      compile with the Guile-hosted compiler
-#                         (src/cold-compiler, needs Guile 3); cold-link
-#                         with oak-cold-linker
+#                         tool.oak under Guile
+#   build-from-guile      compile and cold-link under Guile (needs
+#                         Guile 3)
 #
 # Plain "make" builds oakworld.bin the first of these ways that is
 # possible: from an old world if $(OLD_WORLD) exists (one saved by
-# rebuild-world, or prebuilt/'s world for this machine), else from
-# prebuilt bytecode, else with Guile.  Whichever way, the result is
-# the same (see the check-* targets), the newly built emulator boots
-# the cold world and loads the remaining layers, and rebuild-world
-# then makes the system self-hosting.  The methods can also be set by
-# hand: make OAK_COMPILE=world|prebuilt|guile OAK_COLD_LINK=world|c|guile.
+# rebuild-world, or prebuilt/'s world for this machine), else, with
+# Guile, from prebuilt bytecode, else with Guile alone.  Whichever
+# way, the result is the same (see the check-* targets), the newly
+# built emulator boots the cold world and loads the remaining layers,
+# and rebuild-world then makes the system self-hosting.  The methods
+# can also be set by hand:
+# make OAK_COMPILE=world|prebuilt|guile OAK_COLD_LINK=world|guile|c
+# where c is oak-cold-linker, the C reimplementation of tool.oak that
+# configure --enable-cold-linker builds; it produces the same cold
+# world (check-cold-linkers) but has to be kept in sync by hand.
 #
 # The pieces:
 #   $(OLD_WORLD)   the world compiled and linked with, and where
@@ -101,7 +106,8 @@ OAKBOOT = $(abs_top_builddir)/src/emulator/oaklisp --batch
 OAKFLAGS =
 
 # Which way, unless told otherwise.
-WORLD_METHOD = $(if $(wildcard $(OLD_WORLD)),oldworld,$(if $(wildcard $(PREBUILT_BYTECODE_DIR)/kernel0.oa),bytecode,$(if $(filter-out no,$(GUILE)),guile,none)))
+HAVE_GUILE = $(filter-out no,$(GUILE))
+WORLD_METHOD = $(if $(wildcard $(OLD_WORLD)),oldworld,$(if $(and $(HAVE_GUILE),$(wildcard $(PREBUILT_BYTECODE_DIR)/kernel0.oa)),bytecode,$(if $(HAVE_GUILE),guile,none)))
 
 OAK_COMPILE = $(OAK_COMPILE_$(WORLD_METHOD))
 OAK_COMPILE_oldworld = world
@@ -111,9 +117,9 @@ OAK_COMPILE_none = none
 
 OAK_COLD_LINK = $(OAK_COLD_LINK_$(WORLD_METHOD))
 OAK_COLD_LINK_oldworld = world
-OAK_COLD_LINK_bytecode = c
-OAK_COLD_LINK_guile = c
-OAK_COLD_LINK_none = c
+OAK_COLD_LINK_bytecode = guile
+OAK_COLD_LINK_guile = guile
+OAK_COLD_LINK_none = guile
 
 build-from-old-world:
 	@test -f "$(OLD_WORLD)" || { echo "build-from-old-world: no $(OLD_WORLD)"; exit 1; }
@@ -121,11 +127,12 @@ build-from-old-world:
 
 build-from-bytecode:
 	@test -f "$(PREBUILT_BYTECODE_DIR)/kernel0.oa" || { echo "build-from-bytecode: no bytecode in $(PREBUILT_BYTECODE_DIR)"; exit 1; }
-	$(MAKE) $(AM_MAKEFLAGS) OAK_COMPILE=prebuilt OAK_COLD_LINK=c $(ALLOAFILES) oakworld.bin
+	@test x$(GUILE) != xno || { echo "build-from-bytecode: no Guile 3 to link with (configure --with-guile)"; exit 1; }
+	$(MAKE) $(AM_MAKEFLAGS) OAK_COMPILE=prebuilt OAK_COLD_LINK=guile $(ALLOAFILES) oakworld.bin
 
 build-from-guile:
 	@test x$(GUILE) != xno || { echo "build-from-guile: no Guile 3 (configure --with-guile)"; exit 1; }
-	$(MAKE) $(AM_MAKEFLAGS) OAK_COMPILE=guile OAK_COLD_LINK=c $(ALLOAFILES) oakworld.bin
+	$(MAKE) $(AM_MAKEFLAGS) OAK_COMPILE=guile OAK_COLD_LINK=guile $(ALLOAFILES) oakworld.bin
 
 .PHONY: build-from-old-world build-from-bytecode build-from-guile
 
@@ -195,7 +202,7 @@ OA_COMPILE_guile = @test -f $@ || { rm -f guile.stamp; $(MAKE) $(AM_MAKEFLAGS) g
 
 # No way at all.
 OA_PREREQ_none =
-OA_COMPILE_none = @echo "no way to build the world: no old world ($(OLD_WORLD)), no prebuilt bytecode in $(PREBUILT_BYTECODE_DIR), and no Guile 3 (configure --with-guile); see BUILD.md"; exit 1
+OA_COMPILE_none = @echo "no way to build the world: no old world ($(OLD_WORLD)) and no Guile 3 (configure --with-guile); see BUILD.md"; exit 1
 
 %.oa: %.oak $(OA_PREREQ)
 	$(OA_COMPILE)
@@ -232,8 +239,8 @@ LINK_COLD_world = $(OAK) $(OAKFLAGS) --world $(OLD_WORLD) \
 	   --eval "(tool-files '($(COLDFILESD:.oa=)) 'new \"$(OAK_BYTECODE_ARCH)\")" \
 	   --exit
 
-LINK_PREREQ_c =
-LINK_COLD_c = ../emulator/oak-cold-linker --target $(OAK_BYTECODE_ARCH) -o new \
+LINK_PREREQ_c = ../emulator/oak-cold-linker$(EXEEXT)
+LINK_COLD_c = ../emulator/oak-cold-linker$(EXEEXT) --target $(OAK_BYTECODE_ARCH) -o new \
 	   $(COLDFILESD:.oa=)
 
 LINK_PREREQ_guile = $(GUILEHOST)
@@ -398,28 +405,35 @@ check-guile-compile: oakworld.bin $(ALLOAFILES)
 	test $$rc = 0 && echo "check-guile-compile: the Guile-hosted compiler reproduces the objects."; \
 	exit $$rc
 
-# tool.oak (in the world just built), oak-cold-linker, and tool.oak in
-# the Guile host must produce identical cold worlds from the same
-# objects.
+# tool.oak in the world just built, tool.oak in the Guile host (if
+# there is Guile) and oak-cold-linker (if it was built) must produce
+# identical cold worlds from the same objects, and the same as
+# new.cold, however that was linked.
 check-cold-linkers: oakworld.bin new.cold $(TOOLFILES)
 	@rm -f linkcheck-*.cold linkcheck-*.sym
-	@../emulator/oak-cold-linker --target $(OAK_BYTECODE_ARCH) -o linkcheck-c \
-	   $(COLDFILESD:.oa=) > /dev/null 2>&1 \
-	  || { echo "oak-cold-linker failed"; exit 1; }
 	@$(OAKBOOT) $(OAKFLAGS) --world oakworld.bin -- --load tool \
 	  --eval "(tool-files '($(COLDFILESD:.oa=)) 'linkcheck-oak \"$(OAK_BYTECODE_ARCH)\")" \
 	  --exit > /dev/null 2>&1 \
 	  || { echo "tool.oak cold link failed"; exit 1; }
-	@rc=0; cmp -s linkcheck-c.cold linkcheck-oak.cold \
-	  || { echo "oak-cold-linker and tool.oak produce different cold worlds"; rc=1; }; \
+	@rc=0; linkers="tool.oak in the world"; \
+	cmp -s linkcheck-oak.cold new.cold \
+	  || { echo "new.cold differs from what tool.oak links now"; rc=1; }; \
 	if test x$(GUILE) != xno; then \
 	  $(OAKGUILE) --load tool \
 	    --eval "(tool-files '($(COLDFILESD:.oa=)) \"linkcheck-guile\" \"$(OAK_BYTECODE_ARCH)\")" \
 	    > /dev/null 2>&1 || { echo "tool.oak under Guile failed"; rc=1; }; \
 	  cmp -s linkcheck-guile.cold linkcheck-oak.cold \
 	    || { echo "tool.oak under Guile produces a different cold world"; rc=1; }; \
+	  linkers="$$linkers, tool.oak under Guile"; \
 	fi; \
-	test $$rc = 0 && echo "check-cold-linkers: all cold linkers agree."; \
+	if test -x ../emulator/oak-cold-linker$(EXEEXT); then \
+	  ../emulator/oak-cold-linker$(EXEEXT) --target $(OAK_BYTECODE_ARCH) -o linkcheck-c \
+	    $(COLDFILESD:.oa=) > /dev/null 2>&1 || { echo "oak-cold-linker failed"; rc=1; }; \
+	  cmp -s linkcheck-c.cold linkcheck-oak.cold \
+	    || { echo "oak-cold-linker produces a different cold world"; rc=1; }; \
+	  linkers="$$linkers, oak-cold-linker"; \
+	fi; \
+	test $$rc = 0 && echo "check-cold-linkers: $$linkers agree."; \
 	rm -f linkcheck-*.cold linkcheck-*.sym; \
 	exit $$rc
 
