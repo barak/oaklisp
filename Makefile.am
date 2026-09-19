@@ -45,9 +45,23 @@ bench:
 
 .PHONY: bench
 
-# prebuilt/ is deliberately not distributed: a release tarball is built
-# from source alone (with Guile, see BUILD.md) or with an installed
-# Oaklisp.
+# Self-hosting.  "make rebuild-world" saves the world just built
+# (however it was built: from source alone with Guile, from prebuilt
+# material, or with an existing Oaklisp) and rebuilds all the objects
+# and the world from scratch with it; it can be repeated.  "make
+# bootstrap" builds everything, rebuilds the world with itself twice,
+# and checks that the result reproduces its own objects, so that a
+# following "make check" and "make install" use a self-hosted system.
+# See src/world/Makefile.am.
+bootstrap: all
+	$(MAKE) $(AM_MAKEFLAGS) -C src/world rebuild-world
+	$(MAKE) $(AM_MAKEFLAGS) -C src/world rebuild-world
+	$(MAKE) $(AM_MAKEFLAGS) -C src/world check-fixpoint
+
+rebuild-world: all
+	$(MAKE) $(AM_MAKEFLAGS) -C src/world rebuild-world
+
+.PHONY: bootstrap rebuild-world
 
 # Remove all generated files, restoring the tree to pre-autoreconf state.
 # (Run "autoreconf --install && ./configure" to rebuild.)
