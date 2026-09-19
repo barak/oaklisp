@@ -45,37 +45,54 @@ ALLOAFILESNONGEN += $(COMPFILES)
 ALLOAFILESNONGEN += $(EXPORTFILES)
 ALLOAFILESNONGEN += $(RNRSFILES)
 
-# Bootstrapping is set up by configure; see the comments there.
+# Bootstrapping.  Oaklisp is written in Oaklisp, so compiling the
+# sources to bytecode and linking the cold world need a running
+# Oaklisp, or a stand-in for one.  There are three ways, each with its
+# own target, and make picks one when it runs, from what is there;
+# configure has no say in it:
 #
-# Two steps need a running Oaklisp (or a stand-in for one), and each
-# can be done in several ways, chosen independently by configure and
-# recorded in OAK_COMPILE and OAK_COLD_LINK:
+#   build-from-old-world  compile and cold-link (tool.oak) with an
+#                         Oaklisp: the emulator just built, or
+#                         $(OAKLISP), running $(OLD_WORLD)
+#   build-from-bytecode   copy the prebuilt objects from
+#                         $(PREBUILT_BYTECODE_DIR); cold-link with
+#                         oak-cold-linker
+#   build-from-guile      compile with the Guile-hosted compiler
+#                         (src/cold-compiler, needs Guile 3); cold-link
+#                         with oak-cold-linker
 #
-#   compiling .oak sources to .oa bytecode    world:    $(OAK), the bootstrap
-#   (OAK_COMPILE)                                       emulator and world
-#                                             prebuilt: copy from
-#                                                       $(PREBUILT_BYTECODE_DIR)
-#                                             guile:    the Guile-hosted
-#                                                       compiler
+# Plain "make" builds oakworld.bin the first of these ways that is
+# possible: from an old world if $(OLD_WORLD) exists (one saved by
+# rebuild-world, or prebuilt/'s world for this machine), else from
+# prebuilt bytecode, else with Guile.  Whichever way, the result is
+# the same (see the check-* targets), the newly built emulator boots
+# the cold world and loads the remaining layers, and rebuild-world
+# then makes the system self-hosting.  The methods can also be set by
+# hand: make OAK_COMPILE=world|prebuilt|guile OAK_COLD_LINK=world|c|guile.
 #
-#   linking the cold files into new.cold      world:    tool.oak in $(OAK)
-#   (OAK_COLD_LINK)                           c:        oak-cold-linker
-#                                             guile:    tool.oak in the
-#                                                       Guile host
-#
-# Both can be overridden on the make command line, along with the
-# bootstrap system they use; the self-hosting stages below do that:
-#
-#   make OAK_COMPILE=world OAK_COLD_LINK=world OAKWORLDFLAGS='--world W'
-#
-# $(OAK) runs the bootstrap system, an emulator with a working world.
-# It is the "build" system in autotools terminology.  $(OAKBOOT) is
-# the newly built emulator for the "host" system, used to boot the cold
-# world, load the remaining layers into it, and dump the result.
+# The pieces:
+#   $(OLD_WORLD)   the world compiled and linked with, and where
+#                  rebuild-world saves the world just built.  Default:
+#                  old-oakworld.bin here if it exists, else prebuilt/'s
+#                  world for this machine if that exists, else
+#                  old-oakworld.bin.  Any world of the emulator's
+#                  architecture will do, e.g. an installed one.
+#   $(OAKLISP)     the emulator that runs $(OLD_WORLD): the one just
+#                  built.  Set it (with a matching OLD_WORLD) to build
+#                  for another word size with an installed Oaklisp:
+#                  make OAKLISP=/usr/bin/oaklisp OLD_WORLD=/usr/lib/oaklisp/oakworld.bin
+#   $(OAKBOOT)     the emulator just built, which boots the new world.
 
-OAK_COMPILE = @oak_compile@
-OAK_COLD_LINK = @oak_cold_link@
+OAK_HOST_ARCH = @OAK_HOST_ARCH@
+OAK_BYTECODE_ARCH = @OAK_BYTECODE_ARCH@
 
+PREBUILT_DIR = $(top_srcdir)/prebuilt
+PREBUILT_WORLD = $(PREBUILT_DIR)/src/world/$(OAK_HOST_ARCH)/oakworld.bin
+PREBUILT_BYTECODE_DIR = $(PREBUILT_DIR)/src/world/bc2-32
+
+OLD_WORLD = $(firstword $(wildcard old-oakworld.bin $(PREBUILT_WORLD)) old-oakworld.bin)
+
+OAKLISP = $(abs_top_builddir)/src/emulator/oaklisp
 OAK = $(OAKLISP) --batch
 OAKBOOT = $(abs_top_builddir)/src/emulator/oaklisp --batch
 
@@ -83,22 +100,40 @@ OAKBOOT = $(abs_top_builddir)/src/emulator/oaklisp --batch
 # OAKFLAGS = --trace-gc=1
 OAKFLAGS =
 
-# The architecture being built for.  OAK_BYTECODE_ARCH (e.g. bc2-64)
-# is passed to the compiler and linkers; OAK_HOST_ARCH (e.g. bc2-el64)
-# additionally names the byte order and is where a prebuilt world
-# image for this machine lives.
-OAK_HOST_ARCH = @OAK_HOST_ARCH@
-OAK_BYTECODE_ARCH = @OAK_BYTECODE_ARCH@
+# Which way, unless told otherwise.
+WORLD_METHOD = $(if $(wildcard $(OLD_WORLD)),oldworld,$(if $(wildcard $(PREBUILT_BYTECODE_DIR)/kernel0.oa),bytecode,$(if $(filter-out no,$(GUILE)),guile,none)))
 
-# Where prebuilt material lives, and where "make prebuilt" puts it.
-PREBUILT_DIR = $(top_srcdir)/prebuilt
-PREBUILT_BYTECODE_DIR = @PREBUILT_BYTECODE_DIR@
+OAK_COMPILE = $(OAK_COMPILE_$(WORLD_METHOD))
+OAK_COMPILE_oldworld = world
+OAK_COMPILE_bytecode = prebuilt
+OAK_COMPILE_guile = guile
+OAK_COMPILE_none = none
+
+OAK_COLD_LINK = $(OAK_COLD_LINK_$(WORLD_METHOD))
+OAK_COLD_LINK_oldworld = world
+OAK_COLD_LINK_bytecode = c
+OAK_COLD_LINK_guile = c
+OAK_COLD_LINK_none = c
+
+build-from-old-world:
+	@test -f "$(OLD_WORLD)" || { echo "build-from-old-world: no $(OLD_WORLD)"; exit 1; }
+	$(MAKE) $(AM_MAKEFLAGS) OAK_COMPILE=world OAK_COLD_LINK=world $(ALLOAFILES) oakworld.bin
+
+build-from-bytecode:
+	@test -f "$(PREBUILT_BYTECODE_DIR)/kernel0.oa" || { echo "build-from-bytecode: no bytecode in $(PREBUILT_BYTECODE_DIR)"; exit 1; }
+	$(MAKE) $(AM_MAKEFLAGS) OAK_COMPILE=prebuilt OAK_COLD_LINK=c $(ALLOAFILES) oakworld.bin
+
+build-from-guile:
+	@test x$(GUILE) != xno || { echo "build-from-guile: no Guile 3 (configure --with-guile)"; exit 1; }
+	$(MAKE) $(AM_MAKEFLAGS) OAK_COMPILE=guile OAK_COLD_LINK=c $(ALLOAFILES) oakworld.bin
+
+.PHONY: build-from-old-world build-from-bytecode build-from-guile
 
 # The Guile-hosted Oaklisp (src/cold-compiler): it loads the world's
 # own macros, compiler and linker from their .oak sources and runs
 # them, so its objects are byte for byte what a native Oaklisp would
 # produce.  Building its world takes some seconds, so it compiles
-# everything in one run.
+# everything in one run, recorded by guile.stamp (see below).
 OAKGUILE = $(GUILE) --no-auto-compile \
   $(top_srcdir)/src/cold-compiler/oak-bootstrap.scm --srcdir $(srcdir) \
   --target $(OAK_BYTECODE_ARCH) --noisy 0
@@ -118,7 +153,7 @@ GUILESRCS = $(COLDFILESNONGEN:.oa=) ./system-version $(MISCFILES:.oa=)	\
 
 ##### Compiling
 
-# An object's extra prerequisites and recipe, by method.
+# An object's extra prerequisites and recipe, by $(OAK_COMPILE).
 
 OA_PREREQ = $(OA_PREREQ_$(OAK_COMPILE))
 OA_COMPILE = $(OA_COMPILE_$(OAK_COMPILE))
@@ -141,20 +176,26 @@ OAKEXTRALOAD =
 
 OA_PREREQ_world = assembler.oa
 OA_COMPILE_world = cmp -s $< $(@:.oa=.oak) || cp -p $< $(@:.oa=.oak); \
-	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) -- $(OAKPRELOAD) $(OAKEXTRALOAD) \
-	   $(OAKLOCALE) $(OAKTARGETFLAGS) --compile $(@:.oa=) --exit
+	$(OAK) $(OAKFLAGS) --world $(OLD_WORLD) -- $(OAKPRELOAD) $(OAKEXTRALOAD) \
+	   $(OAKLOCALE) --target $(OAK_BYTECODE_ARCH) --compile $(@:.oa=) --exit
 
-# From prebuilt bytecode: no running Oaklisp.  (That includes
+# From prebuilt bytecode: no running Oaklisp.  That includes
 # system-version.oa, so the world reports the version the bytecode
-# was compiled from until it is rebuilt with itself; configure warns
-# when that differs.)
+# was compiled from until it is rebuilt with itself; a warning says
+# so when that differs.
 OA_PREREQ_prebuilt =
-OA_COMPILE_prebuilt = cp $(PREBUILT_BYTECODE_DIR)/$@ $@
+OA_COMPILE_prebuilt = cp $(PREBUILT_BYTECODE_DIR)/$@ $@$(if $(filter system-version.oa,$@), \
+	&& { grep -q '"$(PACKAGE_STRING)"' $@ || echo "warning: the prebuilt bytecode was compiled for another version of Oaklisp; the world will report that version until it is rebuilt with itself (make rebuild-world)"; })
 
 # From source only, with Guile: guile.stamp compiles everything in one
 # run (below); an object that is missing anyway makes it run again.
+# The stamp matters only to this method.
 OA_PREREQ_guile = guile.stamp
-OA_COMPILE_guile = test -f $@ || { rm -f guile.stamp; $(MAKE) $(AM_MAKEFLAGS) guile.stamp; }
+OA_COMPILE_guile = @test -f $@ || { rm -f guile.stamp; $(MAKE) $(AM_MAKEFLAGS) guile.stamp; }
+
+# No way at all.
+OA_PREREQ_none =
+OA_COMPILE_none = @echo "no way to build the world: no old world ($(OLD_WORLD)), no prebuilt bytecode in $(PREBUILT_BYTECODE_DIR), and no Guile 3 (configure --with-guile); see BUILD.md"; exit 1
 
 %.oa: %.oak $(OA_PREREQ)
 	$(OA_COMPILE)
@@ -182,10 +223,10 @@ guile.stamp: $(ALLOAFILESNONGEN:.oa=.oak) system-version.oak $(GUILEHOST)
 
 ##### Linking
 
-# The cold world's extra prerequisites and linker, by method.
+# The cold world's extra prerequisites and linker, by $(OAK_COLD_LINK).
 
 LINK_PREREQ_world = $(TOOLFILES)
-LINK_COLD_world = $(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) \
+LINK_COLD_world = $(OAK) $(OAKFLAGS) --world $(OLD_WORLD) \
 	   -- \
 	   --load tool \
 	   --eval "(tool-files '($(COLDFILESD:.oa=)) 'new \"$(OAK_BYTECODE_ARCH)\")" \
@@ -238,43 +279,33 @@ oakworld.bin: oakworld-3.bin $(RNRSFILES)
 ##### Rebuilding the world with itself
 
 # "make rebuild-world" saves the world just built as $(OLD_WORLD),
-# removes everything the world build made, and makes it all again
-# from scratch with the saved world: compiling, cold-linking (with
-# tool.oak) and, if asked for, regenerating Makefile-vars all run the
-# emulator just built on $(OLD_WORLD), whatever methods configure
-# chose.  That is "make build-from-old-world", usable on its own with
-# any saved world.  One rebuild on top of any build gives a
-# self-hosted world; "make bootstrap" at the top level does two and
-# then checks the fixpoint (check-fixpoint, below).
+# removes everything the world build made (clean-world), and makes it
+# all again from scratch with the saved world (build-from-old-world).
+# If there is no world to save but $(OLD_WORLD) exists, it rebuilds
+# from that.  One rebuild on top of any build gives a self-hosted
+# world; "make bootstrap" at the top level does two and then checks
+# the fixpoint (check-fixpoint, below).  Makefile-vars, if
+# regenerated, is made by $(OLD_WORLD) too.
 #
-# OLD_WORLD defaults to a file here; give an absolute path, or one
-# relative to this directory, to save elsewhere.  (To refresh
-# prebuilt/ with the final world use "make prebuilt-world" afterwards.)
-#
-# The removal is clean-world, not clean, so that guile.stamp survives:
-# the rebuilt objects are up to date with the sources, and a Guile
-# configured tree has nothing to redo afterwards.
+# clean-world leaves guile.stamp alone: it belongs to the Guile
+# method, which the rebuild does not use.
 
-OLD_WORLD = $(abs_builddir)/old-oakworld.bin
-
-OLD_WORLD_MAKEFLAGS = OAK_COMPILE=world OAK_COLD_LINK=world \
-  OAKLISP='$(abs_top_builddir)/src/emulator/oaklisp' \
-  OAKWORLDFLAGS='--world $(OLD_WORLD)' \
-  OAKTARGETFLAGS='--target $(OAK_BYTECODE_ARCH)'
-
-rebuild-world: oakworld.bin
-	cp oakworld.bin $(OLD_WORLD)
+rebuild-world:
+	@if test -f oakworld.bin; then \
+	  $(MKDIR_P) `dirname $(OLD_WORLD)` && cp oakworld.bin $(OLD_WORLD) \
+	    && echo "rebuild-world: saved oakworld.bin as $(OLD_WORLD)"; \
+	elif test -f "$(OLD_WORLD)"; then \
+	  echo "rebuild-world: no oakworld.bin; rebuilding from $(OLD_WORLD)"; \
+	else \
+	  echo "rebuild-world: no oakworld.bin and no $(OLD_WORLD) to rebuild from"; exit 1; \
+	fi
 	$(MAKE) $(AM_MAKEFLAGS) clean-world
 	$(MAKE) $(AM_MAKEFLAGS) build-from-old-world
-
-build-from-old-world:
-	@test -f "$(OLD_WORLD)" || { echo "build-from-old-world: no $(OLD_WORLD)"; exit 1; }
-	$(MAKE) $(AM_MAKEFLAGS) $(OLD_WORLD_MAKEFLAGS) $(ALLOAFILES) oakworld.bin
 
 clean-world:
 	rm -f $(ALLOAFILES) new.cold new.sym oakworld-?.bin oakworld.bin
 
-.PHONY: rebuild-world build-from-old-world clean-world
+.PHONY: rebuild-world clean-world
 
 ##### Compiling everything with a finished world
 
@@ -323,7 +354,7 @@ prebuilt-world: oakworld.bin
 # even during "make clean", which fails before the emulator is built.)
 
 Makefile-vars:
-	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) \
+	$(OAK) $(OAKFLAGS) --world $(OLD_WORLD) \
 	   -- \
 	   --load files --load make-makefile --eval '(make-makefile "$@")' \
 	   --exit

@@ -10,8 +10,8 @@ Below is the normal README for Oaklisp.  I cloned it and, with the help of Claud
 8. Added a concurrent GC
 9. Optional bootstrap from source alone.  With Guile 3 the world's objects
     are compiled from the .oak sources by a Guile-hosted copy of the real
-    Oaklisp compiler, so no prebuilt .oa files are needed; configure does this
-    (`--with-compile=guile`) whenever it finds no world or prebuilt bytecode
+    Oaklisp compiler, so no prebuilt .oa files are needed; make does this
+    (`make build-from-guile`) whenever there is no world or prebuilt bytecode
     (see BUILD.md)
 
 This repo is located at:  https://github.com/blakemcbride/oaklisp

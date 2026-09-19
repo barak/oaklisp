@@ -33,14 +33,13 @@ into `master` and follow the merge with a commit that refreshes
 prebuilt content; that goes in the refresh commit on `master`.
 
 `devel` and release tarballs (`make dist` deliberately omits `prebuilt/`)
-build from source alone with Guile 3 (`--with-compile=guile`, chosen
-automatically when no world or prebuilt bytecode is found).  `master`
+build from source alone with Guile 3 (`build-from-guile`, which make
+picks when there is no old world and no prebuilt bytecode).  `master`
 builds with nothing but a C compiler.  `make rebuild-world` saves the
 world just built (`src/world/old-oakworld.bin`, or `OLD_WORLD=PATH`),
 runs `clean-world`, and rebuilds all objects and the world from scratch
-with it (`build-from-old-world`: the ordinary rules with
-`OAK_COMPILE=world OAK_COLD_LINK=world` and the saved world as bootstrap
-world); `make bootstrap` = build + two rebuilds + `check-fixpoint`.  The
+with it (`build-from-old-world`); `make bootstrap` = build + two
+rebuilds + `check-fixpoint`.  The
 Debian package builds that way: Guile, then `make bootstrap`.
 
 Older `devel-32-el`, `devel-64-el`, `prebuilt-32-el`, `prebuilt-64-el`
@@ -63,12 +62,9 @@ make install
 - `--enable-docs` — Build LaTeX documentation (default: yes)
 - `--enable-ndebug` — High-speed mode, disables debug tracing (default: yes, sets -DFAST)
 - `--enable-threads` — Thread support (default: no, experimental)
-- `--with-compile=world|prebuilt|guile|check` — how `.oak` becomes `.oa` (default `check`: first available in that order)
-- `--with-cold-link=world|c|guile|check` — how the cold world is linked: `tool.oak` in the bootstrap world, `oak-cold-linker`, or `tool.oak` in the Guile host (default: `world` when compiling with one, else `c`)
-- `--with-world[=PATH]` — World image to bootstrap from (default: search `prebuilt/src/world/<arch>/` and installed locations; `no`: none)
-- `--with-oaklisp=OAKLISP` — Existing emulator to run the bootstrap world with (default: the one being built)
-- `--with-bytecode[=DIR]` — Prebuilt `.oa` directory (default: search `prebuilt/src/world/bc2-64`, then `bc2-32`)
 - `--with-guile[=GUILE]` — Guile 3 for the Guile-hosted Oaklisp in `src/cold-compiler/` (default: search)
+
+Configure has no say in how the world is bootstrapped; that is decided by make (see Bootstrap methods).
 
 ### Architectures
 
@@ -91,11 +87,13 @@ sets it. The cold linkers store `%%word-size` and `%%instructions-per-ref`
 in the world, which is how the running system knows its own word size
 (`most-negative-fixnum` in bignum.oak is derived from it).
 
-### Bootstrap methods (chosen by configure into the make variables `OAK_COMPILE` = world|prebuilt|guile and `OAK_COLD_LINK` = world|c|guile, overridable on the make command line; the rules dispatch through `OA_PREREQ_$(OAK_COMPILE)`, `OA_COMPILE_$(OAK_COMPILE)`, `LINK_COLD_$(OAK_COLD_LINK)`)
+### Bootstrap methods (decided by make in `src/world/Makefile.am`, from what exists when it runs)
 
-- **Compile with a world** (normal dev build): `.oak` → `.oa` with `$(OAK) --world W -- --locale compiler-locale --load assembler --locale system-locale --target ARCH --compile`. The freshly compiled assembler is preloaded so an older bootstrap world can compile sources using new instructions; `multiproc.oa` also preloads `multi-em`, `file-io.oa` preloads `streams` (for `(%stream-primitive 14)`). A new open-coded primitive used from another file needs the same treatment, otherwise the first-pass world calls it generically and fails.
-- **Prebuilt bytecode**: `.oa` copied from `prebuilt/`, `system-version.oa` included, so the world reports the version the bytecode was compiled with until rebuilt with itself (configure warns).
-- **Guile**: `src/cold-compiler/oak-bootstrap.scm` compiles everything in one run (`guile.stamp`); it hosts the world's own compiler, so output is byte-identical. It has `--target`, `--load`, `--eval`, and a `scheme-locale` with scheme-macros and scheme loaded (scheme.oak is compiled in scheme-locale, against its own definitions). It cannot run `instruction-table.oak`'s `dump-instruction-table`, so `src/emulator/instr-data.c` (debugging builds only) comes from the world just built, a bootstrap world, or `prebuilt/`; `make dist` ships it.
+Targets: `build-from-old-world` (compile and `tool.oak`-link with `$(OAKLISP)` = the emulator just built running `$(OLD_WORLD)`), `build-from-bytecode` (copy `$(PREBUILT_BYTECODE_DIR)`, link with `oak-cold-linker`), `build-from-guile`. Plain `make` picks the first possible: `OLD_WORLD` exists (default: `src/world/old-oakworld.bin` if it exists, else `prebuilt/src/world/<arch>/oakworld.bin`), else prebuilt bytecode, else Guile. Internally `WORLD_METHOD` sets `OAK_COMPILE` = world|prebuilt|guile and `OAK_COLD_LINK` = world|c|guile, both overridable on the make command line; the rules dispatch through `OA_PREREQ_$(OAK_COMPILE)`, `OA_COMPILE_$(OAK_COMPILE)`, `LINK_COLD_$(OAK_COLD_LINK)`. Make never looks for an installed Oaklisp; name one with `OLD_WORLD=` (and `OAKLISP=` if the emulator being built can't run it, e.g. another word size).
+
+- **Compile with a world** (normal dev build): `.oak` → `.oa` with `$(OAK) --world $(OLD_WORLD) -- --locale compiler-locale --load assembler --locale system-locale --target ARCH --compile`. The freshly compiled assembler is preloaded so an older bootstrap world can compile sources using new instructions; `multiproc.oa` also preloads `multi-em`, `file-io.oa` preloads `streams` (for `(%stream-primitive 14)`). A new open-coded primitive used from another file needs the same treatment, otherwise the first-pass world calls it generically and fails.
+- **Prebuilt bytecode**: `.oa` copied from `prebuilt/`, `system-version.oa` included, so the world reports the version the bytecode was compiled with until rebuilt with itself (the copy warns).
+- **Guile**: `src/cold-compiler/oak-bootstrap.scm` compiles everything in one run (`guile.stamp`); it hosts the world's own compiler, so output is byte-identical. It has `--target`, `--load`, `--eval`, and a `scheme-locale` with scheme-macros and scheme loaded (scheme.oak is compiled in scheme-locale, against its own definitions). It cannot run `instruction-table.oak`'s `dump-instruction-table`, so `src/emulator/instr-data.c` (debugging builds only) comes from the world just built, an old world, or `prebuilt/`; `make dist` ships it.
 - **Cold link**: `tool.oak` (in the world or under Guile) or `oak-cold-linker`; all three produce byte-identical `.cold` files (symbols laid out in first-seen order).
 
 The compiler reaches a fixpoint: `make check` runs `check-fixpoint`, `check-cold-linkers`, `check-guile-compile` in `src/world`.
