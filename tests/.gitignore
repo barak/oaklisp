@@ -1,0 +1,7 @@
+*.oa
+*.oa-tmp
+*.log
+*.trs
+*.tmp
+*.bin
+compile-me-check/

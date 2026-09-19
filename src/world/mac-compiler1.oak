@@ -180,6 +180,19 @@
   (^super ast-contour-node initialize self labellist form))
 
 
+;;; True when FORM hands REST-VAR on, as the terminal member of the
+;;; argument list of a call: (f a . rest).  That is the one thing a
+;;; body may do with a rest name, in which the name stands for the
+;;; extra arguments where they sit on the stack.  Quoted structure is
+;;; data, not code, so it is not examined.
+
+(define (rest-passed-on? form rest-var)
+  (cond ((not (pair? form)) nil)
+	((eq? (car form) 'quote) nil)
+	((eq? (improper-list? form) rest-var) #t)
+	(else (any? (lambda (sub) (rest-passed-on? sub rest-var))
+		    (make-proper form)))))
+
 (add-method (initialize (ast-method-node method-type status op primitivep
 					 inlabels?
 					 ivarlist ivarmap arglist heaplist
@@ -196,6 +209,16 @@
     (set! heaplist nil)
     (set! primitivep (eq? kind-o-method '_%add-method))
     (set! rest-name (improper-list? args))
+    ;; A method that receives extra arguments has no way to pop a run
+    ;; time number of them on the way out -- the epilogue is a constant
+    ;; sized blt-stack over the fixed part of the argument list -- so
+    ;; the only thing it may do with the rest name is hand it on at the
+    ;; end of a call.  See "Variable Numbers of Arguments" in the
+    ;; implementation manual.  A body that never does leaves the extra
+    ;; arguments on the value stack under the caller's frame.
+    (when (and rest-name (not (rest-passed-on? bod rest-name)))
+      (warning "Method with rest argument ~S never passes it along, so extra arguments will be left on the stack.~%"
+	       rest-name))
     ;; rest-name goes on front of arglist:
     (set! arglist (if rest-name (cons rest-name (make-proper args))
 		     args))

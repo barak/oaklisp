@@ -37,6 +37,16 @@
 
 (define-instance print-list-end operation)
 
+;;; #*PRINT-LENGTH bounds the cdr walk in PRINT-LIST-END, but its
+;;; default is #f and only the REPL and the file loader bind it, so a
+;;; program printing its own structures has nothing between it and a
+;;; circular list.  This is the backstop, the same one EQUAL? carries in
+;;; mapping.oak: set high enough never to touch a list anyone means to
+;;; print, and an error rather than a silent "..." , since truncating
+;;; would make the printer lie about lists it can print perfectly well.
+
+(define *print-length-limit* 1000000)
+
 ;;; Note: the code below is duplicated to some extent in the methods for
 ;;; pretty-print for pairs in print-pretty.oak, so if the code below is hacked
 ;;; the hacks should be copied over.
@@ -66,24 +76,30 @@
 		 (print (cadr self) stream))
 		(else
 		 (write-char stream #\()
-		 (print-list-end self #t #*print-length ")" stream)))))))
+		 (print-list-end self #t #*print-length *print-length-limit*
+				 ")" stream)))))))
 
-(add-method (print-list-end (object) self delimiter? len ending stream)
+(add-method (print-list-end (object) self delimiter? len budget ending stream)
   (write-string " . " stream)
   (print self stream)
   (write-string ending stream))
 
-(add-method (print-list-end (null-type) self delimiter? len ending stream)
+(add-method (print-list-end (null-type) self delimiter? len budget ending
+			    stream)
   (write-string ending stream))
 
-(add-method (print-list-end (pair) self delimiter? len ending stream)
+(add-method (print-list-end (pair) self delimiter? len budget ending stream)
   (when (not delimiter?)
     (write-char stream #\space))
   (cond ((and len (= len 0))
 	 (write-string "..." stream)
 	 (write-string ending stream))
+	((zero? budget)
+	 (error "PRINT gave up after ~D elements; the list may be circular."
+		*print-length-limit*))
 	(else
 	 (print (car self) stream)
-	 (print-list-end (cdr self) #f (and len (- len 1)) ending stream))))
+	 (print-list-end (cdr self) #f (and len (- len 1)) (- budget 1)
+			 ending stream))))
 
 ;;; eof

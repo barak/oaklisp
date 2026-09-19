@@ -1,0 +1,4 @@
+#!/bin/sh
+. "$(dirname "$0")/testlib.sh"
+cd "${TMPDIR:-/tmp}" || exit 99
+run_oak_test io.oak

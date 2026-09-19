@@ -178,9 +178,10 @@ level.  Not normally manipulated by user code.}
 \emph{error-type} occurs, \df{\#f} is returned, unless \emph{error-lambda} is
 given, in which case it is called on the error object.  If no error
 occurs then the result of evaluating \emph{body} is returned, unless
-\emph{non-error-lambda} is provided in which case it is called on the
-result of the evaluation of \emph{body} within the context of of the
-error handler, and the resultant value returned.}
+\emph{non-error-lambda} is provided in which case it is called on that
+result and the resultant value returned.  Both lambdas run outside the
+handler this construct installs, so an error raised by either one is
+not caught here.}
 
 \mc{bind-error-handler}{\lpar error-type handler\rpar \dt body}
  \doc{This binds a handler to errors which are subtypes of

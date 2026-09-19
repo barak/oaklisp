@@ -31,17 +31,22 @@ Oaklisp level options.
 
         --compile file     Compile file.oak yielding file.oa
 
+        --target arch      Compile subsequent files for architecture
+                           arch, eg bc2-32 or bc2-64.  Default is that
+                           of the running system, ~A.
+
         --locale x         Switch to locale x, eg system-locale (default),
                            compiler-locale, scheme-locale (for RnRS
                            compatibility).
 
-        --pthreads         Number of pthreads to allocate.
+        --pthreads N       Spawn N heavyweight (native) threads.
+                           Requires emulator compiled with --enable-threads.
 
         --exit             Exit upon processing this option.
 
 Example:
     oaklisp --trace-gc 2 -- --locale scheme-locale --compile myfile --exit
-")
+" (bytecode-architecture-name host-architecture))
 		 (exit 0)))
 
     ("eval" 1 ,(lambda (x)
@@ -59,17 +64,27 @@ Example:
 				    x))
 		    (format #t "...done.~%")))
 
+    ("target" 1 ,(lambda (x)
+		   (set! #*target-architecture (parse-architecture-name x))))
+
     ("locale" 1 ,(lambda (x)
 		   (set! #*current-locale
 			 (eval (read (make string-input-stream x))
 			       #*current-locale))))
+    ;; A warning that terminates the process is not a warning; the
+    ;; switches after this one still get their turn.
     ("pthreads" 1 ,(lambda (x)
-		     (set! heavyweight-thread-count
-			   (read (make string-input-stream x)))
-		     (unless (integer? heavyweight-thread-count)
-		       (exit 1 "-pthread option takes integer argument.~%"))))
+		     (cond ((not (%threads-enabled?))
+			    (format standard-error
+				    "~&Warning: --pthreads ignored (emulator compiled without thread support).~%"))
+			   (else
+			    (set! heavyweight-thread-count
+				  (read (make string-input-stream x)))
+			    (unless (integer? heavyweight-thread-count)
+			      (exit 1 "--pthreads option takes integer argument.~%"))
+			    (setup-initial-process-object)))))
     ("exit" 0 ,(lambda ()
-		 (exit 0 "")))))
+		 (exit (if (zero? command-line-failures) 0 1) "")))))
 
 (define (cmdline-eat)
   (set! argline

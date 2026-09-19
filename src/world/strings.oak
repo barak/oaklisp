@@ -25,22 +25,83 @@
 
 (define-constant %chars-per-word 3)
 
+;;; A string's characters are packed three to a word, low byte first.
+;;; When the character count is not a multiple of three the top bytes of
+;;; the last word belong to no character at all; they are padding, and
+;;; two strings with the same characters must be indistinguishable
+;;; whatever happens to be sitting in them.  This answers a mask that
+;;; keeps only the bytes N-CHARS actually reaches, and -1 (all ones)
+;;; when the last word is full.
+
+(define (%string-last-word-mask n-chars)
+  (let ((n-in-last (modulo n-chars %chars-per-word)))
+    (if (zero? n-in-last)
+	-1
+	(- (ash-left 1 (* 8 n-in-last)) 1))))
+
+;;; CHAR? is not defined until predicates.oak, which is loaded long
+;;; after this file, so the entry points here that have to reject a
+;;; non-character test the type directly.  Every character is an
+;;; immediate whose type is CHARACTER itself -- see subtypes.oak, which
+;;; installs it as subtype 0 -- so an EQ? on the type is exact.
+
+(define (%char? x) (eq? (get-type x) character))
+
 ;;; Try to make only one empty string.  The following works, because the
 ;;; world builder makes only one empty string.
 
-(define (make-string len)
-  (if (zero? len) ""
-      (let* ((word-count
-	      (quotient (+ len (- %chars-per-word 1)) %chars-per-word))
-	     (s (make string word-count len))
-	     (loc (make-locative (%vref s 0))))
-	(dotimes (i word-count s)
-	  (set! (contents (%increment-locative loc i))
-		(bit-or (#^number #\NULL)
-			(bit-or (ash-left (#^number #\NULL) 8)
-				(ash-left (#^number #\NULL) 16))))))))
+;;; The fill character is optional, as R3RS MAKE-STRING has it; without
+;;; one the string is filled with nulls, which is what this always did.
+
+;;; The last word of a string holds (MODULO LEN %CHARS-PER-WORD)
+;;; characters when that is not zero, and the bytes above them are
+;;; padding that belongs to no character.  Every constructor in the
+;;; system leaves that padding zero, and STRING-GUTS-EQUAL? and
+;;; STRING-HASH-KEY both mask it off before they look at it -- see the
+;;; comment above the EQUAL? method below.  The fill word is masked here
+;;; so this constructor keeps to the same convention: a string filled
+;;; with #\a has to come out identical to the same characters spelled
+;;; any other way, down to the bits.
+
+(define (make-string len . rest)
+  (listify-args (lambda (rest) (make-string-filled len rest)) . rest))
+
+(define (make-string-filled len rest)
+  (cond ((negative? len)
+	 (error "Cannot make a string of ~D characters." len))
+	((zero? len) "")
+	(else
+	 (let* ((fill-char (if (null? rest) #\NULL (car rest)))
+		(byte (if (%char? fill-char)
+			  (bit-and #xFF (%character->fixnum fill-char))
+			  ;; %CHARACTER->FIXNUM would happily take the
+			  ;; data field apart of whatever it was handed.
+			  (error "~S is not a character to fill a string with."
+				 fill-char)))
+		(word (bit-or byte
+			      (bit-or (ash-left byte 8)
+				      (ash-left byte 16))))
+		(word-count
+		 (quotient (+ len (- %chars-per-word 1)) %chars-per-word))
+		(last-word (bit-and word (%string-last-word-mask len)))
+		(s (make string word-count len))
+		(loc (make-locative (%vref s 0))))
+	   (dotimes (i word-count s)
+	     (set! (contents (%increment-locative loc i))
+		   (if (= i (- word-count 1)) last-word word)))))))
+
+;;; LEN is both the length the string reports and the bound NTH and
+;;; (SETTER NTH) check against, while WORD-COUNT is how many cells were
+;;; actually allocated.  A LEN those cells cannot hold would let the
+;;; caller read and write past the end of the object, so the two have to
+;;; be checked against each other here -- this is the ordinary MAKE
+;;; protocol, not a %-prefixed primitive, so the check belongs in it.
 
 (add-method (initialize (string char-count) self word-count len)
+  (when (or (negative? len)
+	    (> len (* word-count %chars-per-word)))
+    (error "Cannot make a string of ~D characters out of ~D words."
+	   len word-count))
   (set! char-count len)
   self)
 
@@ -72,7 +133,8 @@
 	     (bit-or (bit-and (%vref self m)
 			      (bit-and #xFFFFFF
 				       (bit-not (ash-left #xFF i))))
-		     (ash-left (%character->fixnum new-c) i))))))
+		     (ash-left (bit-and #xFF (%character->fixnum new-c))
+			       i))))))
 |#
 
 ;;;;;;;;;;;;;;;;;
@@ -93,16 +155,34 @@
 
 
 (add-method ((setter nth) (string char-count) self n new-c)
-  (if (or (negative? n) (<= char-count n))
-      (error "Index ~D into ~S out of bounds." n self)
-      (let ((m (quotient n %chars-per-word))
-	    (i (* (modulo n %chars-per-word) 8)))
-	(set! (%vref-nocheck self m)
-	      (bit-or (bit-and (%vref-nocheck self m)
-			       (bit-and #xFFFFFF
-					(bit-not (ash-left #xFF i))))
-		      (ash-left (%character->fixnum new-c) i)))
-	new-c)))
+  (cond ((or (negative? n) (<= char-count n))
+	 (error "Index ~D into ~S out of bounds." n self))
+	;; A string holds characters, and R4RS STRING-SET! requires one.
+	;; %CHARACTER->FIXNUM below is (ASH-LEFT (%DATA X) -6), which
+	;; takes the data field apart of whatever it is handed, so
+	;; without this a fixnum would be stored as a character with an
+	;; unrelated code rather than reported.  MAKE-STRING checks its
+	;; fill argument the same way.
+	((not (%char? new-c))
+	 (error "~S is not a character to store into a string." new-c))
+	(else
+	 (let ((m (quotient n %chars-per-word))
+	       (i (* (modulo n %chars-per-word) 8)))
+	   ;; The character being deposited is masked to its own byte,
+	   ;; not just the hole it goes into.  A character type is wider
+	   ;; than a byte -- %FIXNUM->CHARACTER will build one from any
+	   ;; fixnum -- and an unmasked code above 255 would shift its
+	   ;; high bits straight into the byte belonging to the next
+	   ;; character of the same word, silently corrupting a character
+	   ;; the caller never wrote to.  NTH masks on the way out, so
+	   ;; the damage would show up only at the neighbour.
+	   (set! (%vref-nocheck self m)
+		 (bit-or (bit-and (%vref-nocheck self m)
+				  (bit-and #xFFFFFF
+					   (bit-not (ash-left #xFF i))))
+			 (ash-left (bit-and #xFF (%character->fixnum new-c))
+				   i)))
+	   new-c))))
 
 
 
@@ -150,23 +230,29 @@
 
   (add-method (fill-string (variable-length-mixin) s l len)
 
+    ;; Each code is masked to its own byte for the same reason
+    ;; (SETTER NTH) masks: a character whose code exceeds 255 would
+    ;; otherwise spill into the byte of the character packed after it.
     (iterate aux ((i 0)(l l)(to-do len))
       (cond ((zero? to-do)
 	     s)
 	    ((= 1 to-do)
-	     (set! (%load-bp-i i) (%character->fixnum (car l)))
+	     (set! (%load-bp-i i)
+		   (bit-and #xFF (%character->fixnum (car l))))
 	     s)
 	    ((= 2 to-do)
 	     (set! (%load-bp-i i)
-		   (bit-or (%character->fixnum (car l))
-			   (ash-left (%character->fixnum (cadr l)) 8)))
+		   (bit-or (bit-and #xFF (%character->fixnum (car l)))
+			   (ash-left (bit-and #xFF
+					      (%character->fixnum (cadr l)))
+				     8)))
 	     s)
 	    (else
-	     (let* ((c0 (%character->fixnum (car l)))
+	     (let* ((c0 (bit-and #xFF (%character->fixnum (car l))))
 		    (l1 (cdr l))
-		    (c1 (%character->fixnum (car l1)))
+		    (c1 (bit-and #xFF (%character->fixnum (car l1))))
 		    (l2 (cdr l1))
-		    (c2 (%character->fixnum (car l2))))
+		    (c2 (bit-and #xFF (%character->fixnum (car l2)))))
 	       (set! (%load-bp-i i)
 		     (bit-or c0 (bit-or (ash-left c1 8) (ash-left c2 16))))
 	       (aux (+ i 1) (cdr l2) (- to-do %chars-per-word)))))))
@@ -299,27 +385,35 @@
   (equal? x y))
 
 
-; WARNING, the following method assumes that the
-; unused high bits in the last word of a string are
-; always initialized to the same value.  This is currently
-; true (see the make-string method), but you should watch
-; out in the future.
-
+;;; Strings are compared a machine word at a time rather than a
+;;; character at a time.  The bytes of the last word above character
+;;; N-CHARS are padding and belong to no character, so they are masked
+;;; off instead of compared: this used to rely on every constructor
+;;; leaving them zero, an assumption the file has carried a warning
+;;; about since 1987 and which MAKE-STRING's fill character duly broke.
+;;; STRING-HASH-KEY masks the same word the same way, so EQUAL? strings
+;;; still hash alike.
 
 (labels (((string-guts-equal? a b n-chars)
-	  (let ((n-words (quotient (+ n-chars (- %chars-per-word 1))
-				   %chars-per-word))
+	  (let ((n-full (quotient n-chars %chars-per-word))
+		(n-in-last (modulo n-chars %chars-per-word))
 		(a-loc (make-locative (%vref-nocheck a 0)))
 		(b-loc (make-locative (%vref-nocheck b 0))))
 
-	    (iterate aux ((i (- n-words 1)))
-	      (cond ((zero? i)
-		     (= (contents a-loc)
-			(contents b-loc)))
-		    ((= (contents (%increment-locative a-loc i))
-			(contents (%increment-locative b-loc i)))
-		     (aux (- i 1)))
-		    (else #f))))))
+	    (and (or (zero? n-in-last)
+		     (let ((mask (%string-last-word-mask n-chars)))
+		       (= (bit-and mask
+				   (contents
+				    (%increment-locative a-loc n-full)))
+			  (bit-and mask
+				   (contents
+				    (%increment-locative b-loc n-full))))))
+		 (iterate aux ((i (- n-full 1)))
+		   (cond ((negative? i) #t)
+			 ((= (contents (%increment-locative a-loc i))
+			     (contents (%increment-locative b-loc i)))
+			  (aux (- i 1)))
+			 (else #f)))))))
 
 
   (add-method (equal? (string) a b)

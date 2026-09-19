@@ -1,0 +1,228 @@
+;;; This file is part of Oaklisp.
+;;;
+;;; This program is free software; you can redistribute it and/or modify
+;;; it under the terms of the GNU General Public License as published by
+;;; the Free Software Foundation; either version 2 of the License, or
+;;; (at your option) any later version.
+;;;
+;;; This program is distributed in the hope that it will be useful,
+;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;; GNU General Public License for more details.
+;;;
+;;; The GNU GPL is available at http://www.gnu.org/licenses/gpl.html
+;;; or from the Free Software Foundation, 59 Temple Place - Suite 330,
+;;; Boston, MA 02111-1307, USA
+
+
+;;; Copyright (C) 2026 Barak A. Pearlmutter
+
+;;; Architecture descriptions.
+
+;;; From Oaklisp's point of view an architecture is characterized by
+;;; the size of a reference in bits (the word size, 32 or 64, which
+;;; determines the fixnum range), the number of 16-bit instructions
+;;; packed into each reference (currently always 2), and, for binary
+;;; worlds and running emulators, the byte order.
+;;;
+;;; An architecture is represented as an alist with the keys
+;;;
+;;;   word-size             32 or 64
+;;;   instructions-per-ref  2
+;;;   endian                little, big, or #f when not applicable
+;;;
+;;; and is named "bc<instructions-per-ref>-<word-size>" for bytecode,
+;;; e.g. bc2-64, or "bc<instructions-per-ref>-<el|eb><word-size>" for
+;;; worlds and emulators, e.g. bc2-el64.  These names are used for the
+;;; subdirectories of prebuilt/ and for the --target command line
+;;; option.  Compiled bytecode (.oa) files carry a first line
+;;;
+;;;   ;oaklisp-bytecode word-size=64 instructions-per-ref=2
+;;;
+;;; and worlds a similar ";oaklisp-world ..." line.
+;;;
+;;; HOST-ARCHITECTURE describes the emulator we are running on; it is
+;;; derived from the %%WORD-SIZE and %%INSTRUCTIONS-PER-REF variables
+;;; the cold linker stored in the world and from the BIG-ENDIAN?
+;;; instruction.  The fluid #*TARGET-ARCHITECTURE is what the compiler
+;;; generates code for, and defaults to the host.
+
+(define (make-architecture word-size instructions-per-ref endian)
+  (unless (or (= word-size 32) (= word-size 64))
+    (error "Unsupported word size ~D." word-size))
+  (unless (= instructions-per-ref 2)
+    (error "Unsupported number of instructions per ref ~D."
+	   instructions-per-ref))
+  (unless (or (not endian) (eq? endian 'little) (eq? endian 'big))
+    (error "Unsupported endianness ~S." endian))
+  (list (cons 'word-size word-size)
+	(cons 'instructions-per-ref instructions-per-ref)
+	(cons 'endian endian)))
+
+(define (architecture-word-size a) (cdr (assq 'word-size a)))
+(define (architecture-instructions-per-ref a)
+  (cdr (assq 'instructions-per-ref a)))
+(define (architecture-endian a) (cdr (assq 'endian a)))
+
+;;; Two tag bits are always used.
+
+(define (architecture-fixnum-bits a) (- (architecture-word-size a) 2))
+
+;;; log2 of the number of bytes in a ref.
+
+(define (architecture-ref-shift a)
+  (if (= (architecture-word-size a) 64) 3 2))
+
+;;; These may return bignums on a 32-bit host describing a 64-bit
+;;; target, so they can only be used once bignums are loaded.
+
+(define (architecture-most-positive-fixnum a)
+  (- (expt 2 (- (architecture-fixnum-bits a) 1)) 1))
+
+(define (architecture-most-negative-fixnum a)
+  (- (expt 2 (- (architecture-fixnum-bits a) 1))))
+
+(define (architecture-name a)
+  (format #f "bc~D-~A~D"
+	  (architecture-instructions-per-ref a)
+	  (cond ((eq? (architecture-endian a) 'little) "el")
+		((eq? (architecture-endian a) 'big) "eb")
+		(else ""))
+	  (architecture-word-size a)))
+
+;;; The name without the endianness, as appropriate for bytecode.
+
+(define (bytecode-architecture-name a)
+  (format #f "bc~D-~D"
+	  (architecture-instructions-per-ref a)
+	  (architecture-word-size a)))
+
+;;; Parse a name like "bc2-64" or "bc2-el64".
+
+(define (parse-architecture-name name)
+  (let* ((name (#^string name))
+	 (chars (#^list-type name))
+	 (digits (lambda (l)
+		   ;; Returns (number . rest); number is #f if no digits.
+		   (iterate aux ((l l) (n #f))
+		     (if (and (not (null? l)) (digit-char? (car l)))
+			 (aux (cdr l)
+			      (+ (* 10 (or n 0))
+				 (- (#^number (car l)) (#^number #\0))))
+			 (cons n l)))))
+	 (bad (lambda ()
+		(error "Malformed architecture name ~S; expected something like bc2-64 or bc2-el64." name))))
+    (unless (and (>= (length chars) 2)
+		 (eq? (downcase (first chars)) #\b)
+		 (eq? (downcase (second chars)) #\c))
+      (bad))
+    (let* ((ipr+rest (digits (cddr chars)))
+	   (ipr (car ipr+rest))
+	   (rest (cdr ipr+rest)))
+      (unless (and ipr (not (null? rest)) (eq? (car rest) #\-))
+	(bad))
+      (let* ((rest (cdr rest))
+	     (endian (cond ((and (>= (length rest) 2)
+				 (eq? (downcase (first rest)) #\e)
+				 (eq? (downcase (second rest)) #\l))
+			    'little)
+			   ((and (>= (length rest) 2)
+				 (eq? (downcase (first rest)) #\e)
+				 (eq? (downcase (second rest)) #\b))
+			    'big)
+			   (else #f)))
+	     (rest (if endian (cddr rest) rest))
+	     (ws+rest (digits rest))
+	     (word-size (car ws+rest)))
+	(unless (and word-size (null? (cdr ws+rest)))
+	  (bad))
+	(make-architecture word-size ipr endian)))))
+
+;;; Can bytecode compiled for architecture A be loaded into a running
+;;; world for architecture B?  The instruction packing must agree.
+;;; Endianness is irrelevant to bytecode, and so is the word size:
+;;; the only way it shows is that a file compiled for a wider word may
+;;; contain integer constants that are not fixnums on a narrower one,
+;;; which a running system reads as bignums.  (The cold linkers, which
+;;; cannot make bignums, check the range of each constant themselves.)
+
+(define (bytecode-compatible? a b)
+  (= (architecture-instructions-per-ref a)
+     (architecture-instructions-per-ref b)))
+
+;;; The header line written at the top of .oa files.
+
+(define (bytecode-header-string a)
+  (format #f ";oaklisp-bytecode word-size=~D instructions-per-ref=~D"
+	  (architecture-word-size a)
+	  (architecture-instructions-per-ref a)))
+
+;;; Parse a header line (with or without the leading semicolons and
+;;; trailing newline) into an architecture, or return #f if it isn't
+;;; a bytecode header.  Unknown keys are ignored.
+
+(define (parse-bytecode-header line)
+  (let* ((tokens (split-on-whitespace (#^list-type line)))
+	 (tokens (if (and (not (null? tokens))
+			  (equal? (strip-semicolons (car tokens))
+				  "oaklisp-bytecode"))
+		     (cdr tokens)
+		     #f)))
+    (and tokens
+	 (let ((word-size #f)
+	       (ipr #f))
+	   (dolist (tok tokens)
+	     (let ((kv (split-key-value tok)))
+	       (when kv
+		 (cond ((equal? (car kv) "word-size")
+			(set! word-size (string->fixnum (cdr kv))))
+		       ((equal? (car kv) "instructions-per-ref")
+			(set! ipr (string->fixnum (cdr kv))))))))
+	   (make-architecture (or word-size 32) (or ipr 2) #f)))))
+
+;;; Little string utilities for the above.
+
+(define (split-on-whitespace chars)
+  (iterate aux ((l chars) (cur '()) (out '()))
+    (cond ((null? l)
+	   (reverse! (if (null? cur) out (cons (#^string (reverse! cur)) out))))
+	  ((or (eq? (car l) #\space) (eq? (car l) #\tab)
+	       (eq? (car l) #\newline) (eq? (car l) #\return))
+	   (aux (cdr l) '() (if (null? cur) out (cons (#^string (reverse! cur)) out))))
+	  (else (aux (cdr l) (cons (car l) cur) out)))))
+
+(define (strip-semicolons s)
+  (iterate aux ((l (#^list-type s)))
+    (if (and (not (null? l)) (eq? (car l) #\;))
+	(aux (cdr l))
+	(#^string l))))
+
+(define (split-key-value s)
+  (iterate aux ((l (#^list-type s)) (key '()))
+    (cond ((null? l) #f)
+	  ((eq? (car l) #\=)
+	   (cons (#^string (reverse! key)) (#^string (cdr l))))
+	  (else (aux (cdr l) (cons (car l) key))))))
+
+(define (string->fixnum s)
+  (iterate aux ((l (#^list-type s)) (n 0))
+    (cond ((null? l) n)
+	  ((digit-char? (car l))
+	   (aux (cdr l) (+ (* 10 n) (- (#^number (car l)) (#^number #\0)))))
+	  (else (error "Bad number ~S in architecture header." s)))))
+
+(define (digit-char? c)
+  (let ((n (#^number c)))
+    (and (<= (#^number #\0) n) (<= n (#^number #\9)))))
+
+;;; The architecture we are running on.
+
+(define host-architecture
+  (make-architecture %%word-size %%instructions-per-ref
+		     (if (%big-endian?) 'big 'little)))
+
+;;; The architecture the compiler generates code for.
+
+(set! #*target-architecture host-architecture)
+
+;;; eof

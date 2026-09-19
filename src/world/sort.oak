@@ -28,6 +28,12 @@
 
 (add-method (sort! (sequence) v <=?)
   ;; This does a stupid bubble sort.  Should be fixed.
+  ;;
+  ;; The exchange is written out with NTH and its setter rather than
+  ;; with SWAP, which expands into MAKE-LOCATIVE and so needs (LOCATER
+  ;; NTH).  Strings do not have one and signal on purpose -- a character
+  ;; does not occupy a whole cell -- which left this method, and SORT
+  ;; with it, broken on the one sequence type that cannot supply it.
   (let ((len (length v)))
     ;;(vsort v (make simple-vector len) 0 0 len)
     (when (> len 0)
@@ -35,7 +41,9 @@
 	(iterate aux ((j (+ i 1)))
 	  (when (< j len)
 	    (when (<=? (nth v j) (nth v i))
-	      (swap (nth v i) (nth v j)))
+	      (let ((tmp (nth v i)))
+		(set! (nth v i) (nth v j))
+		(set! (nth v j) tmp)))
 	    (aux (+ j 1))))))
     v))
 

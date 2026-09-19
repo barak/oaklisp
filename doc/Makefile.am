@@ -25,7 +25,16 @@ EXTRA_DIST = $(LATEX_SRCS)
 
 .tex.pdf:
 	$(LATEXMK) -cd -pdf $< \
-	 || cp ../prebuilt/doc/$@ $@
+	 || cp $(top_srcdir)/prebuilt/doc/$@ $@
+
+# Refresh the prebuilt copies.
+prebuilt: $(LATEX_PDFS)
+	for f in $(LATEX_PDFS); do \
+	  $(MKDIR_P) $(top_srcdir)/prebuilt/doc/$$(dirname $$f); \
+	  cp $$f $(top_srcdir)/prebuilt/doc/$$f; \
+	done
+
+.PHONY: prebuilt
 
 EXTRA_DIST += examples/bank-example.oak examples/change.oak		\
  examples/test-bank-example.oak examples/unit-testing.oak		\

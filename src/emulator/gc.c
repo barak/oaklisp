@@ -31,6 +31,9 @@
 #include "xmalloc.h"
 #include "stacks.h"
 #include "gc.h"
+#ifdef USE_MARK_SWEEP
+#include "gc-ms.h"
+#endif
 
 
 #ifdef USE_VADVISE
@@ -38,7 +41,10 @@
 #endif
 
 
-#define FORTHREADS THREADY( for (my_index=0; my_index<gc_thread_count; my_index++) )
+/* Iterate over the live threads only: an exited thread's slot still
+   sits inside the scan range but its stacks have been released. */
+#define FORTHREADS THREADY( for (my_index=0; my_index<gc_thread_count; my_index++) \
+			      if (!gc_thread_dead[my_index]) )
 
 
 
@@ -99,6 +105,15 @@ ref_t *gc_examine_ptr = gc_examine_buffer;
 #define LOC_TOUCH_PTR(x)				\
 {							\
   (x) = LOC_TO_PTR(loc_touch0(PTR_TO_LOC(x),1));	\
+}
+
+/* As above, but without complaining when the cell has to be moved on
+   its own.  Use this where a pointer to the containing object is not
+   in fact guaranteed to exist. */
+
+#define LOC_TOUCH_PTR_QUIET(x)				\
+{							\
+  (x) = LOC_TO_PTR(loc_touch0(PTR_TO_LOC(x),0));	\
 }
 
 void
@@ -214,7 +229,16 @@ gc_touch0(ref_t r)
 
 	    free_point += len;
 
-#ifndef FAST
+#ifdef USE_MARK_SWEEP
+	    ms_record_transport(new_place);
+#endif
+
+	    /* One comparison against a pointer that is already in a
+	       register, on the path that is about to copy len words
+	       through it.  It is what stands between a GC sizing bug --
+	       or a heap that was never really allocated -- and an
+	       out-of-bounds write, so it is not compiled out of the
+	       fast build. */
 	    if (free_point >= new_space.end)
 	      {
 		fprintf(stderr,
@@ -224,7 +248,6 @@ gc_touch0(ref_t r)
 			".\n; This indicates a bug in the garbage collector.\n");
 		exit(EXIT_FAILURE);
 	      }
-#endif
 	    for (i = 0; i < len; i++, p0++, q0++)
 	      {
 		*q0 = *p0;
@@ -300,7 +323,10 @@ loc_touch0(ref_t r, bool warn_if_unmoved)
 	  ref_t *new_place = free_point++;	/* make a new cell. */
 	  ref_t new_r = PTR_TO_LOC(new_place);
 
-#ifndef FAST
+#ifdef USE_MARK_SWEEP
+	  ms_record_transport(new_place);
+#endif
+
 	  if (free_point >= new_space.end)
 	    {
 	      fprintf(stderr,
@@ -310,7 +336,6 @@ loc_touch0(ref_t r, bool warn_if_unmoved)
 		      ".\n; This indicates a bug in the garbage collector.\n");
 	      exit(EXIT_FAILURE);
 	    }
-#endif
 	  *p = new_r;		/* Record the transportation. */
 
 	  /* Put the right value in the new cell. */
@@ -448,25 +473,36 @@ gc(bool pre_dump, bool full_gc, char *reason, size_t amount)
   int gc_thread_count;
   int i;
   int *my_index_p;
-  my_index_p = pthread_getspecific (index_key);
-  my_index = *my_index_p;
-  gc_ready[my_index] = 1;
-  set_gc_flag (true);
-  /* Snapshot next_index so thread creation during GC cannot cause
-     us to read uninitialized gc_ready[] slots. */
-  gc_thread_count = next_index;
-#endif
 
-#ifdef THREADS
-   while (ready == false) {
-    ready = true;
-    for (i = 0; i < gc_thread_count; i++) {
-      if (gc_ready[i] == 0) {
-          ready = false;
-          break;
+#ifdef USE_MARK_SWEEP
+  /* When called from ms_collect during a concurrent GC cycle,
+     threads are already parked — skip our own synchronization. */
+  if (gc_concurrent_in_progress) {
+    my_index_p = oak_tls_get(index_key);
+    my_index = *my_index_p;
+    gc_thread_count = next_index;
+  } else {
+#endif
+    my_index_p = oak_tls_get(index_key);
+    my_index = *my_index_p;
+    gc_ready[my_index] = 1;
+    set_gc_flag (true);
+    /* Snapshot next_index so thread creation during GC cannot cause
+       us to read uninitialized gc_ready[] slots. */
+    gc_thread_count = next_index;
+
+    while (ready == false) {
+      ready = true;
+      for (i = 0; i < gc_thread_count; i++) {
+	if (gc_ready[i] == 0 && !gc_thread_dead[i]) {
+	    ready = false;
+	    break;
+	}
       }
     }
+#ifdef USE_MARK_SWEEP
   }
+#endif
 #endif
 
   /* The full_gc flag is also a global to avoid ugly parameter passing. */
@@ -532,8 +568,8 @@ gc_top:
 	GC_TOUCH (e_object_type);
 	GC_TOUCH (e_segment_type);
 	FORTHREADS {
-	  /* e_bp is a locative, but a pointer to the object should exist, so we
-	     need only touch it in the locative pass. */
+	  /* e_bp is a locative into the current method's SELF, so it is
+	     dealt with in the locative pass below rather than here. */
 	  GC_TOUCH_PTR(e_env, 0);
 	  GC_TOUCH (e_code_segment);
 	  GC_TOUCH (e_current_method);
@@ -585,7 +621,13 @@ gc_top:
     if (!pre_dump)
       {
 	FORTHREADS {
-	  LOC_TOUCH_PTR (e_bp);
+	  /* e_bp points into the current method's SELF.  A pointer to
+	     SELF itself need not still exist -- a method that has
+	     finished with its own arguments, such as DUMP-WORLD's,
+	     leaves e_bp as the only reference -- so moving the cell on
+	     its own here is ordinary rather than suspicious, and must
+	     not print a warning on a normal operation. */
+	  LOC_TOUCH_PTR_QUIET (e_bp);
 	  e_pc = pc_touch (e_pc);
 
 	  LOC_TOUCH(e_uninitialized);
@@ -691,9 +733,11 @@ gc_top:
   }
 #endif /* not defined(FAST) */
 
-  /* Hopefully there are no more references into old space. */
-  if (!pre_dump)
-    free_space(&old_space);
+  /* Hopefully there are no more references into old space.  This holds
+     for a pre-dump collection too: everything reachable from e_nil and
+     e_boot_code has been transported, and the stacks are deliberately
+     discarded, so old space can be released either way. */
+  free_space(&old_space);
 
   if (!pre_dump && full_gc)
     free_space(&spatic);
@@ -724,9 +768,14 @@ gc_top:
     long old_total = old_taken + (full_gc ? old_spatic_taken : 0);
     long reclaimed = old_total - new_taken;
 
+    /* old_total is zero right after a full GC, since new space was
+       freshly allocated and nothing has been consed into it yet.
+       Guard the percentages so we do not divide by zero. */
+    long percent_reclaimed = old_total > 0 ? (100 * reclaimed) / old_total : 0;
+
     if (trace_gc == 1)
       {
-	fprintf(stderr, ":%ld%%", (100 * reclaimed) / old_total);
+	fprintf(stderr, ":%ld%%", percent_reclaimed);
       }
     if (trace_gc > 1)
       {
@@ -734,7 +783,7 @@ gc_top:
 	if (full_gc)
 	  fprintf(stderr, "(%ld+%ld) ", old_spatic_taken, old_taken);
 	fprintf(stderr, "compacted to %ld; %ld (%ld%%) garbage.\n",
-		new_taken, reclaimed, (100 * reclaimed) / old_total);
+		new_taken, reclaimed, percent_reclaimed);
       }
 
     /* Make the next new space bigger if the current was too small. */
@@ -822,10 +871,16 @@ gc_top:
       fflush(stdout);
   }
 #ifdef THREADS
-    my_index_p = pthread_getspecific (index_key);
-    my_index = *my_index_p;
-    gc_ready[my_index] = 0;
-    set_gc_flag (false);
+#ifdef USE_MARK_SWEEP
+    if (!gc_concurrent_in_progress) {
+#endif
+      my_index_p = oak_tls_get(index_key);
+      my_index = *my_index_p;
+      gc_ready[my_index] = 0;
+      set_gc_flag (false);
+#ifdef USE_MARK_SWEEP
+    }
+#endif
 #endif
 }
 

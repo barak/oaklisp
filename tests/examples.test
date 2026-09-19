@@ -1,0 +1,17 @@
+#!/bin/sh
+# The example programs from the manual load and run in user-locale.
+. "$(dirname "$0")/testlib.sh"
+ex=$top_srcdir/doc/examples
+out=$(oak -- --locale user-locale --load "$ex/bank-example" \
+	--load "$ex/unit-testing" --load "$ex/test-bank-example" \
+	--eval "(run-all-tests unit-tests)" --exit 2>&1)
+status=$?
+echo "$out"
+test "$status" = 0 || fail "bank example: exit status $status"
+printf '%s\n' "$out" | grep -q '\*\*\* \|An error occurred' && fail "bank example reported failures"
+out=$(oak -- --locale user-locale --load "$ex/change" --eval '(print (change 100) standard-output)' --exit 2>&1)
+echo "$out"
+printf '%s\n' "$out" | grep -q 'An error occurred' && fail "change example failed"
+out=$(oak -- --locale user-locale --load "$top_srcdir/src/world/tak" --eval '(print (list (tak 18 12 6) (tak2 18 12 6) (macnine 1)) standard-output)' --exit 2>&1)
+echo "$out"
+printf '%s' "$out" | grep -q '(7 7 91)$' || fail "tak gave the wrong answer"

@@ -1,0 +1,13 @@
+;;; Native threads, when the emulator has them.
+(define (check name got expected)
+  (if (equal? got expected)
+      (format #t "PASS ~A~%" name)
+      (format #t "FAIL ~A: got ~S expected ~S~%" name got expected))
+  (flush standard-output))
+(set! #*print-length #f)
+(set! #*print-level #f)
+(check "threads enabled" (%threads-enabled?) #t)
+(check "process object" (is-a? (current-process) process) #t)
+(check "mutex" (let ((m (make mutex))) (acquire-mutex m) (release-mutex m) 'ok) 'ok)
+(check "test-and-set" (let ((c (list #f))) (list (%test-and-set-locative (make-locative (car c)) #f #t) (car c))) '(#t #t))
+(check "arithmetic still works" (let loop ((n 1000) (a 0)) (if (= n 0) a (loop (- n 1) (+ a n)))) 500500)

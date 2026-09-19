@@ -4,6 +4,15 @@ Below is the normal README for Oaklisp.  I cloned it and, with the help of Claud
 2. Bug fixes
 3. Source-only build (no world.bin file needed)
 4. Changed the version number from 1.3.8 to 2.0.0~devel
+5. Added the ability to dump a world without exiting
+6. Added the ability to load a world at runtime (see Dump.md)
+7. Added full support for native threads (green threads were already supported)
+8. Added a concurrent GC
+9. Optional bootstrap from source alone.  With Guile 3 the world's objects
+    are compiled from the .oak sources by a Guile-hosted copy of the real
+    Oaklisp compiler, so no prebuilt .oa files are needed; configure does this
+    (`--with-compile=guile`) whenever it finds no world or prebuilt bytecode
+    (see BUILD.md)
 
 This repo is located at:  https://github.com/blakemcbride/oaklisp
 

@@ -1,0 +1,3 @@
+#!/bin/sh
+. "$(dirname "$0")/testlib.sh"
+run_oak_test promises.oak && run_oak_test promises.oak --locale user-locale

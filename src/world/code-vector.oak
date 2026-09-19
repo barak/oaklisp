@@ -23,8 +23,52 @@
 
 ;;; We conditionalize on whether we're under a big-endian regime at load
 ;;; time, thus avoiding the check repeatedly at runtime.
+;;;
+;;; Two 16-bit instructions are packed into each ref, in memory order,
+;;; so the first instruction is in the low 16 bits of the ref on a
+;;; little-endian machine and in the high 16 bits of the first 32 bits
+;;; on a big-endian machine.  With 64-bit refs the instructions occupy
+;;; the first 32 bits in memory: the low half of the ref on
+;;; little-endian machines (so the same code works for 32- and 64-bit
+;;; refs) but the high half on big-endian ones, where the first
+;;; instruction is at bits 48..63 and the second at bits 32..47, which
+;;; are bits 46..61 and 30..45 of the %POINTER part.
+;;;
+;;; (If more instructions were ever packed into a ref this is one of
+;;; the places that would have to change; see also FASL.OAK.)
 
 (cond
+
+ ((and (%big-endian?) (= %%word-size 64))
+
+  (add-method (nth (%code-vector) self n)
+    (let* ((n2 (quotient n 2))
+	   (x (%vref self n2)))
+      (if (not (zero? (modulo n 2)))
+	  ;; Second instruction, bits 32..47:
+	  (bit-and #xFFFF (ash-right (%pointer x) 30))
+	  ;; First instruction, bits 48..63:
+	  (bit-and #xFFFF (ash-right (%pointer x) 46)))))
+
+  ;; FX-TIMES rather than ASH-LEFT, as the shifted instruction would
+  ;; overflow a fixnum and ASH promotes on overflow; ROT-LEFT for the
+  ;; shift amounts, so that no literal too big for a 32-bit fixnum
+  ;; appears in this cold world file.
+  (add-method ((setter nth) (%code-vector) self n x)
+    (let* ((n2 (quotient n 2))
+	   (x0 (%vref self n2))
+	   (x1 (if (not (zero? (modulo n 2)))
+		   ;; Second instruction, bits 32..47:
+		   (%crunch (bit-or (bit-and (%pointer x0)
+					     (bit-not (fx-times #xFFFF (rot-left 1 30))))
+				    (fx-times x (rot-left 1 30)))
+			    (%tag x0))
+		   ;; First instruction, bits 48..63:
+		   (%crunch (bit-or (bit-and (%pointer x0)
+					     (bit-not (fx-times #xFFFF (rot-left 1 46))))
+				    (fx-times x (rot-left 1 46)))
+			    (%tag x0)))))
+      (set! (%vref self n2) x1))))
 
  ((%big-endian?)
 
@@ -46,8 +90,13 @@
 				    (ash-right x 2))
 			    (bit-and x #x3))
 		   ;; High 16 bits:
+		   ;; FX-TIMES, not ASH-LEFT: this is a bit field being
+		   ;; packed, and on a 32 bit build a 16 bit instruction
+		   ;; shifted left by 14 does not fit in a fixnum.  ASH
+		   ;; would promote it to a bignum; the wrapping multiply
+		   ;; keeps the bit pattern we want.
 		   (%crunch (bit-or (bit-and (%pointer x0) #x3FFF)
-				    (ash-left x 14))
+				    (fx-times x 16384))
 			    (%tag x0)))))
       (set! (%vref self n2) x1))))
 
@@ -70,8 +119,9 @@
 		   (%crunch (bit-or (bit-and (%pointer x0) (bit-not #x3FFF))
 				    (ash-right x 2))
 			    (bit-and x #x3))
-		   ;; High 16 bits:
-		   (%crunch (bit-or (bit-and (%pointer x0) #x3FFF) (ash-left x 14))
+		   ;; High 16 bits:  (see the note on FX-TIMES above)
+		   (%crunch (bit-or (bit-and (%pointer x0) #x3FFF)
+				    (fx-times x 16384))
 			    (%tag x0)))))
       (set! (%vref self n2) x1)))))
 

@@ -33,11 +33,39 @@
 				  (let ((stuff (head (cdr args) n)))
 				    (catch-errors (general-error
 						   (lambda (err)
+						     ;; Remember that this
+						     ;; run did not do what
+						     ;; it was asked, so it
+						     ;; does not exit 0 and
+						     ;; leave a make rule
+						     ;; linking whatever
+						     ;; stale object the
+						     ;; failed --compile
+						     ;; left behind.
+						     (set! command-line-failures
+							   (+ command-line-failures 1))
 						     (format standard-error
 							     "~&An error occurred while processing switch ~A args ~S~%"
 							     a stuff)
-						     (report err standard-error)
-						     (format standard-error "~%")))
+						     ;; Reporting the error can
+						     ;; itself signal, since it
+						     ;; prints the offending
+						     ;; object and that object
+						     ;; may be the half
+						     ;; initialized thing whose
+						     ;; INITIALIZE just failed.
+						     ;; Contain that here: a
+						     ;; switch that cannot even
+						     ;; be described must not
+						     ;; stop the switches after
+						     ;; it from being processed.
+						     (catch-errors
+						      (general-error
+						       (lambda (err2)
+							 (format standard-error
+								 "~&(this error could not be reported)~%")))
+						      (report err standard-error)
+						      (format standard-error "~%"))))
 						  (apply f stuff)))
 				  (aux (tail (cdr args) n)))))
 			  (else (format standard-error  "~&error: unknown switch: ~A" a)

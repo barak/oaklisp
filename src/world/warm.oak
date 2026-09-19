@@ -43,6 +43,15 @@
   op)
 
 
+;;; For an action that has to run before ones already registered --
+;;; notably before CMDLINE-EAT, which is added from a cold file and so
+;;; is always ahead of anything a warm file appends.
+
+(define (add-warm-boot-action-first op)
+  (set! warm-boot-actions (cons op (delq op warm-boot-actions)))
+  op)
+
+
 ;;; Due to load order constraints, some things go here rather than in
 ;;; the files they are defined in.
 

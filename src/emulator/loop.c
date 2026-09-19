@@ -26,16 +26,15 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #ifndef FAST
 #undef NDEBUG
 #endif
 #include <assert.h>
 #include <setjmp.h>
-#ifdef THREADS
-#include <sched.h>
-#endif
 
 #include "config.h"
+#include "oak-atomic.h"
 #include "data.h"
 #include "stacks.h"
 #include "stacks-loop.h"
@@ -47,12 +46,19 @@
 #include "loop.h"
 #include "cmdline.h"
 #include "xmalloc.h"
+#ifdef USE_MARK_SWEEP
+#include "gc-ms.h"
+#endif
 
 #ifndef FAST
 #include "instr.h"
 #endif
 
 #define ENABLE_TIMER	1
+
+/* How many instructions the interpreter has to execute after a crash
+   recovery before the crash is no longer considered "consecutive". */
+#define CRASH_PROGRESS_INSTRS 1024
 
 int  trace_traps = false;	/* trace tag traps */
 int  trace_files = false;	/* trace file opening */
@@ -74,6 +80,9 @@ bool_int trace_mcache = false;	/* trace method cache hits and misses */
 
 bool gc_before_dump = true;	/* do a GC before dumping the world */
 
+#ifdef THREADS
+oak_mutex_t dump_lock = OAK_MUTEX_INITIALIZER;
+#endif
 
 #ifdef FAST
 #define maybe_put(x,s)
@@ -126,12 +135,17 @@ maybe_dump_world(int dumpstackp)
 #ifdef THREADS
   int *my_index_p;
   int  my_index;
-  my_index_p = pthread_getspecific (index_key);
+  my_index_p = oak_tls_get(index_key);
   my_index = *(my_index_p);
 #endif
-  if (dumpstackp > 2)
-    {				/* 0,1,2 are normal exits. */
-      /* will be changed */
+  /* Dump the stacks only for an internal abort.  EXIT passes a user's
+     status straight through to HALT and accepts 0 through 10, so a
+     script returning a conventional exit code must not get several
+     hundred bytes of raw stack contents on its standard output; the
+     codes the system raises itself (69 from a cold boot failure, 333
+     from the interpreter) are all well above that range. */
+  if (dumpstackp > 10)
+    {
       dump_stack(&value_stack);
       dump_stack(&context_stack);
     }
@@ -213,16 +227,33 @@ cdr(ref_t x)
 
 
 
-static inline ref_t
-assq(ref_t elt, ref_t lis, ref_t notfound)
+/* The ASSQ instruction takes its list off the value stack, so both the
+   spine and every element of it are ordinary Oaklisp values that the
+   program chose.  car() and cdr() dereference without looking at the
+   tag, so this checks each cell the way CONSINSTR checks the cons
+   instructions -- a pointer, and a pair -- before following it.  A
+   false return means the instruction should trap; *RESULT is set only
+   on success. */
+
+static inline bool
+assq_checked(ref_t elt, ref_t lis, ref_t notfound, ref_t *result)
 {
   while (lis != e_nil) {
-    ref_t this = car(lis);
-    if (car(this) == elt)
-      return this;
+    ref_t this;
+
+    if (!TAG_IS(lis, PTR_TAG) || REF_SLOT(lis, 0) != e_cons_type)
+      return false;
+    this = car(lis);
+    if (!TAG_IS(this, PTR_TAG) || REF_SLOT(this, 0) != e_cons_type)
+      return false;
+    if (car(this) == elt) {
+      *result = this;
+      return true;
+    }
     lis = cdr(lis);
   }
-  return notfound;
+  *result = notfound;
+  return true;
 }
 
 
@@ -251,8 +282,11 @@ lookup_bp_offset(ref_t y_type, ref_t meth_type)
 }
 
 
-/* 6 is enough for current build... */
-#define N_LATERS 100
+/* Depth of the supertype search stack that lives on the C stack.  6 is
+   enough for the current build, but a user-defined type graph can be
+   arbitrarily deep, so past this point the table moves to the heap
+   instead of running off the end of the frame. */
+#define N_LATERS 64
 
 static inline void
 find_method_type_pair(ref_t op,
@@ -268,8 +302,10 @@ find_method_type_pair(ref_t op,
   ref_t *loclist;
 #endif
   /* stack of lists of types that remain to be searched */
-  ref_t later_lists[N_LATERS];
-  ref_t *llp = &later_lists[0];	/* points to first empty slot in table */
+  ref_t inline_lists[N_LATERS];
+  ref_t *later_lists = inline_lists;
+  size_t later_size = N_LATERS;
+  size_t llp = 0;		/* index of first empty slot in table */
 
   while (1)			/* forever */
     {
@@ -297,6 +333,8 @@ find_method_type_pair(ref_t op,
 #endif
 	      *method_ptr = cdr(car_cache);
 	      *type_ptr = obj_type;
+	      if (later_lists != inline_lists)
+		free(later_lists);
 	      return;
 	    }
 	  alist = *(locl = pcdr(alist));
@@ -306,20 +344,48 @@ find_method_type_pair(ref_t op,
       /* Not found in local alist, so stack the entire supertype list
          and then fetch the top guy available on the stack. */
 
-      /* TO DO: should gracefully handle overflown later lists table. */
-      if (llp == &later_lists[N_LATERS]) printf("internal error: overflown laters list table\n");
-      *llp = REF_SLOT(obj_type, TYPE_SUPER_LIST_OFF);
-      llp += 1;
-
-      while (*(llp-1) == e_nil)
+      if (llp == later_size)
 	{
-	  if (llp == &later_lists[1]) return;
+	  /* Grow the table; the first growth moves it off the C stack. */
+	  size_t new_size = 2 * later_size;
+	  ref_t *bigger;
+
+	  if (later_lists == inline_lists)
+	    {
+	      bigger = (ref_t *) xmalloc(new_size * sizeof(ref_t));
+	      memcpy(bigger, inline_lists, later_size * sizeof(ref_t));
+	    }
+	  else
+	    {
+	      bigger = (ref_t *) realloc(later_lists,
+					 new_size * sizeof(ref_t));
+	      if (bigger == NULL)
+		{
+		  fprintf(stderr, "\nERROR: out of memory while searching"
+			  " a type hierarchy %lu levels deep.\n",
+			  (unsigned long)later_size);
+		  exit(EXIT_FAILURE);
+		}
+	    }
+	  later_lists = bigger;
+	  later_size = new_size;
+	}
+      later_lists[llp++] = REF_SLOT(obj_type, TYPE_SUPER_LIST_OFF);
+
+      while (later_lists[llp - 1] == e_nil)
+	{
+	  if (llp == 1)
+	    {
+	      if (later_lists != inline_lists)
+		free(later_lists);
+	      return;
+	    }
 	  llp -= 1;
 	}
 
       locl = NULL;
-      obj_type = car(*(llp-1));
-      *(llp-1) = cdr(*(llp-1));
+      obj_type = car(later_lists[llp - 1]);
+      later_lists[llp - 1] = cdr(later_lists[llp - 1]);
     }
 }
 
@@ -329,8 +395,8 @@ void
 loop(ref_t initial_tos)
 {
   instr_t instr;
-  u_int8_t op_field;
-  u_int8_t arg_field;
+  uint8_t op_field;
+  uint8_t arg_field;
 
   /* trap_nargs is used by instructions when they trap, to tell the
      trap code about a property of the instruction.  (It might be
@@ -338,7 +404,7 @@ loop(ref_t initial_tos)
   unsigned trap_nargs;
 
 #ifdef THREADS
-  int* my_index_p = pthread_getspecific (index_key);
+  int* my_index_p = oak_tls_get(index_key);
   int  my_index = *(my_index_p);
 #endif
 
@@ -349,6 +415,9 @@ loop(ref_t initial_tos)
   unsigned timer_counter = 0;
   unsigned timer_increment = 0;
 #endif
+
+  /* Instructions executed since the last crash recovery. */
+  unsigned long crash_progress = 0;
 
 
   /* These are "local" versions of some globals, to make sure the C
@@ -432,17 +501,50 @@ loop(ref_t initial_tos)
   /* This is the big instruction fetch/execute loop. */
 
   if (!batch_mode) {
-    enable_signal_polling();
+    /* Signal dispositions are process wide and only thread 0 ever
+       polls signal_poll_flag (see POLL_USER_SIGNALS), so arming this
+       again from a newly started thread would accomplish nothing
+       except discarding a SIGINT that thread 0 has not yet noticed. */
+    if (1 THREADY(&& (my_index == 0)))
+      enable_signal_polling();
     enable_crash_recovery();
   }
 
   /* Set up crash recovery point.  If a fatal signal (SIGSEGV, SIGBUS,
-     SIGFPE) fires, siglongjmp returns here with a non-zero value. */
-  if (sigsetjmp(crash_jmpbuf, 1) != 0) {
-    /* Returned from a fatal signal -- recover to Oaklisp debugger. */
+     SIGFPE) fires, oak_longjmp returns here with a non-zero value. */
+  if (oak_setjmp(crash_jmpbuf) != 0) {
+    /* Returned from a fatal signal -- recover to Oaklisp debugger.
+
+       The globals were refreshed from the loop's locals at the top of
+       the faulting instruction (see the UNLOCALIZE_ALL below), so
+       LOCALIZE_ALL() restores the state as of just before the fault;
+       without that they would be arbitrarily stale and we would resume
+       at a random old PC and fault again forever.
+
+       The other loop locals are only assigned before oak_setjmp, so
+       siglongjmp leaves them either restored from the jmp_buf or intact
+       on this (unwound-to) frame -- but the standard calls that
+       indeterminate for non-volatile automatics, so recompute the ones
+       that matter. */
     reinstall_crash_handler();
     LOCALIZE_ALL();
+    value_stack_bp = value_stack.bp;
+    value_stack_end = &value_stack.bp[value_stack.size];
+    context_stack_bp = context_stack.bp;
+    context_stack_end = &context_stack.bp[context_stack.size];
+#if ENABLE_TIMER
+    timer_counter = 0;
+#endif
+#ifdef THREADS
+    my_index_p = oak_tls_get(index_key);
+    my_index = *(my_index_p);
+#endif
+    crash_progress = 0;
     crash_signal = 0;
+    /* The saved PC points at the faulting instruction, but the trap
+       entry below backs up one instruction (its callers reach it after
+       the PC has already been advanced), so step over it first. */
+    INCREMENT_PC(local_e_pc, 1);
     /* Route through intr_trap using argless trap slot 126. */
     arg_field = 126;
     op_field = 0;
@@ -455,31 +557,50 @@ loop(ref_t initial_tos)
  top_of_loop:
   while (1)			/* forever */
     {
+      /* Keep the globals tracking the interpreter's live state so that
+         crash recovery above has something accurate to resume from.
+         Skipped in batch mode, where fatal signals just terminate. */
+      if (crash_recovery_installed)
+	{
+	  UNLOCALIZE_ALL();
+	  /* A crash is "consecutive" only while the recovery keeps
+	     faulting without getting anywhere; once the VM has made
+	     real progress, forget it. */
+	  if (crash_count != 0 && ++crash_progress > CRASH_PROGRESS_INSTRS)
+	    {
+	      crash_count = 0;
+	      crash_progress = 0;
+	    }
+	}
 #ifndef FAST
       if (trace_valcon) DUMP_VALUE_STACK();
       if (trace_cxtcon) DUMP_CONTEXT_STACK();
       if (trace_stks)
 	{
-	  printf("heights val: %d = %d + %d, cxt: %d = %d + %d\n",
-		 VALUE_STACK_HEIGHT(),
-		 local_value_sp - value_stack_bp + 1,
+	  printf("heights val: %ld = %ld + %d, cxt: %ld = %ld + %d\n",
+		 (long)VALUE_STACK_HEIGHT(),
+		 (long)(local_value_sp - value_stack_bp + 1),
 		 value_stack.pushed_count,
-		 CONTEXT_STACK_HEIGHT(),
-		 local_context_sp - context_stack_bp + 1,
+		 (long)CONTEXT_STACK_HEIGHT(),
+		 (long)(local_context_sp - context_stack_bp + 1),
 		 context_stack.pushed_count);
 	}
 
+      /* Unlike the other checks that used to live behind FAST, this one
+	 runs on every instruction dispatch: measured at about 30% of
+	 the interpreter's running time on the tak benchmark, so it
+	 stays a debug-build check. */
       {
-	int val_buffer_count = local_value_sp - value_stack_bp + 1;
-	int cxt_buffer_count = local_context_sp - context_stack_bp + 1;
+	long val_buffer_count = local_value_sp - value_stack_bp + 1;
+	long cxt_buffer_count = local_context_sp - context_stack_bp + 1;
 	if (val_buffer_count < 1 || val_buffer_count > value_stack.size) {
-	  fprintf(stderr, "vm error: val_buffer_count = %d\n",
+	  fprintf(stderr, "vm error: val_buffer_count = %ld\n",
 		  val_buffer_count);
 	  exit(EXIT_FAILURE);
 	}
 	/* Should this be a zero ??? */
 	if (cxt_buffer_count < 0 || cxt_buffer_count > context_stack.size) {
-	  fprintf(stderr, "vm error: cxt_buffer_count = %d\n",
+	  fprintf(stderr, "vm error: cxt_buffer_count = %ld\n",
 		  cxt_buffer_count);
 	  exit(1);
 	}
@@ -526,7 +647,7 @@ loop(ref_t initial_tos)
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
 	      {
-		long a = REF_TO_INT(x) + REF_TO_INT(y);
+		ssize_t a = REF_TO_INT(x) + REF_TO_INT(y);
 		OVERFLOWN_INT(a, TRAP1(2));
 		PEEKVAL() = INT_TO_REF(a);
 	      }
@@ -539,7 +660,7 @@ loop(ref_t initial_tos)
 	      if (x == MIN_REF)
 		TRAP0(1);
 	      /* Tag trickery: */
-	      PEEKVAL() = -((long)x);
+	      PEEKVAL() = (ref_t)(-((ssize_t)x));
 	      GOTO_TOP;
 
 	    case 3:		/* EQ? */
@@ -556,12 +677,12 @@ loop(ref_t initial_tos)
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
-#if __WORDSIZE == 64 && defined(HAVE___INT128)
+#if OAK_WORD_SIZE == 64 && defined(HAVE___INT128)
 	      /* Multiply integer values, check if product fits in fixnum range. */
 	      {
 		__int128 a = (__int128)REF_TO_INT(x) * (__int128)REF_TO_INT(y);
-		long highcrap = (long)(a >> (__WORDSIZE - (TAGSIZE + 1)));
-		if ((highcrap != 0L) && (highcrap != -1L))
+		ssize_t highcrap = (ssize_t)(a >> (OAK_WORD_SIZE - (TAGSIZE + 1)));
+		if ((highcrap != 0) && (highcrap != -1))
 		  TRAP1(2);
 		PEEKVAL() = INT_TO_REF((ssize_t)a);
 	      }
@@ -569,7 +690,7 @@ loop(ref_t initial_tos)
 	      /* "long long" here means int64 */
 	      {
 		int64_t a = (int64_t)REF_TO_INT(x) * (int64_t)REF_TO_INT(y);
-		int highcrap = a >> (__WORDSIZE - (TAGSIZE+1));
+		int highcrap = a >> (OAK_WORD_SIZE - (TAGSIZE+1));
 		if (highcrap && highcrap+1)
 		  TRAP1(2);
 		PEEKVAL() = INT_TO_REF(a);
@@ -578,16 +699,16 @@ loop(ref_t initial_tos)
 #ifdef DOUBLES_FOR_OVERFLOW
 	      {
 		double a = (double)REF_TO_INT(x) * (double)REF_TO_INT(y);
-		if (a < (double)((long)MIN_REF / 4)
-		    || a > (double)((long)MAX_REF / 4))
+		if (a < (double)((ssize_t)MIN_REF / 4)
+		    || a > (double)((ssize_t)MAX_REF / 4))
 		  TRAP1(2);
-		PEEKVAL() = INT_TO_REF((long)a);
+		PEEKVAL() = INT_TO_REF((ssize_t)a);
 	      }
 #else
 	      {
-		long a = REF_TO_INT(x), b = REF_TO_INT(y);
-		unsigned long al, ah, bl, bh, hh, hllh, ll;
-		long answer;
+		ssize_t a = REF_TO_INT(x), b = REF_TO_INT(y);
+		size_t al, ah, bl, bh, hh, hllh, ll;
+		ssize_t answer;
 		bool neg = false;
 		/* MNF check */
 		if (a < 0)
@@ -602,14 +723,14 @@ loop(ref_t initial_tos)
 		  }
 		al = a & 0x7FFF;
 		bl = b & 0x7FFF;
-		ah = (unsigned long)a >> 15;
-		bh = (unsigned long)b >> 15;
+		ah = (size_t)a >> 15;
+		bh = (size_t)b >> 15;
 		ll = al * bl;
 		hllh = al * bh + ah * bl;
 		hh = ah * bh;
 		if (hh || hllh >> 15)
 		  TRAP1(2);
-		answer = (hllh << 15) + ll;
+		answer = (ssize_t)((hllh << 15) + ll);
 		if (neg) answer = -answer;
 		OVERFLOWN_INT(answer, TRAP1(2));
 		PEEKVAL() = INT_TO_REF(answer);
@@ -642,7 +763,7 @@ loop(ref_t initial_tos)
 		  (y == INT_TO_REF(-1) && x == MIN_REF))
 		TRAP1(2);
 	      /* Tag trickery: */
-	      PEEKVAL() = INT_TO_REF((long)x / (long)y);
+	      PEEKVAL() = INT_TO_REF((ssize_t)x / (ssize_t)y);
 	      GOTO_TOP;
 
 	    case 8:		/* =0? */
@@ -677,7 +798,7 @@ loop(ref_t initial_tos)
 				printf("GET-DATA of "),
 				printref(stdout, x),
 				printf("\n"),
-				-(long)p - 1)
+				-(ssize_t)p - 1)
 			       );
 		}
 	      else
@@ -694,13 +815,13 @@ loop(ref_t initial_tos)
 
 		if (tag & PTR_MASK)
 		  {
-		    long i = REF_TO_INT(x);
+		    ssize_t i = REF_TO_INT(x);
 
 		    /* Preclude creation of very odd references. */
 		    TRAP1_IF(i < 0, 2);
-		    if (i < (long)spatic.size)
+		    if (i < (ssize_t)spatic.size)
 		      z = PTR_TO_LOC(spatic.start + i);
-		    else if (i < (long)(spatic.size + new_space.size))
+		    else if (i < (ssize_t)(spatic.size + new_space.size))
 		      z = PTR_TO_LOC(new_space.start + (i - spatic.size));
 		    else
 		      {
@@ -716,7 +837,14 @@ loop(ref_t initial_tos)
 
 	    case 12:		/* GETC */
 	      /* Used in emergency cold load standard-input stream. */
-	      PUSHVAL_IMM(CHAR_TO_REF(getc(stdin)));
+	      {
+		int c = getc(stdin);
+
+		/* At end of file answer NIL, the way STREAM-PRIMITIVE
+		   getc does; CHAR_TO_REF(EOF) would build a "character"
+		   whose code is -1, which is not a character at all. */
+		PUSHVAL_IMM(c == EOF ? e_nil : CHAR_TO_REF(c));
+	      }
 	      GOTO_TOP;
 
 	    case 13:		/* PUTC */
@@ -742,6 +870,7 @@ loop(ref_t initial_tos)
 	    case 15:		/* SET-CONTENTS */
 	      POPVAL(x);
 	      CHECKTAG1(x, LOC_TAG, 2);
+	      SATB_BARRIER(LOC_TO_PTR(x));
 	      *LOC_TO_PTR(x) = PEEKVAL();
 	      GOTO_TOP;
 
@@ -759,62 +888,6 @@ loop(ref_t initial_tos)
 		p[CONS_PAIR_CAR_OFF] = x;
 		p[CONS_PAIR_CDR_OFF] = PEEKVAL();
 		p[0] = e_cons_type;
-#ifdef DEBUG_CDR
-		/* Detect cons with non-list CDR that might create improper list */
-		{ ref_t _cdr_val = PEEKVAL();
-		  if (TAG_IS(_cdr_val, PTR_TAG) && _cdr_val != e_nil
-		      && TAG_IS(x, INT_TAG)
-		      && REF_TO_PTR(_cdr_val)[0] != e_cons_type) {
-		    static int _cons_warn = 0;
-		    if (_cons_warn < 3) {
-		      fprintf(stderr, "DEBUG CONS improper: car=%#zx(fix=%zd) cdr=%#zx cdr_type=%#zx\n",
-			      (size_t)x, (size_t)REF_TO_INT(x), (size_t)_cdr_val,
-			      (size_t)REF_TO_PTR(_cdr_val)[0]);
-		      fprintf(stderr, "  method=%#zx code_seg=%#zx PC_byteoff=%zd\n",
-			      (size_t)e_current_method, (size_t)e_code_segment,
-			      (size_t)((unsigned long)local_e_pc - (unsigned long)e_code_segment));
-		      { ref_t *_csp = local_context_sp; int _f;
-		        fprintf(stderr, "  context (top 5):\n");
-		        for(_f=0; _f<5 && _csp >= context_stack_bp+2; _f++) {
-		          ref_t _meth = _csp[-1];
-		          fprintf(stderr, "    frame %d: method=%#zx", _f, (size_t)_meth);
-		          if (TAG_IS(_meth, PTR_TAG)) {
-		            ref_t _code = REF_SLOT(_meth, METHOD_CODE_OFF);
-		            if (TAG_IS(_code, PTR_TAG))
-		              fprintf(stderr, " code_len=%d", (int)REF_TO_INT(REF_TO_PTR(_code)[1]));
-		          }
-		          fprintf(stderr, " pc_byteoff=%zd\n", (size_t)REF_TO_INT(_csp[-2]));
-		          _csp -= 3;
-		        }
-		      }
-		      /* dump method code */
-		      { ref_t _code = REF_SLOT(e_current_method, METHOD_CODE_OFF);
-		        if (TAG_IS(_code, PTR_TAG)) {
-		          instr_t *_first = CODE_SEG_FIRST_INSTR(_code);
-		          ref_t *_cobj = REF_TO_PTR(_code);
-		          int _nrefs = (int)REF_TO_INT(_cobj[1]);
-		          int _code_refs = _nrefs - CODE_CODE_START_OFF;
-		          int _ninstr = _code_refs * INSTR_STRIDE;
-		          int _lim = _ninstr < 200 ? _ninstr : 200;
-		          int _i;
-		          fprintf(stderr, "  CONS-creator code (%d refs, %d code refs):\n", _nrefs, _code_refs);
-		          for(_i=0; _i<_lim; _i++) {
-		            if (_i % INSTR_STRIDE == 0) fprintf(stderr, "    ref[%2d]:", _i/INSTR_STRIDE);
-		            fprintf(stderr, " %04x", (unsigned)_first[_i]);
-		            if (_i % INSTR_STRIDE == INSTR_STRIDE-1) fprintf(stderr, "\n");
-		          }
-		        }
-		      }
-		      /* dump value stack */
-		      { int _i; fprintf(stderr, "  val stack at CONS (top 10):");
-		        for(_i=0; _i<10 && (local_value_sp-_i) >= value_stack_bp; _i++)
-		          fprintf(stderr, " %#zx", (size_t)local_value_sp[-_i]);
-		        fprintf(stderr, "\n"); }
-		      _cons_warn++;
-		    }
-		  }
-		}
-#endif
 		PEEKVAL() = PTR_TO_REF(p);
 
 		GOTO_TOP;
@@ -836,9 +909,9 @@ loop(ref_t initial_tos)
 	      if (y == INT_TO_REF(0))
 		TRAP1(2);
 	      {
-		long a = REF_TO_INT(x) % REF_TO_INT(y);
-		if ((a < 0 && (long)y > 0) ||
-		    ((long)y < 0 && (long)x > 0 && a > 0))
+		ssize_t a = REF_TO_INT(x) % REF_TO_INT(y);
+		if ((a < 0 && (ssize_t)y > 0) ||
+		    ((ssize_t)y < 0 && (ssize_t)x > 0 && a > 0))
 		  a += REF_TO_INT(y);
 		PEEKVAL() = INT_TO_REF(a);
 	      }
@@ -848,17 +921,43 @@ loop(ref_t initial_tos)
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
-	      /* Tag trickery: */
 	      {
-		long b = REF_TO_INT(y);
+		/* Number of bits in a fixnum, sign bit included. */
+		const unsigned fixnum_width = OAK_WORD_SIZE - TAGSIZE;
+		ssize_t a = REF_TO_INT(x);
+		ssize_t b = REF_TO_INT(y);
+
 		if (b < 0)
 		  {
-		    PEEKVAL() = ((long)x >> -b) & ~TAG_MASKL;
+		    /* Arithmetic right shift.  Shifting by the word size
+		       or more is undefined in C, so saturate instead: the
+		       answer is 0 or -1 depending on the sign. */
+		    size_t count = (size_t)(-b);
+
+		    PEEKVAL() = (count >= fixnum_width)
+		      ? INT_TO_REF(a < 0 ? -1 : 0)
+		      : INT_TO_REF(a >> count);
+		    GOTO_TOP;
+		  }
+		else if (a == 0 || b == 0)
+		  {
+		    PEEKVAL() = INT_TO_REF(a);
 		    GOTO_TOP;
 		  }
 		else
 		  {
-		    PEEKVAL() = x << b;
+		    /* Left shift.  Trap (which promotes to a bignum, just
+		       like PLUS and TIMES do) whenever the mathematical
+		       result would not fit in a fixnum. */
+		    ssize_t r;
+
+		    if ((size_t)b >= fixnum_width)
+		      TRAP1(2);
+		    r = (ssize_t)((size_t)a << b);
+		    if ((r >> b) != a)
+		      TRAP1(2);
+		    OVERFLOWN_INT(r, TRAP1(2));
+		    PEEKVAL() = INT_TO_REF(r);
 		    GOTO_TOP;
 		  }
 	      }
@@ -871,26 +970,29 @@ loop(ref_t initial_tos)
 		 with an infinite-precision integer language model.
 		 This instr is used for computing string hashes. */
 	      {
-		unsigned long a = (unsigned long)x;
-		long b = REF_TO_INT(y);
+		const ssize_t width = OAK_WORD_SIZE - TAGSIZE;
+		size_t a = (size_t)x;
+		ssize_t b = REF_TO_INT(y);
 
+		/* Reduce the rotation count into [0,width).  Shifting by
+		   the word size or more is undefined in C, and rotating
+		   by a multiple of the field width is the identity, so
+		   this both removes the undefined behavior and gives the
+		   mathematically right answer for any count. */
+		b %= width;
 		if (b < 0)
-		  {
-		    PEEKVAL()
-		      = (a >> -b | a << (__WORDSIZE - 2 + b)) & ~TAG_MASKL;
-		    GOTO_TOP;
-		  }
-		else
-		  {
-		    PEEKVAL()
-		      = (a << b | a >> (__WORDSIZE - 2 - b)) & ~TAG_MASKL;
-		    GOTO_TOP;
-		  }
+		  b += width;
+
+		PEEKVAL() = (b == 0)
+		  ? (ref_t)(a & ~TAG_MASKL)
+		  : (ref_t)((a << b | a >> (width - b)) & ~TAG_MASKL);
+		GOTO_TOP;
 	      }
 
 	    case 22:		/* STORE-BP-I */
 	      POPVAL(x);
 	      CHECKTAG1(x, INT_TAG, 2);
+	      SATB_BARRIER(e_bp + REF_TO_INT(x));
 	      *(e_bp + REF_TO_INT(x)) = PEEKVAL();
 	      GOTO_TOP;
 
@@ -907,26 +1009,46 @@ loop(ref_t initial_tos)
 	    case 25:		/* ALLOCATE */
 	      {
 		ref_t *p;
+		size_t alloc_len;
 
 		POPVAL(x);
 		y = PEEKVAL();
 		CHECKTAG1(y, INT_TAG, 2);
+		/* Every object needs room for at least its type slot.  A
+		   zero length would write one word past the allocation and
+		   a negative one would rewind the allocation pointer, so
+		   both have to trap instead. */
+		TRAP1_IF(REF_TO_INT(y) < 1, 2);
+		alloc_len = (size_t)REF_TO_INT(y);
 
-		ALLOCATE1(p, REF_TO_INT(y),
+		ALLOCATE1(p, alloc_len,
 			  "space crunch in ALLOCATE instruction", x);
 
 		*p = x;
 
 		PEEKVAL() = PTR_TO_REF(p);
 
-		while (++p < free_point)
-		  *p = NEW_STORAGE;
+		{ ref_t *fill = p + 1;
+		  ref_t *end = p + alloc_len;
+		  while (fill < end)
+		    *fill++ = NEW_STORAGE;
+		}
 		GOTO_TOP;
 	      }
 
 	    case 26:		/* ASSQ */
 	      POPVAL(x);
-	      PEEKVAL() = assq(x, PEEKVAL(), e_false);
+	      {
+		ref_t result;
+
+		/* TRAP1 pushes X back, so the handler sees both
+		   arguments where it expects them.  The trap table entry
+		   for this slot must not be %ASSQ itself, whose method
+		   is this very instruction; see tag-trap.oak. */
+		if (!assq_checked(x, PEEKVAL(), e_false, &result))
+		  TRAP1(2);
+		PEEKVAL() = result;
+	      }
 	      GOTO_TOP;
 
 	    case 27:		/* LOAD-LENGTH */
@@ -940,12 +1062,12 @@ loop(ref_t initial_tos)
 	      GOTO_TOP;
 
 	    case 28:		/* PEEK */
-	      PEEKVAL() = INT_TO_REF(*(u_int16_t *) PEEKVAL());
+	      PEEKVAL() = INT_TO_REF(*(uint16_t *) PEEKVAL());
 	      GOTO_TOP;
 
 	    case 29:		/* POKE */
 	      POPVAL(x);
-	      *(u_int16_t *) x = (u_int16_t) REF_TO_INT(PEEKVAL());
+	      *(uint16_t *) x = (uint16_t) REF_TO_INT(PEEKVAL());
 	      GOTO_TOP;
 
 	    case 30:		/* MAKE-CELL */
@@ -979,7 +1101,7 @@ loop(ref_t initial_tos)
 	      CHECKTAGS_INT_1(x, y, 2);
 
 	      {
-		long a = REF_TO_INT(x) - REF_TO_INT(y);
+		ssize_t a = REF_TO_INT(x) - REF_TO_INT(y);
 		OVERFLOWN_INT(a, TRAP1(2));
 		PEEKVAL() = INT_TO_REF(a);
 		GOTO_TOP;
@@ -999,7 +1121,7 @@ loop(ref_t initial_tos)
 	      y = PEEKVAL();
 	      CHECKTAGS_INT_1(x, y, 2);
 	      /* Tag trickery: */
-	      PEEKVAL() = BOOL_TO_REF((long)x < (long)y);
+	      PEEKVAL() = BOOL_TO_REF((ssize_t)x < (ssize_t)y);
 	      GOTO_TOP;
 
 	    case 34:		/* LOG-NOT */
@@ -1058,83 +1180,10 @@ loop(ref_t initial_tos)
 
 	      /* Cons access instructions. */
 
-#ifdef DEBUG_CDR
-static int _cdr_debug_count = 0;
-#define CONSINSTR(a)						\
-		{ x = PEEKVAL();				\
-		  if (!TAG_IS(x, PTR_TAG) || REF_SLOT(x,0) != e_cons_type) { \
-		    if (_cdr_debug_count < 1) { \
-		    fprintf(stderr, "DEBUG CONSINSTR trap #%d: x=%#zx tag=%zd instr=%d nargs=%d\n", \
-			    _cdr_debug_count, (size_t)x, (size_t)(x & TAG_MASK), arg_field, e_nargs); \
-		    fprintf(stderr, "  code_seg=%#zx PC byte offset=%zd method=%#zx\n", \
-			    (size_t)e_code_segment, \
-			    (size_t)((unsigned long)local_e_pc - (unsigned long)e_code_segment), \
-			    (size_t)e_current_method); \
-		    if (TAG_IS(x, PTR_TAG)) { \
-		      fprintf(stderr, "  slot[0]=%#zx slot[1]=%#zx (cons_type=%#zx)\n", \
-			      (size_t)REF_SLOT(x,0), (size_t)REF_SLOT(x,1), (size_t)e_cons_type); \
-		    } \
-		    { int _i; fprintf(stderr, "  val stack (top 20):"); \
-		      for(_i=0; _i<20 && (local_value_sp-_i) >= value_stack_bp; _i++) \
-		        fprintf(stderr, " %#zx", (size_t)local_value_sp[-_i]); \
-		      fprintf(stderr, "\n"); } \
-		    /* Walk up CDR chain from caller frames to find where the list becomes improper */ \
-		    { int _d; fprintf(stderr, "  CDR chain walk from caller frames:\n"); \
-		      for (_d=4; _d<20 && (local_value_sp-_d) >= value_stack_bp; _d+=2) { \
-		        ref_t _lst = local_value_sp[-_d]; \
-		        fprintf(stderr, "    depth %d: ref=%#zx tag=%zd", _d, (size_t)_lst, (size_t)(_lst & TAG_MASK)); \
-		        if (TAG_IS(_lst, PTR_TAG)) { \
-		          ref_t *_p = REF_TO_PTR(_lst); \
-		          fprintf(stderr, " type=%#zx car=%#zx cdr=%#zx", (size_t)_p[0], (size_t)_p[CONS_PAIR_CAR_OFF], (size_t)_p[CONS_PAIR_CDR_OFF]); \
-		          if (_p[0] == e_cons_type) fprintf(stderr, " [CONS]"); \
-		          else fprintf(stderr, " [NOT-CONS type_tag=%zd]", (size_t)(_p[0] & TAG_MASK)); \
-		        } \
-		        fprintf(stderr, "\n"); \
-		      } } \
-		    { instr_t *_first = CODE_SEG_FIRST_INSTR(e_code_segment); \
-		      ref_t *_obj = REF_TO_PTR(e_code_segment); \
-		      int _nrefs = (int)REF_TO_INT(_obj[1]); \
-		      int _code_refs = _nrefs - CODE_CODE_START_OFF; \
-		      int _ninstr = _code_refs * INSTR_STRIDE; \
-		      fprintf(stderr, "  code_vec: %d total refs, %d code refs, first_instr=%p\n", \
-			      _nrefs, _code_refs, (void*)_first); \
-		      fprintf(stderr, "  PC at instr_t offset %td from first_instr\n", \
-			      local_e_pc - _first); \
-		      { int _i, _lim = _ninstr < 100 ? _ninstr : 100; \
-		        fprintf(stderr, "  instructions (from first_instr):"); \
-		        for(_i=0; _i<_lim; _i++) { \
-		          if (_i % INSTR_STRIDE == 0) fprintf(stderr, "\n    ref[%2d]:", _i/INSTR_STRIDE); \
-		          fprintf(stderr, " %04x", (unsigned)_first[_i]); \
-		        } \
-		        fprintf(stderr, "\n"); } } \
-		    { ref_t *_csp = local_context_sp; int _f; \
-		      fprintf(stderr, "  context stack (call chain, innermost first):\n"); \
-		      for(_f=0; _f<200 && _csp >= context_stack_bp+2; _f++) { \
-		        ref_t _meth = _csp[-1]; \
-		        ref_t _pcoff = _csp[-2]; \
-		        fprintf(stderr, "    frame %d: method=%#zx pc_byteoff=%zd", \
-		                _f, (size_t)_meth, (size_t)REF_TO_INT(_pcoff)); \
-		        if (TAG_IS(_meth, PTR_TAG)) { \
-		          ref_t _code = REF_SLOT(_meth, METHOD_CODE_OFF); \
-		          if (TAG_IS(_code, PTR_TAG)) { \
-		            ref_t *_cobj = REF_TO_PTR(_code); \
-		            int _clen = (int)REF_TO_INT(_cobj[1]); \
-		            fprintf(stderr, " code_len=%d", _clen); \
-		          } \
-		        } \
-		        fprintf(stderr, "\n"); \
-		        _csp -= 3; \
-		      } } \
-		    _cdr_debug_count++; } \
-		    CHECKTAG0(x, PTR_TAG, a);			\
-		    TRAP0(a);					\
-		  } }
-#else
 #define CONSINSTR(a)						\
 		{ x = PEEKVAL();				\
 		  CHECKTAG0(x, PTR_TAG, a);			\
 		  if (REF_SLOT(x,0) != e_cons_type) { TRAP0(a); } }
-#endif
 
 	    case 40:		/* CAR */
 	      CONSINSTR(1);
@@ -1149,12 +1198,14 @@ static int _cdr_debug_count = 0;
 	    case 42:		/* SET-CAR */
 	      CONSINSTR(2);
 	      POPVALS(1);
+	      SATB_BARRIER(pcar(x));
 	      *pcar(x) = PEEKVAL();
 	      GOTO_TOP;
 
 	    case 43:		/* SET-CDR */
 	      CONSINSTR(2);
 	      POPVALS(1);
+	      SATB_BARRIER(pcdr(x));
 	      *pcdr(x) = PEEKVAL();
 	      GOTO_TOP;
 
@@ -1183,8 +1234,30 @@ static int _cdr_debug_count = 0;
 	      POPVAL(x);
 	      CHECKTAG1(x, PTR_TAG, 2);
 	      y = PEEKVAL();
-	      BASH_VAL_HEIGHT(REF_TO_INT(REF_SLOT(x, ESCAPE_OBJECT_VAL_OFF)));
-	      BASH_CXT_HEIGHT(REF_TO_INT(REF_SLOT(x, ESCAPE_OBJECT_CXT_OFF)));
+	      {
+		/* The two heights come out of slots of the escape
+		   object, which is ordinary heap data: an escape used
+		   after its extent has ended, or one whose slots have
+		   been written, names a height the stacks no longer
+		   have.  BASH_*_HEIGHT would then pop a negative count,
+		   which moves the stack pointer *up* -- past the live
+		   top and possibly past the end of the buffer -- rather
+		   than reporting anything.  A code vector is untrusted
+		   input to the interpreter and so is this. */
+		long val_height =
+		  (long) REF_TO_INT(REF_SLOT(x, ESCAPE_OBJECT_VAL_OFF));
+		long cxt_height =
+		  (long) REF_TO_INT(REF_SLOT(x, ESCAPE_OBJECT_CXT_OFF));
+
+		if (val_height < 0
+		    || val_height > (long) VALUE_STACK_HEIGHT()
+		    || cxt_height < 0
+		    || cxt_height > (long) CONTEXT_STACK_HEIGHT())
+		  TRAP1(2);
+
+		BASH_VAL_HEIGHT(val_height);
+		BASH_CXT_HEIGHT(cxt_height);
+	      }
 	      PUSHVAL(y);
 	      POP_CONTEXT();
 	      GOTO_TOP;
@@ -1202,6 +1275,11 @@ static int _cdr_debug_count = 0;
 	    case 51:		/* GC */
 	      UNLOCALIZE_ALL();
 	      gc(false, false, "explicit call", 0);
+#ifdef USE_MARK_SWEEP
+	      /* The copying collector replaced new space; the mark-sweep
+		 bitmaps and free lists still describe the freed one. */
+	      ms_reinit();
+#endif
 	      LOCALIZE_ALL();
 	      PUSHVAL(e_false);
 	      GOTO_TOP;
@@ -1218,20 +1296,26 @@ static int _cdr_debug_count = 0;
 	      POPVAL(x);
 	      y = PEEKVAL();
 	      CHECKTAG1(y, INT_TAG, 2);
+	      /* A variable length object needs room for its type slot and
+		 its length slot, so lengths below 2 have to trap. */
+	      TRAP1_IF(REF_TO_INT(y) < 2, 2);
 	      {
 		ref_t *p;
+		size_t alloc_len = (size_t)REF_TO_INT(y);
 
-		ALLOCATE1(p, REF_TO_INT(y),
+		ALLOCATE1(p, alloc_len,
 			  "space crunch in VARLEN-ALLOCATE instruction", x);
 
 		PEEKVAL() = PTR_TO_REF(p);
 
 		p[0] = x;
 		p[1] = y;
-		p += 2;
 
-		while (p < free_point)
-		  *p++ = NEW_STORAGE;
+		{ ref_t *fill = p + 2;
+		  ref_t *end = p + alloc_len;
+		  while (fill < end)
+		    *fill++ = NEW_STORAGE;
+		}
 	      }
 	      GOTO_TOP;
 
@@ -1261,10 +1345,12 @@ static int _cdr_debug_count = 0;
 #endif
 	      x = PEEKVAL();
 	      /* CHECKTAG0(x,PTR_TAG,1); */
+	      SATB_BARRIER(&REF_SLOT(x, CONTINUATION_VAL_SEGS));
 	      REF_SLOT(x, CONTINUATION_VAL_SEGS)
 		= value_stack.segment;
 	      REF_SLOT(x, CONTINUATION_VAL_OFF)
 		= INT_TO_REF(value_stack.pushed_count);
+	      SATB_BARRIER(&REF_SLOT(x, CONTINUATION_CXT_SEGS));
 	      REF_SLOT(x, CONTINUATION_CXT_SEGS)
 		= context_stack.segment;
 	      REF_SLOT(x, CONTINUATION_CXT_OFF)
@@ -1279,7 +1365,11 @@ static int _cdr_debug_count = 0;
 	      /* Grab the continuation. */
 
 	      POPVAL(x);
-	      /* CHECKTAG1(x,PTR_TAG,1); */
+	      /* %CONTINUE's method is declared on (CONTINUATION), but the
+		 operation is open coded, so a compiled call site reaches
+		 this instruction with whatever it was handed.  Without
+		 this check the REF_SLOT reads below run off it. */
+	      CHECKTAG1(x, PTR_TAG, 2);
 	      y = PEEKVAL();
 	      /* Pull the crap out of it. */
 
@@ -1362,17 +1452,10 @@ static int _cdr_debug_count = 0;
 	      if (y == INT_TO_REF(0) ||
 		  (y == INT_TO_REF(-1) && x == MIN_REF))
 		TRAP1(2);
-	      /* Tag trickery: */
-	      /* I can't seem to get anything like this to work: */
-
-	      PEEKVAL() = INT_TO_REF((((long)x < 0) ^ ((long)y < 0))
-				     ? -(long)x / -(long)y
-				     : (long)x / (long)y);
-
 	      {
-		long a = (long)x / (long)y;
-		if (((long)x < 0 && (long)y > 0 && a * (long)y > (long)x) ||
-		    ((long)y < 0 && (long)x > 0 && a * (long)y < (long)x))
+		ssize_t a = (ssize_t)x / (ssize_t)y;
+		if (((ssize_t)x < 0 && (ssize_t)y > 0 && a * (ssize_t)y > (ssize_t)x) ||
+		    ((ssize_t)y < 0 && (ssize_t)x > 0 && a * (ssize_t)y < (ssize_t)x))
 		  a -= 1;
 		PEEKVAL() = INT_TO_REF(a);
 	      }
@@ -1381,6 +1464,9 @@ static int _cdr_debug_count = 0;
 	    case 64:		/* FULL-GC */
 	      UNLOCALIZE_ALL();
 	      gc(false, true, "explicit call", 0);
+#ifdef USE_MARK_SWEEP
+	      ms_reinit();
+#endif
 	      LOCALIZE_ALL();
 	      PUSHVAL(e_false);
 	      GOTO_TOP;
@@ -1444,10 +1530,13 @@ static int _cdr_debug_count = 0;
 
 	    case 71:		/* TEST-AND-SET-LOCATIVE */
 	      POPVAL(x);
-	      CHECKTAG1(x, LOC_TAG, 2);
+	      /* Three arguments, not two: the new value is still on the
+		 value stack under the locative and the old value, so the
+		 trap handler has to be given all three. */
+	      CHECKTAG1(x, LOC_TAG, 3);
 	      POPVAL(y);
 #ifdef THREADS
-	      if (pthread_mutex_trylock(&test_and_set_locative_lock) != 0) {
+	      if (oak_mutex_trylock(&test_and_set_locative_lock) != 0) {
 		PEEKVAL() = e_false;	/* Failed to acquire lock. */
 		GOTO_TOP;
 	      }
@@ -1457,10 +1546,11 @@ static int _cdr_debug_count = 0;
 		PEEKVAL() = e_false;
 	      } else {
 		// succeed
+		SATB_BARRIER(LOC_TO_PTR(x));
 		*LOC_TO_PTR(x) = PEEKVAL();
 		PEEKVAL() = e_t;
 	      }
-	      pthread_mutex_unlock(&test_and_set_locative_lock);
+	      oak_mutex_unlock(&test_and_set_locative_lock);
 	      /* End Critical Section. */
 	      GOTO_TOP;
 #else
@@ -1468,6 +1558,7 @@ static int _cdr_debug_count = 0;
 		PEEKVAL() = e_false;
 		GOTO_TOP;
 	      }
+	      SATB_BARRIER(LOC_TO_PTR(x));
 	      *LOC_TO_PTR(x) = PEEKVAL();
 	      PEEKVAL() = e_t;
 	      GOTO_TOP;
@@ -1476,19 +1567,114 @@ static int _cdr_debug_count = 0;
 
 	    case 72:		/* THREAD-YIELD */
 #ifdef THREADS
-	      sched_yield();
+	      oak_thread_yield();
 #endif
 	      PUSHVAL(e_nil);
 	      GOTO_TOP;
 
-#ifndef FAST
+	    case 73:		/* DUMP-WORLD */
+	      POPVAL(x);	/* locative to string data */
+	      /* %DUMP-WORLD is an ordinary binding, so a caller that
+		 hands it something other than a locative gets here with
+		 it; without this the fixnum would be dereferenced as a
+		 pointer.  TRAP1 pushes X back for the handler. */
+	      CHECKTAG1(x, LOC_TAG, 2);
+	      y = PEEKVAL();	/* string length */
+	      THREADY(oak_mutex_lock(&dump_lock));
+	      {
+		char *s = oak_c_string((ref_t *) LOC_TO_PTR(x),
+				       REF_TO_INT(y));
+		char *old_dump_file_name = dump_file_name;
+		dump_file_name = s;
+		UNLOCALIZE_ALL();
+		gc(false, false, "impending world dump", 0);
+#ifdef USE_MARK_SWEEP
+		ms_reinit();
+#endif
+		dump_world(false);
+		LOCALIZE_ALL();
+		dump_file_name = old_dump_file_name;
+		free(s);
+		PEEKVAL() = e_t;
+	      }
+	      THREADY(oak_mutex_unlock(&dump_lock));
+	      GOTO_TOP;
+
+	    case 74:		/* LOAD-WORLD */
+	      POPVAL(x);	/* locative to string data */
+	      CHECKTAG1(x, LOC_TAG, 2);
+	      y = PEEKVAL();	/* string length */
+	      THREADY(oak_mutex_lock(&dump_lock));
+	      {
+		char *s = oak_c_string((ref_t *) LOC_TO_PTR(x),
+				       REF_TO_INT(y));
+
+		/* Free old heap spaces */
+		free_space(&spatic);
+		free_space(&new_space);
+
+		/* Load the new world (allocates new spatic) */
+		read_world(s);
+		free(s);
+
+		/* Allocate new working space */
+		new_space.size = e_next_newspace_size
+		  = original_newspace_size;
+		alloc_space(&new_space, new_space.size);
+		free_point = new_space.start;
+
+#ifdef USE_MARK_SWEEP
+		ms_reinit();
+#endif
+
+		/* The switches on the command line were meant for the
+		   world we just discarded; leaving them in place makes
+		   "--eval (load-world ...)" reboot forever. */
+		clear_program_args();
+
+		/* Reset stacks (discard all flushed segments) */
+		value_stack.sp = value_stack.bp;
+		*value_stack.bp = INT_TO_REF(1234);
+		value_stack.segment = 0;
+		value_stack.pushed_count = 0;
+
+		context_stack.sp = context_stack.bp;
+		*context_stack.bp = INT_TO_REF(1234);
+		context_stack.segment = 0;
+		context_stack.pushed_count = 0;
+
+		/* Set boot registers from new world */
+		e_current_method = e_boot_code;
+		e_env = REF_TO_PTR(REF_SLOT(e_current_method,
+					     METHOD_ENV_OFF));
+		e_code_segment = REF_SLOT(e_current_method,
+					  METHOD_CODE_OFF);
+		e_pc = CODE_SEG_FIRST_INSTR(e_code_segment);
+		e_bp = e_env;
+		e_nargs = 0;
+
+		/* Reinitialize local register copies */
+		LOCALIZE_ALL();
+
+		/* Push initial values as in loop() entry */
+		PUSHVAL_IMM(INT_TO_REF(4321));
+		PUSHVAL_IMM(INT_TO_REF(54321));
+	      }
+	      THREADY(oak_mutex_unlock(&dump_lock));
+	      GOTO_TOP;
+
+	      /* An unassigned opcode means a corrupt world or a
+		 miscompiled instruction.  Without this label it falls
+		 out of the switch and runs as a no-op, with the PC
+		 already advanced, so the damage surfaces somewhere
+		 else entirely; a jump table costs nothing to give it a
+		 default, so the fast build keeps it too. */
 	    default:
 	      printf("\nError (vm interpreter): "
 		     "Illegal argless instruction %d.\n", arg_field);
 	      UNLOCALIZE_ALL();
 	      maybe_dump_world(333);
 	      exit(EXIT_FAILURE);
-#endif
 	    }
 
 	}
@@ -1613,6 +1799,7 @@ static int _cdr_debug_count = 0;
 	      GOTO_TOP;
 
 	    case 13:		/* STORE-BP n */
+	      SATB_BARRIER(e_bp + arg_field);
 	      *(e_bp + arg_field) = PEEKVAL();
 	      GOTO_TOP;
 
@@ -1622,6 +1809,7 @@ static int _cdr_debug_count = 0;
 	      GOTO_TOP;
 
 	    case 15:		/* STORE-ENV n */
+	      SATB_BARRIER(e_env + arg_field);
 	      *(e_env + arg_field) = PEEKVAL();
 	      GOTO_TOP;
 
@@ -1702,11 +1890,15 @@ static int _cdr_debug_count = 0;
 		  GOTO_TOP;
 		case 14:
 		  CHECKTAG1(x, LOC_TAG, 1);
+		  THREADY(oak_mutex_lock(&alloc_lock));
 		  free_point = LOC_TO_PTR(x);
+		  THREADY(oak_mutex_unlock(&alloc_lock));
 		  GOTO_TOP;
 		case 15:
 		  CHECKTAG1(x, LOC_TAG, 1);
+		  THREADY(oak_mutex_lock(&alloc_lock));
 		  new_space.end = LOC_TO_PTR(x);
+		  THREADY(oak_mutex_unlock(&alloc_lock));
 		  GOTO_TOP;
 		case 16:
 		  e_segment_type = x;
@@ -1730,9 +1922,11 @@ static int _cdr_debug_count = 0;
 		  e_operation_type = x;
 		  GOTO_TOP;
 		case 21:
+		  /* e_false is e_nil (see data.h), so this is register 1
+		     under another name and needs the same bookkeeping. */
 		  e_false = x;
-		  /* wp_table[0] = e_false; */
-		  /* rebuild_wp_hashtable(); */
+		  wp_table[0] = e_false;
+		  rebuild_wp_hashtable();
 		  GOTO_TOP;
 		case 22:
 		  e_process = x;
@@ -1770,7 +1964,7 @@ static int _cdr_debug_count = 0;
 		  PUSHVAL(PTR_TO_REF(e_env));
 		  GOTO_TOP;
 		case 8:
-		  PUSHVAL(INT_TO_REF((long)e_nargs));
+		  PUSHVAL(INT_TO_REF((ssize_t)e_nargs));
 		  GOTO_TOP;
 		case 9:
 		  PUSHVAL(e_env_type);
@@ -1813,6 +2007,13 @@ static int _cdr_debug_count = 0;
 		  GOTO_TOP;
 		case 22:
 		  PUSHVAL(e_process);
+		  GOTO_TOP;
+		case 23:	/* THREADS-ENABLED? */
+#ifdef THREADS
+		  PUSHVAL(e_t);
+#else
+		  PUSHVAL(e_nil);
+#endif
 		  GOTO_TOP;
 		default:
 		  fprintf(stderr, "Error (vm interpreter): "
@@ -1859,19 +2060,29 @@ static int _cdr_debug_count = 0;
 		  /* Check for cache hit: */
 #ifdef THREADS
 		  /* Atomic read: type first (acquire), then method/offset,
-		     then re-verify type hasn't changed (seqlock pattern). */
+		     then re-verify type hasn't changed (seqlock pattern).
+		     All three slots are read atomically: another thread can
+		     be filling this same cache entry concurrently, and a
+		     plain read of a word being written is a data race.
+
+		     The type slot is the guard, and it is only ever moved
+		     between distinct values -- a miss means the cached type
+		     differs from ours, and %INSTALL-METHOD-WITH-ENV parks it
+		     at fixnum 0 when it invalidates -- so seeing the same
+		     type before and after means the method and offset go
+		     together. */
 		  {
-		    ref_t cached_type = __atomic_load_n(
-		      &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF),
-		      __ATOMIC_ACQUIRE);
+		    ref_t cached_type = OAK_ATOMIC_LOAD_REF(
+		      &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF));
 		    if (y_type == cached_type)
 		      {
-			ref_t cached_meth = REF_SLOT(x, OPERATION_CACHE_METH_OFF);
-			ref_t cached_off = REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF);
+			ref_t cached_meth = OAK_ATOMIC_LOAD_REF(
+			  &REF_SLOT(x, OPERATION_CACHE_METH_OFF));
+			ref_t cached_off = OAK_ATOMIC_LOAD_REF(
+			  &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF));
 			/* Re-verify type to ensure consistent read. */
-			if (y_type == __atomic_load_n(
-			      &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF),
-			      __ATOMIC_ACQUIRE))
+			if (y_type == OAK_ATOMIC_LOAD_REF(
+			      &REF_SLOT(x, OPERATION_CACHE_TYPE_OFF)))
 			  {
 			    maybe_put(trace_mcache, "H");
 			    e_current_method = cached_meth;
@@ -1925,13 +2136,21 @@ static int _cdr_debug_count = 0;
 		         Write method and offset first, then type last
 		         (type acts as commit flag for readers). */
 #ifdef THREADS
-		      REF_SLOT(x, OPERATION_CACHE_METH_OFF) = e_current_method;
-		      REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF) = offset;
-		      __atomic_store_n(
+		      SATB_BARRIER(&REF_SLOT(x, OPERATION_CACHE_METH_OFF));
+		      OAK_ATOMIC_STORE_REF(
+			&REF_SLOT(x, OPERATION_CACHE_METH_OFF),
+			e_current_method);
+		      OAK_ATOMIC_STORE_REF(
+			&REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF),
+			offset);
+		      SATB_BARRIER(&REF_SLOT(x, OPERATION_CACHE_TYPE_OFF));
+		      OAK_ATOMIC_STORE_REF(
 			&REF_SLOT(x, OPERATION_CACHE_TYPE_OFF),
-			y_type, __ATOMIC_RELEASE);
+			y_type);
 #else
+		      SATB_BARRIER(&REF_SLOT(x, OPERATION_CACHE_TYPE_OFF));
 		      REF_SLOT(x, OPERATION_CACHE_TYPE_OFF) = y_type;
+		      SATB_BARRIER(&REF_SLOT(x, OPERATION_CACHE_METH_OFF));
 		      REF_SLOT(x, OPERATION_CACHE_METH_OFF) = e_current_method;
 		      REF_SLOT(x, OPERATION_CACHE_TYPE_OFF_OFF) = offset;
 #endif
@@ -1993,6 +2212,7 @@ static int _cdr_debug_count = 0;
 	    case 26:		/* STORE-SLOT n */
 	      POPVAL(x);
 	      CHECKTAG1(x, PTR_TAG, 2);
+	      SATB_BARRIER(&REF_SLOT(x, arg_field));
 	      REF_SLOT(x, arg_field) = PEEKVAL();
 	      GOTO_TOP;
 
@@ -2002,8 +2222,6 @@ static int _cdr_debug_count = 0;
 	      GOTO_TOP;
 
 	    case 28:		/* MAKE-CLOSED-ENVIRONMENT n */
-	      /* This code might be in error if arg_field == 0, which the
-	         compiler should never generate. */
 	      {
 		ref_t *p;
 		ref_t z;
@@ -2016,7 +2234,20 @@ static int _cdr_debug_count = 0;
 		  }
 #endif
 
-		ALLOCATE_SS(p, (long)(arg_field + 2),
+		/* The net stack effect is 1 - ARG_FIELD, so every value
+		   the compiler generates is a pop and the CHECKVAL_POP
+		   below covers it.  Zero is the one value that is a
+		   push, and CHECKVAL_POP(-1) reserves nothing for it.  A
+		   code vector is heap data like any other, so make the
+		   room here rather than trusting the compiler never to
+		   emit it -- the warning above that would have noticed
+		   is compiled out of the shipped build.  This has to
+		   happen before the allocation, since flushing the stack
+		   can cons and would leave P stale. */
+		if (arg_field == 0)
+		  CHECKVAL_PUSH(1);
+
+		ALLOCATE_SS(p, (size_t)(arg_field + 2),
 			    "space crunch in MAKE-CLOSED-ENVIRONMENT");
 
 		z = PTR_TO_REF(p);
@@ -2039,6 +2270,9 @@ static int _cdr_debug_count = 0;
 
 
 	    case 30:		/* LOCATE-SLOT n */
+	      /* Like LOAD-SLOT and STORE-SLOT, refuse to build a locative
+		 out of something that is not a pointer. */
+	      CHECKTAG0(PEEKVAL(), PTR_TAG, 1);
 	      PEEKVAL()
 		= PTR_TO_LOC(REF_TO_PTR(PEEKVAL()) + arg_field);
 	      GOTO_TOP;
@@ -2062,7 +2296,13 @@ static int _cdr_debug_count = 0;
 		case 4:	/* fopen, mode WRITE */
 		case 5:	/* fopen, mode APPEND */
 		  POPVAL(x);
-		  /* How about a CHECKTAG(x,LOC_TAG,) here, eh? */
+		  /* The file name arrives as a locative into a string's
+		     data and a length.  Compiled code can reach this
+		     instruction with anything at all in the first
+		     position, so check it before dereferencing; TRAP1
+		     pushes X back for the handler.  The length needs no
+		     check of its own: oak_c_string clamps it. */
+		  CHECKTAG1(x, LOC_TAG, 2);
 		  {
 		    char *s = (char *)oak_c_string((ref_t *) LOC_TO_PTR(x),
 						   REF_TO_INT(PEEKVAL()));
@@ -2123,14 +2363,23 @@ static int _cdr_debug_count = 0;
 		  GOTO_TOP;
 
 		case 11:	/* tell where we are */
-		  PEEKVAL() = INT_TO_REF(ftell((FILE *) PEEKVAL()));
+		  {
+		    /* ftell answers -1 on an unseekable or closed
+		       stream, which is indistinguishable from a real
+		       position once it is handed back as a fixnum.
+		       Every other stream primitive reports failure as
+		       NIL, so this one does too. */
+		    long pos = ftell((FILE *) PEEKVAL());
+
+		    PEEKVAL() = (pos < 0) ? e_nil : INT_TO_REF(pos);
+		  }
 		  GOTO_TOP;
 
 		case 12:	/* set where we are */
 		  POPVAL(x);
 		  {
 		    FILE *fd = (FILE *) x;
-		    long i = REF_TO_INT(PEEKVAL());
+		    long i = (long)REF_TO_INT(PEEKVAL());
 
 		    PEEKVAL() = fseek(fd, i, 0) == 0 ? e_t : e_nil;
 		  }
@@ -2138,6 +2387,7 @@ static int _cdr_debug_count = 0;
 
 		case 13:	/* change working directory */
 		  POPVAL(x);
+		  CHECKTAG1(x, LOC_TAG, 2);
 		  {
 		    char *s = oak_c_string((ref_t *) LOC_TO_PTR(x),
 					   REF_TO_INT(PEEKVAL()));
@@ -2147,6 +2397,44 @@ static int _cdr_debug_count = 0;
 		  }
 		  /* if there is no chdir() then use this: */
 		  /* PEEKVAL() = e_nil; */
+		  GOTO_TOP;
+
+		case 14:	/* rename a file */
+		  {
+		    /* Arguments are pushed last first, so the top of the
+		       stack is the first one: old-loc, old-len, new-loc,
+		       new-len, reading down. */
+		    ref_t z;
+		    char *from, *to;
+
+		    /* Both name locatives are checked while all four
+		       arguments are still on the stack, so a trap finds
+		       them where the handler expects them; the deeper of
+		       the two is reached through MAKE_BACK_VAL_PTR,
+		       which makes sure the buffer holds it. */
+		    {
+		      ref_t *new_name_loc;
+
+		      MAKE_BACK_VAL_PTR(new_name_loc, 2);
+		      if (!TAG_IS(PEEKVAL(), LOC_TAG)
+			  || !TAG_IS(*new_name_loc, LOC_TAG))
+			TRAP0(4);
+		    }
+
+		    POPVAL(x);	/* locative to the old name */
+		    POPVAL(y);	/* length of the old name */
+		    POPVAL(z);	/* locative to the new name */
+		    from = oak_c_string((ref_t *) LOC_TO_PTR(x),
+					REF_TO_INT(y));
+		    to = oak_c_string((ref_t *) LOC_TO_PTR(z),
+				      REF_TO_INT(PEEKVAL()));
+
+		    if (trace_files)
+		      printf("About to rename '%s' to '%s'.\n", from, to);
+		    PEEKVAL() = rename(from, to) == 0 ? e_t : e_nil;
+		    free(from);
+		    free(to);
+		  }
 		  GOTO_TOP;
 
 		default:
@@ -2237,14 +2525,12 @@ static int _cdr_debug_count = 0;
 					       REF_SLOT(x, METHOD_CODE_OFF));
 	      GOTO_TOP;
 
-#ifndef FAST
 	    default:
 	      printf("\nError (vm interpreter): "
 		     "Illegal parametric instruction %d\n", op_field);
 	      UNLOCALIZE_ALL();
 	      maybe_dump_world(333);
 	      exit(EXIT_FAILURE);
-#endif
 	    }
 	}
     }
@@ -2310,6 +2596,11 @@ static int _cdr_debug_count = 0;
   /*************/
  arg0_tt:
   /*************/
+
+  /* Reserve room for the pushes below: one ref for an argless
+     instruction, two for a parametric one.  TRAP0 jumps straight here
+     without reserving anything, so this cannot be left to the caller. */
+  CHECKVAL_PUSH(2);
 
 #ifndef FAST
   if (trace_traps)

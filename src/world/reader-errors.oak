@@ -49,6 +49,10 @@
 
 (define-instance dot-outside-list type '() (list proceedable-read-error object))
 
+(define-instance stray-terminator type '(char) (list proceedable-read-error object))
+
+(define-instance missing-denominator type '(token) (list proceedable-read-error object))
+
 
 
 
@@ -57,6 +61,30 @@
 
 (add-method (report (dot-outside-list) self stream)
   (format stream "A dot token (.) was read outside of a list.~%"))
+
+
+;;; A closing bracket with no opening one.  This used to be a warning,
+;;; which meant that a misplaced paren -- which changes what the rest of
+;;; a file means -- went by without stopping anything.
+
+(add-method (initialize (stray-terminator char) self the-char)
+  (set! char the-char)
+  (^super proceedable-read-error initialize self
+	  (format #f "Ignore the '~A'." the-char)))
+
+(add-method (report (stray-terminator char) self stream)
+  (format stream "A '~A' was read in an illegal context.~%" char))
+
+
+;;; A ratio with nothing after its '/'.
+
+(add-method (initialize (missing-denominator token) self the-token)
+  (set! token the-token)
+  (^super proceedable-read-error initialize self
+	  "Treat it as a symbol."))
+
+(add-method (report (missing-denominator token) self stream)
+  (format stream "The token ~A has no denominator after its '/'.~%" token))
 
 
 

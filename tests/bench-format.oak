@@ -1,0 +1,7 @@
+;;; Printing and reading: format to a string and read it back.
+(define (bench)
+  (let loop ((i 0) (n 0))
+    (if (= i 2000)
+	n
+	(let ((s (format #f "(~D ~S ~A (nested ~S) ~D/~D)" i "str" 'sym '(a (b c)) i (+ i 1))))
+	  (loop (+ i 1) (+ n (length (read (make string-input-stream s)))))))))

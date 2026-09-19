@@ -48,7 +48,7 @@ them.
 Show summary of emulator options and exit
 .TP
 .B \-\-version
-Print version of emulator and exit
+Print version and architecture of emulator and exit
 .TP
 .B \-\-world file
 file is world to load
@@ -60,7 +60,7 @@ dump world to file upon exit
 synonym for \-\-dump
 .TP
 .B \-\-dump-base b
-0=ascii, 2=binary; default=2
+16=ascii, 2=binary; default=2
 .TP
 .B \-\-predump-gc b
 0=no, 1=yes; default=1
@@ -86,6 +86,9 @@ maximum flushed segment len, n is in refs
 synonym for \-\-trace-gc
 .TP
 .B \-\-trace-traps
+.TP
+.B \-\-batch
+disable trapping of SIGINT
 .TP
 .B \-\-trace-files
 trace filesystem operations
@@ -134,6 +137,14 @@ Load a file.
 Compile file.oak yielding file.oa
 
 .TP
+.B \-\-target arch
+Compile subsequent files for architecture arch, e.g. bc2-32 or
+bc2-64, rather than for the running system.  Bytecode architectures
+are named by the number of instructions packed into each reference
+and the reference size in bits; bytecode compiled for a 32-bit
+reference size can also be used on a 64-bit system.
+
+.TP
 .B \-\-locale x
 Switch to locale x, eg system-locale (default),
 compiler-locale, scheme-locale (for RnRS
@@ -150,14 +161,28 @@ leave the user in a read-eval-print loop in the scheme locale.
 
 .B oaklisp \-\- \-\-locale scheme\-locale \-\-compile myfile
 
+.SH EXIT STATUS
+0 if everything asked for on the command line succeeded, and 1 if a
+switch could not be processed \(em an unknown switch, or one whose
+action signalled, such as a
+.B \-\-compile
+of a file that does not compile.
+.PP
+A world can name its own status with
+.BR "(exit " \fIn\fP ")" ,
+for any
+.I n
+from 0 to 255.
+
 .SH ENVIRONMENT
 The environment variable OAKWORLD will override the default compiled
 into the executable, but itself can be overridden on the command line.
 
 .SH FILES
 @pkglibdir@/oakworld.bin holds the world image.  It is portable
-between machines of the same endianity.  The location can vary
-depending upon installation-time decisions.
+between machines of the same byte order and word size, which the
+emulator checks against the header line at the start of the file.
+The location can vary depending upon installation-time decisions.
 
 .SH BUGS
 Floating point numbers are not implemented.  Rationals can be used to
@@ -177,10 +202,11 @@ in.)
 
 The memory format does not support uninterpreted "blobs".
 
-Porting the system to 64-bit machines has not been done, and would be
-quite difficult.
-
-POSIX threads in the emulator never got quite finished.
+Thread support is available via the \fB--enable-threads\fP configure
+option.  When enabled, thread infrastructure (mutexes, process
+register, per-process fluid bindings) is automatically initialized
+at warm boot.  Use \fB--pthreads N\fP to spawn additional native
+threads.
 
 Bug reports and enhancements can be filed on the
 .URL https://github.com/barak/oaklisp "github issue tracker" .

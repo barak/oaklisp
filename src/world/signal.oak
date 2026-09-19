@@ -110,8 +110,20 @@
 
 (define-instance report operation)
 
+;;; The nesting guard lives here, at the way in, rather than in
+;;; REALLY-INVOKE-DEBUGGER where it used to.  The type specific methods
+;;; below build their restart messages by formatting the offending
+;;; arguments, so an object that cannot be printed -- a half
+;;; initialized one whose INITIALIZE is what failed, say -- signals
+;;; again from inside the debugger and starts another one, and it does
+;;; so before REALLY-INVOKE-DEBUGGER is ever reached.  Counting only
+;;; there left that recursion unbounded and silent.
+
 (add-method (invoke-debugger (condition continuation) self)
-  (invoke-in-error-context self really-invoke-debugger))
+  (bind ((#*debug-level (+ #*debug-level 1)))
+    (when (and nested-error-limit (> #*debug-level nested-error-limit))
+      (exit 1 "Too many nested debuggers!~%"))
+    (invoke-in-error-context self really-invoke-debugger)))
 
 ;;;
 
@@ -120,12 +132,9 @@
 (define nested-error-limit 20)
 
 (add-method (really-invoke-debugger (condition) self)
-  (bind ((#*debug-level (+ #*debug-level 1)))
-    (when (and nested-error-limit (> #*debug-level nested-error-limit))
-      (exit 1 "Too many nested debuggers!~%"))
-    (format standard-error "~&Error: ")
-    (report self standard-error)
-    (read-eval-print-loop)))
+  (format standard-error "~&Error: ")
+  (report self standard-error)
+  (read-eval-print-loop))
 
 (add-method (really-invoke-debugger (proceedable-mixin message) self)
   (error-return message

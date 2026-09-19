@@ -29,8 +29,11 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <pthread.h>
+#ifdef _WIN32
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 #include "config.h"
 #include "threads.h"
 
@@ -44,7 +47,7 @@ typedef size_t ref_t;
 
 /* instruction type */
 
-typedef u_int16_t instr_t;
+typedef uint16_t instr_t;
 
 /* space type */
 
@@ -148,7 +151,11 @@ extern bool_int trace_files;
 /* miscellanous */
 
 #ifndef ISATTY
+#if defined(_MSC_VER)
+#define ISATTY(stream) (_isatty(_fileno(stream)))
+#else
 #define ISATTY(stream) (isatty(fileno(stream)))
+#endif
 #endif
 
 
@@ -166,11 +173,39 @@ extern bool_int trace_files;
 
 #define TAGSIZE 2
 
+/* Architecture description, as used in file headers and in the names
+   of prebuilt/ subdirectories.  The bytecode architecture name is
+   "bc<instructions-per-ref>-<word-size>", e.g. "bc2-64", and the world
+   architecture name adds endianness, e.g. "bc2-el64".  Keep these in
+   sync with src/world/architecture.oak and oak-cold-linker.c. */
+
+#if SIZEOF_VOID_P == 8
+#define OAK_WORD_SIZE  64
+#else
+#define OAK_WORD_SIZE  32
+#endif
+
+#ifdef WORDS_BIGENDIAN
+#define OAK_ENDIAN_NAME "big"
+#define OAK_ENDIAN_ABBREV "eb"
+#else
+#define OAK_ENDIAN_NAME "little"
+#define OAK_ENDIAN_ABBREV "el"
+#endif
+
+#define OAK_STRINGIFY_(x) #x
+#define OAK_STRINGIFY(x) OAK_STRINGIFY_(x)
+
+#define OAK_BYTECODE_ARCH_NAME \
+  "bc" OAK_STRINGIFY(INSTRS_PER_REF) "-" OAK_STRINGIFY(OAK_WORD_SIZE)
+#define OAK_WORLD_ARCH_NAME \
+  "bc" OAK_STRINGIFY(INSTRS_PER_REF) "-" OAK_ENDIAN_ABBREV OAK_STRINGIFY(OAK_WORD_SIZE)
+
 /* REF_SHIFT = log2(sizeof(ref_t)).  On 32-bit this equals TAGSIZE (2),
    but on 64-bit it is 3.  Used for converting word indices to byte
    offsets when constructing or deconstructing zero-based tagged refs
    in world image I/O. */
-#if __WORDSIZE == 64
+#if OAK_WORD_SIZE == 64
 #define REF_SHIFT 3
 #else
 #define REF_SHIFT 2
@@ -179,9 +214,11 @@ extern bool_int trace_files;
 /* Number of 16-bit instructions packed per ref (logical), and
    number of instr_t units per ref (physical stride). On 32-bit these
    are equal (2); on 64-bit there is a gap: 2 instructions occupy the
-   low 32 bits of each 64-bit ref, with upper 32 bits empty. */
+   first 32 bits (in memory order) of each 64-bit ref, with the other
+   32 bits empty.  That is the low half of the ref value on little-endian
+   machines and the high half on big-endian ones. */
 #define INSTRS_PER_REF  2
-#if __WORDSIZE == 64
+#if OAK_WORD_SIZE == 64
 #define INSTR_STRIDE    4
 #else
 #define INSTR_STRIDE    2
@@ -240,10 +277,17 @@ extern bool_int trace_files;
 #define CHAR_TO_REF(c)  (((ref_t)(c)<<8) | IMM_TAG)
 #endif
 
+/* The shift is done in an unsigned type: left-shifting a negative
+   signed value is undefined behavior in C99/C11, and fixnums are
+   routinely negative.  The unsigned result has the two's complement
+   bit pattern we want.  (REF_TO_INT's arithmetic right shift of a
+   negative value is merely implementation-defined, and every compiler
+   we target sign-extends, so it is left alone.) */
+
 #ifndef OR_TAG
-#define INT_TO_REF(i)	((ref_t)(((ssize_t)(i)<<TAGSIZE) + INT_TAG))
+#define INT_TO_REF(i)	((ref_t)((((size_t)(ssize_t)(i))<<TAGSIZE) + INT_TAG))
 #else
-#define INT_TO_REF(i)   ((ref_t)(((ssize_t)(i)<<TAGSIZE) | INT_TAG))
+#define INT_TO_REF(i)   ((ref_t)((((size_t)(ssize_t)(i))<<TAGSIZE) | INT_TAG))
 #endif
 
 #define BOOL_TO_REF(x)   ( (x) ? e_t : e_false )
@@ -252,7 +296,7 @@ extern bool_int trace_files;
    positive fixnum, an asymmetry inherent in a twos complement
    representation. */
 
-#define MIN_REF     ((ref_t)((ref_t)0x1<<(__WORDSIZE-1)))
+#define MIN_REF     ((ref_t)((ref_t)0x1<<(OAK_WORD_SIZE-1)))
 #define MAX_REF     ((ref_t)-((ssize_t)MIN_REF+1))
 
 /* Check if high three bits are equal. */
@@ -260,7 +304,7 @@ extern bool_int trace_files;
 /*
 #define OVERFLOWN_INT(i,code)					\
 { register int highcrap						\
-	= ((u_int32_t)(i)) >> (__WORDSIZE-(TAGSIZE+1));		\
+	= ((uint32_t)(i)) >> (OAK_WORD_SIZE-(TAGSIZE+1));		\
 if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 */
 
@@ -268,7 +312,7 @@ if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 
 #define OVERFLOWN_INT(i,code)					\
 { unsigned int highcrap						\
-	= ((size_t)(i)) >> (__WORDSIZE-(TAGSIZE+1));		\
+	= ((size_t)(i)) >> (OAK_WORD_SIZE-(TAGSIZE+1));		\
 if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 
 /*
@@ -360,16 +404,129 @@ if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
 		  GC_RECALL(v); })
 
 
+#if defined(USE_MARK_SWEEP) && defined(THREADS)
+
+/*
+ * TLAB-aware allocator for multi-threaded mark-sweep mode.
+ *
+ * Fast path: bump the thread's TLAB pointer (no lock).
+ * Slow path: acquire alloc_lock, try free list / TLAB refill / GC.
+ */
+
+#include "gc-ms.h"
+
+#define ALLOCATE_PROT(p, words, reason, before, after)			\
+{									\
+  int _tlab_idx = *(int *)oak_tls_get(index_key);			\
+  if ((words) <= TLAB_SIZE &&						\
+      tlab_cursor_array[_tlab_idx] &&					\
+      tlab_cursor_array[_tlab_idx] + (words)				\
+        <= tlab_end_array[_tlab_idx]) {					\
+    /* TLAB fast path — no lock needed. */				\
+    (p) = tlab_cursor_array[_tlab_idx];					\
+    tlab_cursor_array[_tlab_idx] += (words);				\
+    ms_bump_alloc_notify_atomic((p), (words));				\
+  } else {								\
+    /* Slow path — acquire global allocator lock. */			\
+    while (oak_mutex_trylock(&alloc_lock) != 0) {			\
+      if (gc_pending) { before; wait_for_gc(); after; }			\
+    }									\
+    (p) = ms_alloc_slow_locked((words),					\
+			       &tlab_cursor_array[_tlab_idx],		\
+			       &tlab_end_array[_tlab_idx]);		\
+    if (!(p)) {								\
+      before;								\
+      ms_collect(false, (reason), (words));				\
+      after;								\
+      (p) = ms_alloc_slow_locked((words),				\
+				 &tlab_cursor_array[_tlab_idx],		\
+				 &tlab_end_array[_tlab_idx]);		\
+      if (!(p)) {							\
+	before;								\
+	gc(false, true, (reason), (words));				\
+	ms_reinit();							\
+	after;								\
+	(p) = free_point;						\
+	free_point += (words);						\
+	ms_bump_alloc_notify((p), (words));				\
+      }									\
+    }									\
+    oak_mutex_unlock(&alloc_lock);					\
+  }									\
+}
+
+#elif defined(USE_MARK_SWEEP)
+
+/*
+ * Single-threaded mark-sweep allocator (no TLABs needed).
+ */
+
+#include "gc-ms.h"
+
+#define ALLOCATE_PROT(p, words, reason, before, after)	\
+{							\
+  /* Try free list first, then lazy sweep. */		\
+  (p) = ms_free_list_alloc((words));			\
+  if (!(p)) {						\
+    while (ms_lazy_sweep_one()) {			\
+      (p) = ms_free_list_alloc((words));		\
+      if ((p)) break;					\
+    }							\
+  }							\
+  if (!(p)) {						\
+    if ((size_t)(words) < (size_t)(new_space.end - free_point)) {	\
+      /* Bump pointer has space. */			\
+      (p) = free_point;				\
+      free_point += (words);				\
+      ms_bump_alloc_notify((p), (words));		\
+    } else {						\
+      /* Heap exhausted — collect. */			\
+      before;						\
+      ms_collect(false, (reason), (words));		\
+      after;						\
+      (p) = ms_free_list_alloc((words));		\
+      if (!(p)) {					\
+	while (ms_lazy_sweep_one()) {			\
+	  (p) = ms_free_list_alloc((words));		\
+	  if ((p)) break;				\
+	}						\
+      }							\
+      if (!(p)) {					\
+	if ((size_t)(words) < (size_t)(new_space.end - free_point)) { \
+	  (p) = free_point;				\
+	  free_point += (words);			\
+	  ms_bump_alloc_notify((p), (words));		\
+	} else {					\
+	  /* MS-GC couldn't free enough; copying GC	\
+	     will expand the heap. */			\
+	  before;					\
+	  gc(false, true, (reason), (words));		\
+	  ms_reinit();					\
+	  after;					\
+	  (p) = free_point;				\
+	  free_point += (words);			\
+	  ms_bump_alloc_notify((p), (words));		\
+	}						\
+      }							\
+    }							\
+  }							\
+}
+
+#else /* !USE_MARK_SWEEP */
+
 #define ALLOCATE_PROT(p, words, reason, before, after)	\
 {							\
   THREADY(						\
-      while (pthread_mutex_trylock(&alloc_lock) != 0) {	\
+      while (oak_mutex_trylock(&alloc_lock) != 0) {	\
 	      if (gc_pending) {				\
 		      before; wait_for_gc(); after;	\
 	      }						\
       }							\
   )							\
-  if (free_point + (words) >= new_space.end)            \
+  /* Compare word counts, not pointers: free_point+words can wrap  \
+     around the address space, which is undefined behavior and lets \
+     an absurd length slip through. */			\
+  if ((size_t)(words) >= (size_t)(new_space.end - free_point))	\
     {							\
       before;						\
       gc(false, false, (reason), (words));		\
@@ -377,8 +534,15 @@ if ((highcrap != 0x0) && (highcrap != 0x7)) {code;} }
     }							\
   (p) = free_point;					\
   free_point += (words);				\
-  THREADY( pthread_mutex_unlock (&alloc_lock); )	\
+  THREADY( oak_mutex_unlock(&alloc_lock); )		\
 }
+
+#endif /* USE_MARK_SWEEP */
+
+/* SATB write barrier — no-op when mark-sweep GC is not enabled. */
+#ifndef USE_MARK_SWEEP
+#define SATB_BARRIER(addr) ((void)0)
+#endif
 
 /* These get slots out of Oaklisp objects, and may be used as lvalues. */
 

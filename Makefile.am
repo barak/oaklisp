@@ -14,13 +14,40 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-SUBDIRS = src man
+SUBDIRS = src man tests
 
 if DOCS
 SUBDIRS += doc
 endif
 
 doc_DATA = README.md AUTHORS COPYING BUILD.md ChangeLog NEWS
+
+desktopdir = $(datadir)/applications
+desktop_DATA = oaklisp.desktop
+
+EXTRA_DIST = $(doc_DATA) $(desktop_DATA)
+
+# Refresh the prebuilt bootstrap material in prebuilt/ from what was
+# just built: bytecode, a world image for this architecture, the
+# emulator's instruction table, and the documentation.
+prebuilt:
+	$(MAKE) -C src/world prebuilt
+	$(MAKE) -C src/emulator prebuilt
+if DOCS
+	$(MAKE) -C doc prebuilt
+endif
+
+.PHONY: prebuilt
+
+# "make check" runs the test suite in tests/; "make bench" the benchmarks.
+bench:
+	$(MAKE) -C tests bench
+
+.PHONY: bench
+
+# prebuilt/ is deliberately not distributed: a release tarball is built
+# from source alone (with Guile, see BUILD.md) or with an installed
+# Oaklisp.
 
 # Remove all generated files, restoring the tree to pre-autoreconf state.
 # (Run "autoreconf --install && ./configure" to rebuild.)

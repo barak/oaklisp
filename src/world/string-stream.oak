@@ -21,14 +21,21 @@
 ;;; stuff from strings.  Used mostly for (FORMAT NIL ...) and some
 ;;; Common Lisp like things.
 
+;;; The freshline mixin is what makes (format s "~&") mean "a newline
+;;; unless we are already at the start of a line"; without it FRESHLINE
+;;; falls back to writing a newline unconditionally, so (format #f ...)
+;;; would not agree with the same control string sent to a file.
+
 (define-instance string-output-stream
-  type '(accumulated) (list output-stream object))
+  type '(accumulated) (list freshline-hacking-mixin output-stream object))
 
 (add-method (initialize (string-output-stream accumulated) self)
+  (^super freshline-hacking-mixin initialize self)
   (set! accumulated '())
   self)
 
 (add-method (write-char (string-output-stream accumulated) self char)
+  (^super freshline-hacking-mixin write-char self char)
   (set! accumulated (cons char accumulated))
   char)
 

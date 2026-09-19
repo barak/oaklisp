@@ -1,0 +1,7 @@
+;;; Allocation and garbage collection: build and discard many lists.
+(define (bench)
+  (let loop ((i 0) (keep '()))
+    (if (= i 1000)
+	(length keep)
+	(let ((l (let build ((n 5000) (acc '())) (if (= n 0) acc (build (- n 1) (cons n acc))))))
+	  (loop (+ i 1) (if (= (modulo i 50) 0) (cons (car l) keep) keep))))))

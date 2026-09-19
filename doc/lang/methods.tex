@@ -105,6 +105,14 @@ are also provided.
 \mc{define}{\lpar variable \dt arg-list\rpar \dt body}
 \doc{\macdef{}{(define \emph{variable} (lambda \emph{arg-list} . \emph{body}))}}
 
+When \emph{arg-list} is dotted, the expansion shown for \df{lambda}
+applies only if the body uses the rest name as a rest name, that is, at
+the end of a call or in a \df{rest-length} form, as described in the
+section on rest args below.  A body that instead refers to the name as
+an ordinary variable gets it bound to a list of the extra arguments,
+which \df{lambda} collects with \df{listify-args}.  Only \df{lambda}
+does this; \df{add-method} always binds a rest name the native way.
+
 
 \section{Dispatching to Supertypes}
 
