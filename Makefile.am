@@ -22,7 +22,10 @@ endif
 
 doc_DATA = README.md AUTHORS COPYING BUILD.md ChangeLog NEWS
 
-EXTRA_DIST = $(doc_DATA)
+desktopdir = $(datadir)/applications
+desktop_DATA = oaklisp.desktop
+
+EXTRA_DIST = $(doc_DATA) $(desktop_DATA)
 
 # Refresh the prebuilt bootstrap material in prebuilt/ from what was
 # just built: bytecode, a world image for this architecture, the
