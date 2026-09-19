@@ -19,6 +19,11 @@ endif
 override_dh_auto_configure:
 	dh_auto_configure -- $(CONF_OPTIONS)
 
+# Then bootstrap to self-hosting: rebuild the world with itself twice
+# and check that it reaches a fixpoint.
+override_dh_auto_build:
+	dh_auto_build -- bootstrap
+
 override_dh_auto_install:
 	dh_auto_install
 	-rm --verbose debian/tmp/usr/share/doc/oaklisp/ChangeLog
