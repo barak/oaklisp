@@ -343,6 +343,11 @@ oak_have_world=no
 AS_IF([test x${with_world} != xno], [oak_have_world=yes])
 oak_have_bytecode=no
 AS_IF([test x${with_bytecode} != xno], [oak_have_bytecode=yes])
+# The version string in a world built from bytecode is the one the
+# bytecode was compiled with.
+AS_IF([test x${oak_have_bytecode} = xyes],
+ [AS_IF([grep -q "\"${PACKAGE_STRING}\"" "${with_bytecode}/system-version.oa" 2>/dev/null],,
+   [AC_MSG_WARN([the prebuilt bytecode was compiled for another version of Oaklisp; a world built from it reports that version until it is rebuilt with itself (make rebuild-world)])])])
 oak_have_guile=no
 AS_IF([test x${GUILE} != xno], [oak_have_guile=yes])
 
@@ -401,12 +406,8 @@ AC_SUBST([OAKLISP])
 AC_SUBST([OAKWORLDFLAGS])
 AC_SUBST([OAKTARGETFLAGS])
 AC_SUBST([PREBUILT_BYTECODE_DIR], [${with_bytecode}])
-AM_CONDITIONAL([COMPILE_WORLD], [test x${oak_compile} = xworld])
-AM_CONDITIONAL([COMPILE_PREBUILT], [test x${oak_compile} = xprebuilt])
-AM_CONDITIONAL([COMPILE_GUILE], [test x${oak_compile} = xguile])
-AM_CONDITIONAL([COLD_LINK_WORLD], [test x${oak_cold_link} = xworld])
-AM_CONDITIONAL([COLD_LINK_C], [test x${oak_cold_link} = xc])
-AM_CONDITIONAL([COLD_LINK_GUILE], [test x${oak_cold_link} = xguile])
+AC_SUBST([oak_compile])
+AC_SUBST([oak_cold_link])
 
 # Checks for library functions.
 AC_FUNC_MALLOC
