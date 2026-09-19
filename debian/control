@@ -5,7 +5,7 @@ Standards-Version: 4.7.4
 Build-Depends:
 	debhelper-compat (= 14),
 	autoconf-archive,
-	gcc-multilib [any-alpha any-amd64 any-arm64 any-ia64 any-mips64 any-mips64el any-ppc64 any-ppc64el any-riscv64 any-sparc64]
+	guile-3.0 | guile,
 Build-Depends-Indep:
 	texlive-latex-base <!nodoc>, texlive-latex-extra <!nodoc>, texlive-fonts-recommended <!nodoc>,
 	latexmk <!nodoc>,  texlive-font-utils <!nodoc>,  ghostscript <!nodoc>
@@ -15,7 +15,6 @@ Vcs-Browser: https://salsa.debian.org/debian/oaklisp
 
 Package: oaklisp
 Architecture: any
-Multi-Arch: foreign
 Description: Object-oriented dialect of Scheme
  Oaklisp is a dialect of Scheme that combines lexical scoping with
  first-class types.  It uses a byte-coded implementation, but is

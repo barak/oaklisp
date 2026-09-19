@@ -9,12 +9,20 @@ DOPACKAGES = $(shell dh_listpackages)
 %:
 	dh $@
 
+# Do not use /usr/bin/oaklisp or /usr/lib/*/oaklisp.bin even if available
+CONF_OPTIONS=--with-world=no --with-compile=guile
+
 ifeq (,$(filter oaklisp-doc,$(DOPACKAGES)))
-override_dh_auto_configure:
-	dh_auto_configure -- --disable-docs
+CONF_OPTIONS+=--disable-docs
 endif
+
+override_dh_auto_configure:
+	dh_auto_configure -- $(CONF_OPTIONS)
 
 override_dh_auto_install:
 	dh_auto_install
 	-rm --verbose debian/tmp/usr/share/doc/oaklisp/ChangeLog
 	-rm --verbose debian/tmp/usr/share/doc/oaklisp/COPYING
+
+override_dh_compress:
+	dh_compress --exclude=.pdf

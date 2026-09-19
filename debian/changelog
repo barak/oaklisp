@@ -1,9 +1,21 @@
 oaklisp (2.0.0~devel-1) UNRELEASED; urgency=medium
 
   * Bump policy, no changes needed
-  * Debhelper 14, remove now-unnecessary control substitution variables
+  * Debhelper 14
+    - remove now-unnecessary control substitution variables
+    - mv debian/{docs,menu} to debian/PACKAGE.{docs,menu}
+  * New upstream version
+    - Blake McBride is THE MAN! He did all this work. Amazing!!!
+    - 64-bit support
+    - runs on all debian architectures: 32- or 64-bit, big- or litle-endian
+    - remove multi-arch:foreign
+    - new bootstrap system obviates need for prebuilt material
+    - new bootstrap system add build dependency on guile Scheme
+    - new bootstrap system can configure to force internal boot; do so
+  * Do not bother compressing near-incompressible PDF files
+  * Set upstream metadata fields: Repository-Browse.
 
- -- Barak A. Pearlmutter <bap@debian.org>  Thu, 17 Sep 2026 11:11:37 +0100
+ -- Barak A. Pearlmutter <bap@debian.org>  Sat, 19 Sep 2026 13:02:15 +0100
 
 oaklisp (1.3.8-2) unstable; urgency=medium
 
