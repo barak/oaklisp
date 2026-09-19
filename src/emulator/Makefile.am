@@ -18,8 +18,15 @@
 AUTOMAKE_OPTIONS = -Wno-portability
 
 bin_PROGRAMS = oaklisp
+
+# A C reimplementation of the cold linker tool.oak, kept as an
+# independent check on it and for bootstrapping where nothing can run
+# tool.oak; not built by default (configure --enable-cold-linker).
+if COLD_LINKER
 noinst_PROGRAMS = oak-cold-linker
+endif
 oak_cold_linker_SOURCES = oak-cold-linker.c
+EXTRA_PROGRAMS = oak-cold-linker
 
 oaklisp_SOURCES = cmdline.c data.c gc.c gc-ms.c instr.c loop.c		\
  oaklisp.c signals.c stacks.c threads.c timers.c weak.c worldio.c	\

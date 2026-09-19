@@ -53,6 +53,13 @@ AC_ARG_ENABLE([threads],
 AC_MSG_RESULT([$enable_threads])
 AM_CONDITIONAL([ENABLE_THREADS], [test x${enable_threads} = xyes])
 
+AC_MSG_CHECKING([enable_cold_linker])
+AC_ARG_ENABLE([cold-linker],
+       [AS_HELP_STRING([--enable-cold-linker],[build oak-cold-linker, a C reimplementation of the cold linker tool.oak, usable in its place with make OAK_COLD_LINK=c (default=no)])],,
+       [enable_cold_linker=no])
+AC_MSG_RESULT([$enable_cold_linker])
+AM_CONDITIONAL([COLD_LINKER], [test x${enable_cold_linker} = xyes])
+
 # Bootstrapping: Oaklisp is written in Oaklisp, so building the world
 # needs a running Oaklisp or a stand-in.  How that is done is decided
 # by make from what is there (an old or prebuilt world, prebuilt
