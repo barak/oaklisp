@@ -9,18 +9,15 @@ DOPACKAGES = $(shell dh_listpackages)
 %:
 	dh $@
 
-# Do not use /usr/bin/oaklisp or /usr/lib/*/oaklisp.bin even if available
-CONF_OPTIONS=--with-world=no --with-compile=guile
-
 ifeq (,$(filter oaklisp-doc,$(DOPACKAGES)))
-CONF_OPTIONS+=--disable-docs
+override_dh_auto_configure:
+	dh_auto_configure -- --disable-docs
 endif
 
-override_dh_auto_configure:
-	dh_auto_configure -- $(CONF_OPTIONS)
-
-# Then bootstrap to self-hosting: rebuild the world with itself twice
-# and check that it reaches a fixpoint.
+# Build from source alone with Guile (the tarball has no prebuilt
+# material, and make never looks for an installed Oaklisp), then
+# bootstrap to self-hosting: rebuild the world with itself twice and
+# check that it reaches a fixpoint.
 override_dh_auto_build:
 	dh_auto_build -- bootstrap
 
