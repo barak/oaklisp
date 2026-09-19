@@ -15,16 +15,22 @@ doc/lim/            Implementation manual (LaTeX)
 doc/summary/        Concise programmer reference (LaTeX)
 doc/examples/       Example Oaklisp programs
 man/man1/           Man page template (oaklisp.1.in)
-prebuilt/           Prebuilt bootstrap artifacts, on the "prebuilt" branch only
+prebuilt/           Prebuilt bootstrap artifacts, on the "master" branch only
+m4/                 Cached AX_* autoconf macros, on the "master" branch only
 debian/             Debian packaging
 ```
 
 ### Branches
 
-- `devel` — development; no `prebuilt/` directory
-- `prebuilt` — `devel` plus `prebuilt/` (bytecode, world images, PDFs, instr-data.c)
-- `master` — release branch
+- `devel` — development: source only, never `prebuilt/` or `m4/`
+- `master` — `devel` plus the generated material: `prebuilt/` (bytecode,
+  world images, PDFs, instr-data.c) and the cached `m4/` macros
 - `pristine-tar` — Debian pristine-tar data
+
+The rule: commit source changes on `devel`; every so often merge `devel`
+into `master` and follow the merge with a commit that refreshes
+`prebuilt/` (`make prebuilt`).  Commit messages on `devel` don't discuss
+prebuilt content; that goes in the refresh commit on `master`.
 
 Older `devel-32-el`, `devel-64-el`, `prebuilt-32-el`, `prebuilt-64-el`
 branches predate the multi-architecture layout.
@@ -324,7 +330,6 @@ Build with: `dpkg-buildpackage` or `debuild` (requires `gcc-multilib` for 32-bit
 
 ## Git Branches
 
-- `master` — Main release branch
-- `devel` — Development branch (merged into master); has no `prebuilt/`
-- `prebuilt` — `devel` plus the `prebuilt/` bootstrap material
+- `devel` — Development branch; source only (no `prebuilt/`, no `m4/`)
+- `master` — `devel` plus `prebuilt/` and `m4/`, refreshed after each merge from `devel`
 - `pristine-tar` — Debian pristine-tar data

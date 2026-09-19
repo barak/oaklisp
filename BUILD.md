@@ -129,10 +129,10 @@ Bootstrapping
 
 Oaklisp is self-hosting: the compiler and most of the runtime are
 written in Oaklisp, so building the world from .oak source requires a
-running Oaklisp.  The prebuilt/ directory (kept on the "prebuilt"
-branch of the git repository, and included in release tarballs)
-breaks the circle with two kinds of material, arranged by
-architecture:
+running Oaklisp.  The prebuilt/ directory (kept on the "master"
+branch of the git repository, not on "devel", and included in
+release tarballs) breaks the circle with two kinds of material,
+arranged by architecture:
 
 	prebuilt/src/world/bc2-32/*.oa          compiled bytecode
 	prebuilt/src/world/bc2-el32/oakworld.bin world images
@@ -288,7 +288,7 @@ Troubleshooting
 "no way to compile the world"
     Configure found neither a world image for this architecture, nor
     prebuilt bytecode, nor Guile 3.  Get the prebuilt/ directory (from
-    the "prebuilt" branch or a release tarball), point configure at
+    the "master" branch or a release tarball), point configure at
     them with --with-world=PATH or --with-bytecode=DIR, or install
     Guile 3 (--with-guile=PATH).
 
