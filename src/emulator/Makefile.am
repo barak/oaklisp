@@ -46,15 +46,23 @@ endif
 
 # bootstrapping problem: to compile the emulator we need a working
 # oaklisp to generate instr-data.c.  This is solved by trying to
-# generate it automatically if necessary, but if that fails instead
-# using a prebuilt copy.  Note that when -DFAST is set instr-data.c is
-# not used and this is not an issue.
+# generate it automatically if necessary (with the world just built if
+# there is one, otherwise the bootstrap world), but if that fails
+# instead using a prebuilt copy.  Note that when -DFAST is set
+# instr-data.c is not used and this is not an issue; it is still
+# generated for "make dist", so that tarballs can be built with
+# --disable-ndebug without prebuilt/.
 
 OAK = $(OAKLISP) --batch
 OAKFLAGS =
 
 instr-data.c: instruction-table.oak
-	$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS) -- \
+	if test -x ./oaklisp$(EXEEXT) && test -f ../world/oakworld.bin; then \
+	  oak='./oaklisp$(EXEEXT) --batch --world ../world/oakworld.bin'; \
+	else \
+	  oak='$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS)'; \
+	fi; \
+	$$oak -- \
 		--locale compiler-locale \
 		--load "$<" \
 		--eval '(dump-instruction-table "$@")' \

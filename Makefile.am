@@ -42,11 +42,9 @@ bench:
 
 .PHONY: bench
 
-# Ship whatever prebuilt material is present in the distribution.
-dist-hook:
-	if test -d $(srcdir)/prebuilt; then \
-	  cp -pR $(srcdir)/prebuilt $(distdir)/prebuilt; \
-	fi
+# prebuilt/ is deliberately not distributed: a release tarball is built
+# from source alone (with Guile, see BUILD.md) or with an installed
+# Oaklisp.
 
 # Remove all generated files, restoring the tree to pre-autoreconf state.
 # (Run "autoreconf --install && ./configure" to rebuild.)

@@ -10,8 +10,8 @@
 ;;; exactly which files), and then runs that compiler.  Because it is
 ;;; the real compiler that runs, the output is byte for byte what a
 ;;; native Oaklisp produces, which is what makes the bootstrap
-;;; checkable: `make check-bootstrap' in src/world compares it with the
-;;; prebuilt objects.
+;;; checkable: `make check-guile-compile' in src/world compares it with
+;;; the objects the native compiler produced.
 ;;;
 ;;; Usage: oak-bootstrap.scm [--srcdir DIR] [--outdir DIR]
 ;;;                          [--locale system-locale|compiler-locale]
