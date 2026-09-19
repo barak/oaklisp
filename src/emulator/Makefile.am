@@ -14,6 +14,9 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
+# This Makefile needs GNU make (wildcard, firstword), like src/world's.
+AUTOMAKE_OPTIONS = -Wno-portability
+
 bin_PROGRAMS = oaklisp
 noinst_PROGRAMS = oak-cold-linker
 oak_cold_linker_SOURCES = oak-cold-linker.c
@@ -47,20 +50,23 @@ endif
 # bootstrapping problem: to compile the emulator we need a working
 # oaklisp to generate instr-data.c.  This is solved by trying to
 # generate it automatically if necessary (with the world just built if
-# there is one, otherwise the bootstrap world), but if that fails
-# instead using a prebuilt copy.  Note that when -DFAST is set
-# instr-data.c is not used and this is not an issue; it is still
+# there is one, otherwise an old world as src/world would use), but if
+# that fails instead using a prebuilt copy.  Note that when -DFAST is
+# set instr-data.c is not used and this is not an issue; it is still
 # generated for "make dist", so that tarballs can be built with
 # --disable-ndebug without prebuilt/.
 
-OAK = $(OAKLISP) --batch
+OAK_HOST_ARCH = @OAK_HOST_ARCH@
+OAKLISP = ./oaklisp$(EXEEXT)
+OLD_WORLD = $(firstword $(wildcard ../world/old-oakworld.bin \
+	$(top_srcdir)/prebuilt/src/world/$(OAK_HOST_ARCH)/oakworld.bin) ../world/old-oakworld.bin)
 OAKFLAGS =
 
 instr-data.c: instruction-table.oak
 	if test -x ./oaklisp$(EXEEXT) && test -f ../world/oakworld.bin; then \
 	  oak='./oaklisp$(EXEEXT) --batch --world ../world/oakworld.bin'; \
 	else \
-	  oak='$(OAK) $(OAKFLAGS) $(OAKWORLDFLAGS)'; \
+	  oak='$(OAKLISP) --batch $(OAKFLAGS) --world $(OLD_WORLD)'; \
 	fi; \
 	$$oak -- \
 		--locale compiler-locale \

@@ -2,13 +2,12 @@ Bootstrapping Oaklisp from source
 =================================
 
 `oak-bootstrap.scm` compiles Oaklisp `.oak` sources to `.oa` objects
-without a running Oaklisp.  It is what `./configure --with-compile=guile`
-uses (and what configure picks by itself when it finds neither a
-bootstrap world nor prebuilt bytecode, as on the `devel` branch and in
-release tarballs), and what `make check-guile-compile` in `src/world`
-runs.  With `--with-cold-link=guile` it also runs `tool.oak` to link
-the cold world.  A build from `prebuilt/` or an existing Oaklisp needs
-no Guile.
+without a running Oaklisp.  It is what `make build-from-guile` in
+`src/world` uses (and what plain `make` picks when it finds neither an
+old world nor prebuilt bytecode, as on the `devel` branch and in
+release tarballs), and what `make check-guile-compile` there runs.
+With `OAK_COLD_LINK=guile` it also runs `tool.oak` to link the cold
+world.  A build from `prebuilt/` or an existing world needs no Guile.
 
     guile3.0 --no-auto-compile oak-bootstrap.scm --srcdir ../world --outdir OUT \
         --noisy 0 cold-booting kernel0 ... --locale compiler-locale crunch ...

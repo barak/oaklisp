@@ -46,9 +46,10 @@ bench:
 .PHONY: bench
 
 # Self-hosting.  "make rebuild-world" saves the world just built
-# (however it was built: from source alone with Guile, from prebuilt
-# material, or with an existing Oaklisp) and rebuilds all the objects
-# and the world from scratch with it; it can be repeated.  "make
+# (however it was built: from an old or prebuilt world, from prebuilt
+# bytecode, or from source alone with Guile) and rebuilds all the
+# objects and the world from scratch with it; it can be repeated, and
+# rebuilds from the saved world when there is no world to save.  "make
 # bootstrap" builds everything, rebuilds the world with itself twice,
 # and checks that the result reproduces its own objects, so that a
 # following "make check" and "make install" use a self-hosted system.
@@ -58,7 +59,8 @@ bootstrap: all
 	$(MAKE) $(AM_MAKEFLAGS) -C src/world rebuild-world
 	$(MAKE) $(AM_MAKEFLAGS) -C src/world check-fixpoint
 
-rebuild-world: all
+rebuild-world:
+	$(MAKE) $(AM_MAKEFLAGS) -C src/emulator all
 	$(MAKE) $(AM_MAKEFLAGS) -C src/world rebuild-world
 
 .PHONY: bootstrap rebuild-world
