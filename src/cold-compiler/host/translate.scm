@@ -37,8 +37,8 @@
 (define op-macro-here? #f)
 
 (define (current-locale)
-  (if (fluid-bound? 'CURRENT-LOCALE)
-      (fluid-ref 'CURRENT-LOCALE)
+  (if (oak-fluid-bound? 'CURRENT-LOCALE)
+      (oak-fluid-ref 'CURRENT-LOCALE)
       *proto-locale*))
 
 (define *proto-locale* #f)
@@ -427,9 +427,9 @@
 ;;; sub locale (when locales exist) with #*CURRENT-LOCALE bound to it,
 ;;; then evaluate with #*CURRENT-LOCALE bound to LOCALE.
 (define (oak-load-form form locale sub-locale)
-  (let ((expanded (with-fluids* (list (cons 'CURRENT-LOCALE sub-locale))
+  (let ((expanded (with-oak-fluids* (list (cons 'CURRENT-LOCALE sub-locale))
 			       (lambda () (oak-expand sub-locale form)))))
-    (with-fluids* (list (cons 'CURRENT-LOCALE locale))
+    (with-oak-fluids* (list (cons 'CURRENT-LOCALE locale))
 		 (lambda ()
 		   (let ((code (translate expanded '() #f locale)))
 		     (when *trace-eval*

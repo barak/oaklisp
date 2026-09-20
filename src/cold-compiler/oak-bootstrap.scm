@@ -131,7 +131,7 @@
 	       ((eq? (car job) 'eval)
 		(let ((form (oak-read (open-input-string (cadr job))))
 		      (locale (global-ref (caddr job))))
-		  (let ((v (with-fluids* (list (cons 'CURRENT-LOCALE locale))
+		  (let ((v (with-oak-fluids* (list (cons 'CURRENT-LOCALE locale))
 					 (lambda () (oak-eval form locale)))))
 		    (oak-print v (global-ref 'STANDARD-OUTPUT))
 		    (newline))))
