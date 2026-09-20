@@ -20,12 +20,15 @@ if DOCS
 SUBDIRS += doc
 endif
 
-doc_DATA = README.md AUTHORS COPYING BUILD.md ChangeLog NEWS
+dist_doc_DATA = README.md AUTHORS COPYING BUILD.md ChangeLog NEWS
 
+# Desktop entry and its icon, in the freedesktop.org places (the icon
+# is scalable, so it goes under hicolor/scalable and needs no sizes).
 desktopdir = $(datadir)/applications
-desktop_DATA = oaklisp.desktop
+dist_desktop_DATA = resources/oaklisp.desktop
 
-EXTRA_DIST = $(doc_DATA) $(desktop_DATA)
+icondir = $(datadir)/icons/hicolor/scalable/apps
+dist_icon_DATA = resources/oaklisp.svg
 
 # Refresh the prebuilt bootstrap material in prebuilt/ from what was
 # just built: bytecode, a world image for this architecture, the
