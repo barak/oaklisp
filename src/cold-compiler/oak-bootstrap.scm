@@ -114,11 +114,11 @@
      (with-throw-handler #t
       (lambda ()
       (build-world!)
-      (when *outdir* (fluid-set! 'COMPILER-OUTPUT-DIRECTORY *outdir*))
+      (when *outdir* (oak-fluid-set! 'COMPILER-OUTPUT-DIRECTORY *outdir*))
       (for-each
        (lambda (job)
 	 (cond ((eq? (car job) 'noisy)
-		(fluid-set! 'COMPILER-NOISINESS (cdr job)))
+		(oak-fluid-set! 'COMPILER-NOISINESS (cdr job)))
 	       ((eq? (car job) 'load)
 		(let ((locale (global-ref (caddr job))))
 		  (format (current-error-port) ";; loading ~A~%" (cadr job))

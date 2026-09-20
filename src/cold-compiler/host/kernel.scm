@@ -589,6 +589,11 @@
 	  (set-cdr! top (cons (cons sym val) (cdr top)))))
     val))
 
+;;; The same under a name of its own, for code compiled before this
+;;; file is loaded (oak-bootstrap.scm itself), where FLUID-SET! would
+;;; still mean Guile's.
+(define (oak-fluid-set! sym val) (fluid-set! sym val))
+
 ;;; Host side dynamic binding of fluids.
 (define (with-fluids* bindings thunk)
   (let* ((old (fluid-bindings))

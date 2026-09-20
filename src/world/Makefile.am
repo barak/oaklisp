@@ -141,9 +141,12 @@ build-from-guile:
 # The Guile-hosted Oaklisp (src/cold-compiler): it loads the world's
 # own macros, compiler and linker from their .oak sources and runs
 # them, so its objects are byte for byte what a native Oaklisp would
-# produce.  Building its world takes some seconds, so it compiles
-# everything in one run, recorded by guile.stamp (see below).
-OAKGUILE = $(GUILE) --no-auto-compile \
+# produce.  Guile compiles the host itself to bytecode on first use
+# (a few seconds; interpreted it is ten times slower), cached under
+# guile-cache here rather than in $HOME.  Building the hosted world
+# takes about a second, and everything is compiled in one run,
+# recorded by guile.stamp (see below).
+OAKGUILE = XDG_CACHE_HOME=$(abs_builddir)/guile-cache $(GUILE) \
   $(top_srcdir)/src/cold-compiler/oak-bootstrap.scm --srcdir $(srcdir) \
   --target $(OAK_BYTECODE_ARCH) --noisy 0
 GUILEHOST = $(top_srcdir)/src/cold-compiler/oak-bootstrap.scm	\
@@ -441,7 +444,7 @@ check-cold-linkers: oakworld.bin new.cold $(TOOLFILES)
 CLEANFILES = guile.stamp
 
 clean-local: clean-world
-	rm -rf prebuilt-tmp fixpoint-check guile-check
+	rm -rf prebuilt-tmp fixpoint-check guile-check guile-cache
 
 # Remove the world saved by rebuild-world (kept by "make clean" so
 # that build-from-old-world can be repeated).

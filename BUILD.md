@@ -30,7 +30,7 @@ that it finds:
   prebuilt bytecode there: nothing beyond a C compiler is needed;
 - Guile 3: builds from source alone, which is how the "devel" branch
   and release tarballs -- neither of which carries prebuilt/ -- are
-  built.  Takes a few minutes longer.
+  built.  Takes a quarter of a minute longer.
 
 "make bootstrap" goes on to rebuild the world with itself, so that
 what gets installed is self-hosted whichever way it started.
@@ -171,7 +171,9 @@ a target in src/world:
 	    The Guile-hosted Oaklisp in src/cold-compiler/ (see its
 	    README) loads the world's own macros, compiler and linker
 	    from the sources and runs them.  This needs nothing but
-	    Guile 3 and a C compiler, and takes a few minutes.
+	    Guile 3 and a C compiler, and takes about fifteen seconds
+	    (Guile compiles the host to bytecode on first use, cached
+	    in src/world/guile-cache).
 
 tool.oak is the linker; porting means porting the emulator.  There
 is also oak-cold-linker, a C reimplementation of tool.oak kept as an
