@@ -1,4 +1,5 @@
 /usr/bin/oaklisp
 /usr/lib/*/oaklisp/oakworld.bin
 /usr/share/man/*/*
-/usr/share/applications/oaklisp.desktop
+/usr/share/applications/*.desktop
+/usr/share/icons/hicolor/scalable/apps/*.svg
