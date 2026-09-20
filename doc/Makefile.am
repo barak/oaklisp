@@ -34,9 +34,15 @@ EXTRA_DIST = $(LATEX_SRCS)
 # epstopdf package (TeX looks in the output directory first).
 .tex.pdf:
 	$(MKDIR_P) `dirname $@`
-	test -f oakman.bib || cp $(srcdir)/oakman.bib oakman.bib
 	$(LATEXMK) -cd -pdf -outdir=$(abs_builddir)/`dirname $@` $< \
 	 || cp $(top_srcdir)/prebuilt/doc/$@ $@
+
+# The bibliography, here, for bibtex; one target so that a parallel
+# make copies it once.
+$(LATEX_PDFS): bibliography
+bibliography:
+	test -f oakman.bib || cp $(srcdir)/oakman.bib oakman.bib
+.PHONY: bibliography
 
 FIGURES = lang/numhier.pdf lang/seqhier.pdf
 lang/lang.pdf: $(FIGURES)
