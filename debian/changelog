@@ -1,4 +1,4 @@
-oaklisp (2.0.0~devel-1) UNRELEASED; urgency=medium
+oaklisp (2.0.0-1) unstable; urgency=medium
 
   * Bump policy, no changes needed
   * Debhelper 14
