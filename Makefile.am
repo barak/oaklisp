@@ -63,6 +63,9 @@ rebuild-world:
 	$(MAKE) $(AM_MAKEFLAGS) -C src/emulator all
 	$(MAKE) $(AM_MAKEFLAGS) -C src/world rebuild-world
 
+check-fixpoint:
+	$(MAKE) $(AM_MAKEFLAGS) -C src/world check-fixpoint
+
 .PHONY: bootstrap rebuild-world
 
 # Remove all generated files, restoring the tree to pre-autoreconf state.
