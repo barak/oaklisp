@@ -114,6 +114,7 @@
      (with-throw-handler #t
       (lambda ()
       (build-world!)
+      (when *outdir* (fluid-set! 'COMPILER-OUTPUT-DIRECTORY *outdir*))
       (for-each
        (lambda (job)
 	 (cond ((eq? (car job) 'noisy)

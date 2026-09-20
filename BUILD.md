@@ -241,7 +241,9 @@ installed:
 	make OAKLISP=/usr/bin/oaklisp OLD_WORLD=/usr/lib/oaklisp/oakworld.bin
 
 The old system compiles everything with --target bc2-32 and links the
-cold world for it, and the new 32-bit emulator boots it.
+cold world for it, and the new 32-bit emulator boots it.  (The old
+system must understand --outdir; an older one is refused, and
+prebuilt bytecode or Guile will do instead.)
 
 Building for another byte order requires a cross compiler and a way
 to run the resulting emulator, e.g. qemu-user with binfmt support:

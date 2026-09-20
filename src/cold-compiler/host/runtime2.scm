@@ -276,15 +276,9 @@
 	(unless (hstream-at-line-start hs) (oak-write-char stream #\newline))
 	(oak-call (global-ref 'FRESHLINE) stream))))
 
-;;; Output file redirection: files whose names end in these suffixes
-;;; are written under *OUTDIR* when it is set.
+;;; Where the objects go (--outdir); handed to the world's own
+;;; compiler as its COMPILER-OUTPUT-DIRECTORY fluid once it is loaded.
 (define *outdir* #f)
-
-(define (redirect-path name)
-  (if (and *outdir*
-	   (or (string-suffix? ".oa" name) (string-suffix? ".oa-tmp" name)))
-      (string-append *outdir* "/" (basename name))
-      name))
 
 (define (install-stream-natives!)
   (set! *stream-type* (make-type '() '()))
@@ -365,19 +359,18 @@
 		  (nlambda (name)
 		    (make-stream-obj *file-input-stream-type* (open-input-file name) #f)))
   (define (open-out name append?)
-    (let ((name (redirect-path name)))
-      (make-stream-obj *file-output-stream-type*
-		       (if append?
-			   (open-file name "a")
-			   (open-output-file name))
-		       #f)))
+    (make-stream-obj *file-output-stream-type*
+		     (if append?
+			 (open-file name "a")
+			 (open-output-file name))
+		     #f))
   (native-locked! 'OPEN-OUTPUT-FILE *operation* (nlambda (name) (open-out name #f)))
   (native-locked! 'OPEN-OUTPUT-FILE-UGLY *operation* (nlambda (name) (open-out name #f)))
   (native-locked! 'OPEN-OUTPUT-FILE-APPEND *operation* (nlambda (name) (open-out name #t)))
   (native-locked! 'OPEN-OUTPUT-FILE-APPEND-UGLY *operation* (nlambda (name) (open-out name #t)))
   (native-locked! 'RENAME-FILE *operation*
 		  (nlambda (old new)
-		    (rename-file (redirect-path old) (redirect-path new))
+		    (rename-file old new)
 		    #t))
   (native-locked! 'READ-UNTIL *operation*
 		  (nlambda (closer dot? stream)

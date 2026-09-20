@@ -41,11 +41,14 @@ them relative to \emph{locale}, which defaults to the value of
 The file compiler can be used to create an assembly language file that
 has the same effect as an Oaklisp source file.
 
-\op{compile-file}{locale file-name}
+\op{compile-file}{locale file-name $[$output-name$]$}
 \doc{Compiles the file \emph{file-name} relative to \emph{locale},
 which defaults to the value of \dffl{current-locale}.  A file must be
 compiled and loaded relative to the same locale in order to guarantee
-that the program's semantics are preserved.
+that the program's semantics are preserved.  The object is written to
+\emph{output-name} if given, otherwise into the directory
+\dffl{compiler-output-directory} if that is set, otherwise beside the
+source.
 
 Oaklisp source files have a default extension of \df{.oak} while
 compiled files are given the extension \df{.oa}.  \df{compile-file}

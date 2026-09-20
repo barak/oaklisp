@@ -31,6 +31,10 @@ Oaklisp level options.
 
         --compile file     Compile file.oak yielding file.oa
 
+        --outdir dir       Write the objects of subsequent --compile
+                           switches to directory dir rather than
+                           beside their sources.
+
         --target arch      Compile subsequent files for architecture
                            arch, eg bc2-32 or bc2-64.  Default is that
                            of the running system, ~A.
@@ -63,6 +67,9 @@ Example:
 		      (compile-file #*current-locale
 				    x))
 		    (format #t "...done.~%")))
+
+    ("outdir" 1 ,(lambda (x)
+		   (set! #*compiler-output-directory x)))
 
     ("target" 1 ,(lambda (x)
 		   (set! #*target-architecture (parse-architecture-name x))))

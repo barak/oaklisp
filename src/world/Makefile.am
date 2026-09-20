@@ -123,6 +123,8 @@ OAK_COLD_LINK_none = guile
 
 build-from-old-world:
 	@test -f "$(OLD_WORLD)" || { echo "build-from-old-world: no $(OLD_WORLD)"; exit 1; }
+	@$(OAK) --world $(OLD_WORLD) -- --outdir . --exit > /dev/null 2>&1 \
+	  || { echo "build-from-old-world: $(OLD_WORLD) is too old to build with (it lacks --outdir); use a newer world, prebuilt bytecode or Guile"; exit 1; }
 	$(MAKE) $(AM_MAKEFLAGS) OAK_COMPILE=world OAK_COLD_LINK=world $(ALLOAFILES) oakworld.bin
 
 build-from-bytecode:
@@ -165,9 +167,8 @@ GUILESRCS = $(COLDFILESNONGEN:.oa=) ./system-version $(MISCFILES:.oa=)	\
 OA_PREREQ = $(OA_PREREQ_$(OAK_COMPILE))
 OA_COMPILE = $(OA_COMPILE_$(OAK_COMPILE))
 
-# With a world.  The compiler reads NAME.oak and writes NAME.oa in the
-# current directory, so in a VPATH build the source is copied here
-# first (keeping its time, so that guile.stamp stays newer).
+# With a world.  The compiler reads NAME.oak wherever it is and, told
+# --outdir, writes NAME.oa here.
 #
 # The bootstrap world may be older than the sources: its assembler may
 # not know an instruction or register the sources use, and a call to
@@ -182,9 +183,9 @@ OAKPRELOAD = --locale compiler-locale --load assembler --locale system-locale
 OAKEXTRALOAD =
 
 OA_PREREQ_world = assembler.oa
-OA_COMPILE_world = cmp -s $< $(@:.oa=.oak) || cp -p $< $(@:.oa=.oak); \
-	$(OAK) $(OAKFLAGS) --world $(OLD_WORLD) -- $(OAKPRELOAD) $(OAKEXTRALOAD) \
-	   $(OAKLOCALE) --target $(OAK_BYTECODE_ARCH) --compile $(@:.oa=) --exit
+OA_COMPILE_world = $(OAK) $(OAKFLAGS) --world $(OLD_WORLD) -- \
+	   $(OAKPRELOAD) $(OAKEXTRALOAD) $(OAKLOCALE) \
+	   --target $(OAK_BYTECODE_ARCH) --outdir . --compile $(<:.oak=) --exit
 
 # From prebuilt bytecode: no running Oaklisp.  That includes
 # system-version.oa, so the world reports the version the bytecode
@@ -316,17 +317,19 @@ clean-world:
 
 ##### Compiling everything with a finished world
 
-# Compile the sources $$files (base names, in the current directory)
-# with the emulator just built running the world $$world, for --target
-# $$target, each in its own locale, logging each to NAME.log.  This is
-# how the fixpoint check and the prebuilt refresh compile; a finished
-# world needs none of the preloading above.
+# Compile the sources $$files (base names; found in $(srcdir), except
+# system-version.oak which configure writes here) into the current
+# directory with the emulator just built running the world $$world,
+# for --target $$target, each in its own locale, logging each to
+# NAME.log.  This is how the fixpoint check and the prebuilt refresh
+# compile; a finished world needs none of the preloading above.
 COMPILE_ALL = for f in $$files; do \
 	  loc=""; \
 	  case " $(COMPFILES:.oa=) " in *" $$f "*) loc="--locale compiler-locale";; esac; \
 	  case " $(RNRSFILES:.oa=) " in *" $$f "*) loc="--locale scheme-locale";; esac; \
+	  case $$f in system-version) src=$(abs_builddir)/$$f;; *) src=$(abs_srcdir)/$$f;; esac; \
 	  $(OAKBOOT) $(OAKFLAGS) --world $$world \
-	    -- $$loc --target $$target --compile $$f --exit > $$f.log 2>&1 \
+	    -- $$loc --target $$target --outdir . --compile $$src --exit > $$f.log 2>&1 \
 	    || { echo "compile failed: $$f (see `pwd`/$$f.log)"; exit 1; }; \
 	done
 
@@ -342,8 +345,6 @@ prebuilt: prebuilt-bytecode prebuilt-world
 prebuilt-bytecode: oakworld.bin
 	rm -rf prebuilt-tmp
 	$(MKDIR_P) prebuilt-tmp $(PREBUILT_DIR)/src/world/bc2-32
-	cd $(srcdir) && cp $(ALLOAFILESNONGEN:.oa=.oak) $(abs_builddir)/prebuilt-tmp/
-	cp system-version.oak prebuilt-tmp/
 	cd prebuilt-tmp && files='$(ALLOAFILES:.oa=)' \
 	  world=$(abs_builddir)/oakworld.bin target=bc2-32 && $(COMPILE_ALL)
 	mv prebuilt-tmp/*.oa $(PREBUILT_DIR)/src/world/bc2-32/
@@ -378,8 +379,6 @@ Makefile-vars:
 # objects may have been compiled for another word size.
 check-fixpoint: oakworld.bin $(ALLOAFILES)
 	@rm -rf fixpoint-check && $(MKDIR_P) fixpoint-check
-	@cd $(srcdir) && cp $(ALLOAFILESNONGEN:.oa=.oak) $(abs_builddir)/fixpoint-check/
-	@cp system-version.oak fixpoint-check/
 	@cd fixpoint-check && files='$(ALLOAFILES:.oa=)' \
 	  world=$(abs_builddir)/oakworld.bin target=$(OAK_BYTECODE_ARCH) && $(COMPILE_ALL)
 	@rc=0; cd fixpoint-check && for f in $(ALLOAFILES); do \
@@ -444,11 +443,9 @@ CLEANFILES = guile.stamp
 clean-local: clean-world
 	rm -rf prebuilt-tmp fixpoint-check guile-check
 
-# Remove the .oak sources copied into a VPATH build directory, and
-# the world saved by rebuild-world (kept by "make clean" so that
-# build-from-old-world can be repeated).
+# Remove the world saved by rebuild-world (kept by "make clean" so
+# that build-from-old-world can be repeated).
 distclean-local:
-	if test "$(srcdir)" != .; then rm -f $(ALLOAFILESNONGEN:.oa=.oak); fi
 	rm -f old-oakworld.bin
 
 EXTRA_DIST = $(ALLOAFILESNONGEN:.oa=.oak) $(GRAVY)
