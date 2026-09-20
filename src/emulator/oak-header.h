@@ -38,7 +38,8 @@
  * for worlds (e.g. bc2-el64).
  *
  * This is a header-only implementation so that oak-cold-linker.c
- * remains buildable as a single translation unit.
+ * (the optional C reimplementation of the cold linker) remains
+ * buildable as a single translation unit.
  */
 
 #ifndef _OAK_HEADER_H_INCLUDED

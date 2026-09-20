@@ -6,3 +6,4 @@ prebuilt-tmp/
 guile.stamp
 fixpoint-check/
 guile-check/
+guile-cache/

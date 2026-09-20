@@ -137,6 +137,12 @@ Load a file.
 Compile file.oak yielding file.oa
 
 .TP
+.B \-\-outdir dir
+Write the objects of subsequent
+.B \-\-compile
+switches to directory dir rather than beside their sources.
+
+.TP
 .B \-\-target arch
 Compile subsequent files for architecture arch, e.g. bc2-32 or
 bc2-64, rather than for the running system.  Bytecode architectures

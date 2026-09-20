@@ -206,7 +206,7 @@
   (let ((system-locale (global-ref 'SYSTEM-LOCALE)))
     (migrate-proto-locale! system-locale)
     (set! *locales-ready* #t)
-    (fluid-set! 'CURRENT-LOCALE system-locale)))
+    (oak-fluid-set! 'CURRENT-LOCALE system-locale)))
 
 (define (system-locale) (global-ref 'SYSTEM-LOCALE))
 (define (compiler-locale) (global-ref 'COMPILER-LOCALE))
@@ -247,7 +247,7 @@
   (install-all-natives!)
   (for-each (lambda (f) (load-world-file f *proto-locale*)) pre-files)
   (install-host-fluids!)
-  (fluid-set! 'CURRENT-LOCALE *proto-locale*)
+  (oak-fluid-set! 'CURRENT-LOCALE *proto-locale*)
   (for-each (lambda (f) (load-world-file f *proto-locale*)) macro-files)
   (for-each
    (lambda (entry)
@@ -267,25 +267,25 @@
    cold-plan)
   (for-each (lambda (f) (load-world-file f (system-locale))) misc-files)
   ;; The compiler goes into COMPILER-LOCALE.
-  (fluid-set! 'CURRENT-LOCALE (compiler-locale))
+  (oak-fluid-set! 'CURRENT-LOCALE (compiler-locale))
   (for-each (lambda (f) (load-world-file f (compiler-locale))) compiler-files)
-  (fluid-set! 'CURRENT-LOCALE (system-locale))
+  (oak-fluid-set! 'CURRENT-LOCALE (system-locale))
   ;; SCHEME-LOCALE, made in the last stage of the world build, with
   ;; the Scheme compatibility files loaded so that they compile the
   ;; way they do natively (the macros give dotted argument lists their
   ;; R3RS meaning).
   (oak-eval '(DEFINE-INSTANCE SCHEME-LOCALE LOCALE (LIST SYSTEM-LOCALE))
 	    (system-locale))
-  (fluid-set! 'CURRENT-LOCALE (global-ref 'SCHEME-LOCALE))
+  (oak-fluid-set! 'CURRENT-LOCALE (global-ref 'SCHEME-LOCALE))
   (for-each (lambda (f) (load-world-file f (global-ref 'SCHEME-LOCALE)))
 	    scheme-macro-files)
-  (fluid-set! 'CURRENT-LOCALE (system-locale))
+  (oak-fluid-set! 'CURRENT-LOCALE (system-locale))
   #t)
 
 ;;; Compile SRCDIR/NAME.oak (or NAME.oak when NAME has a slash in it),
 ;;; writing NAME.oa under *OUTDIR*.
 (define (compile-world-file name locale)
-  (with-fluids* (list (cons 'CURRENT-LOCALE locale))
+  (with-oak-fluids* (list (cons 'CURRENT-LOCALE locale))
     (lambda ()
       (oak-call (global-ref 'COMPILE-FILE) locale
 		(if (string-index name #\/)

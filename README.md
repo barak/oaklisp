@@ -8,11 +8,11 @@ Below is the normal README for Oaklisp.  I cloned it and, with the help of Claud
 6. Added the ability to load a world at runtime (see Dump.md)
 7. Added full support for native threads (green threads were already supported)
 8. Added a concurrent GC
-9. Optional bootstrap from source alone.  By default the build still uses the
-    precompiled .oa files in prebuilt/, as before.  With
-    `./configure --enable-bootstrap` (requires Guile 3) the world's objects are
-    instead compiled from the .oak sources by a Guile-hosted copy of the real
-    Oaklisp compiler, so no prebuilt .oa files are needed (see BUILD.md)
+9. Optional bootstrap from source alone.  With Guile 3 the world's objects
+    are compiled from the .oak sources by a Guile-hosted copy of the real
+    Oaklisp compiler, so no prebuilt .oa files are needed; make does this
+    (`make build-from-guile`) whenever there is no world or prebuilt bytecode
+    (see BUILD.md)
 
 This repo is located at:  https://github.com/blakemcbride/oaklisp
 

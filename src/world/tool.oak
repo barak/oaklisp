@@ -329,9 +329,10 @@
 ;;; SYM-LIST records the symbols in the order they are first seen, the
 ;;; way VAR-LIST does for variables.  Everything that lays symbols out
 ;;; below walks that rather than the hash table, so the addresses do not
-;;; depend on the hash function -- which is what made oak-cold-linker,
-;;; whose hash function is a different one, build a world equivalent to
-;;; this one but not identical to it.
+;;; depend on the hash function -- which is what used to make
+;;; oak-cold-linker, the C reimplementation, whose hash function is a
+;;; different one, build a world equivalent to this one but not
+;;; identical to it.
 
 (define (count-symbol v)
   (set! dat-count (+ (string-size (#^string v)) dat-count))

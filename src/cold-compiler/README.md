@@ -2,10 +2,12 @@ Bootstrapping Oaklisp from source
 =================================
 
 `oak-bootstrap.scm` compiles Oaklisp `.oak` sources to `.oa` objects
-without a running Oaklisp.  It is what `./configure --enable-bootstrap`
-uses, and what `make check-bootstrap` in `src/world` runs.  Neither is
-part of a default build, which uses the precompiled objects in
-`prebuilt/src/world/` and needs no Guile.
+without a running Oaklisp.  It is what `make build-from-guile` in
+`src/world` uses (and what plain `make` picks when it finds neither an
+old world nor prebuilt bytecode, as on the `devel` branch and in
+release tarballs), and what `make check-guile-compile` there runs.
+With `OAK_COLD_LINK=guile` it also runs `tool.oak` to link the cold
+world.  A build from `prebuilt/` or an existing world needs no Guile.
 
     guile3.0 --no-auto-compile oak-bootstrap.scm --srcdir ../world --outdir OUT \
         --noisy 0 cold-booting kernel0 ... --locale compiler-locale crunch ...
@@ -22,7 +24,7 @@ from scratch could only be checked by booting its output and seeing
 what breaks.  Instead, this hosts enough of Oaklisp in Guile to load
 the world's own macros and compiler from `src/world/*.oak` and run
 them.  The objects it writes are then byte for byte those a native
-Oaklisp writes, and `make check-bootstrap` holds it to that.
+Oaklisp writes, and `make check-guile-compile` holds it to that.
 
 What is native and what is loaded
 ---------------------------------
@@ -67,10 +69,11 @@ methods; `oak-call` interprets their byte code list (`load-slot`,
 Checking it
 -----------
 
-    cd src/world && make check-bootstrap
+    cd src/world && make check-guile-compile
 
-compiles every shipped source into `bootstrap-check/` and compares
-with `prebuilt/src/world/`.  To poke at the hosted world:
+compiles every shipped source into `guile-check/` and compares with
+the objects the world just built produced.  To poke at the hosted
+world:
 
     guile3.0 --no-auto-compile oak-bootstrap.scm --srcdir ../world \
         --eval '(cc (quote (define (f x) (car x))))'

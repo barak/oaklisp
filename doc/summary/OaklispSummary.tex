@@ -1,4 +1,7 @@
 \documentclass[12pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{bookman}
+\renewcommand{\ttdefault}{lmtt}
 \usepackage[letterpaper,margin=.75in]{geometry}
 \usepackage{alltt}
 \addtolength{\parskip}{\baselineskip}  % causes a blank line between paragraphs
@@ -9,12 +12,12 @@
 \renewcommand{\headrulewidth}{0in}
 \rfoot{\small Page \thepage\ of \pageref{lastpage}}
 \cfoot{}
-\lfoot{\small rev. 12/26/14}
+\lfoot{\small rev. 09/17/26}
 
 \begin{document}
 
 \centerline{\Huge Oaklisp Summary}
-\centerline{Blake McBride (blake@mcbride.name)}
+\centerline{Blake McBride (blake@mcbridemail.com)}
 
 \medskip
 
@@ -111,6 +114,17 @@ type & root of all types & type \\
      & root of all objects & object \\
 \hline
 \end{tabular}}
+
+{\large \bfseries Saving and loading worlds at runtime:}
+\smallskip
+\begin{verbatim}
+    (dump-world "snapshot.bin")  ; save current world, keep running
+    (load-world "snapshot.bin")  ; replace running world (never returns)
+\end{verbatim}
+
+The running system can save its entire state with \emph{dump-world} and
+replace itself with a saved world using \emph{load-world}, which never
+returns.  The files are ordinary world images usable with \emph{--world}.
 
 \newpage
 
@@ -436,6 +450,15 @@ Function & Description \\\hline
 
     (gensym \symbol{13}tmp)
 \end{alltt}
+
+Oaklisp macros are procedural and unhygienic, more like Common Lisp
+macros than Scheme's \emph{syntax-rules}.  \emph{define-syntax} takes
+an ordinary expander function that receives a whole form and returns a
+replacement form; the arguments are destructured like a lambda list and
+the result is built with backquote/comma.  Because expansion is
+unhygienic, a macro that introduces variables must avoid capture
+itself, normally with \emph{gensym}.  Use \emph{local-syntax} for a
+macro needed only while compiling the file in which it is defined.
 
 {\Large \bfseries Named let}
 

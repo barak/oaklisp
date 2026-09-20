@@ -23,9 +23,32 @@ pdf_DATA = $(LATEX_PDFS)
 
 EXTRA_DIST = $(LATEX_SRCS)
 
+# Each document also builds by hand in its own directory (cd lang;
+# pdflatex lang; bibtex lang; ...), which the rules here preserve:
+# latexmk runs in the source's directory (-cd), where the chapters,
+# ../mandefs.tex and ../oakman.bib are, and writes everything to the
+# corresponding directory here (-outdir), so an out-of-tree build
+# leaves the source tree alone.  bibtex runs in the output directory,
+# so ../oakman.bib has to be here too; and the EPS figures are
+# converted here beforehand, rather than beside their sources by the
+# epstopdf package (TeX looks in the output directory first).
 .tex.pdf:
-	$(LATEXMK) -cd -pdf $< \
+	$(MKDIR_P) `dirname $@`
+	$(LATEXMK) -cd -pdf -outdir=$(abs_builddir)/`dirname $@` $< \
 	 || cp $(top_srcdir)/prebuilt/doc/$@ $@
+
+# The bibliography, here, for bibtex; one target so that a parallel
+# make copies it once.
+$(LATEX_PDFS): bibliography
+bibliography:
+	test -f oakman.bib || cp $(srcdir)/oakman.bib oakman.bib
+.PHONY: bibliography
+
+FIGURES = lang/numhier.pdf lang/seqhier.pdf
+lang/lang.pdf: $(FIGURES)
+.eps.pdf:
+	$(MKDIR_P) `dirname $@`
+	$(EPSTOPDF) --outfile=$@ $<
 
 # Refresh the prebuilt copies.
 prebuilt: $(LATEX_PDFS)
@@ -47,7 +70,11 @@ EXTRA_DIST += examples/bank-example.oak examples/change.oak		\
  lim/methods.tex lim/oaklevel.tex lim/stack.tex mandefs.tex		\
  oakman.bib
 
-CLEANFILES = $(LATEX_PDFS)
+CLEANFILES = $(LATEX_PDFS) $(FIGURES)
+
+# Only an out-of-tree build has a copy of the bibliography here.
+distclean-local:
+	if test "$(srcdir)" != .; then rm -f oakman.bib; fi
 
 CLEANFILES += lang/control.aux lang/cover.aux lang/dynamic.aux		\
  lang/intro.aux lang/io.aux lang/lang.aux lang/lang.bbl lang/lang.blg	\

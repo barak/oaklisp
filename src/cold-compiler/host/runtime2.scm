@@ -276,15 +276,9 @@
 	(unless (hstream-at-line-start hs) (oak-write-char stream #\newline))
 	(oak-call (global-ref 'FRESHLINE) stream))))
 
-;;; Output file redirection: files whose names end in these suffixes
-;;; are written under *OUTDIR* when it is set.
+;;; Where the objects go (--outdir); handed to the world's own
+;;; compiler as its COMPILER-OUTPUT-DIRECTORY fluid once it is loaded.
 (define *outdir* #f)
-
-(define (redirect-path name)
-  (if (and *outdir*
-	   (or (string-suffix? ".oa" name) (string-suffix? ".oa-tmp" name)))
-      (string-append *outdir* "/" (basename name))
-      name))
 
 (define (install-stream-natives!)
   (set! *stream-type* (make-type '() '()))
@@ -365,19 +359,18 @@
 		  (nlambda (name)
 		    (make-stream-obj *file-input-stream-type* (open-input-file name) #f)))
   (define (open-out name append?)
-    (let ((name (redirect-path name)))
-      (make-stream-obj *file-output-stream-type*
-		       (if append?
-			   (open-file name "a")
-			   (open-output-file name))
-		       #f)))
+    (make-stream-obj *file-output-stream-type*
+		     (if append?
+			 (open-file name "a")
+			 (open-output-file name))
+		     #f))
   (native-locked! 'OPEN-OUTPUT-FILE *operation* (nlambda (name) (open-out name #f)))
   (native-locked! 'OPEN-OUTPUT-FILE-UGLY *operation* (nlambda (name) (open-out name #f)))
   (native-locked! 'OPEN-OUTPUT-FILE-APPEND *operation* (nlambda (name) (open-out name #t)))
   (native-locked! 'OPEN-OUTPUT-FILE-APPEND-UGLY *operation* (nlambda (name) (open-out name #t)))
   (native-locked! 'RENAME-FILE *operation*
 		  (nlambda (old new)
-		    (rename-file (redirect-path old) (redirect-path new))
+		    (rename-file old new)
 		    #t))
   (native-locked! 'READ-UNTIL *operation*
 		  (nlambda (closer dot? stream)
@@ -445,7 +438,7 @@
 				     (oak-host-error "FORMAT: no argument for ~~~A in ~S" dir control)))
 				 (define (printed arg escape? radix)
 				   (let ((s (make-stream-obj *string-output-stream-type* (open-output-string) #t)))
-				     (with-fluids* (list (cons 'PRINT-ESCAPE escape?) (cons 'PRINT-RADIX radix))
+				     (with-oak-fluids* (list (cons 'PRINT-ESCAPE escape?) (cons 'PRINT-RADIX radix))
 						   (lambda () (oak-print arg s)))
 				     (get-output-string (hstream-port (hstream-of s)))))
 				 (case dir
@@ -494,7 +487,7 @@
   (oak-call (global-ref 'PRINT) obj stream))
 
 (define (print-string s stream)
-  (if (oak-true? (fluid-ref 'PRINT-ESCAPE))
+  (if (oak-true? (oak-fluid-ref 'PRINT-ESCAPE))
       (begin
 	(oak-write-char stream #\")
 	(string-for-each (lambda (c)
@@ -507,9 +500,9 @@
 
 (define (print-symbol s stream)
   (let ((name (symbol->string s)))
-    (cond ((and (oak-true? (fluid-ref 'PRINT-ESCAPE))
+    (cond ((and (oak-true? (oak-fluid-ref 'PRINT-ESCAPE))
 		(symbol-requires-slashification? name))
-	   (cond ((eq? (fluid-ref 'SYMBOL-SLASHIFICATION-STYLE) 'T-COMPATIBLE)
+	   (cond ((eq? (oak-fluid-ref 'SYMBOL-SLASHIFICATION-STYLE) 'T-COMPATIBLE)
 		  (if (string=? name "")
 		      (oak-write-string stream "#[symbol \"\"]")
 		      (string-for-each (lambda (c)
@@ -527,7 +520,7 @@
 	  (else (oak-write-string stream name)))))
 
 (define (print-char c stream)
-  (cond ((oak-true? (fluid-ref 'PRINT-ESCAPE))
+  (cond ((oak-true? (oak-fluid-ref 'PRINT-ESCAPE))
 	 (oak-write-char stream #\#)
 	 (oak-write-char stream #\\)
 	 (let ((n (char->integer c)))
@@ -537,7 +530,7 @@
 	(else (oak-write-char stream c))))
 
 (define (print-number n stream)
-  (let ((radix (fluid-ref 'PRINT-RADIX)))
+  (let ((radix (oak-fluid-ref 'PRINT-RADIX)))
     (oak-write-string stream (string-upcase (number->string n (if (integer? radix) radix 10))))))
 
 ;;; Quotelike prefixes the printer abbreviates (reader-macros.oak).
@@ -550,10 +543,10 @@
 (define *print-length-limit* 1000000)
 
 (define (print-list l stream)
-  (let ((level (fluid-ref 'PRINT-LEVEL)))
+  (let ((level (oak-fluid-ref 'PRINT-LEVEL)))
     (if (and (integer? level) (<= level 0))
 	(oak-write-char stream #\#)
-	(with-fluids* (list (cons 'PRINT-LEVEL (if (integer? level) (- level 1) '())))
+	(with-oak-fluids* (list (cons 'PRINT-LEVEL (if (integer? level) (- level 1) '())))
 	  (lambda ()
 	    (let ((the-car (car l)))
 	      (cond ((and (symbol? the-car) (quotelike-prefix the-car)
@@ -568,7 +561,7 @@
 		     (oak-print (cadr l) stream))
 		    (else
 		     (oak-write-char stream #\()
-		     (let loop ((l l) (delimiter? #t) (len (fluid-ref 'PRINT-LENGTH))
+		     (let loop ((l l) (delimiter? #t) (len (oak-fluid-ref 'PRINT-LENGTH))
 				(budget *print-length-limit*))
 		       (cond ((null? l) (oak-write-char stream #\)))
 			     ((not (pair? l))
@@ -587,14 +580,14 @@
 					   (- budget 1)))))))))))))))
 
 (define (print-vector v stream)
-  (let ((level (fluid-ref 'PRINT-LEVEL)))
+  (let ((level (oak-fluid-ref 'PRINT-LEVEL)))
     (if (and (integer? level) (= level 0))
 	(oak-write-char stream #\#)
 	(begin
 	  (oak-write-string stream "#(")
-	  (with-fluids* (list (cons 'PRINT-LEVEL (if (integer? level) (- level 1) '())))
+	  (with-oak-fluids* (list (cons 'PRINT-LEVEL (if (integer? level) (- level 1) '())))
 	    (lambda ()
-	      (let ((n (vector-length v)) (len (fluid-ref 'PRINT-LENGTH)))
+	      (let ((n (vector-length v)) (len (oak-fluid-ref 'PRINT-LENGTH)))
 		(let loop ((i 0) (len len))
 		  (cond ((and (integer? len) (= len 0)) (oak-write-string stream "..."))
 			((< i n)
