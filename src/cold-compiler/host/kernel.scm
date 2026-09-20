@@ -553,54 +553,66 @@
 ;;;==========================================================================
 ;;; Fluids
 ;;;==========================================================================
-;;; The binding list lives in the global FLUID-BINDING-LIST once
-;;; fluid.oak is loaded; until then in a host variable.  These are the
-;;; hooks the world's own code goes through.
+;;; Oaklisp's fluid variables are an alist, and the current one is
+;;; found the way fluid.oak finds it: through the current process.
+;;; When that is 0 -- the only case so far, as the host runs one
+;;; thread -- it is the global FLUID-BINDING-LIST once fluid.oak is
+;;; loaded, and a host variable before then; otherwise it is the
+;;; process object's own list, (FLUID-BINDINGS process).  The current
+;;; process is a Guile thread-local, which is what %LOAD-PROCESS
+;;; answers, so a thread with a process object of its own would get its
+;;; own fluids, as it does on the emulator.  These are the hooks the
+;;; host's own code, and the world's before fluid.oak, go through.
+
+(define *oak-current-process* (make-thread-local-fluid 0))
+(define (oak-current-process) (fluid-ref *oak-current-process*))
 
 (define *fluid-binding-list-cell* #f)   ; set once the global exists
 (define *host-fluid-bindings* (list (cons '() '())))
 
-(define (fluid-bindings)
-  (if *fluid-binding-list-cell*
-      (variable-ref *fluid-binding-list-cell*)
-      *host-fluid-bindings*))
+(define (oak-fluid-bindings)
+  (let ((p (oak-current-process)))
+    (cond ((not (eqv? p 0)) (oak-call (global-ref 'FLUID-BINDINGS) p))
+	  (*fluid-binding-list-cell* (variable-ref *fluid-binding-list-cell*))
+	  (else *host-fluid-bindings*))))
 
-(define (set-fluid-bindings! l)
-  (if *fluid-binding-list-cell*
-      (variable-set! *fluid-binding-list-cell* l)
-      (set! *host-fluid-bindings* l)))
+(define (set-oak-fluid-bindings! l)
+  (let ((p (oak-current-process)))
+    (cond ((not (eqv? p 0)) (oak-call (op-setter (global-ref 'FLUID-BINDINGS)) p l))
+	  (*fluid-binding-list-cell* (variable-set! *fluid-binding-list-cell* l))
+	  (else (set! *host-fluid-bindings* l)))))
 
-(define (fluid-ref sym)
-  (let ((p (assq sym (fluid-bindings))))
+(define (oak-fluid-ref sym)
+  (let ((p (assq sym (oak-fluid-bindings))))
     (if p (cdr p)
 	(oak-host-error "(FLUID ~A) not found." sym))))
 
-(define (fluid-bound? sym)
-  (and (assq sym (fluid-bindings)) #t))
+(define (oak-fluid-bound? sym)
+  (and (assq sym (oak-fluid-bindings)) #t))
 
-(define (fluid-set! sym val)
-  (let ((p (assq sym (fluid-bindings))))
+(define (oak-fluid-set! sym val)
+  (let ((p (assq sym (oak-fluid-bindings))))
     (if p
 	(set-cdr! p val)
 	;; Add after the head of the top level list so every dynamic
 	;; extent sees it, as ADD-TO-CURRENT-FLUID-BINDINGS does.
-	(let ((top (let loop ((l (fluid-bindings)))
+	(let ((top (let loop ((l (oak-fluid-bindings)))
 		     (if (null? (cdr l)) l (loop (cdr l))))))
 	  (set-cdr! top (cons (cons sym val) (cdr top)))))
     val))
 
-;;; Host side dynamic binding of fluids.
-(define (with-fluids* bindings thunk)
-  (let* ((old (fluid-bindings))
+;;; Host side dynamic binding of Oaklisp fluids.
+(define (with-oak-fluids* bindings thunk)
+  (let* ((old (oak-fluid-bindings))
 	 (new (append bindings old)))
     (dynamic-wind
-      (lambda () (set-fluid-bindings! new))
+      (lambda () (set-oak-fluid-bindings! new))
       thunk
       (lambda ()
 	;; If the world replaced the whole list meanwhile (as
 	;; REVERT-FLUID-BINDING-LIST does) keep its list.
-	(when (eq? (fluid-bindings) new)
-	  (set-fluid-bindings! old))))))
+	(when (eq? (oak-fluid-bindings) new)
+	  (set-oak-fluid-bindings! old))))))
 
 ;;;==========================================================================
 ;;; Catch and throw
@@ -624,20 +636,20 @@
   (let ((tag *pending-catch-tag*))
     (set! *pending-catch-tag* #f)
     (unless tag (oak-host-error "%FILLTAG without a pending %CATCH"))
-    (set-oak-obj-aux! escape-object (cons tag (fluid-bindings)))
+    (set-oak-obj-aux! escape-object (cons tag (oak-fluid-bindings)))
     ;; What NATIVE-CATCH stores after the filltag; done here so the
     ;; bootstrap NATIVE-CATCH agrees with the real one.
     (let ((v (oak-obj-v escape-object)))
       (when (> (vector-length v) 4)
 	(vector-set! v 3 (if *wind-count-cell* (variable-ref *wind-count-cell*) 0))
-	(vector-set! v 4 (fluid-bindings))))
+	(vector-set! v 4 (oak-fluid-bindings))))
     escape-object))
 
 (define (oak-throw escape-object value)
   (let ((info (and (oak-obj? escape-object) (oak-obj-aux escape-object))))
     (unless (and (pair? info) (symbol? (car info)))
       (oak-host-error "%THROW to a non-escape-object ~S" (oak-describe escape-object)))
-    (set-fluid-bindings! (cdr info))
+    (set-oak-fluid-bindings! (cdr info))
     (throw (car info) value)))
 
 ;;;==========================================================================

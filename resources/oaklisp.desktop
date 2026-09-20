@@ -4,6 +4,7 @@ Name=Oaklisp
 GenericName=Lisp Interpreter
 Comment=Object-oriented dialect of Scheme
 Exec=oaklisp
+Icon=oaklisp
 Terminal=true
 Categories=Development;
 Keywords=lisp;scheme;oaklisp;

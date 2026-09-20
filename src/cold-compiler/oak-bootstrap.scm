@@ -114,10 +114,11 @@
      (with-throw-handler #t
       (lambda ()
       (build-world!)
+      (when *outdir* (oak-fluid-set! 'COMPILER-OUTPUT-DIRECTORY *outdir*))
       (for-each
        (lambda (job)
 	 (cond ((eq? (car job) 'noisy)
-		(fluid-set! 'COMPILER-NOISINESS (cdr job)))
+		(oak-fluid-set! 'COMPILER-NOISINESS (cdr job)))
 	       ((eq? (car job) 'load)
 		(let ((locale (global-ref (caddr job))))
 		  (format (current-error-port) ";; loading ~A~%" (cadr job))
@@ -130,7 +131,7 @@
 	       ((eq? (car job) 'eval)
 		(let ((form (oak-read (open-input-string (cadr job))))
 		      (locale (global-ref (caddr job))))
-		  (let ((v (with-fluids* (list (cons 'CURRENT-LOCALE locale))
+		  (let ((v (with-oak-fluids* (list (cons 'CURRENT-LOCALE locale))
 					 (lambda () (oak-eval form locale)))))
 		    (oak-print v (global-ref 'STANDARD-OUTPUT))
 		    (newline))))

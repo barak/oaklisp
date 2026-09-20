@@ -436,7 +436,7 @@
 		  (nlambda (c) (write-char c (current-error-port)) c))
   (native-locked! '%READ-CHAR *operation* (nlambda () '()))
   (native-locked! '%BIG-ENDIAN? *operation* (nlambda () '()))
-  (native-locked! '%LOAD-PROCESS *operation* (nlambda () 0))
+  (native-locked! '%LOAD-PROCESS *operation* (nlambda () (oak-current-process)))
   (native-locked! 'ACQUIRE-MUTEX *operation* (nlambda (m) m))
   (native-locked! 'RELEASE-MUTEX *operation* (nlambda (m) m))
   (native-locked! 'GET-TIME *operation*
@@ -583,14 +583,14 @@
 ;;;==========================================================================
 
 (define (install-fluid-natives!)
-  (native-fn! 'GET-CURRENT-FLUID-BINDINGS (nlambda () (fluid-bindings)))
-  (native-fn! 'SET-CURRENT-FLUID-BINDINGS (nlambda (l) (set-fluid-bindings! l) l))
+  (native-fn! 'GET-CURRENT-FLUID-BINDINGS (nlambda () (oak-fluid-bindings)))
+  (native-fn! 'SET-CURRENT-FLUID-BINDINGS (nlambda (l) (set-oak-fluid-bindings! l) l))
   (let ((op (make-native-op *locatable-operation* #f)))
-    (oak-add-method! op *symbol* (nlambda (sym) (fluid-ref sym)))
-    (oak-add-method! (op-setter op) *symbol* (nlambda (sym val) (fluid-set! sym val)))
+    (oak-add-method! op *symbol* (nlambda (sym) (oak-fluid-ref sym)))
+    (oak-add-method! (op-setter op) *symbol* (nlambda (sym val) (oak-fluid-set! sym val)))
     (oak-add-method! (op-locater op) *symbol*
 		     (nlambda (sym)
-		       (let ((p (assq sym (fluid-bindings))))
+		       (let ((p (assq sym (oak-fluid-bindings))))
 			 (unless p (oak-host-error "Locative to (FLUID ~A) not found." sym))
 			 (make-loc (lambda () (cdr p)) (lambda (x) (set-cdr! p x))))))
     (defglobal! '%FLUID op))
@@ -599,15 +599,15 @@
 ;;; Fluids the skipped files (print-list.oak, symbols.oak, ...) would
 ;;; set; re-run after fluid.oak replaces the binding list.
 (define (install-host-fluids!)
-  (fluid-set! 'PRINT-LEVEL '())
-  (fluid-set! 'PRINT-LENGTH '())
-  (fluid-set! 'PRINT-ESCAPE #t)
-  (fluid-set! 'PRINT-RADIX 10)
-  (fluid-set! 'SYMBOL-SLASHIFICATION-STYLE '())
-  (fluid-set! 'FANCY-REFERENCES '())
-  (fluid-set! 'ERROR-HANDLERS '())
-  (fluid-set! 'DEBUG-LEVEL 0)
-  (fluid-set! 'FEATURES '(OAKLISP SCHEME)))
+  (oak-fluid-set! 'PRINT-LEVEL '())
+  (oak-fluid-set! 'PRINT-LENGTH '())
+  (oak-fluid-set! 'PRINT-ESCAPE #t)
+  (oak-fluid-set! 'PRINT-RADIX 10)
+  (oak-fluid-set! 'SYMBOL-SLASHIFICATION-STYLE '())
+  (oak-fluid-set! 'FANCY-REFERENCES '())
+  (oak-fluid-set! 'ERROR-HANDLERS '())
+  (oak-fluid-set! 'DEBUG-LEVEL 0)
+  (oak-fluid-set! 'FEATURES '(OAKLISP SCHEME)))
 
 ;;;==========================================================================
 ;;; Lists
@@ -1015,7 +1015,7 @@
 ;;; From symbols.oak: which symbols must be escaped when printed.
 (define (symbol-requires-slashification? name)
   (let ((l (string-length name))
-	(base (fluid-ref 'PRINT-RADIX)))
+	(base (oak-fluid-ref 'PRINT-RADIX)))
     (define (digit? c) (and (oak-digit-value c base) #t))
     (define (constituent? c)
       (memq (oak-char-syntax c) '(constituent nonterminating-macro)))
@@ -1088,8 +1088,8 @@
 
 (define (oak-error fmt . args)
   ;; Look for a handler in #*ERROR-HANDLERS; otherwise die.
-  (let ((handlers (if (fluid-bound? 'ERROR-HANDLERS) (fluid-ref 'ERROR-HANDLERS) '()))
-	(general-error (and (fluid-bound? 'CURRENT-LOCALE)
+  (let ((handlers (if (oak-fluid-bound? 'ERROR-HANDLERS) (oak-fluid-ref 'ERROR-HANDLERS) '()))
+	(general-error (and (oak-fluid-bound? 'CURRENT-LOCALE)
 			    (let ((loc (resolve-global (current-locale) 'GENERAL-ERROR)))
 			      (let ((v (loc-contents loc)))
 				(and (oak-obj? v) v))))))

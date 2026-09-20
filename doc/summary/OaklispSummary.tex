@@ -1,4 +1,7 @@
 \documentclass[12pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{bookman}
+\renewcommand{\ttdefault}{lmtt}
 \usepackage[letterpaper,margin=.75in]{geometry}
 \usepackage{alltt}
 \addtolength{\parskip}{\baselineskip}  % causes a blank line between paragraphs
@@ -447,6 +450,15 @@ Function & Description \\\hline
 
     (gensym \symbol{13}tmp)
 \end{alltt}
+
+Oaklisp macros are procedural and unhygienic, more like Common Lisp
+macros than Scheme's \emph{syntax-rules}.  \emph{define-syntax} takes
+an ordinary expander function that receives a whole form and returns a
+replacement form; the arguments are destructured like a lambda list and
+the result is built with backquote/comma.  Because expansion is
+unhygienic, a macro that introduces variables must avoid capture
+itself, normally with \emph{gensym}.  Use \emph{local-syntax} for a
+macro needed only while compiling the file in which it is defined.
 
 {\Large \bfseries Named let}
 

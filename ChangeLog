@@ -1,5 +1,107 @@
+2026-09-20  Barak A. Pearlmutter  <barak+oaklisp@pearlmutter.net>
+
+	Version 2.0.0
+
+	64-bit port, by Blake McBride, with Claude Code
+	* emulator builds natively with 64-bit references and 62-bit fixnums;
+	  --disable-64-bit forces the 32-bit memory model as before
+	* big-endian machines supported for both word sizes; on 64-bit
+	  big-endian the instructions sit in the high half of each code ref
+	* architectures named bc2-32/bc2-64 (bytecode) and bc2-el32, bc2-eb32,
+	  bc2-el64, bc2-eb64 (worlds); .oa, .cold and .bin files carry a
+	  header line naming theirs, and the emulator refuses a mismatched
+	  world; bytecode for 32-bit fixnums is usable on 64-bit systems
+	* --target ARCH compiles bytecode for another word size; the fluid
+	  target-architecture and host-architecture describe them in Oaklisp
+	* world images dumped at runtime (dump-world) and loaded (load-world)
+	* native threads with a concurrent mark-sweep collector
+	  (--enable-threads, experimental and off by default; green threads,
+	  delay/force, futures and mutexes work without it)
+
+	Bootstrapping
+	* a Guile-hosted Oaklisp (src/cold-compiler, by Blake McBride) runs
+	  the world's own compiler and linker on the .oak sources, so the
+	  system builds from source with nothing but Guile 3 and a C
+	  compiler; the objects are byte for byte what a native Oaklisp
+	  produces, and release tarballs carry no prebuilt material
+	* make decides how to bootstrap from what is there (an old world,
+	  prebuilt bytecode, or Guile); "make rebuild-world" rebuilds the
+	  world with itself, and "make bootstrap" does so twice and checks
+	  that the compiler has reached its fixpoint
+	* tool.oak is the cold linker, in a world or under Guile; the C
+	  reimplementation oak-cold-linker is optional (--enable-cold-linker)
+	* --outdir DIR and an optional output name for compile-file, so the
+	  build tree can be separate from the source tree
+
+	Language and runtime
+	* bignums in base 10^9 on 64-bit systems (3.6x faster arithmetic);
+	  shift and bitwise operations accept bignums; ASH traps on overflow
+	  and promotes rather than wrapping
+	* rational quotientm, floor, ceiling and round with bignum
+	  denominators; exact integer-sqrt and sqrt; abs and signum of
+	  complex numbers; gcd and lcm n-ary and non-negative; (factor 0)
+	  and negative arguments to factor handled
+	* equal?, length, copy, reverse and print give up on circular
+	  structure rather than looping; nth, tail and subseq on lists check
+	  their index; sort and sort! work on strings; make-string and
+	  make-vector take a fill; string writers and integer->char keep to
+	  one byte per character
+	* map, for-each and map! on all sequences; sequence?; hash-key
+	  (value-based hashing for bignums, rationals and complex numbers,
+	  so equal-hash-tables find them)
+	* format: mincol and padchar parameters, better directive errors
+	* catch-errors no longer re-enters its own handler on an error while
+	  reporting; the debugger's nesting guard moved to invoke-debugger
+	* promises, futures, mutexes and the scheduler work from a cold
+	  boot; test-and-set-locative traps correctly
+	* oaklisp-locale holds an explicit list of user-level exports
+	  (oaklisp-exports.oak) instead of everything in system-locale
+	* scheme-locale: n-ary <, >, <=, >=, =; number->string,
+	  string->number, rational?, real?, complex?, char-alphabetic? and
+	  friends, char-ready?, with-input-from-file, with-output-to-file,
+	  make-rectangular, magnitude, rationalize, exact->inexact,
+	  inexact->exact; vector? and list? are R3RS disjoint; scheme.oak is
+	  compiled in scheme-locale, where dotted parameter lists have their
+	  R3RS meaning
+	* exit passes the whole 0-255 status range; a failed --compile or
+	  --load gives a nonzero exit status; --pthreads without thread
+	  support warns and continues
+	* many emulator fixes: weak pointer table growth, deep recursion and
+	  throw out of it, stack underflow of a returning thread, argument
+	  checks in %assq, %throw, %varlen-make, the stream primitives,
+	  --size-heap and --size-seg-max bounds, illegal-instruction and
+	  new-space-exhausted checks kept in the fast build
+
+	Documentation, tests and packaging
+	* language and implementation manuals and the summary set in
+	  Bookman; the manuals build in a separate build directory
+	* test suite ("make check": language, compiler, world, consistency
+	  of every bootstrap route) and benchmarks ("make bench")
+	* desktop entry installed; Debian menu file dropped
+	* BUILD.md documents architectures, bootstrapping and rebuilding
+
+2026-01-02  Barak A. Pearlmutter  <barak+oaklisp@pearlmutter.net>
+
+	Version 1.3.8
+	* compile with GCC 15 (C23 bool)
+	* #;EXPR datum comments in the reader
+	* exit on repeated end of file on standard input (Andy Gaynor)
+	* build the manuals with latexmk -cd
+
+2018-07-30  Barak A. Pearlmutter  <barak+oaklisp@pearlmutter.net>
+
+	Version 1.3.7
+	* --batch option disables SIGINT handling, for use from make
+	* emulator compiles in 64-bit mode (./configure --enable-64bit),
+	  first steps towards a 64-bit port: instr_t for instructions,
+	  program counter increments factored out, cold world swap safety
+	* tail recurse on the guard in (cond (GUARD))
+	* README and BUILD as markdown; manuals built with latexmk
+	* hardening flags; man page lists under "man -k scheme"
+
 2015-03-13  Barak A. Pearlmutter  <barak@cs.nuim.ie>
 
+	Version 1.3.6
 	* oaklisp.1 fill in paths at make time
 	* configure.ac properly seek 32-bit memory model options on 64-bit hosts
 	* documentation add more build documentation
@@ -7,8 +109,18 @@
 	* autotools minor tweaks to build and use standard constructs throughout
 	* system-version.oak to pass version from configure.ac
 
+2015-03-10  Barak A. Pearlmutter  <barak@cs.nuim.ie>
+
+	Version 1.3.5
+	* check pointer size and enable -m32 properly in ./configure
+	* propagate the configure.ac version into the emulator (--version)
+	  and the world (system-version)
+	* ./configure options --enable-ndebug and --enable-threads
+	* man page installed by the upstream build system, paths filled in
+
 2015-03-03  Barak A. Pearlmutter  <barak@cs.nuim.ie>
 
+	Version 1.3.4
 	* autotools build system
 	* rubber to build LaTeX documentation
 	* prebuilt world on separate git branch

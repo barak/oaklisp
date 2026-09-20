@@ -139,7 +139,8 @@ AC_PROG_INSTALL
 AC_PROG_SED
 AC_CHECK_PROGS([INDENT],[indent],[true])
 AS_IF([test x${enable_docs} = xyes],
- [AC_CHECK_PROGS([LATEXMK],[latexmk],[false])])
+ [AC_CHECK_PROGS([LATEXMK],[latexmk],[false])
+  AC_CHECK_PROGS([EPSTOPDF],[epstopdf],[false])])
 
 # Checks for libraries.
 # On Windows (MSVC), threads are in kernel32 -- no -lpthread needed.

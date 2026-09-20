@@ -38,6 +38,31 @@
 ;;; valid values: 0, 1 or 2.
 (define #*compiler-noisiness 1)
 
+;;; Where compiled files go: #f for beside their sources, or a
+;;; directory (a string, with or without a trailing slash).
+(define #*compiler-output-directory #f)
+
+;;; The part of a file name after the last slash.
+(define (file-name-nondirectory name)
+  (let ((len (length name)))
+    (iterate aux ((i (- len 1)))
+      (cond ((= i -1) name)
+	    ((eq? (nth name i) #\/) (tail name (+ i 1)))
+	    (else (aux (- i 1)))))))
+
+;;; Where the object for FILE-NAME goes: as said, or in the output
+;;; directory, or beside the source.
+(define (compiler-output-name file-name)
+  (let ((dir #*compiler-output-directory))
+    (if dir
+	(append dir
+		(if (or (= (length dir) 0)
+			(eq? (nth dir (- (length dir) 1)) #\/))
+		    "" "/")
+		(file-name-nondirectory file-name)
+		compiler-to-extension)
+	(append file-name compiler-to-extension))))
+
 (set! #*compiling-a-file? #f)
 
 ;;; The names a file installs as macros at load time, which is what
@@ -83,7 +108,14 @@
 
 ;;; The next three functions are the exported interface to the compiler.
 
-(define (compile-file the-locale file-name)
+(define (compile-file the-locale file-name . output-name)
+  (listify-args
+   (lambda (output-name) (compile-file-to the-locale file-name output-name))
+   . output-name))
+
+;;; OUTPUT-NAME is a list: empty, or the name of the object to write.
+
+(define (compile-file-to the-locale file-name output-name)
   (let ((from-no (canexno compiler-from-extension))
 	(to-no (canexno compiler-to-extension))
 	(sub-locale (make locale (list the-locale))))
@@ -142,7 +174,9 @@
 	;; Write to a temporary name and move it into place once it is
 	;; complete, so a compile stopped by a full disk or a killed
 	;; process leaves no truncated object under the real name.
-	(let* ((out-name (append file-name compiler-to-extension))
+	(let* ((out-name (if (null? output-name)
+			     (compiler-output-name file-name)
+			     (car output-name)))
 	       (tmp-name (append out-name "-tmp"))
 	       (forms (after-reading
 		       (read-file (append file-name
