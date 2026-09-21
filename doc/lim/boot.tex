@@ -15,55 +15,106 @@
 % Boston, MA 02111-1307, USA
 
 
-\chapter{Bootstrapping}
+\chapter{Bootstrapping} \label{sec:boot}
 
-In this chapter we describe new versions of Oaklisp are created.
-Essentially, the process is quite similar to the way in which a C
-program is created.  First the Oaklisp source files which make up the
-\emph{cold world load} are compiled to produce object files.  Then a
-linker, originally written in T but now an Oaklisp program, takes
-these object files and lays them all out in memory, resolving
-references to global variables and laying out quoted constants refered
-to in the code.  The linker also puts a map of where it allocated
-various globals and such in memory.  At this point, the cold world
-(named \df{oaklisp.cold}) is booted, and the files that the linker
-layed out in memory are thereby executed, sequentially.  These files
-gradually build all the infrastructure required for a full Oaklisp
-world.  The first files are written at an extremely low level, and
-make things like \df{make} and \df{cons} work.  Later files bring up
-more advanced constructs, until finally there is enough for object
-files to be loaded.  At this point the world is dumped to
-\df{oaklisp.ol}, and then this world is booted and has files loaded
-into it using the normal file loading mechanisms until the full
-Oaklisp world, \df{oaklisp.olc}, is built.
+In this chapter we describe how new versions of Oaklisp are created.
+Oaklisp is self-hosting: the compiler and most of the runtime are
+written in Oaklisp, so building a world from source requires a
+running Oaklisp, or a stand-in for one, for two steps: compiling the
+\df{.oak} source files to \df{.oa} object files, and linking the
+object files of the \emph{cold world} into a cold world image.
+Everything after that is done by the emulator being built.
 
-The formats of these files is very simple.  They contain a header
-which gives the length of the various segments and the values of some
-registers.  This is followed by a memory image, with pointers given as
-offsets from the beginning of the image.  This is followed by the weak
-pointer table.
+\section{Building a World}
 
-The cold world is in a hexidecimal format, with each reference
-represented as a space followed by a sequence of hexidecimal digits.
-Carriage returns may optionally preceed spaces.  Actually, the space
-referred to above can be either a space character or the \upar\
-character.  The later indicates that the following reference contains
-bytecodes.  Since bytecodes are ordered differently depending on the
-endianity of the machine, the hex format world loader swaps the two
-instructions on little endian machines but not on big endian machines.
-This keeps the cold load file independent of endianity.
+The build is much like that of a C program.  First the Oaklisp
+sources which make up the cold world load are compiled to produce
+object files.  Then a linker, \df{tool.oak}, an Oaklisp program,
+takes these object files and lays them all out in memory, resolving
+references to global variables and laying out quoted constants
+referred to in the code, and puts a map of where it allocated various
+globals in memory.  At this point the cold world, \df{new.cold}, is
+booted by the emulator, and the files that the linker laid out in
+memory are thereby executed, sequentially.  These files gradually
+build all the infrastructure required for a full Oaklisp world.  The
+first files are written at an extremely low level, and make things
+like \df{make} and \df{cons} work.  Later files bring up more
+advanced constructs, until finally there is enough for object files
+to be loaded.  At this point the world is dumped, and then it is
+booted and has the remaining files loaded into it using the normal
+file loading mechanisms, in stages: first the rest of the runtime
+(macros, bignums, rationals, development tools), then the compiler
+into \df{compiler-locale}, then the Scheme compatibility files into
+\df{scheme-locale}, until the full Oaklisp world, \df{oakworld.bin},
+is built.
 
-The warm world loads are in a binary format and are not independent
-of endianity.  For this reason, warm world extensions start with
-\df{.ol} for big endian versions and \df{.lo} for little endian
-versions.  The emulator replaces the characters \texttt{\%\%} in the
-command line file argument (or the default world in \df{config.h})
-with either \texttt{ol} or \texttt{lo}, depending on whether
-\df{BIG\protect\_ENDIAN} is defined.
+The two steps that need a running Oaklisp can each be done in three
+ways, and the build system (see \df{BUILD.md}) picks the first that
+is possible from what is at hand:
+\begin{itemize}
+\item with an \emph{old world}: an existing world image, run by the
+  emulator just built, compiles the sources and runs \df{tool.oak}.
+  The old world may be older than the sources: the freshly compiled
+  assembler, and anything else the sources need that it lacks, is
+  loaded into it first.  It may also be for another architecture,
+  since a system can generate code for any architecture
+  (section~\ref{sec:architectures}), although what is loaded into it
+  is compiled for it.
+\item from \emph{prebuilt bytecode}: object files compiled earlier,
+  which are portable between architectures of the same instruction
+  packing, linked by \df{tool.oak} running in the host below;
+\item from source alone, with a \emph{Guile-hosted} Oaklisp: enough
+  of Oaklisp implemented in Guile Scheme to load the world's own
+  macros, runtime, compiler and linker from their sources and run
+  them.  Because it is the real compiler that runs, its output is byte
+  for byte what a native Oaklisp produces.
+\end{itemize}
+Whichever way it starts, the result is the same, and the world is
+then rebuilt with itself until it reaches a fixpoint: \df{make
+rebuild-world} saves the world just built and builds everything again
+with it, and \df{make bootstrap} does that twice and checks that the
+world reproduces its own object files exactly.  The compiler is
+deterministic, and the linker lays symbols and data out in the order
+it first meets them, so all three routes, and both linkers (an
+optional C reimplementation of \df{tool.oak} exists as an independent
+check), produce identical worlds.
 
-To make Oaklisp dump itself upon exiting use the \dfsw{-d} \dfsw{-b}
-switches when invoking Oaklisp.  After Oaklisp has exited, the
-emulator will prompt for a filename to dump the world image to, unless
-this filename has been provided with the \dfsw{-f}~\emph{filename}
-switch.  Usually the \dfsw{-G} switch is also given when the world is
-being dumped.
+Bootstrapping a system for a new architecture is done the same way
+from an existing one: the existing system compiles the sources and
+links the cold world for the new architecture (\dfsw{{-}{-}target}), and
+the new emulator boots it.
+
+\section{World Files} \label{sec:worldfiles}
+
+The formats of these files is very simple.  Each begins with a line
+naming the architecture it is for:
+\begin{verbatim}
+;oaklisp-bytecode word-size=64 instructions-per-ref=2
+;oaklisp-world format=cold word-size=64 instructions-per-ref=4
+;oaklisp-world format=binary endian=little word-size=64 instructions-per-ref=2
+\end{verbatim}
+A world image then contains a header which gives the length of the
+various segments and the values of some registers, followed by a
+memory image with pointers given as offsets from the beginning of the
+image, followed by the weak pointer table.
+
+The cold world is in a hexadecimal format, with each reference
+represented as a space followed by a sequence of hexadecimal digits.
+Newlines may optionally precede spaces.  Actually, the space referred
+to above can be either a space character or the \upar\ character.
+The latter indicates that the following reference contains
+instructions, written as one number with the first instruction most
+significant; since the instructions in a cell are ordered in memory
+differently depending on the endianity of the machine, the loader
+puts them into memory order as it reads them, reversing the 16-bit
+fields on a little-endian machine.  This keeps the cold load file
+independent of endianity.
+
+Binary worlds are memory images and are specific to byte order, word
+size and packing; the emulator refuses one whose header does not match
+it.
+
+To make Oaklisp dump itself upon exiting use the \dfsw{{-}{-}dump}
+\emph{filename} switch when invoking the emulator.  A running system
+can also save itself with \df{dump-world}, and replace itself with a
+saved image with \df{load-world}.

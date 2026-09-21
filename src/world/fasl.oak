@@ -42,42 +42,25 @@
 	    (dolist (clause crl)
 	      (set! (contents (cdr clause)) (nth outputs (car clause)))))))
        (else
-	(destructure ((resolution-list ('0 '0 . code)) . #t) inputs
-	  (let* ((instruction-count (length code))
-		 (word-count (quotient (+ instruction-count 1) 2))
+	(destructure ((resolution-list all-code) . #t) inputs
+	  ;; The first word of the code, %%INSTRUCTIONS-PER-REF zeros,
+	  ;; is the ivar map slot, which MAKE provides.
+	  (let* ((ipr %%instructions-per-ref)
+		 (code (tail all-code ipr))
+		 (instruction-count (length code))
+		 (word-count (quotient (+ instruction-count ipr -1) ipr))
 		 (v (make %code-vector word-count)))
 	    (iterate aux ((c code) (i 0))
 	      (cond
 	       ((not (null? c))
-		;;(destructure (xi xj . rest) c       )
-		(let* ((xi (car c))
-		       (xj   (if (null? (cdr c))  0  (cadr c)))
-		       (rest (if (null? (cdr c)) nil (cddr c))))
-		  ;; Pack two instructions into a ref, in memory order.
-		  ;; See the comments in CODE-VECTOR.OAK.  FX-TIMES, not
-		  ;; ASH-LEFT: shifting a 16 bit instruction 14 bits up
-		  ;; overflows a fixnum on a 32 bit build, and ASH promotes
-		  ;; on overflow; the wrapping multiply keeps the bit
-		  ;; pattern this field layout needs.  ROT-LEFT is used
-		  ;; for the shift amounts so that no literal too big for
-		  ;; a 32 bit fixnum appears in this cold world file.
-		  (set! (%vref v i)
-		       (cond ((not (%big-endian?))
-			      ;(bit-or xi (ash-left xj 14))
-			      (%crunch (bit-or (fx-times xj 16384)
-					       (ash-right xi 2))
-				       (bit-and xi #x3)))
-			     ((= %%word-size 32)
-			      ;(bit-or (ash-left xi 14) xj)
-			      (%crunch (bit-or (fx-times xi 16384)
-					       (ash-right xj 2))
-				       (bit-and xj #x3)))
-			     (else
-			      ;; 64-bit big-endian: high 32 bits.
-			      (%crunch (bit-or (fx-times xi (rot-left 1 46))
-					       (fx-times xj (rot-left 1 30)))
-				       0))))
-		  (aux rest (+ i 1))))
+		;; Pack IPR instructions into a ref, in memory order;
+		;; see CODE-VECTOR.OAK.
+		(iterate collect ((c c) (k 0) (l '()))
+		  (if (or (null? c) (= k ipr))
+		      (block (unless (null? l)
+			       (set! (%vref v i) (%pack-instructions (reverse l))))
+			     (aux c (+ i 1)))
+		      (collect (cdr c) (+ k 1) (cons (car c) l)))))
 	       ;;((not (null? c))
 	       ;; (set! (nth v i) (car c))
 	       ;; (aux (cdr c) (+ i 1)))
@@ -106,7 +89,7 @@
 			 (else
 			  (let ((where-loc
 				 (make-locative
-				  (%vref v (- (quotient where 2) 1)))))
+				  (%vref v (- (quotient where ipr) 1)))))
 			    (cond
 			     ((eq? which constant-key)
 			      (set! (contents where-loc) what)

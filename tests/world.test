@@ -5,7 +5,7 @@ rm -f dumped.bin bogus.bin
 oak --dump dumped.bin -- --eval '(define world-test-marker 4711)' --exit 2>&1 | tail -n 2
 test -s dumped.bin || fail "no world dumped"
 head -c 100 dumped.bin | head -n 1 | tee header.txt
-grep -q '^;oaklisp-world format=binary endian=\(little\|big\) word-size=[36][24] instructions-per-ref=2$' header.txt || fail "bad world header"
+grep -q '^;oaklisp-world format=binary endian=\(little\|big\) word-size=[36][24] instructions-per-ref=[24]$' header.txt || fail "bad world header"
 out=$("$OAKLISP" --batch --world dumped.bin -- --eval '(print (+ world-test-marker 1) standard-output)' --exit 2>&1)
 echo "$out"
 printf '%s' "$out" | grep -q '4712$' || fail "reloaded world lost its definition"

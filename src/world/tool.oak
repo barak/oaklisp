@@ -64,11 +64,12 @@
 	 (let ((parsed (parse-target-name (#^string name))))
 	   (set! target-instructions-per-ref (car parsed))
 	   (set! target-word-size (cdr parsed)))))
-  (unless (= target-instructions-per-ref 2)
-    (error "Only 2 instructions per ref is supported, not ~D."
-	   target-instructions-per-ref))
   (unless (or (= target-word-size 32) (= target-word-size 64))
     (error "Unsupported word size ~D." target-word-size))
+  (unless (or (= target-instructions-per-ref 2)
+	      (and (= target-instructions-per-ref 4) (= target-word-size 64)))
+    (error "Unsupported: ~D instructions per ref with ~D-bit refs."
+	   target-instructions-per-ref target-word-size))
   (format #t "Target: bc~D-~D~%" target-instructions-per-ref target-word-size))
 
 ;;; "bc2-64" or "bc2-el64" => (2 . 64)
@@ -161,11 +162,12 @@
 (define (store-world-ptr x word-addr) (store-world-word (tagize-ptr x) word-addr))
 (define (store-world-loc x word-addr) (store-world-word (tagize-loc x) word-addr))
 
+;;; A word that may be overwritten: 0, or a code word of noops (the
+;;; padding an inline reference is patched over).
 (define (zero-enough? x)
-  (destructure** x
-    ('0 #t)
-    (('0 . '0) #t)
-    (otherwise #f)))
+  (cond ((eq? x 0) #t)
+	((pair? x) (every? (lambda (o) (eq? o 0)) x))
+	(else #f)))
 
 (define (store-world-word word word-addr)
   (let ((oldword (nth world word-addr)))
@@ -173,8 +175,14 @@
 	(set! (nth world word-addr) word)
 	(error "Attempt to overwrite <~s ~s>." word word-addr))))
 
-(define (store-world-opcodes o1 o2 word-addr)
-  (store-world-word (cons o1 o2) word-addr))
+;;; A code word is a list of TARGET-INSTRUCTIONS-PER-REF opcodes, in
+;;; memory order.
+(define (store-world-opcodes ops word-addr)
+  (store-world-word ops word-addr))
+
+;;; The number of code words that N opcodes occupy.
+(define (opcode-words n)
+  (quotient n target-instructions-per-ref))
 
 ;;; End of what used to be macros for speed
 
@@ -265,8 +273,11 @@
 ;  initialize symbol and variable tables
 
 
-(define reg-code-delta 4)   ;extra opcode units per block
-(define top-code-delta -2)  ;in actual world
+;;; Extra words per block in the world, counted in opcodes: a regular
+;;; block is preceded by its %CODE-VECTOR header (type, length); a top
+;;; level block starts at its second word.
+(define (reg-code-delta) (* 2 target-instructions-per-ref))
+(define (top-code-delta) (- target-instructions-per-ref))
 
 (set! blk-count 0)
 (set! opc-count 0)
@@ -280,13 +291,13 @@
 (define (count-things inlist)
   (set! dat-count 0)
   (set! blk-count 0)
-  (set! opc-count (- reg-code-delta top-code-delta)) ; header for top code blk
+  (set! opc-count (- (reg-code-delta) (top-code-delta))) ; header for top code blk
   (for-each count-variable vars-to-preload)
   (dolist (fil inlist)
     (let ((nblks (length fil)))
       (set! opc-count (+ opc-count
-			 (+ top-code-delta
-			    (* reg-code-delta (- nblks 1)))))
+			 (+ (top-code-delta)
+			    (* (reg-code-delta) (- nblks 1)))))
       (set! max-blks (max nblks max-blks))
       (set! blk-count (+ nblks blk-count))
       (dolist (blk fil)
@@ -315,8 +326,9 @@
 
 (define (count-opcodes blk)
   (let ((op-co (length (second blk))))
-    (if (odd? op-co)
-	(error "<~s> odd # of opcodes is ~n ~&" op-co blk))
+    (unless (zero? (modulo op-co target-instructions-per-ref))
+      (error "<~s> # of opcodes is not a multiple of ~D: ~s ~&"
+	     op-co target-instructions-per-ref blk))
     (set! opc-count (+ opc-count op-co))))
 
 
@@ -377,7 +389,7 @@
 
 (define (compute-base-addresses)
   (set! start-of-opc-space 0)
-  (set! start-of-var-space (+ start-of-opc-space (quotient opc-count 2)))
+  (set! start-of-var-space (+ start-of-opc-space (opcode-words opc-count)))
   (set! start-of-sym-space (+ start-of-var-space (* var-count cell-size)))
   (set! start-of-dat-space (+ start-of-sym-space (* sym-count symbol-size)))
   (set! world-array-size (+ start-of-dat-space dat-count))
@@ -434,14 +446,14 @@
 (define (build-blk-table inlist)
   (let* ((nfils (length inlist))
 	 (next-blk-addr (+ start-of-opc-space
-			   (quotient (- reg-code-delta top-code-delta) 2)))
+			   (opcode-words (- (reg-code-delta) (top-code-delta)))))
 	 (allocate-blk (lambda (blk toplevelp)
 			 (let ((old-addr next-blk-addr)
-			       (nwords (quotient (+ (length (second blk))
-						    (if toplevelp
-							top-code-delta
-							reg-code-delta))
-						 2)))
+			       (nwords (opcode-words
+					(+ (length (second blk))
+					   (if toplevelp
+					       (top-code-delta)
+					       (reg-code-delta))))))
 			   (set! next-blk-addr (+ next-blk-addr nwords))
 			   (if (> next-blk-addr start-of-var-space)
 			       (space-error 'code)
@@ -491,20 +503,21 @@
 	     (base-addr (car info))
 	     (blk-kind (cdr info))
 	     (regp (eq? blk-kind 'regular))
-	     (delta (quotient (if regp reg-code-delta top-code-delta) 2))
+	     (delta (opcode-words (if regp (reg-code-delta) (top-code-delta))))
 	     (delbase-addr (+ delta base-addr)))
 	(when regp
 	  (store-world-ptr where-%code-vector-lives base-addr)
-	  (store-world-int (+ 2 (quotient (length opcodes) 2))
+	  (store-world-int (+ 2 (opcode-words (length opcodes)))
 			   (+ 1 base-addr)))
 	(iterate opStep ((ops opcodes)(addr delbase-addr))
 	  (cond (ops (when (>= addr base-addr)
-		       (store-world-opcodes (first ops) (second ops) addr))
-		     (opStep (cddr ops) (+ 1 addr)))
+		       (store-world-opcodes (head ops target-instructions-per-ref)
+					    addr))
+		     (opStep (tail ops target-instructions-per-ref) (+ 1 addr)))
 		((eq? 'toplevel blk-kind) (changereturntonoop (- addr 1)))))
 	(dolist (pat patches)
 	  (let* ((patkind (first pat))
-		 (pataddr (+ delbase-addr (quotient (second pat) 2)))
+		 (pataddr (+ delbase-addr (opcode-words (second pat))))
 		 (patval (third pat))
 		 (patref
 		  (cond ((eq? 2 patkind)
@@ -523,17 +536,24 @@
 
 
 ;this is a hack to string the top-level blocks together
+;;; The last word of a top level block holds its final RETURN, possibly
+;;; followed by padding noops; make that RETURN a noop so that execution
+;;; runs on into the next block.  (Opcodes earlier in the word are left
+;;; alone, as they always were with two opcodes per word.)
 (define (changereturntonoop addr)
   (let* ((them (get-world-opcodes addr))
-	 (op1 (car them))
-	 (op2 (cdr them)))
-    (cond ((= op2 return-opcode)
-	   (overwrite-world-opcodes op1 noop-opcode addr))
-	  ((and (= op1 return-opcode)
-		(= op2 noop-opcode))
-	   (overwrite-world-opcodes noop-opcode noop-opcode addr))
-	  (else
-	   (error "bad ops in toplvl blk end <~s ~s> ~&" op1 op2)))))
+	 (rev (reverse them)))
+    (iterate aux ((l rev) (out '()))
+      (cond ((null? l)
+	     (error "bad ops in toplvl blk end ~s ~&" them))
+	    ((= (car l) noop-opcode)
+	     (aux (cdr l) (cons noop-opcode out)))
+	    ((= (car l) return-opcode)
+	     (overwrite-world-opcodes (append (reverse (cdr l))
+					      (cons noop-opcode out))
+				      addr))
+	    (else
+	     (error "bad ops in toplvl blk end ~s ~&" them))))))
 
 
 
@@ -878,8 +898,8 @@
     (dotimes (i array-size)
       (set! (nth world i) 0))))
 
-(define (overwrite-world-opcodes o1 o2 word-addr)
-  (set! (nth world word-addr) (cons o1 o2)))
+(define (overwrite-world-opcodes ops word-addr)
+  (set! (nth world word-addr) ops))
 
 (define (overwrite-world-word word word-addr)
   (set! (nth world word-addr) word))
@@ -913,11 +933,12 @@
 		   (write-char outfile #\space)
 		   (print-hex guy #f outfile))
 		  ((pair? guy)
-		   ;; Opcode cell: two 16-bit opcodes packed into low 32 bits.
-		   ;; On 64-bit upper 32 bits are zero; the ^ swap is the same.
+		   ;; Code word: its opcodes as one number, the first
+		   ;; most significant; the emulator puts them in memory
+		   ;; order when it reads the world.
 		   (write-char outfile #\^)
 		   (print-hex (car guy) #f outfile)
-		   (print-hex (cdr guy) 4 outfile))
+		   (dolist (o (cdr guy)) (print-hex o 4 outfile)))
 		  (else (error "Unknown guy ~S." guy))))))
       ;; Size of weak-pointer table:
       (format outfile "~%0~%"))

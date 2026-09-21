@@ -1,3 +1,16 @@
+2026-09-22  Barak A. Pearlmutter  <barak@pearlmutter.net>
+
+	Version 2.1.0
+
+	* support four 16-bit instructions per 64-bit code ref (bc4-64) and
+	  make it the default on 64-bit systems
+	* code that runs in the compiling world (macro expanders, the
+	  preloaded assembler) is assembled for it regardless of --target
+	* an alarm pending when alarms were disabled no longer fires inside
+	  the scheduler, which deadlocked a process on the scheduler mutex
+	* expand and update the Oaklisp manuals: bootstrapping, architectures
+	  and code vector layout
+
 2026-09-21  Barak A. Pearlmutter  <barak@pearlmutter.net>
 
 	Version 2.0.2

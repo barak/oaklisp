@@ -19,7 +19,7 @@
 
 # Prologue
 AC_PREREQ([2.69])
-AC_INIT([Oaklisp],[2.0.2],[barak+oaklisp@pearlmutter.net],[oaklisp],[https://github.com/barak/oaklisp])
+AC_INIT([Oaklisp],[2.1.0],[barak+oaklisp@pearlmutter.net],[oaklisp],[https://github.com/barak/oaklisp])
 AC_CONFIG_SRCDIR([src/emulator/oaklisp.c])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
@@ -31,6 +31,15 @@ AC_ARG_ENABLE([64-bit],
        [AS_HELP_STRING([--enable-64-bit],[use native 64-bit mode if available (default=yes)])],,
        [enable_64_bit=yes])
 AC_MSG_RESULT([$enable_64_bit])
+
+AC_MSG_CHECKING([with_instructions_per_ref])
+AC_ARG_WITH([instructions-per-ref],
+       [AS_HELP_STRING([--with-instructions-per-ref=N],[16-bit instructions packed into each code ref: 4 (the default with 64-bit refs) or 2 (the only choice with 32-bit refs)])],,
+       [with_instructions_per_ref=default])
+AC_MSG_RESULT([$with_instructions_per_ref])
+AS_CASE([${with_instructions_per_ref}],
+ [2|4|default],[],
+ [AC_MSG_ERROR([--with-instructions-per-ref=${with_instructions_per_ref}: expected 2 or 4])])
 
 AC_MSG_CHECKING([enable_docs])
 AC_ARG_ENABLE([docs],
@@ -184,11 +193,19 @@ AS_CASE([${ac_cv_c_bigendian}_${ac_cv_sizeof_void_p}],
  [no_8],[oak_endian=el oak_word_size=64],
 	[AC_MSG_ERROR([unsupported endianity/pointer size combination])])
 
-OAK_INSTRS_PER_REF=2
+AS_IF([test x${with_instructions_per_ref} = xdefault],
+      [AS_IF([test x${oak_word_size} = x64],
+	     [OAK_INSTRS_PER_REF=4], [OAK_INSTRS_PER_REF=2])],
+      [OAK_INSTRS_PER_REF=${with_instructions_per_ref}])
+AS_IF([test x${OAK_INSTRS_PER_REF} = x4 && test x${oak_word_size} != x64],
+      [AC_MSG_ERROR([4 instructions per ref needs 64-bit refs])])
+AC_DEFINE_UNQUOTED([INSTRS_PER_REF], [${OAK_INSTRS_PER_REF}],
+		   [16-bit instructions packed into each code ref])
 OAK_HOST_ARCH=bc${OAK_INSTRS_PER_REF}-${oak_endian}${oak_word_size}
 OAK_BYTECODE_ARCH=bc${OAK_INSTRS_PER_REF}-${oak_word_size}
 AC_MSG_NOTICE([host architecture ${OAK_HOST_ARCH}, bytecode architecture ${OAK_BYTECODE_ARCH}])
 AC_SUBST([OAK_HOST_ARCH])
+AC_SUBST([OAK_INSTRS_PER_REF])
 AC_SUBST([OAK_BYTECODE_ARCH])
 
 # Checks for library functions.

@@ -7,20 +7,30 @@ cp "$testdir/compile-me.oak" .
 oak -- --compile compile-me --exit 2>&1 | tee compile.log
 test -f compile-me.oa || fail "no object produced"
 head -n 1 compile-me.oa | tee header.txt
-grep -q '^;oaklisp-bytecode word-size=[36][24] instructions-per-ref=2' header.txt || fail "bad header line"
+grep -q '^;oaklisp-bytecode word-size=[36][24] instructions-per-ref=[24]' header.txt || fail "bad header line"
 out=$(oak -- --locale user-locale --load compile-me --eval '(print (list (count-to 10) (bigger) (rest-test 1 2 3)) standard-output)' --exit 2>&1)
 echo "$out"
 printf '%s' "$out" | grep -q '(11 15241578750190521 (1 2 3))$' || fail "loaded object gave wrong answers"
 printf '%s' "$out" | grep -q 'Loaded compile-me.oa' || fail "the .oa was not what got loaded"
-# Cross compile for the other word size; the object differs only in
-# its header.
+# Cross compile for the other word size with the same instruction
+# packing; the object differs only in its header.  (bc4 has no 32-bit
+# counterpart: from there, cross to bc2-32 and check the header only.)
 cp compile-me.oa native.oa
 case $(head -n 1 native.oa) in
-  *word-size=64*) other=bc2-32;; *) other=bc2-64;; esac
+  *word-size=64*instructions-per-ref=2) other=bc2-32; same=yes;;
+  *word-size=64*) other=bc2-32; same=no;;
+  *) other=bc2-64; same=yes;; esac
 oak -- --target $other --compile compile-me --exit 2>&1 | tee cross.log
-head -n 1 compile-me.oa | grep -q "word-size=${other#bc2-}" || fail "cross compiled header wrong"
-tail -n +2 compile-me.oa > a.tmp; tail -n +2 native.oa > b.tmp
-cmp a.tmp b.tmp || fail "cross compiled object body differs"
+head -n 1 compile-me.oa | grep -q "word-size=${other#bc?-}" || fail "cross compiled header wrong"
+if test $same = yes; then
+  tail -n +2 compile-me.oa > a.tmp; tail -n +2 native.oa > b.tmp
+  cmp a.tmp b.tmp || fail "cross compiled object body differs"
+fi
+# Four instructions per ref: a 64-bit target whose objects pad inline
+# references to a multiple of four instructions.
+oak -- --target bc4-64 --compile compile-me --exit >/dev/null 2>&1 || fail "bc4-64 compile failed"
+head -n 1 compile-me.oa | grep -q 'word-size=64 instructions-per-ref=4' || fail "bc4-64 header wrong"
+oak -- --target bc4-32 --exit >/dev/null 2>&1 && fail "bc4-32 accepted"
 # A file with an integer constant too big for 32-bit fixnums still
 # compiles (the loader reads it as a bignum).
 oak -- --target bc2-32 --compile compile-me --exit >/dev/null 2>&1 || fail "bc2-32 compile failed"

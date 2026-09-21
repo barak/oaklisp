@@ -63,6 +63,7 @@ make install
 - `--enable-ndebug` — High-speed mode, disables debug tracing (default: yes, sets -DFAST)
 - `--enable-threads` — Thread support (default: no, experimental)
 - `--enable-cold-linker` — Build `oak-cold-linker`, the C reimplementation of `tool.oak` (default: no)
+- `--with-instructions-per-ref=2|4` — 16-bit instructions packed per code ref: 4 (default) with 64-bit refs, 2 with 32-bit refs (or by choice on 64-bit, for bytecode 32-bit machines can load); sets `INSTRS_PER_REF` in config.h
 - `--with-guile[=GUILE]` — Guile 3 for the Guile-hosted Oaklisp in `src/cold-compiler/` (default: search)
 
 Configure has no say in how the world is bootstrapped; that is decided by make (see Bootstrap methods).
@@ -73,12 +74,12 @@ An Oaklisp architecture is (instructions per ref, word size, byte order):
 
 | Name | Meaning |
 |------|---------|
-| `bc2-32`, `bc2-64` | bytecode: 2 instructions/ref, 32- or 64-bit refs (byte-order independent) |
-| `bc2-el32`, `bc2-eb32`, `bc2-el64`, `bc2-eb64` | world/emulator: little/big endian, 32/64-bit |
+| `bc2-32`, `bc2-64`, `bc4-64` | bytecode: 2 or 4 instructions/ref, 32- or 64-bit refs (byte-order independent; 4 needs 64-bit refs) |
+| `bc2-el32`, `bc2-eb32`, `bc2-el64`, `bc2-eb64`, `bc4-el64`, `bc4-eb64` | world/emulator: little/big endian, 32/64-bit, 2 or 4 instructions/ref |
 
 These names are used for `prebuilt/src/world/<arch>/`, for `--target`, and in
-file header lines (see below). `configure` sets `OAK_HOST_ARCH` (e.g. `bc2-el64`)
-and `OAK_BYTECODE_ARCH` (e.g. `bc2-64`). Bytecode compiled for `bc2-32` is
+file header lines (see below). `configure` sets `OAK_HOST_ARCH` (e.g. `bc4-el64`)
+and `OAK_BYTECODE_ARCH` (e.g. `bc4-64`). Bytecode compiled for `bc2-32` is
 usable on 64-bit systems too (the fixnum range only affects integer constants).
 
 In Oaklisp, `src/world/architecture.oak` defines `host-architecture` (an alist
@@ -103,7 +104,7 @@ The compiler reaches a fixpoint: `make check` runs `check-fixpoint`, `check-cold
 
 `make check` runs `tests/*.test` (automake test driver; logs in `tests/*.log`). Test programs `tests/*.oak` print `PASS`/`FAIL` lines; `tests/testlib.sh` has the helpers. `make bench` runs `tests/bench.sh` (`-r N`, `-o file`, `-c old new`). Note that `--load` binds `#*print-length`/`#*print-level`; the test programs reset them.
 
-`make prebuilt` refreshes `prebuilt/` (bytecode as `bc2-32`, this machine's world, instr-data.c, PDFs).
+`make prebuilt` refreshes `prebuilt/` (bytecode as `bc2-32` or `bc4-64` per this system's packing, this machine's world, instr-data.c, PDFs).
 
 ### Important build notes
 
@@ -235,7 +236,7 @@ VSTKSIZE CSTKSIZE BOOTMETHOD WORLDSIZE    (4 hex values, header)
 
 - Plain numbers: ` ` prefix + uppercase hex
 - Opcode pairs: `^` prefix + hex(hi16) + zero-padded-4-digit-hex(lo16)
-- The emulator's `read_ref()` in `worldio.c` swaps the two 16-bit halves of `^`-prefixed values on little-endian machines, and on 64-bit big-endian machines shifts them into the high 32 bits, so the first opcode always comes first in memory
+- `^`-prefixed values hold the word's `instructions-per-ref` opcodes as one number, first opcode most significant (`^HHHHLLLL` for bc2, four fields for bc4); the emulator's `read_ref()` in `worldio.c` reverses the 16-bit fields on little-endian machines, and on big-endian machines shifts them to the top of the word, so the first opcode always comes first in memory
 
 Binary worlds (`.bin`) start with `;oaklisp-world format=binary endian=little word-size=64 instructions-per-ref=2\n` followed by raw refs; the emulator refuses worlds whose header doesn't match it. Legacy binary worlds start with four `\002` (32-bit) or `\004` (64-bit) bytes.
 
@@ -269,7 +270,7 @@ Strings are stored as: `[type-ptr, total-word-count, char-count, packed-chars...
 
 - **No floating point** — Rationals are used instead
 - **No FFI** — No foreign function interface for calling C from Oaklisp
-- **2 instructions per ref** — 16-bit bytecodes packed two per ref cell (32- or 64-bit); on 64-bit, the other 32 bits of each cell are unused (the low half on big-endian). The assembler is parameterized on `instructions-per-ref` of `#*target-architecture`; `fasl.oak`, `code-vector.oak`, `tool.oak`, and the emulator assume 2 and would need work for a 4-instruction packing.
+- **2 or 4 instructions per ref** — 16-bit bytecodes packed `instructions-per-ref` per ref cell, in memory order (instruction k at bits 16k on little-endian, at the top of the word on big-endian); with bc2 on 64-bit the other 32 bits are unused. The assembler pads inline refs to a ref boundary per `#*target-architecture`; `code-vector.oak` (`%pack-instructions`/`%unpack-instruction`, `nth`, `remap-your-ivars`), `fasl.oak` and `tool.oak` use `%%instructions-per-ref`/`target-instructions-per-ref`; the emulator uses `INSTRS_PER_REF` (config.h) and `INSTR_STRIDE` (slots per ref). Code that runs in the *host* during compilation (`compiler-eval`, macro expanders, the preloaded `old/*.oa`) is always assembled for the host.
 - **`Makefile-vars`** in `src/world/` is auto-generated by `make-makefile.oak` from `files.oak`; regenerate with `make Makefile-vars` after changing `files.oak`. Contains `COLDFILESD` (with interleaved marker files `st`, `da`, `pl`, `do`, `em`), `MISCFILES`, `COMPFILES`, `RNRSFILES`.
 - **`system-version.oak`** is generated from `system-version.oak.in` by configure (a bytecode bootstrap cannot compile it and uses the prebuilt `system-version.oa` as it is)
 
@@ -289,7 +290,7 @@ oaklisp --world path/to/oakworld.bin -- [oaklisp-options]
 --eval EXPR        Evaluate expression
 --load FILE        Load file
 --compile FILE     Compile file
---target ARCH      Compile for architecture ARCH (bc2-32, bc2-64)
+--target ARCH      Compile for architecture ARCH (bc2-32, bc2-64, bc4-64)
 --locale LOCALE    Set current locale
 --exit             Exit after processing
 --help             Show help

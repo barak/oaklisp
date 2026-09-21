@@ -144,8 +144,8 @@ switches to directory dir rather than beside their sources.
 
 .TP
 .B \-\-target arch
-Compile subsequent files for architecture arch, e.g. bc2-32 or
-bc2-64, rather than for the running system.  Bytecode architectures
+Compile subsequent files for architecture arch, e.g. bc2-32, bc2-64 or
+bc4-64, rather than for the running system.  Bytecode architectures
 are named by the number of instructions packed into each reference
 and the reference size in bits; bytecode compiled for a 32-bit
 reference size can also be used on a 64-bit system.

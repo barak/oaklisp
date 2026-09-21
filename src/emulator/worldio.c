@@ -189,16 +189,23 @@ read_ref(FILE * d)
 	  exit(EXIT_FAILURE);
 	}
       a = (ref_t)b;
-      /* A ^-marked cell holds two opcodes, written as the first
-	 opcode in the high 16 bits and the second in the low 16 bits
-	 of a 32-bit quantity.  Arrange them so that the first opcode
-	 comes first in memory. */
+      /* A ^-marked cell holds INSTRS_PER_REF opcodes, written as one
+	 number with the first opcode most significant.  Arrange them
+	 so that the first opcode comes first in memory: on a
+	 big-endian machine shift them to the top of the ref, on a
+	 little-endian one reverse the 16-bit fields. */
       if (swapem)
 	{
 #ifdef WORDS_BIGENDIAN
-	  a <<= (OAK_WORD_SIZE - 32);
+	  a <<= (OAK_WORD_SIZE - 16 * INSTRS_PER_REF);
 #else
-	  a = ((a&0xFFFF) << 16 | (a&0xFFFF0000) >> 16);
+	  {
+	    ref_t r = 0;
+	    int i;
+	    for (i = 0; i < INSTRS_PER_REF; i++)
+	      r |= ((a >> (16 * i)) & 0xFFFF) << (16 * (INSTRS_PER_REF - 1 - i));
+	    a = r;
+	  }
 #endif
 	}
       return a;

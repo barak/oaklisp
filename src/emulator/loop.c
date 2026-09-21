@@ -117,6 +117,12 @@ static inline instr_t* _advance_pc(instr_t* pc, int n) {
 #endif
 
 
+/* Advance PC over the padding before an inline ref: to the next ref
+   boundary, if not on one.  The assembler pads with noops, which the
+   emulator never executes because it skips them here. */
+#define ALIGN_PC_TO_REF(pc) \
+  ((pc) = (instr_t *)(((uintptr_t)(pc) + sizeof(ref_t) - 1) & ~(uintptr_t)(sizeof(ref_t) - 1)))
+
 #define NEW_STORAGE e_uninitialized
 
 #ifdef CHECK_STACK_BOUNDS
@@ -501,7 +507,9 @@ loop(ref_t initial_tos)
 
 #if ENABLE_TIMER
 #define TIMEOUT	1000
-#define POLL_TIMER_SIGNALS()	if (timer_counter > TIMEOUT) {goto intr_trap;}
+/* Only while alarms are enabled: the counter may have passed TIMEOUT
+   just before DISABLE-ALARMS, and the trap must not fire after it. */
+#define POLL_TIMER_SIGNALS()	if (timer_counter > TIMEOUT && timer_increment) {goto intr_trap;}
 #else /* not ENABLE_TIMER */
 #define POLL_TIMER_SIGNALS()
 #endif
@@ -766,8 +774,7 @@ loop(ref_t initial_tos)
 
 	    case 6:		/* LOAD-IMM ; INLINE-REF */
 	      /* align pc to next ref_t boundary: */
-	      if ((uintptr_t)local_e_pc & (sizeof(ref_t) - 1))
-		INCREMENT_PC(local_e_pc,1);
+	      ALIGN_PC_TO_REF(local_e_pc);
 
 	      /*NOSTRICT */
 	      x = *(ref_t *)local_e_pc;
@@ -1189,8 +1196,7 @@ loop(ref_t initial_tos)
 	      /* This is like a LOAD-IMM followed by a CONTENTS. */
 	      /* align pc to next ref_t boundary: */
 
-	      if ((uintptr_t)local_e_pc & (sizeof(ref_t) - 1))
-		INCREMENT_PC(local_e_pc,1);
+	      ALIGN_PC_TO_REF(local_e_pc);
 
 	      /* NOSTRICT */
 	      x = *(ref_t *) local_e_pc;
@@ -1537,6 +1543,7 @@ loop(ref_t initial_tos)
 
 	    case 68:		/* DISABLE-ALARMS */
 	      timer_increment = 0;
+	      timer_counter = 0;
 	      PUSHVAL(e_nil);
 	      GOTO_TOP;
 
