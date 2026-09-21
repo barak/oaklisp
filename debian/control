@@ -17,6 +17,7 @@ Vcs-Browser: https://salsa.debian.org/debian/oaklisp
 
 Package: oaklisp
 Architecture: any
+Suggests: oaklisp-doc
 Description: Object-oriented dialect of Scheme
  Oaklisp is a dialect of Scheme that combines lexical scoping with
  first-class types.  It uses a byte-coded implementation, but is
@@ -27,8 +28,9 @@ Description: Object-oriented dialect of Scheme
 Package: oaklisp-doc
 Section: doc
 Architecture: all
+Muli-Arch: foreign
 Build-Profiles: <!nodoc>
-Suggests: oaklisp, postscript-viewer
+Suggests: pdf-viewer
 Description: Object-oriented dialect of Scheme, documentation
  Documentation for the Oaklisp object-oriented dialect of Scheme.
  Oaklisp is a dialect of Scheme that combines lexical scoping with
