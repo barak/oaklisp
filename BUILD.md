@@ -50,6 +50,8 @@ Option                    Default   Description
                                     (experimental; see below)
 --enable-cold-linker      no        Build oak-cold-linker, a C version of
                                     the cold linker (see Bootstrapping)
+--with-instructions-per-ref=N  2    16-bit instructions per 64-bit code
+                                    ref: 2, or 4 (see Architectures)
 --with-guile[=GUILE]      search    Guile 3 interpreter for the hosted
                                     Oaklisp ("no": none)
 
@@ -82,9 +84,12 @@ From Oaklisp's point of view a machine is characterized by
 
 * the size of a reference (word size) in bits, 32 or 64, which
   determines the fixnum range (30 or 62 bits);
-* the number of 16-bit instructions packed into each reference,
-  currently always 2 (on 64-bit machines the other half of each
-  reference in a code vector is unused);
+* the number of 16-bit instructions packed into each reference in a
+  code vector: 2, or, with 64-bit references, 4.  With 2 on a 64-bit
+  machine the other half of each reference is unused; 4 fills it,
+  which makes code vectors half the size, at the cost of bytecode
+  that 32-bit machines cannot use.  The emulator is built for one or
+  the other (--with-instructions-per-ref); the default is 2.
 * the byte order, which matters only for binary world images and the
   running emulator.
 
@@ -94,19 +99,25 @@ header lines described below:
 
 	bc2-32     bytecode, 2 instructions per ref, 32-bit refs
 	bc2-64     bytecode, 2 instructions per ref, 64-bit refs
-	bc2-el32   world/emulator, little-endian 32-bit
-	bc2-eb32   world/emulator, big-endian 32-bit
-	bc2-el64   world/emulator, little-endian 64-bit
-	bc2-eb64   world/emulator, big-endian 64-bit
+	bc4-64     bytecode, 4 instructions per ref, 64-bit refs
+	bc2-el32   world/emulator, 2 instructions per ref, little-endian 32-bit
+	bc2-eb32   world/emulator, 2 instructions per ref, big-endian 32-bit
+	bc2-el64   world/emulator, 2 instructions per ref, little-endian 64-bit
+	bc2-eb64   world/emulator, 2 instructions per ref, big-endian 64-bit
+	bc4-el64   world/emulator, 4 instructions per ref, little-endian 64-bit
+	bc4-eb64   world/emulator, 4 instructions per ref, big-endian 64-bit
 
 Compiled bytecode (.oa files) is independent of byte order, and in
 practice of word size too, since the compiler does not fold constants
 whose value would depend on it; the word size in the name records
 the fixnum range the file's integer constants are assumed to fit,
-so bc2-32 bytecode can be used anywhere.  Cold worlds (.cold, the
-hex text produced by the cold linker) are byte-order independent
-but word-size specific.  Binary worlds (.bin) are specific to byte
-order and word size.
+so bc2-32 bytecode can be used anywhere.  It is specific to the
+instruction packing, though: the assembler aligns each inline
+reference to a reference boundary, so bc2 and bc4 objects differ in
+their padding, and the loader refuses the wrong kind.  Cold worlds
+(.cold, the hex text produced by the cold linker) are byte-order
+independent but specific to word size and packing.  Binary worlds
+(.bin) are specific to byte order, word size and packing.
 
 Each of these files begins with a header line identifying what it is
 for, which the emulator, the loader, and the linkers check:
@@ -118,6 +129,38 @@ for, which the emulator, the loader, and the linkers check:
 Files without a header (from before this scheme) are accepted and
 assumed to be bc2 bytecode, or, for binary worlds, are identified by
 their old magic bytes.
+
+An emulator built for one packing can compile bytecode for the
+other, and can link and boot a world for it; only running it needs an
+emulator built the same way.  So a bc4 system is bootstrapped from a
+bc2 one (or from Guile) in the ordinary way:
+
+	./configure --with-instructions-per-ref=4
+	make bootstrap
+
+and the resulting world is bc4-el64 (or bc4-eb64).
+
+bc4 is not only smaller (the world image is 9% smaller, the code
+vectors in it half the size) but faster: with two instructions in a
+64-bit ref the emulator has to step the program counter over the
+unused half of each ref, and that costs on every instruction.
+Best-of-five times from "make bench" on one machine, in ms:
+
+	benchmark   bc2-64   bc4-64   ratio     bc2-32
+	bignum        126       64     0.51       265
+	cons          280      158     0.56       171
+	dispatch      268      166     0.62      2536
+	eval          446      318     0.71       344
+	fib           104       76     0.73        85
+	format        176      141     0.80       150
+	hash          745      611     0.82       999
+	sort          306      242     0.79       254
+	strings       443      393     0.89       398
+	tak            89       70     0.79        76
+
+(bc2-32 has no gap either, which is why it beats bc2-64 on the
+code-heavy benchmarks; dispatch and bignum are the 64-bit fixnum
+range paying off.)
 
 Within a running system the architecture is available as
 `host-architecture`, and the compiler generates code for the fluid
