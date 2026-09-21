@@ -1,6 +1,7 @@
 oaklisp (2.1.0-2) UNRELEASED; urgency=medium
 
   * Mark oaklisp-doc ma-foreign, and refresh suggestions
+  * Set upstream metadata fields: Repository.
 
  -- Barak A. Pearlmutter <bap@debian.org>  Mon, 21 Sep 2026 16:34:27 +0100
 
