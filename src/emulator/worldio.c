@@ -86,8 +86,8 @@ world_header(const char *format)
 {
   static char buf[OAK_HEADER_MAX];
   snprintf(buf, sizeof(buf),
-	   ";oaklisp-world format=%s endian=%s word-size=%d instructions-per-ref=%d\n",
-	   format, OAK_ENDIAN_NAME, OAK_WORD_SIZE, INSTRS_PER_REF);
+	   ";oaklisp-world format=%s endian=%s word-size=%d instructions-per-ref=%d chars-per-word=%d\n",
+	   format, OAK_ENDIAN_NAME, OAK_WORD_SIZE, INSTRS_PER_REF, CHARS_PER_WORD);
   return buf;
 }
 
@@ -117,6 +117,17 @@ check_world_header(const char *file, oak_header_t *h)
 	      file, h->instrs_per_ref, INSTRS_PER_REF);
       exit(EXIT_FAILURE);
     }
+  {
+    /* Worlds from before the field packed three characters per word. */
+    int cpw = h->chars_per_word ? h->chars_per_word : 3;
+    if (cpw != CHARS_PER_WORD)
+      {
+	fprintf(stderr,
+		"error: world \"%s\" packs %d characters per string word but this emulator packs %d.\n",
+		file, cpw, CHARS_PER_WORD);
+	exit(EXIT_FAILURE);
+      }
+  }
   if (h->endian[0] != '\0' && strcmp(h->endian, OAK_ENDIAN_NAME) != 0)
     {
       fprintf(stderr,

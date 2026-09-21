@@ -23,15 +23,21 @@
 
 (initialize string '(char-count) (list simple-vector))
 
-(define-constant %chars-per-word 3)
+;;; A string's characters are packed into the fixnums of its words, low
+;;; byte first: three per word with 32-bit refs (30-bit fixnums), seven
+;;; with 64-bit ones (62-bit fixnums).  This is a variable rather than a
+;;; constant so that code compiled on one word size runs on the other.
+(define %chars-per-word (if (= %%word-size 64) 7 3))
 
-;;; A string's characters are packed three to a word, low byte first.
-;;; When the character count is not a multiple of three the top bytes of
-;;; the last word belong to no character at all; they are padding, and
-;;; two strings with the same characters must be indistinguishable
-;;; whatever happens to be sitting in them.  This answers a mask that
-;;; keeps only the bytes N-CHARS actually reaches, and -1 (all ones)
-;;; when the last word is full.
+;;; A mask keeping the bytes the characters of a word occupy.
+(define %chars-mask (- (ash-left 1 (* 8 %chars-per-word)) 1))
+
+;;; When the character count is not a multiple of %CHARS-PER-WORD the
+;;; top bytes of the last word belong to no character at all; they are
+;;; padding, and two strings with the same characters must be
+;;; indistinguishable whatever happens to be sitting in them.  This
+;;; answers a mask that keeps only the bytes N-CHARS actually reaches,
+;;; and -1 (all ones) when the last word is full.
 
 (define (%string-last-word-mask n-chars)
   (let ((n-in-last (modulo n-chars %chars-per-word)))
@@ -78,9 +84,9 @@
 			  ;; data field apart of whatever it was handed.
 			  (error "~S is not a character to fill a string with."
 				 fill-char)))
-		(word (bit-or byte
-			      (bit-or (ash-left byte 8)
-				      (ash-left byte 16))))
+		(word (iterate aux ((k 1) (word byte))
+			(if (= k %chars-per-word) word
+			    (aux (+ k 1) (bit-or (ash-left word 8) byte)))))
 		(word-count
 		 (quotient (+ len (- %chars-per-word 1)) %chars-per-word))
 		(last-word (bit-and word (%string-last-word-mask len)))
@@ -146,11 +152,8 @@
       (error "Index ~D into ~S out of bounds." n self)
       (%fixnum->character
        (bit-and #xFF
-		(let ((d (modulo n %chars-per-word))
-		      (x (%vref-nocheck self (quotient n %chars-per-word))))
-		  (cond ((= d 0) x)
-			((= d 1) (ash-left x -8))
-			((= d 2) (ash-left x -16))))))))
+		(ash-right (%vref-nocheck self (quotient n %chars-per-word))
+			   (* 8 (modulo n %chars-per-word)))))))
 
 
 
@@ -178,7 +181,7 @@
 	   ;; the damage would show up only at the neighbour.
 	   (set! (%vref-nocheck self m)
 		 (bit-or (bit-and (%vref-nocheck self m)
-				  (bit-and #xFFFFFF
+				  (bit-and %chars-mask
 					   (bit-not (ash-left #xFF i))))
 			 (ash-left (bit-and #xFF (%character->fixnum new-c))
 				   i)))
@@ -222,9 +225,9 @@
 	     (aux (+ i 1)))
 	    (else s)))))
 
-;;; The following code coerces only lists to strings, but is highly optimized.
-;;; This code packs characters in by threes instead of shifting and or'ing
-;;; each one in individually, and avoids the overhead of the nth's.
+;;; The following code coerces lists to strings and back, packing and
+;;; unpacking whole words rather than going through NTH for each
+;;; character.
 
 (let ((fill-string (make operation)))
 
@@ -233,30 +236,16 @@
     ;; Each code is masked to its own byte for the same reason
     ;; (SETTER NTH) masks: a character whose code exceeds 255 would
     ;; otherwise spill into the byte of the character packed after it.
-    (iterate aux ((i 0)(l l)(to-do len))
-      (cond ((zero? to-do)
-	     s)
-	    ((= 1 to-do)
-	     (set! (%load-bp-i i)
-		   (bit-and #xFF (%character->fixnum (car l))))
-	     s)
-	    ((= 2 to-do)
-	     (set! (%load-bp-i i)
-		   (bit-or (bit-and #xFF (%character->fixnum (car l)))
-			   (ash-left (bit-and #xFF
-					      (%character->fixnum (cadr l)))
-				     8)))
-	     s)
-	    (else
-	     (let* ((c0 (bit-and #xFF (%character->fixnum (car l))))
-		    (l1 (cdr l))
-		    (c1 (bit-and #xFF (%character->fixnum (car l1))))
-		    (l2 (cdr l1))
-		    (c2 (bit-and #xFF (%character->fixnum (car l2)))))
-	       (set! (%load-bp-i i)
-		     (bit-or c0 (bit-or (ash-left c1 8) (ash-left c2 16))))
-	       (aux (+ i 1) (cdr l2) (- to-do %chars-per-word)))))))
-
+    (iterate aux ((i 0) (l l) (to-do len))
+      (if (zero? to-do)
+	  s
+	  (iterate pack ((l l) (k 0) (word 0))
+	    (if (or (= k %chars-per-word) (null? l))
+		(block (set! (%load-bp-i i) word)
+		       (aux (+ i 1) l (- to-do (min to-do %chars-per-word))))
+		(pack (cdr l) (+ k 1)
+		      (bit-or word (ash-left (bit-and #xFF (%character->fixnum (car l)))
+					     (* 8 k)))))))))
 
   (add-method (#^string (list-type) l)
     (if (null? l)
@@ -271,36 +260,18 @@
 
 	  ))))
 
+;;; The characters in word I of a string, the first N of them, consed
+;;; onto TAIL.
 
-
-
-
-; Note: the following 3 macros exist ONLY to
-; improve the readability of the following procedure.
-; They use %load-bp-i, and hence will break in other contexts.
-
-
-(local-syntax (get-3-from-string instring i)
+(local-syntax (get-n-from-string instring i n tail)
   `(let ((the-word (%load-bp-i ,i)))
-     (list (%fixnum->character (bit-and 255 the-word))
-	   (%fixnum->character
-	    (ash-right (bit-and (ash-left 255 8) the-word) 8))
-	   (%fixnum->character
-	    (ash-right (bit-and (ash-left 255 16) the-word) 16)))))
-
-
-(local-syntax (get-2-from-string instring i)
-  `(let ((the-word (%load-bp-i ,i)))
-     (list (%fixnum->character (bit-and 255 the-word))
-	   (%fixnum->character
-	    (ash-right (bit-and (ash-left 255 8) the-word) 8)))))
-
-
-(local-syntax (get-1-from-string instring i)
-  `(let ((the-word (%load-bp-i ,i)))
-     (list (%fixnum->character (bit-and 255 the-word)))))
-
-
+     (iterate unpack ((k (- ,n 1)) (out ,tail))
+       (if (negative? k)
+	   out
+	   (unpack (- k 1)
+		   (cons (%fixnum->character
+			  (bit-and 255 (ash-right the-word (* 8 k))))
+			 out))))))
 
 (let ((quick-vref-helper (make operation)))
 
@@ -311,16 +282,13 @@
 
       (iterate loop ((outlist
 		      (if (zero? n-in-last) '()
-			  (if (= 1 n-in-last)
-			      (get-1-from-string instring n-full-words)
-			      (get-2-from-string instring n-full-words))))
+			  (get-n-from-string instring n-full-words n-in-last '())))
 		     (down-counter (- n-full-words 1)))
 
 	(if (negative? down-counter)
 	    outlist
-	    (let ((next-triple (get-3-from-string instring down-counter)))
-	      (set (cdddr next-triple) outlist)
-	      (loop next-triple (- down-counter 1)))))))
+	    (loop (get-n-from-string instring down-counter %chars-per-word outlist)
+		  (- down-counter 1))))))
 
 
   (add-method (#^list-type (string char-count) instring)

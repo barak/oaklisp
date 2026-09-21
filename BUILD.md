@@ -123,8 +123,12 @@ Each of these files begins with a header line identifying what it is
 for, which the emulator, the loader, and the linkers check:
 
 	;oaklisp-bytecode word-size=32 instructions-per-ref=2
-	;oaklisp-world format=cold word-size=64 instructions-per-ref=2
-	;oaklisp-world format=binary endian=little word-size=64 instructions-per-ref=2
+	;oaklisp-world format=cold word-size=64 instructions-per-ref=2 chars-per-word=7
+	;oaklisp-world format=binary endian=little word-size=64 instructions-per-ref=2 chars-per-word=7
+
+World headers also record how many characters are packed into each
+word of a string: 7 with 64-bit references, 3 with 32-bit ones
+(a header without the field means 3).
 
 Files without a header (from before this scheme) are accepted and
 assumed to be bc2 bytecode, or, for binary worlds, are identified by

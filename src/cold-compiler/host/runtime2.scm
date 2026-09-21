@@ -39,7 +39,6 @@
   (native-op! 'FILL! *operation*)
   (native-op! 'SUBSEQUENCE? *operation*)
   (native-fn! '%CHAR? (nlambda (x) (oak-bool (char? x))))
-  (defglobal! '%CHARS-PER-WORD 3)
   (native-locked! 'WRITE-STRING-WITH-SLASHES *operation*
 		  (nlambda (s delim stream)
 		    (string-for-each

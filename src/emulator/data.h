@@ -226,6 +226,10 @@ extern bool_int trace_files;
 #error "more instructions per ref than fit in a ref"
 #endif
 
+/* Characters packed into each word of a string: as many bytes as the
+   fixnum holds.  Part of the world format (see worldio.c). */
+#define CHARS_PER_WORD ((OAK_WORD_SIZE - 2) / 8)
+
 #define TAG_MASK	3
 #define TAG_MASKL	3l
 #define SUBTAG_MASK	0xff

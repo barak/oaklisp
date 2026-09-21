@@ -23,8 +23,8 @@
  * architecture they were built for:
  *
  *   ;oaklisp-bytecode word-size=32 instructions-per-ref=2
- *   ;oaklisp-world format=cold word-size=64 instructions-per-ref=2
- *   ;oaklisp-world format=binary endian=little word-size=64 instructions-per-ref=2
+ *   ;oaklisp-world format=cold word-size=64 instructions-per-ref=4 chars-per-word=7
+ *   ;oaklisp-world format=binary endian=little word-size=64 instructions-per-ref=4 chars-per-word=7
  *
  * The line starts with ";oaklisp-" (so the Oaklisp reader treats it
  * as a comment) followed by whitespace-separated key=value pairs.
@@ -58,6 +58,8 @@ typedef struct {
   char endian[8];		/* "little", "big", or "" if unspecified */
   int word_size;		/* 32 or 64, 0 if unspecified */
   int instrs_per_ref;		/* 2 (or 4), 0 if unspecified */
+  int chars_per_word;		/* characters packed per string word (3
+				   or 7); 0 if unspecified, meaning 3 */
 } oak_header_t;
 
 /* Copy at most n-1 chars of src into dst, NUL terminated. */
@@ -109,6 +111,8 @@ oak_parse_header(const char *line, oak_header_t *h)
 	  h->word_size = atoi(val);
 	else if (klen == 20 && !strncmp(key, "instructions-per-ref", 20))
 	  h->instrs_per_ref = atoi(val);
+	else if (klen == 14 && !strncmp(key, "chars-per-word", 14))
+	  h->chars_per_word = atoi(val);
 	/* else: unknown key, ignored for forward compatibility */
       }
     }

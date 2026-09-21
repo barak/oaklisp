@@ -1,5 +1,12 @@
 2026-09-22  Barak A. Pearlmutter  <barak@pearlmutter.net>
 
+	Version 2.1.1~devel
+
+	* strings pack seven characters per word on 64-bit systems (three on
+	  32-bit); world headers carry chars-per-word
+
+2026-09-22  Barak A. Pearlmutter  <barak@pearlmutter.net>
+
 	Version 2.1.0
 
 	* support four 16-bit instructions per 64-bit code ref (bc4-64) and

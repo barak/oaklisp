@@ -339,22 +339,24 @@ added and an appropriate \df{nth} method defined.}
 character per reference, so strings are not just vectors with odd
 print methods; they also have accessor methods which unpack characters
 from their internals.  Unfortunately, it is not possible to pack four
-eight bit characters into a single reference without violating the
-memory format conventions by putting something other than
+eight bit characters into a single 32-bit reference without violating
+the memory format conventions by putting something other than
 \framebox{\texttt{0 0}} in the tag field.  We could pack four seven bit
 characters into each reference, but some computers use eight bit
 fonts, and the characters within the string would not be aligned
 compatibly with C strings.  We therefore use the following somewhat
-wasteful format.}
+wasteful format, which packs three characters into a 32-bit reference
+and seven into a 64-bit one.}
 
-\ty{string}
+\ty{string} \label{sec:string}
 \doc{This is a subtype of \df{simple-vector} with the \df{nth} method
-shadowed by one that packs three eight bit characters into the low 24
-bits of each fixnum, in littleendian order.  The unused high bits of
-each word are set to zero to simplify equality testing and hash key
-computation.  No trailing null character is required, although one is
-present two thirds of the time due to padding.  Below is the string
-\texttt{"Oaklisp Rules!"} as represented in memory.}
+shadowed by one that packs as many eight bit characters as fit into
+the fixnum of each word, low byte first: three into the low 24 bits
+of a 30-bit fixnum, seven into the low 56 bits of a 62-bit one.  The
+bytes of the last word beyond the string's characters are padding;
+they are masked off by equality testing and hash key computation.
+Below is the string \texttt{"Oaklisp Rules!"} as represented in memory
+with 32-bit references.}
 \begin{center}
 \begin{tabular}{|c|c|c|c|c|}\hline
 31 \ldots 26 & 25 \ldots 18 & 17 \ldots 10 & 9 \ldots 2 & 1 0 \\\hline\hline

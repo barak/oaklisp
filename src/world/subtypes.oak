@@ -70,7 +70,7 @@
 	(else
 	 (write-char stream self))))
 
-;;; Strings pack three characters to a word, a byte each, so a character
+;;; Strings pack several characters to a word, a byte each, so a character
 ;;; code outside 0-255 has nowhere to live once it is stored in one.
 ;;; The string writers mask what they deposit rather than corrupt the
 ;;; neighbouring character, but that loses the code silently, so the

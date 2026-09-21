@@ -260,11 +260,11 @@ Where `ref_shift` is 2 for 32-bit, 3 for 64-bit.
 | RETURN_OPCODE | 6144 (24*256) | Return instruction bytecode |
 | COERCABLE_TYPE_SIZE | 10 | Words for string type object |
 | TYPE_SIZE | 9 | Words for cons-pair/code-vector type objects |
-| CHARS_PER_WORD | 3 | Characters packed per word in string objects |
+| chars per word | 3 / 7 | Characters packed per word in string objects (32- / 64-bit refs) |
 
 ### String packing
 
-Strings are stored as: `[type-ptr, total-word-count, char-count, packed-chars...]`. Characters are packed 3 per word, low byte first: `c0 | (c1 << 8) | (c2 << 16)`. Total size = `3 + ceil(strlen / 3)`.
+Strings are stored as: `[type-ptr, total-word-count, char-count, packed-chars...]`. Characters are packed low byte first into the fixnum of each word, as many as fit: 3 with 32-bit refs (`c0 | c1<<8 | c2<<16`), 7 with 64-bit. Total size = `3 + ceil(strlen / chars-per-word)`. `%chars-per-word` in strings.oak is a variable derived from `%%word-size`, not a constant, so objects are word-size independent; the linkers (`target-chars-per-word`, `CHARS_PER_WORD`) and `oak_c_string_fill` know the same rule.
 
 ## Key Technical Constraints
 
