@@ -501,7 +501,9 @@ loop(ref_t initial_tos)
 
 #if ENABLE_TIMER
 #define TIMEOUT	1000
-#define POLL_TIMER_SIGNALS()	if (timer_counter > TIMEOUT) {goto intr_trap;}
+/* Only while alarms are enabled: the counter may have passed TIMEOUT
+   just before DISABLE-ALARMS, and the trap must not fire after it. */
+#define POLL_TIMER_SIGNALS()	if (timer_counter > TIMEOUT && timer_increment) {goto intr_trap;}
 #else /* not ENABLE_TIMER */
 #define POLL_TIMER_SIGNALS()
 #endif
@@ -1537,6 +1539,7 @@ loop(ref_t initial_tos)
 
 	    case 68:		/* DISABLE-ALARMS */
 	      timer_increment = 0;
+	      timer_counter = 0;
 	      PUSHVAL(e_nil);
 	      GOTO_TOP;
 
