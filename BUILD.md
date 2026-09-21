@@ -50,8 +50,9 @@ Option                    Default   Description
                                     (experimental; see below)
 --enable-cold-linker      no        Build oak-cold-linker, a C version of
                                     the cold linker (see Bootstrapping)
---with-instructions-per-ref=N  2    16-bit instructions per 64-bit code
-                                    ref: 2, or 4 (see Architectures)
+--with-instructions-per-ref=N  4/2  16-bit instructions per code ref:
+                                    4 with 64-bit refs, 2 with 32-bit
+                                    (see Architectures)
 --with-guile[=GUILE]      search    Guile 3 interpreter for the hosted
                                     Oaklisp ("no": none)
 
@@ -85,11 +86,10 @@ From Oaklisp's point of view a machine is characterized by
 * the size of a reference (word size) in bits, 32 or 64, which
   determines the fixnum range (30 or 62 bits);
 * the number of 16-bit instructions packed into each reference in a
-  code vector: 2, or, with 64-bit references, 4.  With 2 on a 64-bit
-  machine the other half of each reference is unused; 4 fills it,
-  which makes code vectors half the size, at the cost of bytecode
-  that 32-bit machines cannot use.  The emulator is built for one or
-  the other (--with-instructions-per-ref); the default is 2.
+  code vector: 2 with 32-bit references, and by default 4 with 64-bit
+  ones (--with-instructions-per-ref=2 gives the older packing, in
+  which the other half of each 64-bit reference is unused; it is
+  slower, see below, but its bytecode is usable on 32-bit machines).
 * the byte order, which matters only for binary world images and the
   running emulator.
 
@@ -133,12 +133,11 @@ their old magic bytes.
 An emulator built for one packing can compile bytecode for the
 other, and can link and boot a world for it; only running it needs an
 emulator built the same way.  So a bc4 system is bootstrapped from a
-bc2 one (or from Guile) in the ordinary way:
+bc2 one (or from Guile) in the ordinary way, and a bc2-64 one from a
+bc4 one with
 
-	./configure --with-instructions-per-ref=4
+	./configure --with-instructions-per-ref=2
 	make bootstrap
-
-and the resulting world is bc4-el64 (or bc4-eb64).
 
 bc4 is not only smaller (the world image is 9% smaller, the code
 vectors in it half the size) but faster: with two instructions in a
@@ -189,11 +188,12 @@ With prebuilt material: the prebuilt/ directory, kept on the "master"
 branch of the git repository (not on "devel", and not in tarballs),
 holds two kinds of bootstrap material, arranged by architecture:
 
-	prebuilt/src/world/bc2-32/*.oa          compiled bytecode
+	prebuilt/src/world/bc2-32/*.oa          compiled bytecode, for bc2 systems
+	prebuilt/src/world/bc4-64/*.oa          compiled bytecode, for bc4 systems
 	prebuilt/src/world/bc2-el32/oakworld.bin world images
 	prebuilt/src/world/bc2-eb32/oakworld.bin
-	prebuilt/src/world/bc2-el64/oakworld.bin
-	prebuilt/src/world/bc2-eb64/oakworld.bin
+	prebuilt/src/world/bc4-el64/oakworld.bin
+	prebuilt/src/world/bc4-eb64/oakworld.bin
 	prebuilt/src/emulator/instr-data.c      instruction names for debugging builds
 	prebuilt/doc/                           documentation PDFs
 
@@ -306,8 +306,9 @@ Refreshing prebuilt/
 are built from source with Guile (or from an installed Oaklisp),
 and the material is several megabytes that would go stale.
 
-After building, "make prebuilt" recompiles all the sources for
-bc2-32 into prebuilt/src/world/bc2-32/, copies the world just built
+After building, "make prebuilt" recompiles all the sources into
+prebuilt/src/world/bc2-32/ or bc4-64/, whichever this system's
+instruction packing calls for, copies the world just built
 to prebuilt/src/world/ARCH/oakworld.bin for this machine's
 architecture, and refreshes instr-data.c and (if enabled) the PDFs.
 The pieces are available separately as "make prebuilt-bytecode" and

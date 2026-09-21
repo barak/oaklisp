@@ -63,7 +63,7 @@ make install
 - `--enable-ndebug` — High-speed mode, disables debug tracing (default: yes, sets -DFAST)
 - `--enable-threads` — Thread support (default: no, experimental)
 - `--enable-cold-linker` — Build `oak-cold-linker`, the C reimplementation of `tool.oak` (default: no)
-- `--with-instructions-per-ref=2|4` — 16-bit instructions packed per 64-bit code ref (default 2; 4 halves code size, needs 64-bit refs); sets `INSTRS_PER_REF` in config.h
+- `--with-instructions-per-ref=2|4` — 16-bit instructions packed per code ref: 4 (default) with 64-bit refs, 2 with 32-bit refs (or by choice on 64-bit, for bytecode 32-bit machines can load); sets `INSTRS_PER_REF` in config.h
 - `--with-guile[=GUILE]` — Guile 3 for the Guile-hosted Oaklisp in `src/cold-compiler/` (default: search)
 
 Configure has no say in how the world is bootstrapped; that is decided by make (see Bootstrap methods).
@@ -78,8 +78,8 @@ An Oaklisp architecture is (instructions per ref, word size, byte order):
 | `bc2-el32`, `bc2-eb32`, `bc2-el64`, `bc2-eb64`, `bc4-el64`, `bc4-eb64` | world/emulator: little/big endian, 32/64-bit, 2 or 4 instructions/ref |
 
 These names are used for `prebuilt/src/world/<arch>/`, for `--target`, and in
-file header lines (see below). `configure` sets `OAK_HOST_ARCH` (e.g. `bc2-el64`)
-and `OAK_BYTECODE_ARCH` (e.g. `bc2-64`). Bytecode compiled for `bc2-32` is
+file header lines (see below). `configure` sets `OAK_HOST_ARCH` (e.g. `bc4-el64`)
+and `OAK_BYTECODE_ARCH` (e.g. `bc4-64`). Bytecode compiled for `bc2-32` is
 usable on 64-bit systems too (the fixnum range only affects integer constants).
 
 In Oaklisp, `src/world/architecture.oak` defines `host-architecture` (an alist
@@ -104,7 +104,7 @@ The compiler reaches a fixpoint: `make check` runs `check-fixpoint`, `check-cold
 
 `make check` runs `tests/*.test` (automake test driver; logs in `tests/*.log`). Test programs `tests/*.oak` print `PASS`/`FAIL` lines; `tests/testlib.sh` has the helpers. `make bench` runs `tests/bench.sh` (`-r N`, `-o file`, `-c old new`). Note that `--load` binds `#*print-length`/`#*print-level`; the test programs reset them.
 
-`make prebuilt` refreshes `prebuilt/` (bytecode as `bc2-32`, this machine's world, instr-data.c, PDFs).
+`make prebuilt` refreshes `prebuilt/` (bytecode as `bc2-32` or `bc4-64` per this system's packing, this machine's world, instr-data.c, PDFs).
 
 ### Important build notes
 

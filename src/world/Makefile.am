@@ -90,10 +90,14 @@ ALLOAFILESNONGEN += $(RNRSFILES)
 
 OAK_HOST_ARCH = @OAK_HOST_ARCH@
 OAK_BYTECODE_ARCH = @OAK_BYTECODE_ARCH@
+OAK_INSTRS_PER_REF = @OAK_INSTRS_PER_REF@
 
 PREBUILT_DIR = $(top_srcdir)/prebuilt
 PREBUILT_WORLD = $(PREBUILT_DIR)/src/world/$(OAK_HOST_ARCH)/oakworld.bin
-PREBUILT_BYTECODE_DIR = $(PREBUILT_DIR)/src/world/bc2-32
+# Prebuilt bytecode is kept per instruction packing: bc2-32 serves
+# every bc2 system, bc4-64 the bc4 ones.
+PREBUILT_BYTECODE_ARCH = $(if $(filter 2,$(OAK_INSTRS_PER_REF)),bc2-32,bc4-64)
+PREBUILT_BYTECODE_DIR = $(PREBUILT_DIR)/src/world/$(PREBUILT_BYTECODE_ARCH)
 
 OLD_WORLD = $(firstword $(wildcard old-oakworld.bin $(PREBUILT_WORLD)) old-oakworld.bin)
 
@@ -347,19 +351,20 @@ COMPILE_ALL = for f in $$files; do \
 
 # Refresh the prebuilt material from the world just built.
 #
-# The bytecode is compiled for 32-bit fixnums (bc2-32) so that it can
-# be used to bootstrap on any machine; the world image is only good
-# for machines of the same byte order and word size.  Both go under
-# prebuilt/src/world/ in subdirectories named by architecture.
+# The bytecode is compiled for this system's instruction packing and,
+# with two instructions per ref, for 32-bit fixnums, so that bc2-32
+# bytecode serves every bc2 system; the world image is only good for
+# machines of the same byte order, word size and packing.  Both go
+# under prebuilt/src/world/ in subdirectories named by architecture.
 
 prebuilt: prebuilt-bytecode prebuilt-world
 
 prebuilt-bytecode: oakworld.bin
 	rm -rf prebuilt-tmp
-	$(MKDIR_P) prebuilt-tmp $(PREBUILT_DIR)/src/world/bc2-32
+	$(MKDIR_P) prebuilt-tmp $(PREBUILT_BYTECODE_DIR)
 	cd prebuilt-tmp && files='$(ALLOAFILES:.oa=)' \
-	  world=$(abs_builddir)/oakworld.bin target=bc2-32 && $(COMPILE_ALL)
-	mv prebuilt-tmp/*.oa $(PREBUILT_DIR)/src/world/bc2-32/
+	  world=$(abs_builddir)/oakworld.bin target=$(PREBUILT_BYTECODE_ARCH) && $(COMPILE_ALL)
+	mv prebuilt-tmp/*.oa $(PREBUILT_BYTECODE_DIR)/
 	rm -rf prebuilt-tmp
 
 prebuilt-world: oakworld.bin
