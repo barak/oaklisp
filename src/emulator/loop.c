@@ -129,6 +129,31 @@ static inline void _check_val_bounds(ref_t *sp, int offset, ref_t *bp, int line)
 }
 #endif
 
+/* File handles are represented as Oaklisp fixnums. The three standard
+   streams are hotwired to be 0, 1 and 2, so a world image dumped with
+   the standard streams open (every one is) contains no host FILE *
+   pointers, which vary by run. A FILE pointers are aligned, so its
+   low bits are 0, so it looks like a fixnum anyway; and they're not
+   at addresses 0,1,2. */
+
+static inline ref_t
+file_to_ref(FILE *f)
+{
+  return f == stdin ? INT_TO_REF(0)
+       : f == stdout ? INT_TO_REF(1)
+       : f == stderr ? INT_TO_REF(2)
+       : (ref_t) f;
+}
+
+static inline FILE *
+ref_to_file(ref_t r)
+{
+  return r == INT_TO_REF(0) ? stdin
+       : r == INT_TO_REF(1) ? stdout
+       : r == INT_TO_REF(2) ? stderr
+       : (FILE *) r;
+}
+
 static void
 maybe_dump_world(int dumpstackp)
 {
@@ -2281,15 +2306,15 @@ loop(ref_t initial_tos)
 	      switch (arg_field)
 		{
 		case 0:	/* get standard input stream. */
-		  PUSHVAL((ref_t) stdin);
+		  PUSHVAL(file_to_ref(stdin));
 		  GOTO_TOP;
 
 		case 1:	/* get standard output stream. */
-		  PUSHVAL((ref_t) stdout);
+		  PUSHVAL(file_to_ref(stdout));
 		  GOTO_TOP;
 
 		case 2:	/* get standard error output stream. */
-		  PUSHVAL((ref_t) stderr);
+		  PUSHVAL(file_to_ref(stderr));
 		  GOTO_TOP;
 
 		case 3:	/* fopen, mode READ */
@@ -2314,18 +2339,18 @@ loop(ref_t initial_tos)
 			       arg_field == 3 ? READ_MODE :
 			       arg_field == 4 ? WRITE_MODE : APPEND_MODE);
 		    free(s);
-		    PEEKVAL() = ((fd == NULL) ? e_false : (ref_t) fd);
+		    PEEKVAL() = ((fd == NULL) ? e_false : file_to_ref(fd));
 		  }
 		  GOTO_TOP;
 
 		case 6:	/* fclose */
 		  PEEKVAL()
-		    = BOOL_TO_REF( fclose((FILE *) PEEKVAL()) != EOF );
+		    = BOOL_TO_REF( fclose(ref_to_file(PEEKVAL())) != EOF );
 		  GOTO_TOP;
 
 		case 7:	/* fflush */
 		  PEEKVAL()
-		    = BOOL_TO_REF( fflush((FILE *) PEEKVAL()) != EOF );
+		    = BOOL_TO_REF( fflush(ref_to_file(PEEKVAL())) != EOF );
 		  GOTO_TOP;
 
 		case 8:	/* putc */
@@ -2333,23 +2358,23 @@ loop(ref_t initial_tos)
 		  y = PEEKVAL();
 		  CHECKCHAR1(y, 2);
 		  PEEKVAL()
-		    = BOOL_TO_REF( putc(REF_TO_CHAR(y), (FILE *) x) != EOF);
+		    = BOOL_TO_REF( putc(REF_TO_CHAR(y), ref_to_file(x)) != EOF);
 		  GOTO_TOP;
 
 		case 9:	/* getc */
 		  {
-		    int c = getc((FILE *) PEEKVAL());
+		    int c = getc(ref_to_file(PEEKVAL()));
 		    /* When possible, if an EOF is read from an interactive
 		       stream, the eof should be cleared so regular stuff
 		       can be read thereafter. */
 		    if (c == EOF)
 		      {
-			if (ISATTY((FILE *) PEEKVAL()))
+			if (ISATTY(ref_to_file(PEEKVAL())))
 			  {
 			    if (trace_files)
 			      printf("Clearing EOF.\n");
 
-			    clearerr((FILE *) PEEKVAL());
+			    clearerr(ref_to_file(PEEKVAL()));
 			  }
 			PEEKVAL() = e_nil;
 		      }
@@ -2359,7 +2384,7 @@ loop(ref_t initial_tos)
 		  GOTO_TOP;
 
 		case 10:	/* check for interactiveness */
-		  PEEKVAL() = ISATTY((FILE *) PEEKVAL())? e_t : e_nil;
+		  PEEKVAL() = ISATTY(ref_to_file(PEEKVAL()))? e_t : e_nil;
 		  GOTO_TOP;
 
 		case 11:	/* tell where we are */
@@ -2369,7 +2394,7 @@ loop(ref_t initial_tos)
 		       position once it is handed back as a fixnum.
 		       Every other stream primitive reports failure as
 		       NIL, so this one does too. */
-		    long pos = ftell((FILE *) PEEKVAL());
+		    long pos = ftell(ref_to_file(PEEKVAL()));
 
 		    PEEKVAL() = (pos < 0) ? e_nil : INT_TO_REF(pos);
 		  }
@@ -2378,7 +2403,7 @@ loop(ref_t initial_tos)
 		case 12:	/* set where we are */
 		  POPVAL(x);
 		  {
-		    FILE *fd = (FILE *) x;
+		    FILE *fd = ref_to_file(x);
 		    long i = (long)REF_TO_INT(PEEKVAL());
 
 		    PEEKVAL() = fseek(fd, i, 0) == 0 ? e_t : e_nil;
