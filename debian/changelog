@@ -1,8 +1,11 @@
-oaklisp (2.0.0-2) UNRELEASED; urgency=medium
+oaklisp (2.0.1-1) unstable; urgency=medium
 
   * Add debian/watch uscan support file
+  * New upstream release (just documentation tweaks)
+  * Update latex infrastructure build dependency
+  * Rename doc-base files so lintian doesn't see them as man pages
 
- -- Barak A. Pearlmutter <bap@debian.org>  Sun, 20 Sep 2026 23:24:03 +0100
+ -- Barak A. Pearlmutter <bap@debian.org>  Mon, 21 Sep 2026 10:47:32 +0100
 
 oaklisp (2.0.0-1) unstable; urgency=medium
 
