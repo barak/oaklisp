@@ -200,16 +200,19 @@
 
 
 
+;;; Code to run here is assembled for the host, whatever architecture
+;;; files are being compiled for.
 (define (compiler-eval form locale)
   ((%install-lambda
     (link-code-segment
      locale
-     (assemble `(code ()
-		      ;; The (POP 1) is needed because of the check-nargs hack.
-		      ((pop 1)
-		       ,@(peephole-optimize
-			  (bind ((#*compiling-a-file? #f))
-			    (gen-code (compile locale form) 'tail))))))))))
+     (bind ((#*target-architecture host-architecture))
+       (assemble `(code ()
+			;; The (POP 1) is needed because of the check-nargs hack.
+			((pop 1)
+			 ,@(peephole-optimize
+			    (bind ((#*compiling-a-file? #f))
+			      (gen-code (compile locale form) 'tail)))))))))))
 
 
 (define (cc x)
