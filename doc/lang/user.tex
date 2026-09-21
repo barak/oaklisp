@@ -25,6 +25,114 @@ restart handlers are available.  Our implementation includes
 mechanisms for inspecting objects and tracing function calls.
 
 
+\section{Invoking Oaklisp} \label{sec:invoking}
+
+Oaklisp is run as
+\begin{verbatim}
+oaklisp [emulator options] -- [Oaklisp options]
+\end{verbatim}
+The options before the \dfsw{{-}{-}} are for the bytecode emulator and
+the ones after it are processed by the Oaklisp world itself, in
+order, when it boots; without any it enters the read-eval-print loop.
+The emulator options include
+\begin{description}
+\item[\dfsw{{-}{-}world} \emph{file}] the world image to boot (the
+  installed \df{oakworld.bin} by default, or the file named by the
+  environment variable \df{OAKWORLD});
+\item[\dfsw{{-}{-}dump} \emph{file}] dump the world to \emph{file} on exit;
+\item[\dfsw{{-}{-}size-heap} \emph{n}] the size of the heap, in units of
+  1024 references;
+\item[\dfsw{{-}{-}batch}] do not trap interrupts, for use from scripts
+  and makefiles;
+\item[\dfsw{{-}{-}version}] print the version and architecture
+  (section~\ref{sec:architectures-lang}) and exit.
+\end{description}
+The Oaklisp options are
+\begin{description}
+\item[\dfsw{{-}{-}eval} \emph{expression}] evaluate \emph{expression},
+  given as one argument;
+\item[\dfsw{{-}{-}load} \emph{file}] load \emph{file}, as \df{load} would;
+\item[\dfsw{{-}{-}compile} \emph{file}] compile \emph{file}\df{.oak} to
+  \emph{file}\df{.oa}, as \df{compile-file} would;
+\item[\dfsw{{-}{-}outdir} \emph{directory}] write the objects of the
+  following \dfsw{{-}{-}compile} switches to \emph{directory} rather than
+  beside their sources (it sets \dffl{compiler-output-directory});
+\item[\dfsw{{-}{-}target} \emph{architecture}] compile the following files
+  for \emph{architecture} rather than for the running system (it sets
+  \dffl{target-architecture});
+\item[\dfsw{{-}{-}locale} \emph{locale}] evaluate, load and compile the
+  following in \emph{locale}, e.g.\ \df{scheme-locale} or
+  \df{compiler-locale}, rather than \df{system-locale};
+\item[\dfsw{{-}{-}exit}] exit, with a nonzero status if any earlier switch
+  failed.
+\end{description}
+For example, to compile a file for Scheme and leave:
+\begin{verbatim}
+oaklisp -- --locale scheme-locale --compile myfile --exit
+\end{verbatim}
+
+\op{exit}{[status]}
+\doc{Leaves Oaklisp, giving the shell the status \emph{status}, an
+integer from 0 to 255, or 0.  (After an error, the status is the
+debugger's nesting level, so that a script that errored does not
+report success.)}
+
+\op{dump-world}{file-name}
+\doc{Saves the running world to \emph{file-name}, a binary world
+image, and keeps running.  The image can be booted with
+\dfsw{{-}{-}world}.}
+
+\op{load-world}{file-name}
+\doc{Replaces the running world with the image in \emph{file-name}.
+It never returns.}
+
+\gv{system-version}
+\doc{A string naming the version of Oaklisp, e.g.\ \df{"Oaklisp
+2.0.1"}.}
+
+\subsection{Architectures} \label{sec:architectures-lang}
+
+An Oaklisp system is built for an \emph{architecture}: the size of a
+reference in bits (32 or 64, which fixes the range of fixnums at 30
+or 62 bits), the number of 16-bit instructions packed into each
+reference in a code vector (2, or 4 with 64-bit references), and the
+byte order of the machine.  Architectures are named \df{bc2-32},
+\df{bc2-64} and \df{bc4-64} for compiled code, which does not depend
+on byte order, and \df{bc2-el32}, \df{bc2-eb32}, \df{bc2-el64},
+\df{bc2-eb64}, \df{bc4-el64} and \df{bc4-eb64} for running systems
+and world images, \df{el} and \df{eb} being little and big endian.
+Compiled code can be loaded by any system with the same instruction
+packing; a file compiled for 32-bit references can be loaded by a
+64-bit system, since the difference is only the range its integer
+constants are assumed to fit.  Compiled files and world images carry
+a header line naming their architecture, and a mismatch is an error.
+
+\gv{host-architecture}
+\doc{Describes the running system: an association list with the keys
+\df{word-size} (32 or 64), \df{instructions-per-ref} (2 or 4) and
+\df{endian} (\df{little} or \df{big}).}
+
+\fv{target-architecture}
+\doc{The architecture the compiler generates code for, in the same
+form; by default the host's.  It is set by the \dfsw{{-}{-}target}
+switch, and the compiler may be given any architecture, which is how
+Oaklisp is bootstrapped onto a new one.}
+
+\op{parse-architecture-name}{string}
+\doc{Returns the architecture named by \emph{string}, e.g.\
+\df{"bc2-64"}, as an association list; an error if the name is not
+one of those above.}
+
+\op{architecture-name}{architecture}
+\doc{The name of \emph{architecture}, the inverse of the above.}
+
+\gv{most-positive-fixnum}
+\gv{most-negative-fixnum}
+\doc{The largest and smallest fixnums of the running system:
+$2^{29}-1$ and $-2^{29}$ with 32-bit references, $2^{61}-1$ and
+$-2^{61}$ with 64-bit ones.}
+
+
 \section{The Top Level Environment}
 
 All expressions must be evaluated with respect to a particular naming

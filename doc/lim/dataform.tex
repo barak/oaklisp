@@ -31,7 +31,7 @@ addressing modes.
 \begin{center}
 \begin{tabular}{|c|c|c|l}
 \cline{1-3}
-\em 31 30 29 28 27 26 \ldots 11 10 9 8 & \em 7 6 5 4 3 2 & \em 1 0 &
+\em $w{-}1$ $w{-}2$ \ldots 11 10 9 8 & \em 7 6 5 4 3 2 & \em 1 0 &
  \multicolumn{1}{l}{\emph{type}} \\ \cline{1-3}
 \multicolumn{2}{|c|}{twos complement integer} & 0 0 & fixnum \\ \cline{1-3}
 data	&	subtype		& 1 0 & other immediate type \\ \cline{1-3}
@@ -39,6 +39,10 @@ data	&	subtype		& 1 0 & other immediate type \\ \cline{1-3}
 \multicolumn{2}{|c|}{address}	& 1 1 & reference to boxed object \\ \cline{1-3}
 \end{tabular}
 \end{center}
+
+Here $w$ is the \emph{word size}, the number of bits in a reference:
+32 or 64, depending on how the emulator was built (see
+section~\ref{sec:architectures}).  Fixnums thus have 30 or 62 bits.
 
 This tagging scheme, along with our object format, does not allow for
 \emph{arbitrarily} scannable heaps (in which the divisions between
@@ -71,7 +75,8 @@ standard \citep{R3RS}.)
 
 \section{Memory Structure}
 
-Memory is a linear array of \emph{cells}, 32-bit aligned words.  These
+Memory is a linear array of \emph{cells}, aligned words of the word
+size.  These
 cells are divided into two contiguous chunks: free cells and allocated
 cells.  The \emph{free pointer} points to the division between these
 two chunks, and it is incremented as memory is allocated.  When
@@ -193,8 +198,11 @@ instructions by the bytecode emulator.  This format allows code to be
 stored in the same space as all other objects, and allows the garbage
 collector to be ignorant of its existance, treating code vectors like
 any other vector.  Bytecodes are 16 bits long, with the low 2 bits
-always 0.  Here is an example of some stuff taken from the middle of a
-code vector.
+always 0, and several are packed into each cell: two in a 32-bit
+cell, and either two or four in a 64-bit one, as chosen when the
+emulator is built (section~\ref{sec:architectures}).  Here is an
+example of some stuff taken from the middle of a code vector, for two
+instructions per cell.
 
 \begin{center}
 \begin{tabular}{|c|c|c|c|c|c|}
@@ -238,27 +246,68 @@ instruction is much greater than the time required to check if the low
 bit of a register is on and increment that register if so.
 
 
-\subsection{Endianity}
+\subsection{Architectures} \label{sec:architectures}
 
-The logical order of the instructions in a code vector depends on the
-endianity of the CPU running the emulator.  If the machine is big
-endian, ie.\ addresses start at the most significant and of a word and
-go down (eg.\ a 68000 or an IBM 370) then instructions are executed
-left to right in the picture above.  Conversely, on a littleendian
-machine (eg.\ a VAX) instructions are executed right to left.  Of
-course, the Oaklisp loader has to be able to pack instructions into
-words in the appropriate order.  The format of cold world loads is
-insensitive to endianity, but binary world loads are sensitive to it,
-so binary worlds are distributed in both big endian (with extensions
-beginning with \df{.ol}) and little endian (with extensions beginning
-with \df{.lo}) versions.
+From Oaklisp's point of view a machine is characterized by three
+things:
+\begin{itemize}
+\item the \emph{word size}, the number of bits in a reference, 32 or
+  64, which determines the fixnum range;
+\item the number of 16-bit \emph{instructions packed into each cell}
+  of a code vector: 2, or, with 64-bit cells, 4.  With two
+  instructions in a 64-bit cell half of the cell is unused; four fill
+  it, halving the size of code vectors, at the cost of bytecode that
+  32-bit machines cannot use;
+\item the \emph{byte order} of the machine, which decides the order in
+  which the instructions in a cell lie in memory.
+\end{itemize}
+
+Instructions are packed into a cell in memory order: instruction $k$
+of a cell occupies bits $16k$ to $16k+15$ on a little-endian machine,
+and bits $w-16(k+1)$ to $w-16k-1$ on a big-endian one, so that the
+emulator fetches successive instructions from successive 16-bit
+units of memory.  (With two instructions in a 64-bit cell the
+remaining 32 bits, the high half on a little-endian machine and the
+low half on a big-endian one, are unused.)  An inline reference in
+the code, such as a constant or a global variable cell, occupies a
+whole cell and must be cell aligned, so the assembler pads the
+instruction before it with noops up to the next cell boundary, and
+the emulator skips that padding rather than executing it.
+
+These properties are named \df{bc}$n$\df{-}$w$ for bytecode, where
+$n$ is the number of instructions per cell and $w$ the word size, and
+\df{bc}$n$\df{-e}$b$$w$ for a running system or a binary world image,
+where $b$ is \df{l} or \df{b} for little or big endian:
+\df{bc2-32}, \df{bc2-64} and \df{bc4-64} bytecode, and \df{bc2-el32},
+\df{bc2-eb32}, \df{bc2-el64}, \df{bc2-eb64}, \df{bc4-el64} and
+\df{bc4-eb64} systems.
+
+What is portable between architectures:
+\begin{itemize}
+\item Compiled bytecode (\df{.oa} files) is independent of byte order,
+  and in practice of word size too, since the compiler does not fold
+  constants whose value would depend on it; the word size in its name
+  only records the fixnum range that its integer constants are assumed
+  to fit, so \df{bc2-32} bytecode can be loaded anywhere.  It is
+  specific to the instruction packing, since that decides where the
+  padding before each inline reference goes.
+\item Cold world images (section~\ref{sec:worldfiles}) are
+  independent of byte order but specific to word size and packing.
+\item Binary world images are specific to all three.
+\end{itemize}
+Each of these files begins with a header line naming what it is for,
+which the emulator, the loader and the linker check.
+
+Within a running system, the variables \df{\%\%word-size} and
+\df{\%\%instructions-per-ref}, set by the linker, describe the
+system, and \df{host-architecture} in the language manual is
+derived from them.  A system can generate code for another
+architecture, which is how a system for a new one is bootstrapped.
 
 \oop{\%big-endian?}
 \doc{This returns the endianity of the machine that Oaklisp is running
-on.  Endianity is determined by the order in which instructions are
-fetched, in other words, the order of two 16-bit words within a 32-bit
-word.  This returns true if the first instruction fetched is from the
-more significant half.}
+on: true if the first instruction fetched from a cell is the more
+significant one.}
 
 \subsection{Stack Implementation} \label{sec:stackimpl}
 
@@ -394,18 +443,20 @@ are discarded.
 The user interface to the garbage collector is quite simple.
 Normally, the user need not be concerned with storage reclamation;
 upon the exhaustion of storage, the garbage collector is automatically
-invoked.  When this happens some messages are printed; these messages
-can be supressed with the \dfsw{-Q} switch.  The default size of new
-space is 1Mb, or 256k references.  This can be altered with the
-\dfsw{-h} \emph{size} switch, where \emph{size} is measured in bytes.  The
-operations \df{\%gc} and \df{\%full-gc} invoke the garbage collector
-explicitly.  Programs that use weak pointers can be effected by
-garbage collection; for details, see Section~\ref{sec:weak}.
+invoked.  The \dfsw{{-}{-}trace-gc} \emph{level} switch makes it
+report what it does.  The default size of new space is 128k
+references; it can be altered with the \dfsw{{-}{-}size-heap}
+\emph{size} switch, where \emph{size} is measured in units of 1024
+references.  The operations \df{\%gc} and \df{\%full-gc} invoke the
+garbage collector explicitly.  Programs that use weak pointers can be
+effected by garbage collection; for details, see
+Section~\ref{sec:weak}.
 
-The \dfsw{-G} switch indicates that if and when the world is dumped, and
-if Oaklisp terminates with an exit code of zero, a full garbage
-collection should be performed.  In full garbage collections preceding
-world dumps, the root set does not include the stacks.
+The \dfsw{{-}{-}predump-gc} switch (on by default) indicates that if
+and when the world is dumped, and if Oaklisp terminates with an exit
+code of zero, a full garbage collection should be performed.  In full
+garbage collections preceding world dumps, the root set does not
+include the stacks.
 
 New space is resized dynamically, being expanded to
 \df{RECLAIM\protect\_FRACTION} times the amount of unreclaimed data if
