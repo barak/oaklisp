@@ -1,3 +1,11 @@
+oaklisp (2.1.0-1) unstable; urgency=medium
+
+  * New upstream release
+    - add bc4 (4 bytecode/word) for 64-bit architectures, and make it the
+      default for them
+
+ -- Barak A. Pearlmutter <bap@debian.org>  Mon, 21 Sep 2026 15:47:56 +0100
+
 oaklisp (2.0.2-1) unstable; urgency=medium
 
   * New upstream release
