@@ -19,7 +19,7 @@
 
 # Prologue
 AC_PREREQ([2.69])
-AC_INIT([Oaklisp],[2.0.0~devel],[barak+oaklisp@pearlmutter.net],[oaklisp],[https://github.com/barak/oaklisp])
+AC_INIT([Oaklisp],[2.0.1],[barak+oaklisp@pearlmutter.net],[oaklisp],[https://github.com/barak/oaklisp])
 AC_CONFIG_SRCDIR([src/emulator/oaklisp.c])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
@@ -139,8 +139,7 @@ AC_PROG_INSTALL
 AC_PROG_SED
 AC_CHECK_PROGS([INDENT],[indent],[true])
 AS_IF([test x${enable_docs} = xyes],
- [AC_CHECK_PROGS([LATEXMK],[latexmk],[false])
-  AC_CHECK_PROGS([EPSTOPDF],[epstopdf],[false])])
+ [AC_CHECK_PROGS([LATEXMK],[latexmk],[false])])
 
 # Checks for libraries.
 # On Windows (MSVC), threads are in kernel32 -- no -lpthread needed.

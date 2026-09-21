@@ -1,0 +1,25 @@
+% The numeric type hierarchy (figure in numbers.tex).  Abstract types
+% in plain face, instantiable ones in bold; arrows point at supertypes.
+\begin{tikzpicture}[
+  x=2.2cm, y=1.2cm,
+  every node/.style={ellipse, draw, inner xsep=6pt, inner ysep=2pt, font=\small},
+  inst/.style={font=\small\bfseries},
+  sup/.style={-{Stealth[length=6pt]}, thick}]
+  \node (number)   at (4,4)   {number};
+  \node (real)     at (3,3)   {real};
+  \node (complex)  at (4.8,3)   [inst] {complex};
+  \node (rational) at (2,2)   {rational};
+  \node (float)    at (3.4,2) [inst] {float};
+  \node (integer)  at (1,1)   {integer};
+  \node (fraction) at (2.4,1) [inst] {fraction};
+  \node (fixnum)   at (0,0)   [inst] {fixnum};
+  \node (bignum)   at (1.4,0) [inst] {bignum};
+  \draw[sup] (real)     -- (number);
+  \draw[sup] (complex)  -- (number);
+  \draw[sup] (rational) -- (real);
+  \draw[sup] (float)    -- (real);
+  \draw[sup] (integer)  -- (rational);
+  \draw[sup] (fraction) -- (rational);
+  \draw[sup] (fixnum)   -- (integer);
+  \draw[sup] (bignum)   -- (integer);
+\end{tikzpicture}

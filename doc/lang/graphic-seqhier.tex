@@ -1,0 +1,26 @@
+% The sequence type hierarchy (figure in sequences.tex).  Abstract
+% types in plain face, instantiable ones in bold; arrows point at
+% supertypes.
+\begin{tikzpicture}[
+  x=2.2cm, y=1.2cm,
+  every node/.style={ellipse, draw, inner xsep=6pt, inner ysep=2pt, font=\small},
+  inst/.style={font=\small\bfseries},
+  sup/.style={-{Stealth[length=6pt]}, thick}]
+  \node (sequence)  at (2.2,3)   {sequence};
+  \node (vector)    at (0.9,2)   {vector-type};
+  \node (list)      at (3.3,2)   {list-type};
+  \node (svector)   at (0.7,1) [inst] {simple-vector};
+  \node (pair)      at (2.7,1) {pair};
+  \node (null)      at (4.3,1) {null-type};
+  \node (string)    at (0.5,0)   [inst] {string};
+  \node (cons)      at (1.9,0) [inst] {cons-pair};
+  \node (lazy)      at (3.9,0) [inst] {lazy-cons-pair};
+  \draw[sup] (vector)  -- (sequence);
+  \draw[sup] (list)    -- (sequence);
+  \draw[sup] (svector) -- (vector);
+  \draw[sup] (pair)    -- (list);
+  \draw[sup] (null)    -- (list);
+  \draw[sup] (string)  -- (svector);
+  \draw[sup] (cons)    -- (pair);
+  \draw[sup] (lazy)    -- (pair);
+\end{tikzpicture}
