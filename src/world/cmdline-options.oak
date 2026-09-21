@@ -61,7 +61,7 @@ Example:
 		 (load x #*current-locale)))
 
     ("compile" 1 ,(lambda (x)
-		    (format #t "~&Compiling ~S..." x)
+		    (format #t "~&oaklisp: compiling ~S..." x)
 		    (flush standard-output)
 		    (bind ((#*compiler-noisiness 0))
 		      (compile-file #*current-locale
