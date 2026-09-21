@@ -157,6 +157,24 @@ AS_IF([test x$enable_threads = xyes],
  [AC_SEARCH_LIBS([pthread_create],[pthread],[],
    [AC_MSG_WARN([pthread_create not found; threads may use Windows native API])])])
 
+AC_MSG_CHECKING([with_readline])
+AC_ARG_WITH([readline],
+       [AS_HELP_STRING([--with-readline],
+	 [edit terminal input with GNU readline (default: if available)])],,
+       [with_readline=check])
+AC_MSG_RESULT([$with_readline])
+AS_IF([test x${with_readline} != xno],
+ [AC_CHECK_LIB([readline],[readline],
+   [AC_CHECK_HEADERS([readline/readline.h readline/history.h],
+     [have_readline=yes],[have_readline=no])],
+   [have_readline=no])
+  AS_IF([test x${have_readline} = xyes],
+	[LIBS="-lreadline ${LIBS}"
+	 AC_DEFINE([HAVE_LIBREADLINE],[1],[Define if GNU readline is available.])],
+	[test x${with_readline} = xcheck],
+	[AC_MSG_WARN([GNU readline not found; terminal input will not be editable])],
+	[AC_MSG_ERROR([GNU readline not found])])])
+
 # Checks for header files.
 AC_CHECK_HEADERS([stddef.h stdlib.h string.h sys/time.h unistd.h],,
  [AC_MSG_ERROR([required header file unavailable])])

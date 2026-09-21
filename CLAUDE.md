@@ -65,6 +65,7 @@ make install
 - `--enable-cold-linker` — Build `oak-cold-linker`, the C reimplementation of `tool.oak` (default: no)
 - `--with-instructions-per-ref=2|4` — 16-bit instructions packed per code ref: 4 (default) with 64-bit refs, 2 with 32-bit refs (or by choice on 64-bit, for bytecode 32-bit machines can load); sets `INSTRS_PER_REF` in config.h
 - `--with-guile[=GUILE]` — Guile 3 for the Guile-hosted Oaklisp in `src/cold-compiler/` (default: search)
+- `--with-readline` — line editing and history on an interactive standard input with GNU readline (default: if found; `src/emulator/lineedit.c`, `--no-line-editing` at run time)
 
 Configure has no say in how the world is bootstrapped; that is decided by make (see Bootstrap methods).
 

@@ -34,6 +34,7 @@
 #include "data.h"
 #include "cmdline.h"
 #include "xmalloc.h"
+#include "lineedit.h"
 #include "stacks.h"
 
 enum {
@@ -127,6 +128,9 @@ usage(char *prog)
 	  "\t--verbose-gc v       synonym for --trace-gc\n"
 	  "\t--trace-traps\n"
 	  "\t--batch              disable trapping of SIGINT\n"
+#ifdef HAVE_LIBREADLINE
+	  "\t--no-line-editing    read the terminal without GNU readline\n"
+#endif
 #ifndef FAST
 	  "\t--trace-segs         trace stack segment writes/reads\n"
 	  "\t--trace-valcon       print entire value stack at each instr\n"
@@ -227,6 +231,7 @@ parse_cmd_line(int argc, char **argv)
 	{"trace-gc", required_argument, 0, VERBOSE_GC_ARG},
 	{"trace-traps", no_argument, &trace_traps, true},
 	{"batch", no_argument, &batch_mode, true},
+	{"no-line-editing", no_argument, &no_line_editing, true},
 #ifndef FAST
 	{"trace-segs", no_argument, &trace_segs, true},
 	{"trace-valcon", no_argument, &trace_valcon, true},

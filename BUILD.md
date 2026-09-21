@@ -55,6 +55,8 @@ Option                    Default   Description
                                     (see Architectures)
 --with-guile[=GUILE]      search    Guile 3 interpreter for the hosted
                                     Oaklisp ("no": none)
+--with-readline           check     Edit terminal input with GNU readline
+                                    ("no": never; "yes": required)
 
 See ./configure --help for details.  How the world is bootstrapped is
 not a configure matter; see Bootstrapping below for the make targets

@@ -4,6 +4,8 @@
 
 	* strings pack seven characters per word on 64-bit systems (three on
 	  32-bit); world headers carry chars-per-word
+	* terminal input is edited with GNU readline when available
+	  (--with-readline; --no-line-editing at run time)
 
 2026-09-22  Barak A. Pearlmutter  <barak@pearlmutter.net>
 
