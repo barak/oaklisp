@@ -36,7 +36,7 @@ Oaklisp level options.
                            beside their sources.
 
         --target arch      Compile subsequent files for architecture
-                           arch, eg bc2-32 or bc2-64.  Default is that
+                           arch: bc2-32, bc2-64 or bc4-64.  Default is that
                            of the running system, ~A.
 
         --locale x         Switch to locale x, eg system-locale (default),

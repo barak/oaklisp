@@ -211,17 +211,19 @@ extern bool_int trace_files;
 #define REF_SHIFT 2
 #endif
 
-/* Number of 16-bit instructions packed per ref (logical), and
-   number of instr_t units per ref (physical stride). On 32-bit these
-   are equal (2); on 64-bit there is a gap: 2 instructions occupy the
-   first 32 bits (in memory order) of each 64-bit ref, with the other
-   32 bits empty.  That is the low half of the ref value on little-endian
-   machines and the high half on big-endian ones. */
+/* Number of 16-bit instructions packed per ref (logical; INSTRS_PER_REF,
+   from configure: 2, or 4 with 64-bit refs), and number of instr_t
+   units per ref (physical stride).  With bc2 on 64-bit there is a
+   gap: 2 instructions occupy the first 32 bits (in memory order) of
+   each 64-bit ref, with the other 32 bits empty -- the low half of
+   the ref value on little-endian machines and the high half on
+   big-endian ones.  With bc4-64 and bc2-32 the ref is full. */
+#ifndef INSTRS_PER_REF
 #define INSTRS_PER_REF  2
-#if OAK_WORD_SIZE == 64
-#define INSTR_STRIDE    4
-#else
-#define INSTR_STRIDE    2
+#endif
+#define INSTR_STRIDE    (OAK_WORD_SIZE / 16)
+#if INSTRS_PER_REF > INSTR_STRIDE
+#error "more instructions per ref than fit in a ref"
 #endif
 
 #define TAG_MASK	3

@@ -74,18 +74,20 @@
      ((string=? (car args) "--32bit")
       (set! *word-bits* 32) (loop (cdr args) jobs locale-name))
      ((string=? (car args) "--target")
-      ;; A bytecode architecture name, bc2-32 or bc2-64 (a world name
-      ;; like bc2-el64 is accepted too); see architecture.oak.
+      ;; A bytecode architecture name, bc2-32, bc2-64 or bc4-64 (a
+      ;; world name like bc2-el64 is accepted too); see architecture.oak.
       (let ((name (cadr args)))
 	(cond ((string-suffix? "32" name) (set! *word-bits* 32))
 	      ((string-suffix? "64" name) (set! *word-bits* 64))
 	      (else (format (current-error-port)
 			    "oak-bootstrap: bad architecture name ~A~%" name)
 		    (exit 1)))
-	(unless (string-prefix? "bc2-" name)
-	  (format (current-error-port)
-		  "oak-bootstrap: only bc2 targets are supported, not ~A~%" name)
-	  (exit 1)))
+	(cond ((string-prefix? "bc2-" name) (set! *instrs-per-ref* 2))
+	      ((and (string-prefix? "bc4-" name) (= *word-bits* 64))
+	       (set! *instrs-per-ref* 4))
+	      (else (format (current-error-port)
+			    "oak-bootstrap: unsupported target ~A~%" name)
+		    (exit 1))))
       (loop (cddr args) jobs locale-name))
      ((string=? (car args) "--load")
       ;; Load FILE.oak into the current locale, as LOAD would, before

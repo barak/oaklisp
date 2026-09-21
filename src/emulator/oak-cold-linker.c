@@ -118,8 +118,12 @@ static char *xstrdup_(const char *str)
 #define VALUE_STACK_SIZE    0x1ABC
 #define CONTEXT_STACK_SIZE  0x2ABC
 
-#define REG_CODE_DELTA  4
-#define TOP_CODE_DELTA  (-2)
+/* Extra words per block, in opcodes: a regular block is preceded by
+   its %CODE-VECTOR header (type, length); a top level block starts at
+   its second word.  See tool.oak. */
+#define REG_CODE_DELTA  (2 * instrs_per_ref)
+#define TOP_CODE_DELTA  (-instrs_per_ref)
+#define MAX_INSTRS_PER_REF 4
 
 /* ================================================================
  * S-expression types
@@ -922,7 +926,7 @@ static void pair_cache_insert(sexp_t *key, uint64_t val)
 static int bits64 = 1;           /* default 64-bit */
 static int ref_shift;            /* 2 or 3 */
 static int fixnum_bits;          /* 30 or 62 */
-static int instrs_per_ref = 2;   /* only 2 is supported */
+static int instrs_per_ref = 2;   /* 2, or 4 with 64-bit refs */
 
 static int opc_count, var_count, sym_count, dat_count;
 static int blk_count, max_blks;
@@ -946,9 +950,9 @@ static int var_list_len = 0;
 
 /* World array: each cell is either a number or an opcode pair */
 typedef struct {
-    int is_opc;            /* 1 = opcode pair, 0 = number */
+    int is_opc;            /* 1 = opcodes, 0 = number */
     uint64_t val;          /* number value */
-    uint16_t op1, op2;     /* opcode pair */
+    uint16_t op[MAX_INSTRS_PER_REF];  /* instrs_per_ref opcodes, memory order */
 } cell_t;
 
 static cell_t *world = NULL;
@@ -1020,8 +1024,12 @@ static uint64_t tagize_loc(long x)
 
 static int zero_enough(cell_t *c)
 {
-    if (c->is_opc)
-        return (c->op1 == 0 && c->op2 == 0);
+    if (c->is_opc) {
+        int i;
+        for (i = 0; i < instrs_per_ref; i++)
+            if (c->op[i] != 0) return 0;
+        return 1;
+    }
     return (c->val == 0);
 }
 
@@ -1034,40 +1042,33 @@ static void store_world_word(uint64_t word, long addr)
     }
     cell_t *c = &world[addr];
     if (!zero_enough(c)) {
-        fprintf(stderr, "Attempt to overwrite at addr %ld (is_opc=%d val=%llu op1=%d op2=%d)\n",
-                addr, c->is_opc, (unsigned long long)c->val, c->op1, c->op2);
+        fprintf(stderr, "Attempt to overwrite at addr %ld (is_opc=%d val=%llu op=%d %d)\n",
+                addr, c->is_opc, (unsigned long long)c->val, c->op[0], c->op[1]);
         exit(1);
     }
-    c->is_opc = 0;
-    c->op1 = 0;
-    c->op2 = 0;
+    memset(c, 0, sizeof *c);
     c->val = word;
 }
 
-static void store_world_opcodes(uint16_t o1, uint16_t o2, long addr)
+static void overwrite_world_opcodes(const uint16_t *ops, long addr)
+{
+    cell_t *c = &world[addr];
+    memset(c, 0, sizeof *c);
+    c->is_opc = 1;
+    memcpy(c->op, ops, instrs_per_ref * sizeof ops[0]);
+}
+
+static void store_world_opcodes(const uint16_t *ops, long addr)
 {
     if (addr < 0 || addr >= world_array_size) {
         fprintf(stderr, "store_world_opcodes: addr %ld out of bounds\n", addr);
         exit(1);
     }
-    cell_t *c = &world[addr];
-    if (!zero_enough(c)) {
+    if (!zero_enough(&world[addr])) {
         fprintf(stderr, "Attempt to overwrite opcodes at addr %ld\n", addr);
         exit(1);
     }
-    c->is_opc = 1;
-    c->op1 = o1;
-    c->op2 = o2;
-    c->val = 0;
-}
-
-static void overwrite_world_opcodes(uint16_t o1, uint16_t o2, long addr)
-{
-    cell_t *c = &world[addr];
-    c->is_opc = 1;
-    c->op1 = o1;
-    c->op2 = o2;
-    c->val = 0;
+    overwrite_world_opcodes(ops, addr);
 }
 
 static void store_world_int(long long x, long addr)
@@ -1472,7 +1473,7 @@ static void count_things(void)
 {
     dat_count = 0;
     blk_count = 0;
-    opc_count = REG_CODE_DELTA - TOP_CODE_DELTA;  /* = 6 */
+    opc_count = REG_CODE_DELTA - TOP_CODE_DELTA;  /* the 3 reserved words */
 
     /* Pre-count vars-to-preload */
     for (int i = 0; i < N_PRELOAD; i++)
@@ -1504,8 +1505,9 @@ static void count_things(void)
 
             /* Count opcodes */
             int op_count = sexp_list_len(opcodes);
-            if (op_count & 1) {
-                fprintf(stderr, "Odd number of opcodes: %d\n", op_count);
+            if (op_count % instrs_per_ref) {
+                fprintf(stderr, "Number of opcodes not a multiple of %d: %d\n",
+                        instrs_per_ref, op_count);
                 exit(1);
             }
             opc_count += op_count;
@@ -1548,7 +1550,7 @@ static void count_things(void)
 static void compute_base_addresses(void)
 {
     start_of_opc_space = 0;
-    start_of_var_space = start_of_opc_space + opc_count / 2;
+    start_of_var_space = start_of_opc_space + opc_count / instrs_per_ref;
     start_of_sym_space = start_of_var_space + var_count * CELL_SIZE;
     start_of_dat_space = start_of_sym_space + sym_count * SYMBOL_SIZE;
     world_array_size = start_of_dat_space + dat_count;
@@ -1695,14 +1697,14 @@ static long uniq_blkno(int filno, int blkno)
 static void build_blk_table(void)
 {
     long next_blk_addr = start_of_opc_space +
-                         (REG_CODE_DELTA - TOP_CODE_DELTA) / 2;
+                         (REG_CODE_DELTA - TOP_CODE_DELTA) / instrs_per_ref;
 
     /* Phase 1: top-level blocks (first block of each file) */
     for (int fi = 0; fi < nfiles; fi++) {
         sexp_t *blk = sexp_nth(files[fi].data, 0);
         sexp_t *opcodes = sexp_nth(blk, 1);
         int nops = sexp_list_len(opcodes);
-        int nwords = (nops + TOP_CODE_DELTA) / 2;
+        int nwords = (nops + TOP_CODE_DELTA) / instrs_per_ref;
 
         long old_addr = next_blk_addr;
         next_blk_addr += nwords;
@@ -1729,7 +1731,7 @@ static void build_blk_table(void)
             sexp_t *blk = blist->u.pair.car;
             sexp_t *opcodes = sexp_nth(blk, 1);
             int nops = sexp_list_len(opcodes);
-            int nwords = (nops + REG_CODE_DELTA) / 2;
+            int nwords = (nops + REG_CODE_DELTA) / instrs_per_ref;
 
             long old_addr = next_blk_addr;
             next_blk_addr += nwords;
@@ -1756,16 +1758,24 @@ static void changereturntonoop(long addr)
         fprintf(stderr, "changereturntonoop: not opcodes at addr %ld\n", addr);
         exit(1);
     }
-    uint16_t op1 = c->op1, op2 = c->op2;
-
-    if (op2 == RETURN_OPCODE) {
-        overwrite_world_opcodes(op1, NOOP_OPCODE, addr);
-    } else if (op1 == RETURN_OPCODE && op2 == NOOP_OPCODE) {
-        overwrite_world_opcodes(NOOP_OPCODE, NOOP_OPCODE, addr);
-    } else {
-        fprintf(stderr, "bad ops in toplvl blk end <%d %d>\n", op1, op2);
-        exit(1);
+    /* The last word holds the block's final RETURN, possibly followed
+       by padding noops; make that RETURN a noop so that execution runs
+       on into the next block. */
+    uint16_t ops[MAX_INSTRS_PER_REF];
+    int i;
+    memcpy(ops, c->op, sizeof ops);
+    for (i = instrs_per_ref - 1; i >= 0; i--) {
+        if (ops[i] == NOOP_OPCODE) continue;
+        if (ops[i] == RETURN_OPCODE) {
+            ops[i] = NOOP_OPCODE;
+            overwrite_world_opcodes(ops, addr);
+            return;
+        }
+        break;
     }
+    fprintf(stderr, "bad ops in toplvl blk end <%d %d %d %d>\n",
+            ops[0], ops[1], ops[2], ops[3]);
+    exit(1);
 }
 
 static void spew_opcodes(void)
@@ -1789,28 +1799,27 @@ static void spew_opcodes(void)
             long base_addr = info->val;
             int blk_kind = info->kind;  /* 0=toplevel, 1=lastoplevel, 2=regular */
             int regp = (blk_kind == 2);
-            int delta = (regp ? REG_CODE_DELTA : TOP_CODE_DELTA) / 2;
+            int delta = (regp ? REG_CODE_DELTA : TOP_CODE_DELTA) / instrs_per_ref;
             long delbase_addr = delta + base_addr;
 
             /* Regular block header */
             if (regp) {
                 store_world_ptr(where_code_vector_lives, base_addr);
-                store_world_int(2 + sexp_list_len(opcodes) / 2, base_addr + 1);
+                store_world_int(2 + sexp_list_len(opcodes) / instrs_per_ref, base_addr + 1);
             }
 
             /* Write opcodes */
             sexp_t *ops = opcodes;
             long addr = delbase_addr;
             while (ops && ops->type == S_PAIR) {
-                uint16_t o1 = (uint16_t)ops->u.pair.car->u.ival;
-                ops = ops->u.pair.cdr;
-                uint16_t o2 = (ops && ops->type == S_PAIR) ?
-                    (uint16_t)ops->u.pair.car->u.ival : 0;
-                if (ops && ops->type == S_PAIR)
+                uint16_t word_ops[MAX_INSTRS_PER_REF] = {0, 0, 0, 0};
+                int k;
+                for (k = 0; k < instrs_per_ref && ops && ops->type == S_PAIR; k++) {
+                    word_ops[k] = (uint16_t)ops->u.pair.car->u.ival;
                     ops = ops->u.pair.cdr;
-
+                }
                 if (addr >= base_addr)
-                    store_world_opcodes(o1, o2, addr);
+                    store_world_opcodes(word_ops, addr);
                 addr++;
             }
 
@@ -1825,7 +1834,7 @@ static void spew_opcodes(void)
                 int patkind = (int)sexp_nth(pat, 0)->u.ival;
                 int patoffset = (int)sexp_nth(pat, 1)->u.ival;
                 sexp_t *patval = sexp_nth(pat, 2);
-                long pataddr = delbase_addr + patoffset / 2;
+                long pataddr = delbase_addr + patoffset / instrs_per_ref;
 
                 uint64_t patref;
                 if (patkind == 2) {
@@ -1918,9 +1927,14 @@ static void dump_world(const char *filename)
 
         cell_t *c = &world[i];
         if (c->is_opc) {
+            /* The opcodes as one number, the first most significant;
+               the emulator puts them in memory order when it reads
+               the world. */
+            int k;
             fprintf(fp, "^");
-            print_hex(fp, c->op1);
-            print_hex_padded4(fp, c->op2);
+            print_hex(fp, c->op[0]);
+            for (k = 1; k < instrs_per_ref; k++)
+                print_hex_padded4(fp, c->op[k]);
         } else {
             fprintf(fp, " ");
             print_hex(fp, c->val);
@@ -2009,12 +2023,13 @@ int main(int argc, char **argv)
                 fprintf(stderr, "Bad architecture name: %s\n", argv[i]);
                 usage(argv[0]);
             }
-            if (h.instrs_per_ref != 2) {
-                fprintf(stderr, "Only 2 instructions per ref is supported.\n");
-                exit(1);
-            }
             bits64 = (h.word_size == 64);
             instrs_per_ref = h.instrs_per_ref;
+            if (!(instrs_per_ref == 2 || (instrs_per_ref == 4 && bits64))) {
+                fprintf(stderr, "Unsupported: %d instructions per ref with %d-bit refs.\n",
+                        instrs_per_ref, h.word_size);
+                exit(1);
+            }
         } else if (!strcmp(argv[i], "-o")) {
             if (++i >= argc) usage(argv[0]);
             outbase = argv[i];

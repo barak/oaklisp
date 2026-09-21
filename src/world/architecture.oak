@@ -22,13 +22,13 @@
 ;;; From Oaklisp's point of view an architecture is characterized by
 ;;; the size of a reference in bits (the word size, 32 or 64, which
 ;;; determines the fixnum range), the number of 16-bit instructions
-;;; packed into each reference (currently always 2), and, for binary
+;;; packed into each reference (2, or 4 with 64-bit refs), and, for binary
 ;;; worlds and running emulators, the byte order.
 ;;;
 ;;; An architecture is represented as an alist with the keys
 ;;;
 ;;;   word-size             32 or 64
-;;;   instructions-per-ref  2
+;;;   instructions-per-ref  2 or 4
 ;;;   endian                little, big, or #f when not applicable
 ;;;
 ;;; and is named "bc<instructions-per-ref>-<word-size>" for bytecode,
@@ -50,9 +50,10 @@
 (define (make-architecture word-size instructions-per-ref endian)
   (unless (or (= word-size 32) (= word-size 64))
     (error "Unsupported word size ~D." word-size))
-  (unless (= instructions-per-ref 2)
-    (error "Unsupported number of instructions per ref ~D."
-	   instructions-per-ref))
+  (unless (or (= instructions-per-ref 2)
+	      (and (= instructions-per-ref 4) (= word-size 64)))
+    (error "Unsupported: ~D instructions per ref with ~D-bit refs."
+	   instructions-per-ref word-size))
   (unless (or (not endian) (eq? endian 'little) (eq? endian 'big))
     (error "Unsupported endianness ~S." endian))
   (list (cons 'word-size word-size)

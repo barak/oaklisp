@@ -20,117 +20,70 @@
 ;(initialize %code-vector '(ivar-map) (list variable-length-mixin object))
 
 ;;; Define NTH properly for %CODE-VECTORs.
-
-;;; We conditionalize on whether we're under a big-endian regime at load
-;;; time, thus avoiding the check repeatedly at runtime.
 ;;;
-;;; Two 16-bit instructions are packed into each ref, in memory order,
-;;; so the first instruction is in the low 16 bits of the ref on a
-;;; little-endian machine and in the high 16 bits of the first 32 bits
-;;; on a big-endian machine.  With 64-bit refs the instructions occupy
-;;; the first 32 bits in memory: the low half of the ref on
-;;; little-endian machines (so the same code works for 32- and 64-bit
-;;; refs) but the high half on big-endian ones, where the first
-;;; instruction is at bits 48..63 and the second at bits 32..47, which
-;;; are bits 46..61 and 30..45 of the %POINTER part.
-;;;
-;;; (If more instructions were ever packed into a ref this is one of
-;;; the places that would have to change; see also FASL.OAK.)
+;;; %%INSTRUCTIONS-PER-REF 16-bit instructions are packed into each ref
+;;; in memory order: instruction K of a ref is bits 16K..16K+15 of the
+;;; ref on a little-endian machine and bits W-16(K+1)..W-16K-1, W the
+;;; word size, on a big-endian one.  (With 2 instructions in a 64-bit
+;;; ref the other 32 bits are unused.)  A ref is handled here as its
+;;; %POINTER, the bits above the 2-bit tag, plus the tag: a field at
+;;; bit 0 spans the tag, the others are entirely within the pointer
+;;; part.  FX-TIMES rather than ASH-LEFT to place a field, as the
+;;; shifted instruction can overflow a fixnum and ASH promotes on
+;;; overflow; ROT-LEFT for the shift amounts, so that no literal too
+;;; big for a 32-bit fixnum appears in this cold world file.
 
-(cond
+;;; Bit position of instruction K of a ref.
+(define (%instruction-bit-position k)
+  (if (%big-endian?)
+      (- %%word-size (* 16 (+ k 1)))
+      (* 16 k)))
 
- ((and (%big-endian?) (= %%word-size 64))
+;;; Instruction K of the ref R.
+(define (%unpack-instruction r k)
+  (let ((pos (%instruction-bit-position k)))
+    (if (zero? pos)
+	(bit-or (ash-left (bit-and (%pointer r) #x3FFF) 2) (%tag r))
+	(bit-and #xFFFF (ash-right (%pointer r) (- pos 2))))))
 
-  (add-method (nth (%code-vector) self n)
-    (let* ((n2 (quotient n 2))
-	   (x (%vref self n2)))
-      (if (not (zero? (modulo n 2)))
-	  ;; Second instruction, bits 32..47:
-	  (bit-and #xFFFF (ash-right (%pointer x) 30))
-	  ;; First instruction, bits 48..63:
-	  (bit-and #xFFFF (ash-right (%pointer x) 46)))))
+;;; R with instruction K replaced by X.
+(define (%repack-instruction r k x)
+  (let ((pos (%instruction-bit-position k)))
+    (if (zero? pos)
+	(%crunch (bit-or (bit-and (%pointer r) (bit-not #x3FFF))
+			 (ash-right x 2))
+		 (bit-and x #x3))
+	(let ((unit (rot-left 1 (- pos 2))))
+	  (%crunch (bit-or (bit-and (%pointer r)
+				    (bit-not (fx-times #xFFFF unit)))
+			   (fx-times x unit))
+		   (%tag r))))))
 
-  ;; FX-TIMES rather than ASH-LEFT, as the shifted instruction would
-  ;; overflow a fixnum and ASH promotes on overflow; ROT-LEFT for the
-  ;; shift amounts, so that no literal too big for a 32-bit fixnum
-  ;; appears in this cold world file.
-  (add-method ((setter nth) (%code-vector) self n x)
-    (let* ((n2 (quotient n 2))
-	   (x0 (%vref self n2))
-	   (x1 (if (not (zero? (modulo n 2)))
-		   ;; Second instruction, bits 32..47:
-		   (%crunch (bit-or (bit-and (%pointer x0)
-					     (bit-not (fx-times #xFFFF (rot-left 1 30))))
-				    (fx-times x (rot-left 1 30)))
-			    (%tag x0))
-		   ;; First instruction, bits 48..63:
-		   (%crunch (bit-or (bit-and (%pointer x0)
-					     (bit-not (fx-times #xFFFF (rot-left 1 46))))
-				    (fx-times x (rot-left 1 46)))
-			    (%tag x0)))))
-      (set! (%vref self n2) x1))))
+;;; The ref holding the instructions in the list L (at most
+;;; %%INSTRUCTIONS-PER-REF of them; missing ones are 0).
+(define (%pack-instructions l)
+  (iterate aux ((l l) (k 0) (r 0))
+    (if (null? l)
+	r
+	(aux (cdr l) (+ k 1) (%repack-instruction r k (car l))))))
 
- ((%big-endian?)
+(add-method (nth (%code-vector) self n)
+  (%unpack-instruction (%vref self (quotient n %%instructions-per-ref))
+		       (modulo n %%instructions-per-ref)))
 
-  (add-method (nth (%code-vector) self n)
-    (let* ((n2 (quotient n 2))
-	   (x (%vref self n2)))
-      (if (not (zero? (modulo n 2)))
-	  ;; Low 16 bits:
-	  (bit-or (ash-left (bit-and (%pointer x) #x3FFF) 2) (%tag x))
-	  ;; High 16 bits:
-	  (bit-and #xFFFF (ash-right (%pointer x) 14)))))
-
-  (add-method ((setter nth) (%code-vector) self n x)
-    (let* ((n2 (quotient n 2))
-	   (x0 (%vref self n2))
-	   (x1 (if (not (zero? (modulo n 2)))
-		   ;; Low 16 bits:
-		   (%crunch (bit-or (bit-and (%pointer x0) (bit-not #x3FFF))
-				    (ash-right x 2))
-			    (bit-and x #x3))
-		   ;; High 16 bits:
-		   ;; FX-TIMES, not ASH-LEFT: this is a bit field being
-		   ;; packed, and on a 32 bit build a 16 bit instruction
-		   ;; shifted left by 14 does not fit in a fixnum.  ASH
-		   ;; would promote it to a bignum; the wrapping multiply
-		   ;; keeps the bit pattern we want.
-		   (%crunch (bit-or (bit-and (%pointer x0) #x3FFF)
-				    (fx-times x 16384))
-			    (%tag x0)))))
-      (set! (%vref self n2) x1))))
-
- (else
-
-  (add-method (nth (%code-vector) self n)
-    (let* ((n2 (quotient n 2))
-	   (x (%vref self n2)))
-      (if (zero? (modulo n 2))
-	  ;; Low 16 bits:
-	  (bit-or (ash-left (bit-and (%pointer x) #x3FFF) 2) (%tag x))
-	  ;; High 16 bits:
-	  (bit-and #xFFFF (ash-right (%pointer x) 14)))))
-
-  (add-method ((setter nth) (%code-vector) self n x)
-    (let* ((n2 (quotient n 2))
-	   (x0 (%vref self n2))
-	   (x1 (if (zero? (modulo n 2))
-		   ;; Low 16 bits:
-		   (%crunch (bit-or (bit-and (%pointer x0) (bit-not #x3FFF))
-				    (ash-right x 2))
-			    (bit-and x #x3))
-		   ;; High 16 bits:  (see the note on FX-TIMES above)
-		   (%crunch (bit-or (bit-and (%pointer x0) #x3FFF)
-				    (fx-times x 16384))
-			    (%tag x0)))))
-      (set! (%vref self n2) x1)))))
+(add-method ((setter nth) (%code-vector) self n x)
+  (let ((n2 (quotient n %%instructions-per-ref)))
+    (set! (%vref self n2)
+	 (%repack-instruction (%vref self n2)
+			      (modulo n %%instructions-per-ref) x))))
 
 (define-instance remap-your-ivars operation)
 
 (add-method (remap-your-ivars (%code-vector) self remap-alist real-ivar-map)
   (let* ((len (length self))
 	 (new-code-vector (make %code-vector len))
-	 (limit (* len 2)))
+	 (ipr %%instructions-per-ref)
+	 (limit (* len ipr)))
     (set! ((%slot 2) new-code-vector) real-ivar-map)
     (iterate aux ((i 0))
       (cond ((< i len)
@@ -143,8 +96,9 @@
 		     (else
 		      (let ((x (nth new-code-vector i)))
 			(cond ((= x #x600)
-			       ;; LOAD-IMM, op=0 and arg=6.
-			       (aux (+ i (if (odd? i) 3 4))))
+			       ;; LOAD-IMM, op=0 and arg=6: skip the
+			       ;; padding to the next ref and the ref.
+			       (aux (+ (* ipr (quotient (+ i ipr) ipr)) ipr)))
 			      (else
 			       (let ((op (bit-and #x3F (ash-right x 2))))
 				 (if (or (= op 12) ;load-bp

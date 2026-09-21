@@ -568,7 +568,7 @@
   ;; for; see architecture.oak.  *word-bits* is set from --32bit
   ;; before the world is built.
   (defglobal! '%%WORD-SIZE *word-bits*)
-  (defglobal! '%%INSTRUCTIONS-PER-REF 2)
+  (defglobal! '%%INSTRUCTIONS-PER-REF *instrs-per-ref*)
   (defglobal! '*LOCALE-MUTEX* '())
   (defglobal! '*ADD-METHOD-MUTEX* '())
   (set! *make-cell* (oak-loc-var (resolve-global *proto-locale* 'MAKE)))
@@ -922,6 +922,7 @@
 ;;; fixnum shifted up by the two tag bits) within a 64 bit word, then
 ;;; clear the tag bits.  Width is 62 on the 64 bit build.
 (define *word-bits* 64)
+(define *instrs-per-ref* 2)
 (define (oak-rot x n)
   (let* ((width (- *word-bits* 2))
 	 (b (modulo n width))
