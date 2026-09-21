@@ -32,7 +32,7 @@ addressing modes.
 \begin{tabular}{|c|c|c|l}
 \cline{1-3}
 \em 31 30 29 28 27 26 \ldots 11 10 9 8 & \em 7 6 5 4 3 2 & \em 1 0 &
- \multicolumn{1}{l}\emph{type} \\ \cline{1-3}
+ \multicolumn{1}{l}{\emph{type}} \\ \cline{1-3}
 \multicolumn{2}{|c|}{twos complement integer} & 0 0 & fixnum \\ \cline{1-3}
 data	&	subtype		& 1 0 & other immediate type \\ \cline{1-3}
 \multicolumn{2}{|c|}{address}	& 0 1 & locative (pointer to cell) \\ \cline{1-3}
@@ -58,7 +58,7 @@ specify a subtype.
 \begin{tabular}{|c|c|c|c|c|l}
 \cline{1-5}
 \emph{31 \ldots 24} & \emph{23 \ldots 16} & \emph{15 \ldots 8} &
-\emph{7 \ldots 2} & \emph{1 0} & \multicolumn{1}{l}\emph{type} \\ \cline{1-5}
+\emph{7 \ldots 2} & \emph{1 0} & \multicolumn{1}{l}{\emph{type}} \\ \cline{1-5}
  reserved & font & ascii code & 0 0 0 0 0 0 & 1 0 & character\\ \cline{1-5}
 \end{tabular}
 \end{center}
@@ -136,7 +136,7 @@ ZetaLisp flavors--that's why variable references in flavors go through
 mapping tables, resulting in considerable overhead.  There are also
 important modularity considerations in favor of our scheme which are
 beyond the scope of this document, but are discussed in detail in
-\citep{SNYDER86}.} These semantics allow us to reference instance
+\citet{SNYDER86}.} These semantics allow us to reference instance
 variables very quickly, once the local instance variable block has
 been located.  It also allows us to use the same compiled code for a
 single method regardless of whether it is being invoked upon an
@@ -364,7 +364,7 @@ in memory:
 
 \begin{center}
 \begin{tabular}{|c|c|} \hline
- \multicolumn{2}{|c|}\emph{type} \\\hline
+ \multicolumn{2}{|c|}{\emph{type}} \\\hline
  \emph{instance-length:} & 3 \\\hline
  \emph{variable-length?:} & \texttt{\#f} \\\hline
  \emph{supertype-list:} & \texttt{(\emph{pair} \emph{object})}\\\hline

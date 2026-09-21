@@ -29,9 +29,7 @@ EXTRA_DIST = $(LATEX_SRCS)
 # ../mandefs.tex and ../oakman.bib are, and writes everything to the
 # corresponding directory here (-outdir), so an out-of-tree build
 # leaves the source tree alone.  bibtex runs in the output directory,
-# so ../oakman.bib has to be here too; and the EPS figures are
-# converted here beforehand, rather than beside their sources by the
-# epstopdf package (TeX looks in the output directory first).
+# so ../oakman.bib has to be here too.
 .tex.pdf:
 	$(MKDIR_P) `dirname $@`
 	$(LATEXMK) -cd -pdf -outdir=$(abs_builddir)/`dirname $@` $< \
@@ -44,11 +42,6 @@ bibliography:
 	test -f oakman.bib || cp $(srcdir)/oakman.bib oakman.bib
 .PHONY: bibliography
 
-FIGURES = lang/numhier.pdf lang/seqhier.pdf
-lang/lang.pdf: $(FIGURES)
-.eps.pdf:
-	$(MKDIR_P) `dirname $@`
-	$(EPSTOPDF) --outfile=$@ $<
 
 # Refresh the prebuilt copies.
 prebuilt: $(LATEX_PDFS)
@@ -63,14 +56,14 @@ EXTRA_DIST += examples/bank-example.oak examples/change.oak		\
  examples/test-bank-example.oak examples/unit-testing.oak		\
  lang/control.tex lang/cover.tex lang/dynamic.tex lang/intro.tex	\
  lang/io.tex lang/locales.tex lang/methods.tex lang/misc.tex		\
- lang/numbers.tex lang/numhier.eps lang/seqhier.eps			\
+ lang/numbers.tex lang/numhier.tex lang/seqhier.tex			\
  lang/sequences.tex lang/sides.tex lang/types.tex lang/user.tex		\
  lim/admin.tex lim/boot.tex lim/bytecode.tex lim/compiler.tex		\
  lim/cover.tex lim/dataform.tex lim/intro.tex lim/language.tex		\
  lim/methods.tex lim/oaklevel.tex lim/stack.tex mandefs.tex		\
  oakman.bib
 
-CLEANFILES = $(LATEX_PDFS) $(FIGURES)
+CLEANFILES = $(LATEX_PDFS)
 
 # Only an out-of-tree build has a copy of the bibliography here.
 distclean-local:
@@ -81,7 +74,6 @@ CLEANFILES += lang/control.aux lang/cover.aux lang/dynamic.aux		\
  lang/lang.fdb_latexmk lang/lang.fls lang/lang.idx lang/lang.ilg	\
  lang/lang.ind lang/lang.log lang/lang.toc lang/locales.aux		\
  lang/methods.aux lang/misc.aux lang/numbers.aux			\
- lang/numhier-eps-converted-to.pdf lang/seqhier-eps-converted-to.pdf	\
  lang/sequences.aux lang/sides.aux lang/types.aux lang/user.aux
 
 CLEANFILES += lim/admin.aux lim/boot.aux lim/bytecode.aux		\

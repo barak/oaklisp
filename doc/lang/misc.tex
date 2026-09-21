@@ -79,11 +79,11 @@ method can otherwise be found.}
 \doc{Controls how delays are printed.  This is how \texttt{(delay 'foo)}
 would print under various settings of \texttt{forcible-print-magic}.
 \begin{center}
-\begin{tabular}{|l|l|}\hline
-value             & print style             \\ \hline
-\texttt{\#f}          & \texttt{\#<DELAY 3462>}     \\
-\texttt{indicate}    & \texttt{\#[DELAY FOO 3462]} \\
-\texttt{transparent} & \texttt{FOO}               \\ \hline
+\begin{tabular}{ll}\toprule
+\textbf{value}             & \textbf{print style} \\ \midrule
+\texttt{\#f}          & \texttt{\#<DELAY 3462>}   \\
+\texttt{indicate}    & \texttt{\#[DELAY FOO 3462]}\\
+\texttt{transparent} & \texttt{FOO}               \\ \bottomrule
 \end{tabular}
 \end{center}
 The default is \df{transparent}.  A setting of \df{indicate} is more

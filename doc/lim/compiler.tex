@@ -17,19 +17,19 @@
 
 \chapter{The Compiler}
 
-\subsection{File Types}
+\section{File Types}
 
 There are a number of different kinds of object files, distinguished
 by extension.
 
 \begin{center}
-\begin{tabular}{l|l}
-\emph{extension} & \multicolumn{1}{c}\emph{file type} \\\hline
+\begin{tabular}{@{\hspace{1.5em}}ll}\toprule
+\multicolumn{1}{l}{\textbf{extension}} & \multicolumn{1}{l}{\textbf{file type}} \\\cmidrule(r){1-1}\cmidrule{2-2}
 \tt .oak  & Oaklisp source file \\
 \tt .omac & Macroexpanded Oaklisp source file \\
 \tt .ou   & Assembly file, not peephole optimized \\
 \tt .oc   & Assembly file, peephole optimized \\
-\tt .oa   & Assembled object file
+\tt .oa   & Assembled object file \\\bottomrule
 \end{tabular}
 \end{center}
 
@@ -48,10 +48,10 @@ for a little, and 2 for a lot.  Default value is 1, but the
 in the compiler locale.}
 
 
-\subsection{Object File Formats}
+\section{Object File Formats}
 
 
-\subsection{Compiler Internals}
+\section{Compiler Internals}
 
 Some compiler internals documentation.  Very sketchy, just enough to
 give people a vague idea of what the internal program representation

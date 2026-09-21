@@ -7,5 +7,6 @@
 *.ilg
 *.ind
 *.log
+*.out
 *.pdf
 *.toc
