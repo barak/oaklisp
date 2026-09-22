@@ -59,7 +59,7 @@ make install
 
 ### Key configure options
 
-- `--enable-64-bit` — Native 64-bit mode (default: yes); use `--disable-64-bit` to force 32-bit
+- `--enable-64-bit` — native pointer size (default: yes); `--disable-64-bit` builds a 32-bit executable on a 64-bit machine with the compiler option for its 32-bit memory model (`-m32` etc.)
 - `--enable-docs` — Build LaTeX documentation (default: yes)
 - `--enable-ndebug` — High-speed mode, disables debug tracing (default: yes, sets -DFAST)
 - `--enable-threads` — Thread support (default: no, experimental)
