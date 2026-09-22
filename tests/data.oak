@@ -54,7 +54,7 @@
 (check "string-hash-table" (let ((h (make-string-hash-table))) (set! (table-entry h "k") 'v) (table-entry h "k")) 'v)
 (check "hash table growth" (let ((h (make-eq-hash-table))) (dotimes (i 5000) (set! (table-entry h i) (* i i))) (list (table-entry h 4999) (table-entry h 0))) '(24990001 0))
 (check "present?" (let ((h (make-eq-hash-table))) (set! (present? h 'a) 1) (and (present? h 'a) (not (present? h 'b)))) #t)
-(check "lazy cons" (car (lcons 1 (error "not forced"))) 1)
+(check "lazy cons" (car (lazy-cons 1 (error "not forced"))) 1)
 (check "delay force" (force (delay (+ 1 2))) 3)
 (check "backquote" `(1 ,(+ 1 1) ,@(list 3 4)) '(1 2 3 4))
 (check "quasiquote nested" `(a (b ,(car '(c)))) '(a (b c)))

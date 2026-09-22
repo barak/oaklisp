@@ -29,10 +29,10 @@
 
 	   ((primes-list n)
 	    (if (prime? n)
-		(lcons n (primes-list (+ 1 n)))
+		(lazy-cons n (primes-list (+ 1 n)))
 		(primes-list (+ 1 n)))))
 
-    (lcons 2 (primes-list 3))))
+    (lazy-cons 2 (primes-list 3))))
 
 
 ;;; Zero and the negatives are dealt with before the loop starts, so

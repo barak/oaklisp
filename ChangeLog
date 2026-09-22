@@ -7,7 +7,10 @@
 	* terminal input is edited with GNU readline when available
 	  (--with-readline; --no-line-editing at run time)
 	* shell completion for bash, zsh and fish, installed from resources/
-	* lmap takes any number of lists, like map; exported to oaklisp-locale
+	* lazy-map (was lmap) takes any number of lists, like map; exported
+	  to oaklisp-locale
+	* the lazy list type is lazy-cons-pair and the macro that makes one
+	  is lazy-cons (it was lcons), as the manual always had it
 
 2026-09-22  Barak A. Pearlmutter  <barak@pearlmutter.net>
 
