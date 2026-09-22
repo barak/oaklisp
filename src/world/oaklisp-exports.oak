@@ -179,6 +179,9 @@
     when-undefined-value unless-undefined-value while-undefined-value
     ivar-undefined-value variable-undefined-value
 
+    ;; misc
+    fact
+
     ;; Support for the expansions of the macros exported above.
     ;; Add to this whenever a user-level macro is found to expand
     ;; into something not already listed.
