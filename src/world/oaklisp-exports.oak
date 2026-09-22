@@ -99,7 +99,7 @@
     any? every? position position-in-list
     union intersection setdifference setxor subset? setequal?
     iota iota0 sort sort! splice copy fill!
-    lazy-cons
+    lazy-cons lmap
 
     ;; Sequences, vectors, strings, characters, symbols
     sequence simple-vector vector-type vector vector?

@@ -94,6 +94,10 @@ documented in Section~\ref{sec:controlmap}.
 \mc{lcons}{car-form cdr-form}
 \doc{\macdef{}{(make lazy-cons-pair (lambda () \emph{car-form}) (lambda
 () \emph{cdr-form}))}}
+\op{lmap}{operation list \dt lists}
+\doc{Like \df{map} on lists, but the result is a lazy list, each
+element computed when first accessed; the \emph{lists} may themselves
+be lazy and unbounded.}
 
 
 \section{List Accessors}

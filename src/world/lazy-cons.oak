@@ -62,9 +62,60 @@
   `(make lazy-cons (lambda () ,a) (lambda () ,d)))
 
 (define-instance lmap operation)
+(define-instance lmap1 operation)
+(define-instance lmap2 operation)
+(define-instance lmap3 operation)
+(define-instance lmap4 operation)
+(define-instance lmap5 operation)
+(define-instance general-lmap operation)
 
-(add-method (lmap (operation) op l)
-  (if (null? l) '() (lcons (op (car l)) (lmap op (cdr l)))))
+;;; LMAP takes any number of lists, dispatching on their number the
+;;; way MAP does; the result is a lazy list, as long as the first.
+
+(add-method (lmap (operation) op l . args)
+  ((cond ((= 0 (rest-length args)) lmap1)
+	 ((= 1 (rest-length args)) lmap2)
+	 ((= 2 (rest-length args)) lmap3)
+	 ((= 3 (rest-length args)) lmap4)
+	 ((= 4 (rest-length args)) lmap5)
+	 (else general-lmap))
+   op l . args))
+
+(add-method (lmap1 (operation) op l)
+  (if (null? l) '()
+      (lcons (op (car l)) (lmap1 op (cdr l)))))
+
+(add-method (lmap2 (operation) op l1 l2)
+  (if (null? l1) '()
+      (lcons (op (car l1) (car l2))
+	     (lmap2 op (cdr l1) (cdr l2)))))
+
+(add-method (lmap3 (operation) op l1 l2 l3)
+  (if (null? l1) '()
+      (lcons (op (car l1) (car l2) (car l3))
+	     (lmap3 op (cdr l1) (cdr l2) (cdr l3)))))
+
+(add-method (lmap4 (operation) op l1 l2 l3 l4)
+  (if (null? l1) '()
+      (lcons (op (car l1) (car l2) (car l3) (car l4))
+	     (lmap4 op (cdr l1) (cdr l2) (cdr l3) (cdr l4)))))
+
+(add-method (lmap5 (operation) op l1 l2 l3 l4 l5)
+  (if (null? l1) '()
+      (lcons (op (car l1) (car l2) (car l3) (car l4) (car l5))
+	     (lmap5 op (cdr l1) (cdr l2) (cdr l3) (cdr l4) (cdr l5)))))
+
+(labels (((aux args)
+	  (destructure (op . args) args
+	    (aux1 op args)))
+
+	 ((aux1 op list-of-lists)
+	  (if (null? (car list-of-lists)) '()
+	      (lcons (apply op (map car list-of-lists))
+		     (aux1 op (map cdr list-of-lists))))))
+
+	(add-method (general-lmap (operation) op . lists)
+	  (listify-args aux op . lists)))
 
 (define (square-list n)
   (make lazy-cons (lambda () (* n n)) (lambda () (square-list (+ n 1)))))
