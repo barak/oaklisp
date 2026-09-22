@@ -15,6 +15,7 @@ doc/lim/            Implementation manual (LaTeX)
 doc/summary/        Concise programmer reference (LaTeX)
 doc/examples/       Example Oaklisp programs
 man/man1/           Man page template (oaklisp.1.in)
+resources/          Desktop entry, icon, shell completions (bash, zsh, fish)
 prebuilt/           Prebuilt bootstrap artifacts, on the "master" branch only
 m4/                 Cached AX_* autoconf macros, on the "master" branch only
 debian/             Debian packaging

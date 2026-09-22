@@ -237,6 +237,7 @@ AC_CHECK_FUNCS([GetTickCount getrusage gettimeofday clock])
 AC_CONFIG_FILES([Makefile
                  doc/Makefile
                  man/Makefile
+                 resources/Makefile
                  src/Makefile
                  src/emulator/Makefile
                  src/world/Makefile
