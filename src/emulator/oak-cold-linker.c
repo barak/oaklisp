@@ -1105,33 +1105,36 @@ static long alloc_dat(int n)
  * String size and allocation
  * ================================================================ */
 
+/* Strings pack their characters into the fixnums of their words: 3
+   per word with 32-bit refs, 7 with 64-bit ones (see strings.oak). */
+#define CHARS_PER_WORD (bits64 ? 7 : 3)
+
 static int string_size(const char *s)
 {
     int slen = strlen(s);
-    return 3 + (slen + 2) / 3;
+    return 3 + (slen + CHARS_PER_WORD - 1) / CHARS_PER_WORD;
 }
 
 static uint64_t real_string_alloc(const char *s, int slen)
 {
-    int strwordlen = 3 + (slen + 2) / 3;
+    int strwordlen = 3 + (slen + CHARS_PER_WORD - 1) / CHARS_PER_WORD;
     long newstring = alloc_dat(strwordlen);
     store_world_ptr(where_string_lives, newstring);
     store_world_int(strwordlen, newstring + 1);
     store_world_int(slen, newstring + 2);
 
-    /* Pack characters 3 per word */
     const unsigned char *p = (const unsigned char *)s;
     int todo = slen;
     long addr = newstring + 3;
     while (todo > 0) {
         long long w = 0;
-        if (todo >= 1) w = p[0];
-        if (todo >= 2) w |= (long long)p[1] << 8;
-        if (todo >= 3) w |= (long long)p[2] << 16;
+        int k;
+        for (k = 0; k < CHARS_PER_WORD && k < todo; k++)
+            w |= (long long)p[k] << (8 * k);
         store_world_int(w, addr);
         addr++;
-        p += 3;
-        todo -= 3;
+        p += CHARS_PER_WORD;
+        todo -= CHARS_PER_WORD;
     }
     return tagize_ptr(newstring);
 }
@@ -1907,8 +1910,8 @@ static void dump_world(const char *filename)
        the emulator only finds out by crashing somewhere unrelated.  A
        cold world is byte order neutral, so the header names no
        endianness.  tool.oak writes the same line. */
-    fprintf(fp, ";oaklisp-world format=cold word-size=%d instructions-per-ref=%d\n",
-            fixnum_bits + 2, instrs_per_ref);
+    fprintf(fp, ";oaklisp-world format=cold word-size=%d instructions-per-ref=%d chars-per-word=%d\n",
+            fixnum_bits + 2, instrs_per_ref, CHARS_PER_WORD);
 
     /* Header */
     print_hex(fp, VALUE_STACK_SIZE);

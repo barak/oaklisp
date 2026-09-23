@@ -598,9 +598,15 @@
 	   (set! (present? pair-table c) newp)
 	   newp))))
 
+;;; Strings pack their characters into the fixnums of their words: 3
+;;; per word with 32-bit refs, 7 with 64-bit ones (see strings.oak).
+(define (target-chars-per-word)
+  (if (= target-word-size 64) 7 3))
+
 (define (string-size c)
   (let* ((strlen (length c))
-	 (strwordlen (+ 3 (quotient (+ strlen (- 3 1)) 3))))
+	 (cpw (target-chars-per-word))
+	 (strwordlen (+ 3 (quotient (+ strlen (- cpw 1)) cpw))))
     strwordlen))
 
 
@@ -615,7 +621,8 @@
 
 
 (define (real-string-alloc c strlen)
-  (let* ((strwordlen (+ 3 (quotient (+ strlen (- 3 1)) 3)))
+  (let* ((cpw (target-chars-per-word))
+	 (strwordlen (+ 3 (quotient (+ strlen (- cpw 1)) cpw)))
 	 (newstring (alloc-dat  strwordlen))
 	 (strlist (map #^number (#^list-type c))))
     (store-world-ptr where-string-lives newstring)
@@ -626,23 +633,15 @@
 
 
 (define (string-alloc-aux i l to-do)
-  (iterate aux ((i i)(l l)(to-do to-do))
-    (cond ((= to-do 0) )
-	  ((= to-do 1)
-	   (store-world-int (car l) i))
-	  ((= to-do 2)
-	   (store-world-int (bit-or (car l) (ash-left (cadr l) 8)) i))
-	  (else
-	   (let* ((c0 (car l))
-		  (l1 (cdr l))
-		  (c1 (car l1))
-		  (l2 (cdr l1))
-		  (c2 (car l2)))
-	     (store-world-int (bit-or c0
-				      (bit-or (ash-left c1 8)
-					      (ash-left c2 16)))
-			      i)
-	     (aux (+ i 1) (cdr l2) (- to-do 3)))))))
+  (let ((cpw (target-chars-per-word)))
+    (iterate aux ((i i) (l l) (to-do to-do))
+      (unless (= to-do 0)
+	(iterate pack ((l l) (k 0) (word 0))
+	  (if (or (= k cpw) (null? l))
+	      (block (store-world-int word i)
+		     (aux (+ i 1) l (- to-do (min to-do cpw))))
+	      (pack (cdr l) (+ k 1)
+		    (bit-or word (ash-left (car l) (* 8 k))))))))))
 
 
 
@@ -921,8 +920,8 @@
   (let ((actual-size next-free-dat)
 	(world world))
     (with-open-file (outfile filename out)
-      (format outfile ";oaklisp-world format=cold word-size=~D instructions-per-ref=~D~%"
-	      target-word-size target-instructions-per-ref)
+      (format outfile ";oaklisp-world format=cold word-size=~D instructions-per-ref=~D chars-per-word=~D~%"
+	      target-word-size target-instructions-per-ref (target-chars-per-word))
       (write-world-header outfile)
       (bind ((#*print-radix 16))
 	(dotimes (i actual-size)

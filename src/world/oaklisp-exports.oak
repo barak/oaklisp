@@ -50,7 +50,7 @@
     do dolist dolist-count dotimes while until
     quasiquote comment
     fluid bind
-    delay force forcible future future-obj lcons
+    delay force forcible future future-obj lazy-cons
     destructure destructure* destructure**
     select-type fselect-type eselect-type efselect-type
     listify-args consume-args
@@ -99,7 +99,7 @@
     any? every? position position-in-list
     union intersection setdifference setxor subset? setequal?
     iota iota0 sort sort! splice copy fill!
-    lazy-cons
+    lazy-cons-pair lazy-map
 
     ;; Sequences, vectors, strings, characters, symbols
     sequence simple-vector vector-type vector vector?
@@ -178,6 +178,9 @@
     generic-undefined-value if-undefined-value cond-undefined-value
     when-undefined-value unless-undefined-value while-undefined-value
     ivar-undefined-value variable-undefined-value
+
+    ;; misc
+    fact
 
     ;; Support for the expansions of the macros exported above.
     ;; Add to this whenever a user-level macro is found to expand

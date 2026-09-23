@@ -28,11 +28,12 @@ endif
 oak_cold_linker_SOURCES = oak-cold-linker.c
 EXTRA_PROGRAMS = oak-cold-linker
 
-oaklisp_SOURCES = cmdline.c data.c gc.c gc-ms.c instr.c loop.c		\
- oaklisp.c signals.c stacks.c threads.c timers.c weak.c worldio.c	\
- xmalloc.c cmdline.h config.h data.h gc.h gc-ms.h instr.h loop.h	\
- oak-atomic.h oak-getopt.h oak-header.h oak-thread.h signals.h stacks.h	\
- stacks-loop.h threads.h timers.h weak.h worldio.h xmalloc.h
+oaklisp_SOURCES = cmdline.c data.c gc.c gc-ms.c instr.c lineedit.c	\
+ loop.c oaklisp.c signals.c stacks.c threads.c timers.c weak.c		\
+ worldio.c xmalloc.c cmdline.h config.h data.h gc.h gc-ms.h instr.h	\
+ lineedit.h loop.h oak-atomic.h oak-getopt.h oak-header.h oak-thread.h	\
+ signals.h stacks.h stacks-loop.h threads.h timers.h weak.h worldio.h	\
+ xmalloc.h
 
 if NDEBUG
 else

@@ -90,6 +90,9 @@ synonym for \-\-trace-gc
 .B \-\-batch
 disable trapping of SIGINT
 .TP
+.B \-\-no-line-editing
+read the terminal without GNU readline
+.TP
 .B \-\-trace-files
 trace filesystem operations
 

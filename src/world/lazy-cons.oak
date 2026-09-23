@@ -17,10 +17,10 @@
 
 ;;; Copyright (C) 1888 Kevin J. Lang & Barak A. Pearlmutter
 
-(define-instance lazy-cons type
+(define-instance lazy-cons-pair type
   '(car-thunk cdr-thunk car-flag cdr-flag) (list pair object))
 
-(add-method (initialize (lazy-cons car-thunk cdr-thunk car-flag cdr-flag)
+(add-method (initialize (lazy-cons-pair car-thunk cdr-thunk car-flag cdr-flag)
 			    self new-car-thunk new-cdr-thunk)
   (set! car-thunk new-car-thunk)
   (set! cdr-thunk new-cdr-thunk)
@@ -28,59 +28,111 @@
   (set! cdr-flag nil)
   self)
 
-(add-method (car (lazy-cons car-thunk car-flag) self)
+(add-method (car (lazy-cons-pair car-thunk car-flag) self)
   (if car-flag car-thunk
       (let ((newcar (car-thunk)))
 	;; Critical section; would be a good idea to disable interrupts.
 	(set! car-flag #t)
 	(set! car-thunk newcar))))
 
-(add-method (cdr (lazy-cons cdr-thunk cdr-flag) self)
+(add-method (cdr (lazy-cons-pair cdr-thunk cdr-flag) self)
   (if cdr-flag cdr-thunk
       (let ((newcdr (cdr-thunk)))
 	;; Critical section; would be a good idea to disable interrupts.
 	(set! cdr-flag #t)
 	(set! cdr-thunk newcdr))))
 
-(add-method ((setter car) (lazy-cons car-thunk car-flag) self val)
+(add-method ((setter car) (lazy-cons-pair car-thunk car-flag) self val)
   (set! car-flag #t)
   (set! car-thunk val))
 
-(add-method ((setter cdr) (lazy-cons cdr-thunk cdr-flag) self val)
+(add-method ((setter cdr) (lazy-cons-pair cdr-thunk cdr-flag) self val)
   (set! cdr-flag #t)
   (set! cdr-thunk val))
 
-(add-method ((locater car) (lazy-cons car-thunk) self)
+(add-method ((locater car) (lazy-cons-pair car-thunk) self)
   (car self)
   (make-locative car-thunk))
 
-(add-method ((locater cdr) (lazy-cons cdr-thunk) self)
+(add-method ((locater cdr) (lazy-cons-pair cdr-thunk) self)
   (cdr self)
   (make-locative cdr-thunk))
 
-(define-syntax (lcons a d)
-  `(make lazy-cons (lambda () ,a) (lambda () ,d)))
+(define-syntax (lazy-cons a d)
+  `(make lazy-cons-pair (lambda () ,a) (lambda () ,d)))
 
-(define-instance lmap operation)
+(define-instance lazy-map operation)
+(define-instance lazy-map1 operation)
+(define-instance lazy-map2 operation)
+(define-instance lazy-map3 operation)
+(define-instance lazy-map4 operation)
+(define-instance lazy-map5 operation)
+(define-instance general-lazy-map operation)
 
-(add-method (lmap (operation) op l)
-  (if (null? l) '() (lcons (op (car l)) (lmap op (cdr l)))))
+;;; LAZY-MAP takes any number of lists, dispatching on their number
+;;; the way MAP does; the result is a lazy list, as long as the first.
+
+(add-method (lazy-map (operation) op l . args)
+  ((cond ((= 0 (rest-length args)) lazy-map1)
+	 ((= 1 (rest-length args)) lazy-map2)
+	 ((= 2 (rest-length args)) lazy-map3)
+	 ((= 3 (rest-length args)) lazy-map4)
+	 ((= 4 (rest-length args)) lazy-map5)
+	 (else general-lazy-map))
+   op l . args))
+
+(add-method (lazy-map1 (operation) op l)
+  (if (null? l) '()
+      (lazy-cons (op (car l)) (lazy-map1 op (cdr l)))))
+
+(add-method (lazy-map2 (operation) op l1 l2)
+  (if (null? l1) '()
+      (lazy-cons (op (car l1) (car l2))
+		 (lazy-map2 op (cdr l1) (cdr l2)))))
+
+(add-method (lazy-map3 (operation) op l1 l2 l3)
+  (if (null? l1) '()
+      (lazy-cons (op (car l1) (car l2) (car l3))
+		 (lazy-map3 op (cdr l1) (cdr l2) (cdr l3)))))
+
+(add-method (lazy-map4 (operation) op l1 l2 l3 l4)
+  (if (null? l1) '()
+      (lazy-cons (op (car l1) (car l2) (car l3) (car l4))
+		 (lazy-map4 op (cdr l1) (cdr l2) (cdr l3) (cdr l4)))))
+
+(add-method (lazy-map5 (operation) op l1 l2 l3 l4 l5)
+  (if (null? l1) '()
+      (lazy-cons (op (car l1) (car l2) (car l3) (car l4) (car l5))
+		 (lazy-map5 op
+			    (cdr l1) (cdr l2) (cdr l3) (cdr l4) (cdr l5)))))
+
+(labels (((aux args)
+	  (destructure (op . args) args
+	    (aux1 op args)))
+
+	 ((aux1 op list-of-lists)
+	  (if (null? (car list-of-lists)) '()
+	      (lazy-cons (apply op (map car list-of-lists))
+			 (aux1 op (map cdr list-of-lists))))))
+
+	(add-method (general-lazy-map (operation) op . lists)
+	  (listify-args aux op . lists)))
 
 (define (square-list n)
-  (make lazy-cons (lambda () (* n n)) (lambda () (square-list (+ n 1)))))
+  (make lazy-cons-pair (lambda () (* n n)) (lambda () (square-list (+ n 1)))))
 
 (define (integer-list n)
-  (make lazy-cons (lambda () n) (lambda () (integer-list (+ n 1)))))
+  (make lazy-cons-pair (lambda () n) (lambda () (integer-list (+ n 1)))))
 
 (define (fair-merge l1 l2)
   (if (not (null? l1))
-      (lcons (car l1)
+      (lazy-cons (car l1)
 	     (fair-merge l2 (cdr l1)))
       l2))
 
 ;;; This print method isn't really necessary:
 
-(add-method (print (lazy-cons car-thunk cdr-thunk car-flag cdr-flag) self s)
+(add-method (print (lazy-cons-pair car-thunk cdr-thunk car-flag cdr-flag) self s)
 
   (let ((f #*forcible-print-magic))
 

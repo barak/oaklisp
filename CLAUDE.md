@@ -15,6 +15,7 @@ doc/lim/            Implementation manual (LaTeX)
 doc/summary/        Concise programmer reference (LaTeX)
 doc/examples/       Example Oaklisp programs
 man/man1/           Man page template (oaklisp.1.in)
+resources/          Desktop entry, icon, shell completions (bash, zsh, fish)
 prebuilt/           Prebuilt bootstrap artifacts, on the "master" branch only
 m4/                 Cached AX_* autoconf macros, on the "master" branch only
 debian/             Debian packaging
@@ -58,13 +59,14 @@ make install
 
 ### Key configure options
 
-- `--enable-64-bit` — Native 64-bit mode (default: yes); use `--disable-64-bit` to force 32-bit
+- `--enable-64-bit` — native pointer size (default: yes); `--disable-64-bit` builds a 32-bit executable on a 64-bit machine with the compiler option for its 32-bit memory model (`-m32` etc.)
 - `--enable-docs` — Build LaTeX documentation (default: yes)
 - `--enable-ndebug` — High-speed mode, disables debug tracing (default: yes, sets -DFAST)
 - `--enable-threads` — Thread support (default: no, experimental)
 - `--enable-cold-linker` — Build `oak-cold-linker`, the C reimplementation of `tool.oak` (default: no)
 - `--with-instructions-per-ref=2|4` — 16-bit instructions packed per code ref: 4 (default) with 64-bit refs, 2 with 32-bit refs (or by choice on 64-bit, for bytecode 32-bit machines can load); sets `INSTRS_PER_REF` in config.h
 - `--with-guile[=GUILE]` — Guile 3 for the Guile-hosted Oaklisp in `src/cold-compiler/` (default: search)
+- `--with-readline` — line editing and history on an interactive standard input with GNU readline (default: if found; `src/emulator/lineedit.c`, `--no-line-editing` at run time)
 
 Configure has no say in how the world is bootstrapped; that is decided by make (see Bootstrap methods).
 
@@ -260,11 +262,11 @@ Where `ref_shift` is 2 for 32-bit, 3 for 64-bit.
 | RETURN_OPCODE | 6144 (24*256) | Return instruction bytecode |
 | COERCABLE_TYPE_SIZE | 10 | Words for string type object |
 | TYPE_SIZE | 9 | Words for cons-pair/code-vector type objects |
-| CHARS_PER_WORD | 3 | Characters packed per word in string objects |
+| chars per word | 3 / 7 | Characters packed per word in string objects (32- / 64-bit refs) |
 
 ### String packing
 
-Strings are stored as: `[type-ptr, total-word-count, char-count, packed-chars...]`. Characters are packed 3 per word, low byte first: `c0 | (c1 << 8) | (c2 << 16)`. Total size = `3 + ceil(strlen / 3)`.
+Strings are stored as: `[type-ptr, total-word-count, char-count, packed-chars...]`. Characters are packed low byte first into the fixnum of each word, as many as fit: 3 with 32-bit refs (`c0 | c1<<8 | c2<<16`), 7 with 64-bit. Total size = `3 + ceil(strlen / chars-per-word)`. `%chars-per-word` in strings.oak is a variable derived from `%%word-size`, not a constant, so objects are word-size independent; the linkers (`target-chars-per-word`, `CHARS_PER_WORD`) and `oak_c_string_fill` know the same rule.
 
 ## Key Technical Constraints
 

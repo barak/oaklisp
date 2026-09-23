@@ -46,6 +46,7 @@
 #include "loop.h"
 #include "cmdline.h"
 #include "xmalloc.h"
+#include "lineedit.h"
 #ifdef USE_MARK_SWEEP
 #include "gc-ms.h"
 #endif
@@ -870,7 +871,7 @@ loop(ref_t initial_tos)
 	    case 12:		/* GETC */
 	      /* Used in emergency cold load standard-input stream. */
 	      {
-		int c = getc(stdin);
+		int c = oak_getc(stdin);
 
 		/* At end of file answer NIL, the way STREAM-PRIMITIVE
 		   getc does; CHAR_TO_REF(EOF) would build a "character"
@@ -886,6 +887,7 @@ loop(ref_t initial_tos)
 
 	      CHECKCHAR0(x, 1);
 	      putc(REF_TO_CHAR(x), stdout);
+	      oak_note_putc(REF_TO_CHAR(x), stdout);
 	      fflush(stdout);
 #ifndef FAST
 	      if (trace_insts || trace_valcon || trace_cxtcon)
@@ -2366,11 +2368,12 @@ loop(ref_t initial_tos)
 		  CHECKCHAR1(y, 2);
 		  PEEKVAL()
 		    = BOOL_TO_REF( putc(REF_TO_CHAR(y), ref_to_file(x)) != EOF);
+		  oak_note_putc(REF_TO_CHAR(y), ref_to_file(x));
 		  GOTO_TOP;
 
 		case 9:	/* getc */
 		  {
-		    int c = getc(ref_to_file(PEEKVAL()));
+		    int c = oak_getc(ref_to_file(PEEKVAL()));
 		    /* When possible, if an EOF is read from an interactive
 		       stream, the eof should be cleared so regular stuff
 		       can be read thereafter. */

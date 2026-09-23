@@ -133,36 +133,22 @@ realloc_space(space_t * pspace, size_t size_requested)
 
 
 
+/* Strings pack CHARS_PER_WORD characters into the fixnum of each
+   word, low byte first (see strings.oak). */
+
 void
 oak_c_string_fill(ref_t * oakstr, char *cstring, int len)
 {
   int i = 0;
 
-  while (i + 2 < len)
+  while (i < len)
     {
-      unsigned long temp = *oakstr;
-      cstring[i + 0] = 0xff & (temp >> 2);
-      cstring[i + 1] = 0xff & (temp >> (8 + 2));
-      cstring[i + 2] = 0xff & (temp >> (16 + 2));
-      oakstr++;
-      i += 3;
+      unsigned long temp = *oakstr++;
+      int k;
+      for (k = 0; k < CHARS_PER_WORD && i < len; k++, i++)
+	cstring[i] = 0xff & (temp >> (8 * k + 2));
     }
-  if (i + 1 < len)
-    {
-      unsigned long temp = *oakstr;
-      cstring[i + 0] = 0xff & (temp >> 2);
-      cstring[i + 1] = 0xff & (temp >> (8 + 2));
-      oakstr++;
-      i += 2;
-    }
-  else if (i < len)
-    {
-      unsigned long temp = *oakstr;
-      cstring[i + 0] = 0xff & (temp >> 2);
-      /* oakstr++; */
-      i++;
-    }
-  cstring[i + 0] = '\0';
+  cstring[i] = '\0';
 }
 
 
@@ -175,9 +161,9 @@ oak_c_string(ref_t * oakstr, int len)
      The storage allocated by this routine must be free()-ed.
 
      The length comes from a value on the Oaklisp stack, so it is not
-     necessarily sane.  A negative one would ask xmalloc for fewer than
-     the two bytes oak_c_string_fill goes on to touch, so clamp it: an
-     empty C string is the sensible reading of "no characters".
+     necessarily sane.  A negative one would ask xmalloc for less than
+     the terminator, so clamp it: an empty C string is the sensible
+     reading of "no characters".
    */
   char *cstring;
 

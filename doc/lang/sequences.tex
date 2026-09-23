@@ -91,9 +91,13 @@ documented in Section~\ref{sec:controlmap}.
 \coercer{list-type}{sequence}
 \op{cons}{object1 object2}
 \makin{lazy-cons-pair}{car-thunk cdr-thunk}
-\mc{lcons}{car-form cdr-form}
+\mc{lazy-cons}{car-form cdr-form}
 \doc{\macdef{}{(make lazy-cons-pair (lambda () \emph{car-form}) (lambda
 () \emph{cdr-form}))}}
+\op{lazy-map}{operation list \dt lists}
+\doc{Like \df{map} on lists, but the result is a lazy list, each
+element computed when first accessed; the \emph{lists} may themselves
+be lazy and unbounded.}
 
 
 \section{List Accessors}

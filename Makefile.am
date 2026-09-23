@@ -14,21 +14,13 @@
 # or from the Free Software Foundation, 59 Temple Place - Suite 330,
 # Boston, MA 02111-1307, USA
 
-SUBDIRS = src man tests
+SUBDIRS = src man resources tests
 
 if DOCS
 SUBDIRS += doc
 endif
 
 dist_doc_DATA = README.md AUTHORS COPYING BUILD.md ChangeLog NEWS
-
-# Desktop entry and its icon, in the freedesktop.org places (the icon
-# is scalable, so it goes under hicolor/scalable and needs no sizes).
-desktopdir = $(datadir)/applications
-dist_desktop_DATA = resources/oaklisp.desktop
-
-icondir = $(datadir)/icons/hicolor/scalable/apps
-dist_icon_DATA = resources/oaklisp.svg
 
 # Refresh the prebuilt bootstrap material in prebuilt/ from what was
 # just built: bytecode, a world image for this architecture, the

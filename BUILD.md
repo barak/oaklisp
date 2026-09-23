@@ -42,8 +42,8 @@ Configure Options
 
 Option                    Default   Description
 ------------------------  -------   -----------
---enable-64-bit           yes       Native 64-bit mode
---disable-64-bit                    Force 32-bit (-m32)
+--enable-64-bit           yes       Native pointer size (64-bit on a 64-bit machine)
+--disable-64-bit                    32-bit executable on a 64-bit machine (-m32)
 --enable-docs             yes       Build LaTeX documentation
 --enable-ndebug           yes       High-speed mode (sets -DFAST)
 --enable-threads          no        Native threads with concurrent GC
@@ -55,6 +55,8 @@ Option                    Default   Description
                                     (see Architectures)
 --with-guile[=GUILE]      search    Guile 3 interpreter for the hosted
                                     Oaklisp ("no": none)
+--with-readline           check     Edit terminal input with GNU readline
+                                    ("no": never; "yes": required)
 
 See ./configure --help for details.  How the world is bootstrapped is
 not a configure matter; see Bootstrapping below for the make targets
@@ -123,8 +125,12 @@ Each of these files begins with a header line identifying what it is
 for, which the emulator, the loader, and the linkers check:
 
 	;oaklisp-bytecode word-size=32 instructions-per-ref=2
-	;oaklisp-world format=cold word-size=64 instructions-per-ref=2
-	;oaklisp-world format=binary endian=little word-size=64 instructions-per-ref=2
+	;oaklisp-world format=cold word-size=64 instructions-per-ref=2 chars-per-word=7
+	;oaklisp-world format=binary endian=little word-size=64 instructions-per-ref=2 chars-per-word=7
+
+World headers also record how many characters are packed into each
+word of a string: 7 with 64-bit references, 3 with 32-bit ones
+(a header without the field means 3).
 
 Files without a header (from before this scheme) are accepted and
 assumed to be bc2 bytecode, or, for binary worlds, are identified by

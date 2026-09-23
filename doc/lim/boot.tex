@@ -90,9 +90,12 @@ The formats of these files is very simple.  Each begins with a line
 naming the architecture it is for:
 \begin{verbatim}
 ;oaklisp-bytecode word-size=64 instructions-per-ref=2
-;oaklisp-world format=cold word-size=64 instructions-per-ref=4
-;oaklisp-world format=binary endian=little word-size=64 instructions-per-ref=2
+;oaklisp-world format=cold word-size=64 instructions-per-ref=4 chars-per-word=7
+;oaklisp-world format=binary endian=little word-size=64 instructions-per-ref=2 chars-per-word=7
 \end{verbatim}
+World files also record how many characters a string packs into each
+word (\ref{sec:string}): seven with 64-bit references, three with
+32-bit ones.
 A world image then contains a header which gives the length of the
 various segments and the values of some registers, followed by a
 memory image with pointers given as offsets from the beginning of the

@@ -1,0 +1,64 @@
+#compdef oaklisp
+
+# Zsh completion for oaklisp.  Emulator options come before "--",
+# Oaklisp options after it.  --load and --compile take file names
+# without their .oak/.oa extension.
+
+_oaklisp_oak_file() {
+  local -a names
+  local f
+  for f in *.oak(N) *.oa(N); do names+=("${f%.oa?}" "${f%.oa}"); done
+  _alternative \
+    'files:Oaklisp file:compadd -a names' \
+    'directories:directory:_files -/'
+}
+
+_oaklisp() {
+  local -a emulator_opts oaklisp_opts
+  emulator_opts=(
+    '--help[show help]'
+    '--version[show version]'
+    '--world[world image to load]:world image:_files -g "*.bin"'
+    '(-d)--dump[dump the world to file on exit]:world image:_files -g "*.bin"'
+    '(--dump)-d[dump the world to file on exit]:world image:_files -g "*.bin"'
+    '--dump-base[base of the numbers in a dumped world]:base'
+    '--predump-gc[garbage collect before dumping]:0 or 1'
+    '--size-heap[heap size in kilo-refs]:size'
+    '--size-val-stk[value stack buffer, in refs]:size'
+    '--size-cxt-stk[context stack buffer, in refs]:size'
+    '--size-seg-max[maximum flushed segment length, in refs]:size'
+    '--trace-gc[trace garbage collection]:level (0-3)'
+    '--verbose-gc[trace garbage collection]:level (0-3)'
+    '--trace-traps[trace tag traps]'
+    '--batch[disable trapping of SIGINT]'
+    '--no-line-editing[read the terminal without GNU readline]'
+    '--trace-files[trace filesystem operations]'
+    '--trace-segs[trace stack segment writes/reads]'
+    '--trace-valcon[print the value stack at each instruction]'
+    '--trace-cxtcon[print the context stack at each instruction]'
+    '--trace-stks[print the stack sizes at each instruction]'
+    '--trace-instructions[trace each bytecode executed]'
+    '--trace-methods[trace each method lookup]'
+    '--trace-mcache[trace the method cache]'
+  )
+  oaklisp_opts=(
+    '--help[show help]'
+    '--version[show version]'
+    '*--eval[evaluate an expression]:expression'
+    '*--load[load a file]:file:_oaklisp_oak_file'
+    '*--compile[compile file.oak to file.oa]:file:_oaklisp_oak_file'
+    '*--outdir[directory for the objects of later --compile switches]:directory:_files -/'
+    '*--target[architecture to compile for]:architecture:(bc2-32 bc2-64 bc4-64)'
+    '*--locale[switch to a locale]:locale:(system-locale compiler-locale scheme-locale user-locale oaklisp-locale)'
+    '--pthreads[spawn N native threads]:count'
+    '--exit[exit after processing this option]'
+  )
+
+  if (( ${words[(i)--]} < CURRENT )); then
+    _arguments -S "${oaklisp_opts[@]}"
+  else
+    _arguments -S "${emulator_opts[@]}" '--[end of emulator options]'
+  fi
+}
+
+_oaklisp "$@"

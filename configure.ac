@@ -19,7 +19,7 @@
 
 # Prologue
 AC_PREREQ([2.69])
-AC_INIT([Oaklisp],[2.1.0],[barak+oaklisp@pearlmutter.net],[oaklisp],[https://github.com/barak/oaklisp])
+AC_INIT([Oaklisp],[2.1.1~devel],[barak+oaklisp@pearlmutter.net],[oaklisp],[https://github.com/barak/oaklisp])
 AC_CONFIG_SRCDIR([src/emulator/oaklisp.c])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
@@ -28,7 +28,7 @@ AM_INIT_AUTOMAKE([foreign subdir-objects -Wall])
 # Process options
 AC_MSG_CHECKING([enable_64_bit])
 AC_ARG_ENABLE([64-bit],
-       [AS_HELP_STRING([--enable-64-bit],[use native 64-bit mode if available (default=yes)])],,
+       [AS_HELP_STRING([--disable-64-bit],[build a 32-bit executable on a 64-bit machine, with the compiler option for its 32-bit memory model])],,
        [enable_64_bit=yes])
 AC_MSG_RESULT([$enable_64_bit])
 
@@ -96,51 +96,42 @@ AS_IF([test x${GUILE} != xno],
 AC_SUBST([GUILE])
 
 
-AS_IF([test x${enable_64_bit} = xyes],
-      [eight_if_allowed=8],
-      [eight_if_allowed=6uuBsNCtBTXDAYKXc9i])
-
-# Check if we are on a non-32bit-pointer memory model.
-# If so, try to enable compiler options for a 32-bit memory model.
-# For example, -m32 on x86_64 aka amd64.
-# (This is easier than doing a 64-bit port!)
+# The emulator is built for the machine's native pointer size, 32 or
+# 64 bits.  With --disable-64-bit on a machine with 64-bit pointers,
+# a 32-bit executable is built instead, by giving the compiler the
+# option for its 32-bit memory model (-m32 on x86_64, for instance).
+# This gives the 32-bit architecture (bc2-32 bytecode, bc2-el32 and
+# bc2-eb32 worlds) somewhere to be built and tested, and lets the
+# 32-bit and 64-bit systems be compared on one machine.
 #
-# This should go before any checks that actually invoke the compiler,
-# so those tests will be in 32-bit mode.  CFLAGS is passed to the
-# linker, so the flag does not need to be set there, but it is
-# included in a comment in case this ever changes.
-#
-# The options here are for GCC, but -m32 and -mx32 works on amd64 with
-# clang, and others might as well.
+# It has to come before any check that runs the compiler, so that
+# those checks see the 32-bit model.  CFLAGS reaches the linker too,
+# so the option need not go into LDFLAGS.  The options are GCC's; on
+# amd64, clang takes -m32 as well.
 
+AC_CANONICAL_HOST
 AC_CHECK_SIZEOF([void *])
-AS_CASE([${ac_cv_sizeof_void_p}],
- [4],[AC_MSG_NOTICE([pointer size matches expectations])],
- [${eight_if_allowed}],[AC_MSG_NOTICE([using native 64-bit mode])],
-     [AC_MSG_WARN([non 32-bit pointer platform detected])
-      AC_MSG_NOTICE([trying to enable 32-bit memory model compiler option for ${host_cpu}])
-      AC_CANONICAL_HOST
-      AS_CASE([${host_cpu}],
-       [alpha*],              [AC_MSG_ERROR([32-bit memory model unavailable on ${host_cpu}])],
-       [amd64* | x86_64],     [flag32="-m32"],
-       [arm64*],              [flag32="-mabi=ilp32"],
-       [ia64*],               [flag32="-milp32"],
-       [mips64*],             [flag32="-mabi=32"],
-       [powerpc64* | ppc64*], [flag32="-m32"],
-       [s390x*],              [flag32="-m31"],
-       [sparc64*],            [flag32="-m32"],
-			      [flag32="-m32"
-			       AC_MSG_WARN([non-32-bit host CPU ${host_cpu}])
-			       AC_MSG_WARN([no 32-bit memory model option known, trying -m32])])
-      AC_MSG_NOTICE([compiler option for 32-bit memory model: ${flag32}])
-      CFLAGS="${CFLAGS} ${flag32}"
-      : LDFLAGS="${LDFLAGS} ${flag32}"
-      unset ac_cv_sizeof_void_p
-      AC_CHECK_SIZEOF([void *])
-      AS_CASE([${ac_cv_sizeof_void_p}],
-       [0],[AC_MSG_ERROR([bad flags, Indy])],
-       [4],[AC_MSG_NOTICE([32-bit memory model achieved])],
-	   [AC_MSG_WARN([bad news, pointers are now ${ac_cv_sizeof_void_p} bytes])])])
+AS_IF([test x${enable_64_bit} != xyes && test ${ac_cv_sizeof_void_p} != 4],
+ [AC_MSG_NOTICE([building a 32-bit executable on ${host_cpu} with ${ac_cv_sizeof_void_p}-byte pointers])
+  AS_CASE([${host_cpu}],
+   [alpha*],              [AC_MSG_ERROR([32-bit memory model unavailable on ${host_cpu}])],
+   [amd64* | x86_64],     [flag32="-m32"],
+   [arm64*],              [flag32="-mabi=ilp32"],
+   [ia64*],               [flag32="-milp32"],
+   [mips64*],             [flag32="-mabi=32"],
+   [powerpc64* | ppc64*], [flag32="-m32"],
+   [s390x*],              [flag32="-m31"],
+   [sparc64*],            [flag32="-m32"],
+			  [flag32="-m32"
+			   AC_MSG_WARN([no 32-bit memory model option known for ${host_cpu}, trying -m32])])
+  AC_MSG_NOTICE([compiler option for the 32-bit memory model: ${flag32}])
+  CFLAGS="${CFLAGS} ${flag32}"
+  unset ac_cv_sizeof_void_p
+  AC_CHECK_SIZEOF([void *])
+  AS_CASE([${ac_cv_sizeof_void_p}],
+   [4],[AC_MSG_NOTICE([32-bit memory model achieved])],
+   [0],[AC_MSG_ERROR([the compiler does not accept ${flag32}])],
+       [AC_MSG_ERROR([pointers are still ${ac_cv_sizeof_void_p} bytes with ${flag32}])])])
 
 # Checks for programs.
 AC_PROG_CC
@@ -156,6 +147,24 @@ AS_IF([test x${enable_docs} = xyes],
 AS_IF([test x$enable_threads = xyes],
  [AC_SEARCH_LIBS([pthread_create],[pthread],[],
    [AC_MSG_WARN([pthread_create not found; threads may use Windows native API])])])
+
+AC_MSG_CHECKING([with_readline])
+AC_ARG_WITH([readline],
+       [AS_HELP_STRING([--with-readline],
+	 [edit terminal input with GNU readline (default: if available)])],,
+       [with_readline=check])
+AC_MSG_RESULT([$with_readline])
+AS_IF([test x${with_readline} != xno],
+ [AC_CHECK_LIB([readline],[readline],
+   [AC_CHECK_HEADERS([readline/readline.h readline/history.h],
+     [have_readline=yes],[have_readline=no])],
+   [have_readline=no])
+  AS_IF([test x${have_readline} = xyes],
+	[LIBS="-lreadline ${LIBS}"
+	 AC_DEFINE([HAVE_LIBREADLINE],[1],[Define if GNU readline is available.])],
+	[test x${with_readline} = xcheck],
+	[AC_MSG_WARN([GNU readline not found; terminal input will not be editable])],
+	[AC_MSG_ERROR([GNU readline not found])])])
 
 # Checks for header files.
 AC_CHECK_HEADERS([stddef.h stdlib.h string.h sys/time.h unistd.h],,
@@ -219,6 +228,7 @@ AC_CHECK_FUNCS([GetTickCount getrusage gettimeofday clock])
 AC_CONFIG_FILES([Makefile
                  doc/Makefile
                  man/Makefile
+                 resources/Makefile
                  src/Makefile
                  src/emulator/Makefile
                  src/world/Makefile

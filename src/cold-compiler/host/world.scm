@@ -102,7 +102,9 @@
 			 (install-number-print-methods!)))
     ("subtypes" load ,(lambda () (install-char-methods! *character*)))
     ("weak" . load)
-    ("strings" forms (DEFINE-CONSTANT %CHARS-PER-WORD 3))
+    ;; A variable, not a constant: it differs between word sizes, so
+    ;; compiled code has to look it up at run time rather than fold it.
+    ("strings" forms (DEFINE %CHARS-PER-WORD 3))
     ("sequences" . load)
     ("undefined" . load)
     ("subprimitive" . load)
