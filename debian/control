@@ -28,7 +28,7 @@ Description: Object-oriented dialect of Scheme
 Package: oaklisp-doc
 Section: doc
 Architecture: all
-Muli-Arch: foreign
+Multi-Arch: foreign
 Build-Profiles: <!nodoc>
 Suggests: pdf-viewer
 Description: Object-oriented dialect of Scheme, documentation
