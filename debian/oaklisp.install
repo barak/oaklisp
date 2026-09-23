@@ -3,3 +3,6 @@
 /usr/share/man/*/*
 /usr/share/applications/*.desktop
 /usr/share/icons/hicolor/scalable/apps/*.svg
+/usr/share/bash-completion/completions/oaklisp
+/usr/share/fish/vendor_completions.d/oaklisp.fish
+/usr/share/zsh/site-functions/_oaklisp

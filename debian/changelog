@@ -1,9 +1,15 @@
-oaklisp (2.1.0-2) UNRELEASED; urgency=medium
+oaklisp (2.1.1~devel-1) UNRELEASED; urgency=medium
 
   * Mark oaklisp-doc ma-foreign, and refresh suggestions
   * Set upstream metadata fields: Repository.
+  * Track upstream
+    - GNU readline for editable input
+    - in strings, pack 7 chars/64-bit fixnum
+    - TikZ for graphics in documentation, no need for eps-to-pdf
+    - shell completion
+    - rename: LAZY-CONS, LAZY-MAP
 
- -- Barak A. Pearlmutter <bap@debian.org>  Mon, 21 Sep 2026 16:34:27 +0100
+ -- Barak A. Pearlmutter <bap@debian.org>  Wed, 23 Sep 2026 08:55:01 +0100
 
 oaklisp (2.1.0-1) unstable; urgency=medium
 
