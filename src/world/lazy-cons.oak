@@ -81,9 +81,9 @@
 	 (else general-lazy-map))
    op l . args))
 
-(add-method (lazy-map1 (operation) op l)
-  (if (null? l) '()
-      (lazy-cons (op (car l)) (lazy-map1 op (cdr l)))))
+(add-method (lazy-map1 (operation) op l1)
+  (if (null? l1) '()
+      (lazy-cons (op (car l1)) (lazy-map1 op (cdr l1)))))
 
 (add-method (lazy-map2 (operation) op l1 l2)
   (if (null? l1) '()
@@ -150,6 +150,6 @@
 	   (format s "#L")
 	   (^super pair print self s))
 
-	  (else (error "Unknow (FLUID FORCIBLE-PRINT-MAGIC) option ~S." f)))))
+	  (else (error "Unknown #*FORCIBLE-PRINT-MAGIC option ~S." f)))))
 
 ;;; eof
