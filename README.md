@@ -1,27 +1,3 @@
-Below is the normal README for Oaklisp.  I cloned it and, with the help of Claude Code, made the following changes:
-
-1. Port from 32-bit to 64-bit
-2. Bug fixes
-3. Source-only build (no world.bin file needed)
-4. Changed the version number from 1.3.8 to 2.0.0~devel
-5. Added the ability to dump a world without exiting
-6. Added the ability to load a world at runtime (see Dump.md)
-7. Added full support for native threads (green threads were already supported)
-8. Added a concurrent GC
-9. Optional bootstrap from source alone.  With Guile 3 the world's objects
-    are compiled from the .oak sources by a Guile-hosted copy of the real
-    Oaklisp compiler, so no prebuilt .oa files are needed; make does this
-    (`make build-from-guile`) whenever there is no world or prebuilt bytecode
-    (see BUILD.md)
-
-This repo is located at:  https://github.com/blakemcbride/oaklisp
-
-Blake McBride
-blake@mcbridemail.com
-https://blakemcbride.com
-
-
-
 Oaklisp
 =======
 
@@ -65,3 +41,23 @@ is described in the included documentation, and also in
   http://barak.pearlmutter.net/papers/Oaklisp-TALI-Chapter-1991.pdf
 
 See BUILD.md for instructions on how to build the system.
+
+Recent Changes
+--------------
+
+These made extensive use of claude code. The hard ones were done by
+[Blake McBride]( https://blakemcbride.com ) <blake@mcbridemail.com>
+and then reworked/extended by BAP.
+
+1. Port from 32-bit to 64-bit
+2. Bug fixes
+3. Added the ability to dump a world without exiting
+4. Added the ability to load a world at runtime (see Dump.md)
+5. Added full support for native threads (green threads were already supported)
+6. Added a concurrent GC
+7. (Optional) bootstrap from source and Guile scheme: no preexisting
+    oaklisp or prebuilt world or precompiled .oa files.
+
+This repo is located at:  https://github.com/barak/oaklisp
+
+Barak Pearlmutter (& Blake McBride, who is **THE MAN**.)
