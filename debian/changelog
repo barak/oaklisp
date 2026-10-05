@@ -1,8 +1,8 @@
-oaklisp (2.1.1~devel-1) UNRELEASED; urgency=medium
+oaklisp (2.1.1-1) unstable; urgency=medium
 
   * Mark oaklisp-doc ma-foreign, and refresh suggestions
   * Set upstream metadata fields: Repository.
-  * Track upstream
+  * New upstream release
     - GNU readline for editable input
     - in strings, pack 7 chars/64-bit fixnum
     - TikZ for graphics in documentation, no need for eps-to-pdf
