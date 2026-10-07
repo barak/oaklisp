@@ -1,0 +1,24 @@
+Build profiles
+==============
+
+The package honours one profile of its own, besides the usual ones:
+
+pkg.oaklisp.disable-readline
+	Build the emulator without GNU readline, so that it reads the
+	terminal a character at a time with no editing, history or
+	completion.  The libreadline-dev build dependency is dropped
+	and the build configures --with-readline=no.
+
+	  dpkg-buildpackage -P pkg.oaklisp.disable-readline
+
+	Without the profile the build configures --with-readline=yes.
+	Neither way is readline left to configure's own search for the
+	library, so a build dependency that is missing on the build
+	machine is an error rather than a quietly poorer package.
+
+nodoc
+	As usual: the oaklisp-doc package and the LaTeX build
+	dependencies are dropped, and the build configures
+	--disable-docs.
+
+ -- Barak A. Pearlmutter <bap@debian.org>, Wed,  7 Oct 2026 09:30:00 +0100

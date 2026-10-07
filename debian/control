@@ -6,6 +6,7 @@ Build-Depends:
 	debhelper-compat (= 14),
 	autoconf-archive,
 	guile-3.0 | guile,
+	libreadline-dev <!pkg.oaklisp.disable-readline>,
 	texlive-latex-base <!nodoc>, texlive-latex-extra <!nodoc>, texlive-fonts-recommended <!nodoc>,
 	latexmk <!nodoc>,  texlive-font-utils <!nodoc>,
 Build-Depends-Indep:
