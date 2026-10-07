@@ -1,0 +1,51 @@
+#!/bin/sh
+# The installed emulator, world image and compiler work.
+set -ex
+
+cd "${AUTOPKGTEST_TMP:-/tmp}"
+
+oaklisp --version | grep -i oaklisp
+
+# Evaluating, in the default locale and in the Scheme one.
+oaklisp -- --eval '(print (+ 1 2) standard-output)' --exit | grep -w 3
+oaklisp -- --locale scheme-locale \
+	--eval '(display (map + (list 1 2) (list 10 20)))' --exit \
+	| grep -F '(11 22)'
+
+# Bignums, which the emulator leaves to the world.
+oaklisp -- --eval '(print (expt 2 100) standard-output)' --exit \
+	| grep -w 1267650600228229401496703205376
+
+# Lazy lists: LAZY-CONS does not evaluate its arguments.
+oaklisp -- --locale user-locale \
+	--eval '(print (car (lazy-cons 1 (error "forced"))) standard-output)' \
+	--exit | grep -w 1
+
+# The compiler: compile a file and load the object.
+cat > hello.oak <<'OAK'
+(define (hello) (+ 40 2))
+OAK
+oaklisp -- --compile hello --exit
+test -f hello.oa
+oaklisp -- --locale user-locale --load hello \
+	--eval '(print (hello) standard-output)' --exit | grep -w 42
+
+# A failing switch is reported in the exit status.
+if oaklisp -- --load no-such-file --exit; then
+	echo "a failed --load should give a nonzero exit status" >&2
+	exit 1
+fi
+
+# The option that turns off readline is always understood, whether or
+# not the emulator was built with it.
+oaklisp --no-line-editing -- --eval '(print 1 standard-output)' --exit \
+	| grep -w 1
+
+# What the package installs besides the program.
+test -f /usr/share/man/man1/oaklisp.1.gz
+test -f /usr/share/applications/oaklisp.desktop
+test -f /usr/share/bash-completion/completions/oaklisp
+test -f /usr/share/zsh/site-functions/_oaklisp
+test -f /usr/share/fish/vendor_completions.d/oaklisp.fish
+
+echo "smoke test passed"

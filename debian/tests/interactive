@@ -1,0 +1,49 @@
+#!/bin/sh
+# The read-eval-print loop works on a terminal, where the emulator
+# reads with GNU readline when it was built with it.
+set -e
+
+cd "${AUTOPKGTEST_TMP:-/tmp}"
+
+python3 - <<'PY'
+import os, pty, select, sys
+
+pid, fd = pty.fork()
+if pid == 0:
+    os.environ["TERM"] = "dumb"
+    os.execvp("oaklisp", ["oaklisp"])
+
+def read(timeout=10.0):
+    out = b""
+    while True:
+        r, _, _ = select.select([fd], [], [], timeout)
+        if not r:
+            break
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        out += chunk
+        timeout = 1.0
+    return out.decode("utf-8", "replace")
+
+banner = read()
+sys.stdout.write(banner)
+if "Oaklisp" not in banner:
+    sys.exit("no banner from the evaluation loop")
+
+os.write(fd, b"(+ 40 2)\n")
+answer = read()
+sys.stdout.write(answer)
+if "42" not in answer:
+    sys.exit("the evaluation loop did not answer 42")
+
+os.write(fd, b"(exit)\n")
+read()
+status = os.waitpid(pid, 0)[1]
+if not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0:
+    sys.exit("(exit) left status %r" % (status,))
+print("interactive test passed")
+PY

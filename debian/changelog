@@ -2,6 +2,7 @@ oaklisp (2.1.1-2) unstable; urgency=medium
 
   * readline: build-dep, explicit --with-readline, disabled by the
     pkg.oaklisp.disable-readline build profile (see README.source)
+  * add autopkgtests
 
  -- Barak A. Pearlmutter <bap@debian.org>  Wed, 07 Oct 2026 09:05:58 +0100
 

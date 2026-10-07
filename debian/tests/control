@@ -1,0 +1,7 @@
+Tests: smoke
+Depends: oaklisp
+Restrictions: allow-stderr
+
+Tests: interactive
+Depends: oaklisp, python3
+Restrictions: allow-stderr
