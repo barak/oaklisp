@@ -19,7 +19,7 @@
 
 # Prologue
 AC_PREREQ([2.69])
-AC_INIT([Oaklisp],[2.1.1],[barak+oaklisp@pearlmutter.net],[oaklisp],[https://github.com/barak/oaklisp])
+AC_INIT([Oaklisp],[2.1.2~devel],[barak+oaklisp@pearlmutter.net],[oaklisp],[https://github.com/barak/oaklisp])
 AC_CONFIG_SRCDIR([src/emulator/oaklisp.c])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
@@ -46,7 +46,6 @@ AC_ARG_ENABLE([docs],
        [AS_HELP_STRING([--enable-docs],[build and install LaTeX-format documentation (default=yes)])],,
        [enable_docs=yes])
 AC_MSG_RESULT([$enable_docs])
-AM_CONDITIONAL([DOCS], [test x${enable_docs} = xyes])
 
 AC_MSG_CHECKING([enable_ndebug])
 AC_ARG_ENABLE([ndebug],
@@ -138,8 +137,16 @@ AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_SED
 AC_CHECK_PROGS([INDENT],[indent],[true])
+# The manuals are built with latexmk.  Without it, a tree that has
+# prebuilt/doc (the master branch) still has the PDFs, and doc's rules
+# fall back on those; with neither, build no documentation rather than
+# fail in the middle of the build.
 AS_IF([test x${enable_docs} = xyes],
- [AC_CHECK_PROGS([LATEXMK],[latexmk],[false])])
+ [AC_CHECK_PROGS([LATEXMK],[latexmk],[false])
+  AS_IF([test x${LATEXMK} = xfalse && test ! -d ${srcdir}/prebuilt/doc],
+	[AC_MSG_WARN([latexmk not found and no prebuilt documentation: building none])
+	 enable_docs=no])])
+AM_CONDITIONAL([DOCS], [test x${enable_docs} = xyes])
 
 # Checks for libraries.
 # On Windows (MSVC), threads are in kernel32 -- no -lpthread needed.
@@ -154,6 +161,7 @@ AC_ARG_WITH([readline],
 	 [edit terminal input with GNU readline (default: if available)])],,
        [with_readline=check])
 AC_MSG_RESULT([$with_readline])
+have_readline=no
 AS_IF([test x${with_readline} != xno],
  [AC_CHECK_LIB([readline],[readline],
    [AC_CHECK_HEADERS([readline/readline.h readline/history.h],
@@ -235,3 +243,37 @@ AC_CONFIG_FILES([Makefile
                  src/world/system-version.oak
                  tests/Makefile])
 AC_OUTPUT
+
+# What was configured, in one place, since much of it is decided here
+# rather than asked for.
+AS_CASE([${oak_endian}], [eb],[oak_endian_name=big], [oak_endian_name=little])
+oak_chars_per_word=`expr \( ${oak_word_size} - 2 \) / 8`
+AS_IF([test x${enable_ndebug} = xyes],
+      [oak_debug="no, high speed build"],[oak_debug=yes])
+AS_IF([test x${enable_docs} != xyes],[oak_docs=no],
+      [test x${LATEXMK} != xfalse],[oak_docs="yes, with ${LATEXMK}"],
+      [oak_docs="from prebuilt/doc"])
+AS_IF([test x${GUILE} = xno],[oak_guile=none],[oak_guile=${GUILE}])
+AS_IF([test x${prefix} = xNONE],[oak_prefix=${ac_default_prefix}],
+      [oak_prefix=${prefix}])
+
+cat <<EOF
+
+${PACKAGE_NAME} ${PACKAGE_VERSION} is configured for ${host}:
+
+  architecture            ${OAK_HOST_ARCH}, bytecode ${OAK_BYTECODE_ARCH}
+  references              ${oak_word_size}-bit, ${oak_endian_name} endian
+  instructions per ref    ${OAK_INSTRS_PER_REF}
+  characters per word     ${oak_chars_per_word}
+  compiler                ${CC} ${CFLAGS}
+  debugging code          ${oak_debug}
+  native threads          ${enable_threads}
+  GNU readline            ${have_readline}
+  C cold linker           ${enable_cold_linker}
+  documentation           ${oak_docs}
+  Guile host              ${oak_guile}
+  install prefix          ${oak_prefix}
+
+How the world is bootstrapped is up to make, from what it finds: an old
+or prebuilt world, prebuilt bytecode, or the Guile host.  See BUILD.md.
+EOF

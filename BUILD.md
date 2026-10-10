@@ -44,7 +44,9 @@ Option                    Default   Description
 ------------------------  -------   -----------
 --enable-64-bit           yes       Native pointer size (64-bit on a 64-bit machine)
 --disable-64-bit                    32-bit executable on a 64-bit machine (-m32)
---enable-docs             yes       Build LaTeX documentation
+--enable-docs             yes       Build LaTeX documentation (turned off,
+                                    with a warning, when there is neither
+                                    latexmk nor prebuilt/doc)
 --enable-ndebug           yes       High-speed mode (sets -DFAST)
 --enable-threads          no        Native threads with concurrent GC
                                     (experimental; see below)

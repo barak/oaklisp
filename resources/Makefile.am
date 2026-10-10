@@ -25,13 +25,19 @@ dist_desktop_DATA = oaklisp.desktop
 icondir = $(datadir)/icons/hicolor/scalable/apps
 dist_icon_DATA = oaklisp.svg
 
+# bash wants the file named after the command, which would make a
+# confusing name here and, with a copying rule, debris in the source
+# directory of an in-tree build; so install it by hand instead.
 bashcompletiondir = $(datadir)/bash-completion/completions
-bashcompletion_DATA = oaklisp
 EXTRA_DIST = oaklisp.bash
-CLEANFILES = oaklisp
 
-oaklisp: oaklisp.bash
-	cp $(srcdir)/oaklisp.bash $@
+install-data-local:
+	$(MKDIR_P) $(DESTDIR)$(bashcompletiondir)
+	$(INSTALL_DATA) $(srcdir)/oaklisp.bash \
+	  $(DESTDIR)$(bashcompletiondir)/oaklisp
+
+uninstall-local:
+	rm -f $(DESTDIR)$(bashcompletiondir)/oaklisp
 
 zshcompletiondir = $(datadir)/zsh/site-functions
 dist_zshcompletion_DATA = _oaklisp

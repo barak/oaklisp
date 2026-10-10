@@ -1,3 +1,11 @@
+2026-10-10  Barak A. Pearlmutter  <barak@pearlmutter.net>
+
+	Version 2.1.2~devel
+
+	* configure: build no documentation, with a warning, when there is
+	  neither latexmk nor prebuilt PDFs, and print the configuration
+	  when it is done
+
 2026-10-05  Barak A. Pearlmutter  <barak@pearlmutter.net>
 
 	Version 2.1.1
