@@ -19,7 +19,7 @@ Quick Start
 	autoreconf --install
 	./configure
 	make
-	make install
+	sudo make install
 
 On a 64-bit host this builds a native 64-bit Oaklisp with 62-bit
 fixnums.  Oaklisp is self-hosting, so the build has to bootstrap
