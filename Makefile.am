@@ -34,6 +34,13 @@ endif
 
 .PHONY: prebuilt
 
+# The manuals, one at a time: the language manual, the implementation
+# manual and the summary.
+lang lim summary:
+	$(MAKE) -C doc $@
+
+.PHONY: lang lim summary
+
 # "make check" runs the test suite in tests/; "make bench" the benchmarks.
 bench:
 	$(MAKE) -C tests bench

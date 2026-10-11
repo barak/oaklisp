@@ -42,6 +42,12 @@ bibliography:
 	test -f oakman.bib || cp $(srcdir)/oakman.bib oakman.bib
 .PHONY: bibliography
 
+# One target per manual: "make lang", "make lim", "make summary".
+lang: lang/lang.pdf
+lim: lim/lim.pdf
+summary: summary/OaklispSummary.pdf
+.PHONY: lang lim summary
+
 
 # Refresh the prebuilt copies.
 prebuilt: $(LATEX_PDFS)
