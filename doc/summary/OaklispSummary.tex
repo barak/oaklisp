@@ -527,10 +527,15 @@ Operation & Returns \\\hline
 (macro? loc \textquotesingle{}sym) & macro expander or \#f; searches superiors \\
 (macro-here? loc \textquotesingle{}sym) & same, \emph{loc} only \\
 (frozen? loc \textquotesingle{}sym) & true if the variable is a constant \\
+(find-locale loc \textquotesingle{}sym variable-here?) & the locale that defines the variable, or \#f \\
+(find-locale loc \textquotesingle{}sym macro-here?) & the locale that defines the macro, or \#f \\
 \hline
 \end{tabular}}
 
 A file must be compiled and loaded relative to the same locale.
+
+\emph{find-locale} searches \emph{loc} and then its superiors, and is
+available in system-locale but not in oaklisp-locale or user-locale.
 
 \newpage
 
