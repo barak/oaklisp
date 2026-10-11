@@ -87,7 +87,7 @@ Use {\ttfamily (get-type x)} to get the type of an item.
 \hspace{.75in}
 \hbox{\begin{tabular}{|l|l|l|}\hline
 Type & Comment & Example \\\hline
-null-type & null list \& false & nil or \#f or {\ttfamily \symbol{13}}() \\
+null-type & null list \& false & nil or \#f or {\ttfamily \textquotesingle{}}() \\
 truths & true & t or \#t \\
 &&\\
 fixnum &  decimal & 48  \\
@@ -108,13 +108,13 @@ character & letter `M' & \#\verb+\+M \\
  & & \#\verb+\+Return \\
  & & \#\verb+\+Page \\
 &&\\
-symbol & case insensitive (up-cased) &  {\ttfamily \symbol{13}}symb \\
- & case sensitive &   {\ttfamily \symbol{13}}$\mid$symb$\mid$ \\
- & embedded `(' &   {\ttfamily \symbol{13}}sy\verb+\+(mb \\
+symbol & case insensitive (up-cased) &  {\ttfamily \textquotesingle{}}symb \\
+ & case sensitive &   {\ttfamily \textquotesingle{}}$\mid$symb$\mid$ \\
+ & embedded `(' &   {\ttfamily \textquotesingle{}}sy\verb+\+(mb \\
 &&\\
 string & with embedded \verb+"+ & ``hello\verb+\"+ there'' \\
 &&\\
-list && {\ttfamily \symbol{13}}(hello there) \\
+list && {\ttfamily \textquotesingle{}}(hello there) \\
 &&\\
 simple-vector && \#(3 4 hello) \\
 &&\\
@@ -132,27 +132,27 @@ type & root of all types & type \\
 
 \hbox{\begin{tabular}{|l|l|l|l|l|l|}\hline
 Type & Comment & Sp & D & Example & Result \\\hline
-car & first element & fast & no & (car {\ttfamily \symbol{13}}(A B C)) & A \\
-cdr & rest of list & fast & no & (cdr {\ttfamily \symbol{13}}(A B C)) & (B C) \\
+car & first element & fast & no & (car {\ttfamily \textquotesingle{}}(A B C)) & A \\
+cdr & rest of list & fast & no & (cdr {\ttfamily \textquotesingle{}}(A B C)) & (B C) \\
 c????r & shorthand for & fast & no & & \\
  & multiple car \& cdr's & & & & \\
  & & & & & \\
-cons & add a list node & fast & no & (cons {\ttfamily \symbol{13}}A {\ttfamily \symbol{13}}(B C)) & (A B C) \\
-list & create a list & fast & no & (list {\ttfamily \symbol{13}}A {\ttfamily \symbol{13}}B {\ttfamily \symbol{13}}C) & (A B C) \\
-append & append lists & slow & no & (append {\ttfamily \symbol{13}}(A B) {\ttfamily \symbol{13}}(D) {\ttfamily \symbol{13}}(G H)) & (A B D G H) \\
-length & & slow & no & (length {\ttfamily \symbol{13}}(A B C)) & 3 \\
-nth & & slow & no & (nth {\ttfamily \symbol{13}}(A B C) 1) & B \\
+cons & add a list node & fast & no & (cons {\ttfamily \textquotesingle{}}A {\ttfamily \textquotesingle{}}(B C)) & (A B C) \\
+list & create a list & fast & no & (list {\ttfamily \textquotesingle{}}A {\ttfamily \textquotesingle{}}B {\ttfamily \textquotesingle{}}C) & (A B C) \\
+append & append lists & slow & no & (append {\ttfamily \textquotesingle{}}(A B) {\ttfamily \textquotesingle{}}(D) {\ttfamily \textquotesingle{}}(G H)) & (A B D G H) \\
+length & & slow & no & (length {\ttfamily \textquotesingle{}}(A B C)) & 3 \\
+nth & & slow & no & (nth {\ttfamily \textquotesingle{}}(A B C) 1) & B \\
 first & same as (nth 0 x) &  &  & & \\
 second & same as (nth 1 x) &  &  & & \\
 third & same as (nth 2 x) &  &  & & \\
 etc. & &  &  & & \\
  & & & & & \\
-last & & slow & no & (last {\ttfamily \symbol{13}}(A B C)) & (C) \\
+last & & slow & no & (last {\ttfamily \textquotesingle{}}(A B C)) & (C) \\
  & & & & & \\
  & Given: & & & & \\
- & (setq lst {\ttfamily \symbol{13}}(A B C)) & & & & \\
- & replace car cell & fast & yes & (set! (car lst) {\ttfamily \symbol{13}}X) & (X B C) \\
- & replace cdr cell & fast & yes &  (set! (cdr lst) {\ttfamily \symbol{13}}X) & (A . X) \\
+ & (setq lst {\ttfamily \textquotesingle{}}(A B C)) & & & & \\
+ & replace car cell & fast & yes & (set! (car lst) {\ttfamily \textquotesingle{}}X) & (X B C) \\
+ & replace cdr cell & fast & yes &  (set! (cdr lst) {\ttfamily \textquotesingle{}}X) & (A . X) \\
 \hline
 \end{tabular}}
 
@@ -190,9 +190,9 @@ Quoting stops evaluation, so
     (quote (abc def ghi))
 \end{verbatim}
 
-would not attempt to evaluate \emph{abc}, \emph{def}, or \emph{ghi}.  The ``{\ttfamily \symbol{13}}'' symbol acts as a shorthand for \emph{quote}, so the following is equivelent to the previous statement.
+would not attempt to evaluate \emph{abc}, \emph{def}, or \emph{ghi}.  The ``{\ttfamily \textquotesingle{}}'' symbol acts as a shorthand for \emph{quote}, so the following is equivelent to the previous statement.
 
-\hspace*{.3in}{\ttfamily \symbol{13}}\verb+(abc def ghi)+
+\hspace*{.3in}{\ttfamily \textquotesingle{}}\verb+(abc def ghi)+
 
 
 
@@ -443,9 +443,9 @@ Function & Description \\\hline
 
 \begin{alltt}
     (define-syntax (add a b)
-        \symbol{18}(+ ,a ,b))
+        \textasciigrave{}(+ ,a ,b))
 
-    (gensym \symbol{13}tmp)
+    (gensym \textquotesingle{}tmp)
 \end{alltt}
 
 Oaklisp macros are procedural and unhygienic, more like Common Lisp
@@ -555,7 +555,7 @@ Format:
 Example:
 
 \begin{alltt}
-   (define MyClass (make Type \symbol{13}(iv1 iv2) (list Object)))
+   (define MyClass (make Type \textquotesingle{}(iv1 iv2) (list Object)))
 \end{alltt}
 
 \textbf{Creating an instance of a type:}
@@ -671,8 +671,8 @@ Format:
 Example:
 
 \begin{alltt}
-    (define metaMyClass2 (make Type \symbol{13}(cv1 cv2) (list Type)))
-    (define MyClass2 (make metaMyClass2 \symbol{13}(iv1 iv2) (list Object)))
+    (define metaMyClass2 (make Type \textquotesingle{}(cv1 cv2) (list Type)))
+    (define MyClass2 (make metaMyClass2 \textquotesingle{}(iv1 iv2) (list Object)))
 \end{alltt}
 
 \textbf{Class methods:}
