@@ -485,6 +485,55 @@ macro needed only while compiling the file in which it is defined.
 
 \newpage
 
+{\Large \bfseries Locales}
+
+A locale is a namespace: it maps symbols to global variables and to
+macros.  A locale inherits the names of its superior locales; a lookup
+searches the locale itself, then its superiors (depth first, left to
+right).  \emph{define} and \emph{define-syntax} install names in the
+locale being evaluated in: \emph{\#*current-locale} at the top level, or
+the locale given to \emph{load}.
+
+\smallskip
+
+\hbox{\begin{tabular}{|l|l|}\hline
+Locale & Contents \\\hline
+system-locale & everything: the language and its implementation \\
+& (the default) \\
+oaklisp-locale & the user-level subset of system-locale; no superiors \\
+user-locale & inherits oaklisp-locale only \\
+compiler-locale & compiler internals; inherits system-locale \\
+scheme-locale & RnRS Scheme compatibility; inherits system-locale \\
+\hline
+\end{tabular}}
+
+\smallskip
+
+\begin{alltt}
+    (define my-locale (make locale (list system-locale)))
+
+    (eval \textquotesingle{}expr my-locale)            ; evaluate in a locale
+    (load "myfile" my-locale)         ; load a file into a locale
+    (compile-file my-locale "myfile") ; compile relative to a locale
+    (set! #*current-locale my-locale) ; switch the top-level locale
+
+    oaklisp -- --locale scheme-locale ; start in a locale
+\end{alltt}
+
+\hbox{\begin{tabular}{|l|l|}\hline
+Operation & Returns \\\hline
+(variable? loc \textquotesingle{}sym) & value cell (locative) or \#f; searches superiors \\
+(variable-here? loc \textquotesingle{}sym) & same, \emph{loc} only \\
+(macro? loc \textquotesingle{}sym) & macro expander or \#f; searches superiors \\
+(macro-here? loc \textquotesingle{}sym) & same, \emph{loc} only \\
+(frozen? loc \textquotesingle{}sym) & true if the variable is a constant \\
+\hline
+\end{tabular}}
+
+A file must be compiled and loaded relative to the same locale.
+
+\newpage
+
 {\Large \bfseries Classes and Types}
 
 In classical object-oriented terminology, the following terms apply:
