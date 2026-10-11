@@ -29,10 +29,8 @@
 where:
         --world indicates what world to load. Default is oakworld.bin
                 that comes with the system
-
         --dump provides a file name where a new world will be dumped
                when the system exits
-
         -G  option to perform a GC prior to dumping a world
 \end{verbatim}
 
@@ -40,7 +38,6 @@ where:
 
 \begin{verbatim}
     (exit)
-
     Use ^D to exit error states
 \end{verbatim}
 
@@ -52,9 +49,7 @@ where:
 \hbox{\begin{tabular}{|l|l|}\hline
 File ending & Description \\\hline
 oak & Oaklisp source file \\
-&\\
 oa & compiled Oaklisp file (fasl) \\
-&\\
 bin & Oaklisp world --- binary representation of\\
     & an entire Oaklisp system representing all \\
     & objects in the running environment.\\\hline
@@ -69,6 +64,19 @@ bin & Oaklisp world --- binary representation of\\
 
     (compile-file #*current-locale "myfile") ; compiles myfile.oak to myfile.oa
 \end{verbatim}
+
+\smallskip
+
+{\large \bfseries Saving and loading worlds at runtime:}
+\smallskip
+\begin{verbatim}
+    (dump-world "snapshot.bin")  ; save current world, keep running
+    (load-world "snapshot.bin")  ; replace running world (never returns)
+\end{verbatim}
+
+The running system can save its entire state with \emph{dump-world} and
+replace itself with a saved world using \emph{load-world}, which never
+returns.  The files are ordinary world images usable with \texttt{-{}-world}.
 
 \newpage
 
@@ -114,17 +122,6 @@ type & root of all types & type \\
      & root of all objects & object \\
 \hline
 \end{tabular}}
-
-{\large \bfseries Saving and loading worlds at runtime:}
-\smallskip
-\begin{verbatim}
-    (dump-world "snapshot.bin")  ; save current world, keep running
-    (load-world "snapshot.bin")  ; replace running world (never returns)
-\end{verbatim}
-
-The running system can save its entire state with \emph{dump-world} and
-replace itself with a saved world using \emph{load-world}, which never
-returns.  The files are ordinary world images usable with \emph{--world}.
 
 \newpage
 
