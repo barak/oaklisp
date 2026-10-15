@@ -64,10 +64,19 @@ oak_getc(FILE *f)
 
       /* Take over the terminal only from here: the prompt has already
 	 been printed by Oaklisp, and the SIGINT handler is the
-	 emulator's own, polled by the interpreter. */
+	 emulator's own, polled by the interpreter.  libedit has no
+	 rl_catch_signals; its handlers pass signals on to ours. */
+#if HAVE_DECL_RL_CATCH_SIGNALS
       rl_catch_signals = 0;
+#endif
       rl_already_prompted = 1;
       prompt[prompt_len] = '\0';
+      /* libedit's readline wrapper (macOS) ignores rl_already_prompted
+	 and prints the prompt again; return to the start of the line
+	 so that it overwrites the one already there. */
+      if (rl_library_version != NULL
+	  && strstr(rl_library_version, "EditLine") != NULL)
+	putchar('\r');
       fflush(stdout);
       l = readline(prompt);
       prompt_len = 0;

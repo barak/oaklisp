@@ -169,7 +169,11 @@ AS_IF([test x${with_readline} != xno],
    [have_readline=no])
   AS_IF([test x${have_readline} = xyes],
 	[LIBS="-lreadline ${LIBS}"
-	 AC_DEFINE([HAVE_LIBREADLINE],[1],[Define if GNU readline is available.])],
+	 AC_DEFINE([HAVE_LIBREADLINE],[1],[Define if GNU readline is available.])
+	 # libedit's readline emulation (macOS) lacks rl_catch_signals.
+	 AC_CHECK_DECLS([rl_catch_signals],,,
+	   [#include <stdio.h>
+#include <readline/readline.h>])],
 	[test x${with_readline} = xcheck],
 	[AC_MSG_WARN([GNU readline not found; terminal input will not be editable])],
 	[AC_MSG_ERROR([GNU readline not found])])])
@@ -177,8 +181,6 @@ AS_IF([test x${with_readline} != xno],
 # Checks for header files.
 AC_CHECK_HEADERS([stddef.h stdlib.h string.h sys/time.h unistd.h],,
  [AC_MSG_ERROR([required header file unavailable])])
-# Optional headers for portability detection.
-AC_CHECK_HEADERS([stdatomic.h windows.h],,,)
 # Optional headers for portability detection.
 AC_CHECK_HEADERS([stdatomic.h windows.h],,,)
 
