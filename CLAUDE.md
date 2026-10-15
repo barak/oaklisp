@@ -23,28 +23,25 @@ debian/             Debian packaging
 
 ### Branches
 
-- `devel` — development: source only, never `prebuilt/` or `m4/`
-- `master` — `devel` plus the generated material: `prebuilt/` (bytecode,
-  world images, PDFs, instr-data.c) and the cached `m4/` macros
+- `main` — development: source only, never `prebuilt/` or `m4/`
+- `prebuilt` — `main` plus the generated material: `prebuilt/` (bytecode,
+  world images, PDFs, instr-data.c) and the cached `m4/` macros, as appropriate.
 - `pristine-tar` — Debian pristine-tar data
 
-The rule: commit source changes on `devel`; every so often merge `devel`
-into `master` and follow the merge with a commit that refreshes
-`prebuilt/` (`make prebuilt`).  Commit messages on `devel` don't discuss
-prebuilt content; that goes in the refresh commit on `master`.
+The rule: commit source changes on `main`; every so often merge `main`
+into `prebuilt` and follow the merge with a commit that refreshes
+`prebuilt/` (`make prebuilt`).  Commit messages on `main` don't discuss
+prebuilt content; that goes in the refresh commit on `prebuilt`.
 
-`devel` and release tarballs (`make dist` deliberately omits `prebuilt/`)
+`main` and release tarballs (`make dist` deliberately omits `prebuilt/`)
 build from source alone with Guile 3 (`build-from-guile`, which make
-picks when there is no old world and no prebuilt bytecode).  `master`
+picks when there is no old world and no prebuilt bytecode).  `main`
 builds with nothing but a C compiler.  `make rebuild-world` saves the
 world just built (`src/world/old-oakworld.bin`, or `OLD_WORLD=PATH`),
 runs `clean-world`, and rebuilds all objects and the world from scratch
 with it (`build-from-old-world`); `make bootstrap` = build + two
 rebuilds + `check-fixpoint`.  The
 Debian package builds that way: Guile, then `make bootstrap`.
-
-Older `devel-32-el`, `devel-64-el`, `prebuilt-32-el`, `prebuilt-64-el`
-branches predate the multi-architecture layout.
 
 ## Build System
 
@@ -61,14 +58,14 @@ make install
 
 - `--enable-64-bit` — native pointer size (default: yes); `--disable-64-bit` builds a 32-bit executable on a 64-bit machine with the compiler option for its 32-bit memory model (`-m32` etc.)
 - `--enable-docs` — Build LaTeX documentation (default: yes)
-- `--enable-ndebug` — High-speed mode, disables debug tracing (default: yes, sets -DFAST)
+- `--enable-ndebug` — High-speed mode, disables debug tracing (default: yes, sets `-DFAST`)
 - `--enable-threads` — Thread support (default: no, experimental)
 - `--enable-cold-linker` — Build `oak-cold-linker`, the C reimplementation of `tool.oak` (default: no)
 - `--with-instructions-per-ref=2|4` — 16-bit instructions packed per code ref: 4 (default) with 64-bit refs, 2 with 32-bit refs (or by choice on 64-bit, for bytecode 32-bit machines can load); sets `INSTRS_PER_REF` in config.h
 - `--with-guile[=GUILE]` — Guile 3 for the Guile-hosted Oaklisp in `src/cold-compiler/` (default: search)
 - `--with-readline` — line editing and history on an interactive standard input with GNU readline (default: if found; `src/emulator/lineedit.c`, `--no-line-editing` at run time)
 
-Configure has no say in how the world is bootstrapped; that is decided by make (see Bootstrap methods).
+How the world is bootstrapepd is not a configuration decision, so configure.ac does not case off on it. That decision is made at built-time by make (see Bootstrap methods).
 
 ### Architectures
 
@@ -327,6 +324,6 @@ Build with: `dpkg-buildpackage` or `debuild` (requires `gcc-multilib` for 32-bit
 
 ## Git Branches
 
-- `devel` — Development branch; source only (no `prebuilt/`, no `m4/`)
-- `master` — `devel` plus `prebuilt/` and `m4/`, refreshed after each merge from `devel`
+- `main` — Development branch; source only (no `prebuilt/`, no `m4/`)
+- `prebuilt` — `main` plus `prebuilt/` and `m4/`, refreshed after each merge from `main`
 - `pristine-tar` — Debian pristine-tar data

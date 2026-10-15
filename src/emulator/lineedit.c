@@ -41,6 +41,19 @@ static size_t prompt_len = 0;
 static char *line = NULL;
 static size_t line_pos = 0;
 
+/* Which library answered to -lreadline: a Mac has libedit under that
+   name, and the two differ over a prompt that is already on screen. */
+static bool_int
+readline_is_libedit(void)
+{
+  static int answer = -1;
+
+  if (answer < 0)
+    answer = (rl_library_version != NULL
+	      && strstr(rl_library_version, "EditLine") != NULL);
+  return answer;
+}
+
 void
 oak_note_putc(int c, FILE *f)
 {
@@ -64,10 +77,19 @@ oak_getc(FILE *f)
 
       /* Take over the terminal only from here: the prompt has already
 	 been printed by Oaklisp, and the SIGINT handler is the
-	 emulator's own, polled by the interpreter. */
+	 emulator's own, polled by the interpreter.  libedit has no
+	 rl_catch_signals to turn off, but it re-raises the signals it
+	 catches, so that handler runs either way. */
+#if HAVE_DECL_RL_CATCH_SIGNALS
       rl_catch_signals = 0;
+#endif
       rl_already_prompted = 1;
       prompt[prompt_len] = '\0';
+      /* libedit prints the prompt whatever rl_already_prompted says,
+	 so back up to the start of the line and let it print over the
+	 copy that is there. */
+      if (readline_is_libedit())
+	putchar('\r');
       fflush(stdout);
       l = readline(prompt);
       prompt_len = 0;

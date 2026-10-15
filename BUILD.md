@@ -378,8 +378,11 @@ Running Oaklisp
 	# With explicit world
 	oaklisp --world /path/to/oakworld.bin
 
-	# Evaluate and exit
-	oaklisp -- --eval '(+ 1 2)' --exit
+	# Evaluate and exit; --eval does not output the calculated value, hence the print
+	oaklisp -- --eval '(print (+ 1 2) standard-output)' --exit
+
+	# Fancier
+	oaklisp -- --eval '(let ((n 40)) (format #t "~%~A! = ~A~%" n (fact n)))' --exit
 
 	# Compile a file
 	oaklisp -- --compile myfile --exit
