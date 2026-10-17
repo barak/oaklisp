@@ -1,0 +1,29 @@
+;;; Run-time EVAL of non-trivial forms.  These compile to bytecode, so
+;;; in a stand-alone executable they need the interpreter linked in:
+;;; oakc --interpreter, CompilerPlan.md's escape hatch.
+
+(define (check name got expected)
+  (if (equal? got expected)
+      (format #t "PASS ~A~%" name)
+      (format #t "FAIL ~A: got ~S expected ~S~%" name got expected))
+  (flush standard-output))
+
+;;; LOAD binds these to abbreviate its progress reports; not wanted here.
+(set! #*print-length #f)
+(set! #*print-level #f)
+
+(check 'eval-arith (eval '(+ (* 6 7) 0) system-locale) 42)
+
+(let ((f (eval '(lambda (x) (* x (+ x 1))) system-locale)))
+  (check 'eval-lambda (f 6) 42))
+
+(check 'eval-loop
+       (eval '(let loop ((i 5) (acc '()))
+		(if (= i 0) acc (loop (- i 1) (cons (* i i) acc))))
+	     system-locale)
+       '(1 4 9 16 25))
+
+;;; An evaled definition lands in the locale and is callable from
+;;; compiled code.
+(eval '(define (eval-check-twice x) (+ x x)) system-locale)
+(check 'eval-define ((eval 'eval-check-twice system-locale) 21) 42)

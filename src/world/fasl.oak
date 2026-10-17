@@ -101,7 +101,11 @@
 					(let* ((y (%make-cell
 						   (make-undefined-variable-value
 						    what))))
-					  (cond ((not already-warned)
+					  ;; A stand-alone executable
+					  ;; installing its own globals
+					  ;; is not worth a message.
+					  (cond ((%embedded-program-char -1))
+						((not already-warned)
 						 (format #t "~&Variables installed in ~S: ~S"
 							 locale what)
 						 (set! already-warned #t))

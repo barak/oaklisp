@@ -19,7 +19,7 @@
 
 ;;; Set up the tables needed by the tag trap mechanism.
 
-(define %arged-instructions 35)
+(define %arged-instructions 43)
 
 ;;; was 67 before multithreading instructions.  Would be 70+ now
 ;;; except for ALARM which is at 127.  TO DO: move it down.
@@ -51,6 +51,13 @@
 	  (lambda (arg . args)
 	    (listify-args aux i arg . args)))))
 
+
+;;; NATIVE (35 to 42) traps when the shared object holding its C
+;;; function has not been loaded; see native-compiler.oak.
+(dotimes (i 8)
+  (set! (nth %arged-tag-trap-table (+ 35 i))
+	(lambda (k)
+	  (error "Native code not loaded; load the .oa file naming its module."))))
 
 ;;; And these are the things that can go wrong here:
 (set! (nth %argless-tag-trap-table 1) plus/2)

@@ -28,3 +28,4 @@ src/emulator/oak-cold-linker
 .mcp.json
 CLAUDE.local.md
 /test-driver
+/oakc

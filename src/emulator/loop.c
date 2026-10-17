@@ -50,36 +50,24 @@
 #ifdef USE_MARK_SWEEP
 #include "gc-ms.h"
 #endif
+#include "native.h"
+#include "dispatch.h"
+#include "native-ops.h"
 
 #ifndef FAST
 #include "instr.h"
 #endif
 
+#ifndef ENABLE_TIMER
 #define ENABLE_TIMER	1
+#endif
 
 /* How many instructions the interpreter has to execute after a crash
    recovery before the crash is no longer considered "consecutive". */
 #define CRASH_PROGRESS_INSTRS 1024
 
-int  trace_traps = false;	/* trace tag traps */
-int  trace_files = false;	/* trace file opening */
-int  batch_mode = false;	/* disable trapping of SIGINT */
-
-#ifndef FAST
-bool_int trace_insts = false;	/* trace instruction execution */
-bool_int trace_valcon = false;	/* trace stack contents */
-bool_int trace_cxtcon = false;	/* trace contents stack contents */
-bool_int trace_stks = false;	/* trace contents stack contents */
-bool_int trace_segs = false;	/* trace stack segment manipulation */
-bool_int trace_meth = false;	/* trace method lookup */
-#ifdef OP_TYPE_METH_CACHE
-bool_int trace_mcache = false;	/* trace method cache hits and misses */
-#endif
-#endif
-
-
-
-bool gc_before_dump = true;	/* do a GC before dumping the world */
+/* The trace flags and dump switches live in data.c, so that an
+   executable without the interpreter still links them. */
 
 #ifdef THREADS
 oak_mutex_t dump_lock = OAK_MUTEX_INITIALIZER;
@@ -143,286 +131,6 @@ static inline void _check_val_bounds(ref_t *sp, int offset, ref_t *bp, int line)
    low bits are 0, so it looks like a fixnum anyway; and they're not
    at addresses 0,1,2. */
 
-static inline ref_t
-file_to_ref(FILE *f)
-{
-  return f == stdin ? INT_TO_REF(0)
-       : f == stdout ? INT_TO_REF(1)
-       : f == stderr ? INT_TO_REF(2)
-       : (ref_t) f;
-}
-
-static inline FILE *
-ref_to_file(ref_t r)
-{
-  return r == INT_TO_REF(0) ? stdin
-       : r == INT_TO_REF(1) ? stdout
-       : r == INT_TO_REF(2) ? stderr
-       : (FILE *) r;
-}
-
-static void
-maybe_dump_world(int dumpstackp)
-{
-#ifdef THREADS
-  int *my_index_p;
-  int  my_index;
-  my_index_p = oak_tls_get(index_key);
-  my_index = *(my_index_p);
-#endif
-  /* Dump the stacks only for an internal abort.  EXIT passes a user's
-     status straight through to HALT and accepts 0 through 10, so a
-     script returning a conventional exit code must not get several
-     hundred bytes of raw stack contents on its standard output; the
-     codes the system raises itself (69 from a cold boot failure, 333
-     from the interpreter) are all well above that range. */
-  if (dumpstackp > 10)
-    {
-      dump_stack(&value_stack);
-      dump_stack(&context_stack);
-    }
-  if (dump_flag)
-    {
-      if (gc_before_dump && dumpstackp == 0)
-	{
-	  gc(true, true, "impending world dump", 0);
-	  dump_world(true);
-	}
-      else
-	dump_world(false);
-    }
-}
-
-
-
-static inline ref_t
-get_type(ref_t x)
-{
-#ifndef USE_SWITCH_FOR_GET_TYPE
-  if (x & 0x1)
-    {
-      if (x & 0x2)
-	return REF_SLOT(x, 0);
-      else
-	return *(e_subtype_table + ((x & SUBTAG_MASK) / 4));
-    }
-  else
-    {
-      if (x & 0x2)
-	return e_loc_type;
-      else
-	return e_fixnum_type;
-    }
-
-#else
-  switch (x & TAG_MASK)
-    {
-    case INT_TAG:
-      return e_fixnum_type;
-    case IMM_TAG:
-      return e_subtype_table[(x & SUBTAG_MASK) >> 2];
-    case LOC_TAG:
-      return e_loc_type;
-    case PTR_TAG:
-      return REF_SLOT(x, 0);
-    }
-#endif
-}
-
-
-static inline ref_t *
-pcar(ref_t x)
-{
-  return &REF_SLOT(x, CONS_PAIR_CAR_OFF);
-}
-
-static inline ref_t *
-pcdr(ref_t x)
-{
-  return &REF_SLOT(x, CONS_PAIR_CDR_OFF);
-}
-
-
-
-static inline ref_t
-car(ref_t x)
-{
-  return *pcar(x);
-}
-
-static inline ref_t
-cdr(ref_t x)
-{
-  return *pcdr(x);
-}
-
-
-
-
-/* The ASSQ instruction takes its list off the value stack, so both the
-   spine and every element of it are ordinary Oaklisp values that the
-   program chose.  car() and cdr() dereference without looking at the
-   tag, so this checks each cell the way CONSINSTR checks the cons
-   instructions -- a pointer, and a pair -- before following it.  A
-   false return means the instruction should trap; *RESULT is set only
-   on success. */
-
-static inline bool
-assq_checked(ref_t elt, ref_t lis, ref_t notfound, ref_t *result)
-{
-  while (lis != e_nil) {
-    ref_t this;
-
-    if (!TAG_IS(lis, PTR_TAG) || REF_SLOT(lis, 0) != e_cons_type)
-      return false;
-    this = car(lis);
-    if (!TAG_IS(this, PTR_TAG) || REF_SLOT(this, 0) != e_cons_type)
-      return false;
-    if (car(this) == elt) {
-      *result = this;
-      return true;
-    }
-    lis = cdr(lis);
-  }
-  *result = notfound;
-  return true;
-}
-
-
-
-static inline ref_t
-assqcdr(ref_t elt, ref_t lis, ref_t notfound)
-{
-  while (lis != e_nil) {
-    ref_t this = car(lis);
-    if (car(this) == elt)
-      return cdr(this);
-    lis = cdr(lis);
-  }
-  return notfound;
-}
-
-
-
-
-static inline int
-lookup_bp_offset(ref_t y_type, ref_t meth_type)
-{
-  return assqcdr(meth_type,
-		 REF_SLOT(y_type, TYPE_TYPE_BP_ALIST_OFF),
-		 INT_TO_REF(0));
-}
-
-
-/* Depth of the supertype search stack that lives on the C stack.  6 is
-   enough for the current build, but a user-defined type graph can be
-   arbitrarily deep, so past this point the table moves to the heap
-   instead of running off the end of the frame. */
-#define N_LATERS 64
-
-static inline void
-find_method_type_pair(ref_t op,
-		      ref_t obj_type,
-		      ref_t *method_ptr,
-		      ref_t *type_ptr)
-{
-  ref_t alist;
-  ref_t car_cache;
-  ref_t *locl = NULL;
-#ifdef OP_METH_ALIST_MTF
-  ref_t thelist;
-  ref_t *loclist;
-#endif
-  /* stack of lists of types that remain to be searched */
-  ref_t inline_lists[N_LATERS];
-  ref_t *later_lists = inline_lists;
-  size_t later_size = N_LATERS;
-  size_t llp = 0;		/* index of first empty slot in table */
-
-  while (1)			/* forever */
-    {
-      /* First look for it in the local method alist of obj_type: */
-
-
-#ifdef OP_METH_ALIST_MTF
-      alist = thelist =
-	*(loclist = &REF_SLOT(obj_type, TYPE_OP_METHOD_ALIST_OFF));
-#else
-      alist = REF_SLOT(obj_type, TYPE_OP_METHOD_ALIST_OFF);
-#endif
-      while (alist != e_nil)
-	{
-	  if (car((car_cache = car(alist))) == op)
-	    {
-	      maybe_put(trace_meth, "x\n");
-#ifdef OP_METH_ALIST_MTF
-	      if (locl != NULL)
-		{
-		  *locl = cdr(alist);
-		  *loclist = alist;
-		  *pcdr(alist) = thelist;
-		}
-#endif
-	      *method_ptr = cdr(car_cache);
-	      *type_ptr = obj_type;
-	      if (later_lists != inline_lists)
-		free(later_lists);
-	      return;
-	    }
-	  alist = *(locl = pcdr(alist));
-	  maybe_put(trace_meth, "-");
-	}
-
-      /* Not found in local alist, so stack the entire supertype list
-         and then fetch the top guy available on the stack. */
-
-      if (llp == later_size)
-	{
-	  /* Grow the table; the first growth moves it off the C stack. */
-	  size_t new_size = 2 * later_size;
-	  ref_t *bigger;
-
-	  if (later_lists == inline_lists)
-	    {
-	      bigger = (ref_t *) xmalloc(new_size * sizeof(ref_t));
-	      memcpy(bigger, inline_lists, later_size * sizeof(ref_t));
-	    }
-	  else
-	    {
-	      bigger = (ref_t *) realloc(later_lists,
-					 new_size * sizeof(ref_t));
-	      if (bigger == NULL)
-		{
-		  fprintf(stderr, "\nERROR: out of memory while searching"
-			  " a type hierarchy %lu levels deep.\n",
-			  (unsigned long)later_size);
-		  exit(EXIT_FAILURE);
-		}
-	    }
-	  later_lists = bigger;
-	  later_size = new_size;
-	}
-      later_lists[llp++] = REF_SLOT(obj_type, TYPE_SUPER_LIST_OFF);
-
-      while (later_lists[llp - 1] == e_nil)
-	{
-	  if (llp == 1)
-	    {
-	      if (later_lists != inline_lists)
-		free(later_lists);
-	      return;
-	    }
-	  llp -= 1;
-	}
-
-      locl = NULL;
-      obj_type = car(later_lists[llp - 1]);
-      later_lists[llp - 1] = cdr(later_lists[llp - 1]);
-    }
-}
-
-
-
 void
 loop(ref_t initial_tos)
 {
@@ -444,8 +152,8 @@ loop(ref_t initial_tos)
   ref_t y = INT_TO_REF(0);
 
 #if ENABLE_TIMER
-  unsigned timer_counter = 0;
-  unsigned timer_increment = 0;
+#define timer_counter oak_timer_counter
+#define timer_increment oak_timer_increment
 #endif
 
   /* Instructions executed since the last crash recovery. */
@@ -1040,6 +748,19 @@ loop(ref_t initial_tos)
 	      POP_CONTEXT();
 	      GOTO_TOP;
 
+#ifndef FAST
+#define BC_LOG(what)							\
+	      do { if (getenv("OAK_RT_TRACE"))				\
+		     { UNLOCALIZE_STKS();				\
+		       fprintf(stderr, "%s [v %ld+%d c %ld+%d]\n", (what), \
+			       (long)(value_stack.sp - value_stack.bp + 1), \
+			       value_stack.pushed_count,		\
+			       (long)(context_stack.sp - context_stack.bp + 1), \
+			       context_stack.pushed_count); } } while (0)
+#else
+#define BC_LOG(what)
+#endif
+
 	    case 25:		/* ALLOCATE */
 	      {
 		ref_t *p;
@@ -1264,6 +985,7 @@ loop(ref_t initial_tos)
 	      GOTO_TOP;
 
 	    case 48:		/* THROW */
+	      BC_LOG("throw");
 	      POPVAL(x);
 	      CHECKTAG1(x, PTR_TAG, 2);
 	      y = PEEKVAL();
@@ -1364,6 +1086,7 @@ loop(ref_t initial_tos)
 	      GOTO_TOP;
 
 	    case 55:		/* FILL-CONTINUATION */
+	      BC_LOG("fill-continuation");
 	      /* This instruction fills a continuation object with
 	         the appropriate values. */
 	      CHECKVAL_POP(1);
@@ -1394,6 +1117,7 @@ loop(ref_t initial_tos)
 	      GOTO_TOP;
 
 	    case 56:		/* CONTINUE */
+	      BC_LOG("continue");
 	      /* Continue a continuation. */
 	      /* Grab the continuation. */
 
@@ -2472,6 +2196,68 @@ loop(ref_t initial_tos)
 		  }
 		  GOTO_TOP;
 
+		case 15:	/* load a native code module */
+		  POPVAL(x);
+		  CHECKTAG1(x, LOC_TAG, 2);
+		  {
+		    char *s = oak_c_string((ref_t *) LOC_TO_PTR(x),
+					   REF_TO_INT(PEEKVAL()));
+
+		    PEEKVAL() = oak_native_load(s) ? e_t : e_nil;
+		    free(s);
+		  }
+		  GOTO_TOP;
+
+		case 17:	/* embedded program character */
+		  /* Index -1 answers whether there is an embedded
+		     program at all; warm boot keeps quiet in one.  An
+		     index off either end answers #f, like GETC at end
+		     of file. */
+		  x = PEEKVAL();
+		  CHECKTAG0(x, INT_TAG, 1);
+		  {
+		    ssize_t i = REF_TO_INT(x);
+
+		    if (oak_embedded_program == NULL)
+		      PEEKVAL() = e_nil;
+		    else if (i == -1)
+		      PEEKVAL() = e_t;
+		    else if (i < 0 || (size_t)i >= oak_embedded_program_size)
+		      PEEKVAL() = e_nil;
+		    else
+		      PEEKVAL() = CHAR_TO_REF(oak_embedded_program[i]);
+		  }
+		  GOTO_TOP;
+
+		case 16:	/* compile a C file into a native module */
+		  {
+		    /* Arguments as for rename: c-loc, c-len, so-loc,
+		       so-len, reading down from the top. */
+		    ref_t z;
+		    char *c_file, *so_file;
+
+		    {
+		      ref_t *so_name_loc;
+
+		      MAKE_BACK_VAL_PTR(so_name_loc, 2);
+		      if (!TAG_IS(PEEKVAL(), LOC_TAG)
+			  || !TAG_IS(*so_name_loc, LOC_TAG))
+			TRAP0(4);
+		    }
+
+		    POPVAL(x);
+		    POPVAL(y);
+		    POPVAL(z);
+		    c_file = oak_c_string((ref_t *) LOC_TO_PTR(x),
+					  REF_TO_INT(y));
+		    so_file = oak_c_string((ref_t *) LOC_TO_PTR(z),
+					   REF_TO_INT(PEEKVAL()));
+		    PEEKVAL() = oak_native_cc(c_file, so_file) ? e_t : e_nil;
+		    free(c_file);
+		    free(so_file);
+		  }
+		  GOTO_TOP;
+
 		default:
 		  printf("\nError (vm interpreter): "
 			 "bad stream primitive %d.\n",
@@ -2558,6 +2344,48 @@ loop(ref_t initial_tos)
 	      e_env = REF_TO_PTR(REF_SLOT(x, METHOD_ENV_OFF));
 	      local_e_pc = CODE_SEG_FIRST_INSTR(e_code_segment =
 					       REF_SLOT(x, METHOD_CODE_OFF));
+	      GOTO_TOP;
+
+	    case 35: case 36: case 37: case 38:	/* NATIVE k */
+	    case 39: case 40: case 41: case 42:
+#ifndef THREADS
+	      /* Run natively compiled code from resume point K, the
+		 argument plus 256 times the opcode's distance from 35;
+		 see oak-native.h.  Signals are polled first, so a trap
+		 here comes back to this same instruction. */
+	      POLL_SIGNALS();
+	      {
+		oak_native_fn fn = oak_native_lookup(e_code_segment);
+
+		if (fn == NULL)
+		  {
+		    /* Booting a world whose own code is native, without
+		       its modules: there is no error system to trap to
+		       yet, so say what is wrong and stop. */
+		    if (e_argless_tag_trap_table == NULL)
+		      {
+			fprintf(stderr, "Fatal error (vm): this world needs "
+				"its native modules (--native-module).\n");
+			exit(EXIT_FAILURE);
+		      }
+		    TRAP0(0);
+		  }
+		UNLOCALIZE_ALL();
+		if (fn(((unsigned)(op_field - 35) << 8) | arg_field)
+		    == OAK_NATIVE_FUNCALL)
+		  {
+		    LOCALIZE_ALL();
+		    /* As if a FUNCALL-TAIL were failing, should it. */
+		    instr = (22 << 2);
+		    op_field = 22;
+		    arg_field = e_nargs;
+		    goto funcall_tail;
+		  }
+		LOCALIZE_ALL();
+	      }
+#else
+	      TRAP0(0);
+#endif
 	      GOTO_TOP;
 
 	    default:

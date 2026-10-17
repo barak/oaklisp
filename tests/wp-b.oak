@@ -1,0 +1,31 @@
+;;; Whole-program test, file 2 of 2: calls across files, into the
+;;; world, through guards that fall back on redefinition.
+
+(check 'wp-cross-call (wp-add2 40) 42)
+
+(check 'wp-cross-rtype (car (wp-make-point 7 9)) 7)
+
+(check 'wp-own-generic (wp-area (wp-make-point 6 7)) 42)
+
+;;; A world generic on a proven pair: the guarded static call.
+(check 'wp-world-guarded (reverse '(1 2 3)) '(3 2 1))
+
+;;; A redefined function: the direct call's guard misses and the
+;;; generic path runs the new definition.
+(define (wp-redef x) (* x 2))
+(check 'wp-before-redef (wp-redef 4) 8)
+(set! wp-redef (lambda (x) (* x 3)))
+(check 'wp-after-redef (wp-redef 4) 12)
+
+;;; Mutual recursion: forward references resolve within the file.
+(define (wp-even? n) (if (= n 0) #t (wp-odd? (- n 1))))
+(define (wp-odd? n) (if (= n 0) #f (wp-even? (- n 1))))
+(check 'wp-mutual (wp-even? 10) #t)
+
+;;; Arithmetic on proven fixnums: the elided checks still overflow to
+;;; bignums through the trap.
+(define (wp-sum-sq a b) (+ (* a a) (* b b)))
+(check 'wp-elide (wp-sum-sq 3 4) 25)
+
+;;; Small cross-file functions inline; nesting still behaves.
+(check 'wp-inline-chain (wp-add2 (wp-add2 38)) 42)

@@ -34,16 +34,19 @@ AM_TESTS_ENVIRONMENT = \
 
 TESTS = smoke.test arith.test bignum.test data.test control.test objects.test \
   promises.test io.test locales.test unit.test examples.test compile.test		\
-  world.test consistency.test threads.test
+  world.test consistency.test threads.test native.test \
+  native-parity.test standalone.test
 
 OAKTESTS = arith.oak bignum.oak data.oak control.oak objects.oak io.oak locales.oak \
-  promises.oak compile-me.oak
+  promises.oak compile-me.oak native-me.oak native-check.oak eval-check.oak \
+  benchmain.oak wp-a.oak wp-b.oak
 
 BENCHES = bench-tak.oak bench-fib.oak bench-bignum.oak bench-sort.oak	\
   bench-cons.oak bench-strings.oak bench-hash.oak bench-dispatch.oak	\
-  bench-eval.oak bench-format.oak
+  bench-eval.oak bench-format.oak bench-compile.oak
 
-EXTRA_DIST = $(TESTS) $(OAKTESTS) $(BENCHES) testlib.sh bench.sh
+EXTRA_DIST = $(TESTS) $(OAKTESTS) $(BENCHES) testlib.sh bench.sh \
+  qemu-native.sh
 
 bench: all
 	$(AM_TESTS_ENVIRONMENT) $(SHELL) $(srcdir)/bench.sh $(BENCHFLAGS)
@@ -52,4 +55,4 @@ bench: all
 
 CLEANFILES = *.oa *.oa-tmp *.tmp *.bin *.cold *.sym header.txt
 clean-local:
-	rm -rf compile-me-check
+	rm -rf compile-me-check native-check native-parity standalone

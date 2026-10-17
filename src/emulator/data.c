@@ -35,6 +35,32 @@ space_t new_space, old_space, spatic;
 
 ref_t *free_point = 0;
 
+/* The alarm clock (ENABLE-ALARMS...), shared between the interpreter
+   and natively compiled code so either side can trip it. */
+unsigned oak_timer_counter = 0;
+unsigned oak_timer_increment = 0;
+
+int  trace_traps = false;	/* trace tag traps */
+int  trace_files = false;	/* trace file opening */
+int  batch_mode = false;	/* disable trapping of SIGINT */
+
+#ifndef FAST
+bool_int trace_insts = false;	/* trace instruction execution */
+bool_int trace_valcon = false;	/* trace stack contents */
+bool_int trace_cxtcon = false;	/* trace contents stack contents */
+bool_int trace_stks = false;	/* trace contents stack contents */
+bool_int trace_segs = false;	/* trace stack segment manipulation */
+bool_int trace_meth = false;	/* trace method lookup */
+#ifdef OP_TYPE_METH_CACHE
+bool_int trace_mcache = false;	/* trace method cache hits and misses */
+#endif
+#endif
+
+
+
+bool gc_before_dump = true;	/* do a GC before dumping the world */
+
+
 #ifndef THREADS
 /* stacks, including default buffer size & fill target */
 oakstack value_stack = {1024, 1024/2};

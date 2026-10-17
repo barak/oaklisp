@@ -50,6 +50,7 @@
     (format #t "assembling...")
     (flush standard-output))
   (let ((scheduled-segments (list codelist))
+	(segment-numbers (list (cons codelist 0)))
 	(segment-count 1))
     (iterate aux ((output '()))
       (cond ((null? scheduled-segments)
@@ -62,13 +63,30 @@
 		(cons
 		 (list (map (lambda (resolvant)
 			      (cond ((eq? (car resolvant) code-key)
-				     (set! segment-count (+ segment-count 1))
-				     (set! scheduled-segments
-					   (append scheduled-segments
-						   (list (third resolvant))))
-				     (list (first resolvant)
-					   (second resolvant)
-					   (- segment-count 1)))
+				     ;; A block seen before keeps its
+				     ;; number, so a segment referenced
+				     ;; twice -- the native compiler's
+				     ;; direct-call guards share the
+				     ;; callee, possibly the segment
+				     ;; itself -- is assembled once and
+				     ;; shared by the loaders.
+				     (let* ((blk (third resolvant))
+					    (hit (assq blk segment-numbers))
+					    (n (cond (hit (cdr hit))
+						     (else
+						      (let ((n segment-count))
+							(set! segment-count
+							      (+ n 1))
+							(set! segment-numbers
+							      (cons (cons blk n)
+								    segment-numbers))
+							(set! scheduled-segments
+							      (append scheduled-segments
+								      (list blk)))
+							n)))))
+				       (list (first resolvant)
+					     (second resolvant)
+					     n)))
 				    (else resolvant)))
 			    (first assembled-segment))
 		       (second assembled-segment))
@@ -453,6 +471,18 @@
 (define-opcode ^super-cxt-br		(33 label))
 ; opcode chosen for clean emulator implementation
 (define-opcode ^super-tail		(34 0))
+
+;;; Run natively compiled code from a resume point K: NATIVE for K
+;;; below 256, NATIVE-256 for the next 256, and so on; see
+;;; native-compiler.oak.
+(define-opcode native			(35 unsigned))
+(define-opcode native-256		(36 unsigned))
+(define-opcode native-512		(37 unsigned))
+(define-opcode native-768		(38 unsigned))
+(define-opcode native-1024		(39 unsigned))
+(define-opcode native-1280		(40 unsigned))
+(define-opcode native-1536		(41 unsigned))
+(define-opcode native-1792		(42 unsigned))
 
 (define-opcode noop			(0 0) in0 out0 nosides ns)
 (define-opcode plus			(0 1) in2 out1 notnil nosides commutes ns)

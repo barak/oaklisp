@@ -181,6 +181,19 @@
 			(set! ipr (string->fixnum (cdr kv))))))))
 	   (make-architecture (or word-size 32) (or ipr 2) #f)))))
 
+;;; A .oa file made by the native compiler names, on a line after the
+;;; header, the shared object holding its C code.  Parse such a line
+;;; into the object's file name, or return #f.
+
+(define (native-header-string module)
+  (format #f ";oaklisp-native ~A" module))
+
+(define (parse-native-header line)
+  (let ((tokens (split-on-whitespace (#^list-type line))))
+    (and (= (length tokens) 2)
+	 (equal? (strip-semicolons (car tokens)) "oaklisp-native")
+	 (cadr tokens))))
+
 ;;; Little string utilities for the above.
 
 (define (split-on-whitespace chars)

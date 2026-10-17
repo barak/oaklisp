@@ -1,0 +1,53 @@
+#!/bin/sh
+# Every test program, compiled natively, prints what it prints
+# compiled to bytecode (the gate of milestone 2 in CompilerPlan.md).
+# Skipped if no native module can be built.
+. "$(dirname "$0")/testlib.sh"
+rm -rf native-parity && mkdir native-parity native-parity/bc native-parity/nat || exit 99
+cd native-parity || exit 99
+for f in "$testdir"/*.oak; do
+  case $(basename "$f") in threads-check.oak) ;; *) cp "$f" bc/; cp "$f" nat/;; esac
+done
+
+status=0
+# compare NAME LOCALE-ARGS RUN-ARGS...: compile NAME (and native-me
+# for native-check) both ways in LOCALE-ARGS, run, compare.
+compare() {
+  name=$1; locale=$2; shift 2
+  deps=$name
+  test $name = native-check && deps="native-me native-check"
+  case $locale in *user-locale*) l=user-locale;; *) l=system-locale;; esac
+  for d in $deps; do
+    rm -f bc/$d.oa
+    (cd bc && oak -- --eval "(compile-file $l \"$d\")" --exit >/dev/null 2>&1)
+    test -f bc/$d.oa \
+      || { echo "FAIL $name: bytecode compile of $d"; status=1; return; }
+    (cd nat && oak -- \
+       --eval "(bind ((#*compiler-noisiness 1)) (native-compile-file $l \"$d\"))" \
+       --exit 2>&1 | grep 'blocks native') \
+      || { echo "FAIL $name: native compile of $d"; status=1; return; }
+    test -f nat/$d.so || skip "no native module built (no C compiler or dlopen?)"
+  done
+  loads=
+  for d in $deps; do loads="$loads --load $d"; done
+  (cd bc && oak -- $locale $loads "$@" --exit 2>&1) | grep -v '^Loaded ' > bc.$name.out
+  (cd nat && oak -- $locale $loads "$@" --exit 2>&1) | grep -v '^Loaded ' > nat.$name.out
+  if cmp -s bc.$name.out nat.$name.out; then
+    echo "PASS $name ($(grep -c . bc.$name.out) lines)"
+  else
+    echo "FAIL $name"; diff bc.$name.out nat.$name.out | head -20; status=1
+  fi
+}
+
+for p in arith bignum data control objects io; do compare $p ""; done
+compare locales "--locale user-locale"
+compare promises ""
+compare promises "--locale user-locale"
+compare compile-me "--locale user-locale" \
+  --eval '(print (list (count-to 10) (bigger) (rest-test 1 2 3)) standard-output)'
+compare native-check ""
+compare eval-check ""
+for f in "$testdir"/bench-*.oak; do
+  compare $(basename "$f" .oak) "" --eval '(print (bench) standard-output)'
+done
+exit $status

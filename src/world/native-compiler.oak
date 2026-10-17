@@ -1,0 +1,1983 @@
+;;; This file is part of Oaklisp.
+;;;
+;;; This program is free software; you can redistribute it and/or modify
+;;; it under the terms of the GNU General Public License as published by
+;;; the Free Software Foundation; either version 2 of the License, or
+;;; (at your option) any later version.
+;;;
+;;; This program is distributed in the hope that it will be useful,
+;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;; GNU General Public License for more details.
+;;;
+;;; The GNU GPL is available at http://www.gnu.org/licenses/gpl.html
+;;; or from the Free Software Foundation, 59 Temple Place - Suite 330,
+;;; Boston, MA 02111-1307, USA
+
+
+;;; The native compiler: Oaklisp to C, in mixed mode.
+;;;
+;;; NATIVE-COMPILE-FILE compiles FILE.oak as COMPILE-FILE does, up to
+;;; the peephole-optimized instruction lists, and then translates each
+;;; code block (the file's top-level code, and each lambda and method
+;;; body) into a C function in FILE.c.  The C compiler builds that into
+;;; the shared object FILE.so.  FILE.oa is ordinary bytecode, except
+;;; that each translated block is replaced by a stub: NATIVE
+;;; instructions, one per resume point, followed by the block's escapes,
+;;; operands and constants.  A header line names FILE.so, which
+;;; LOAD-OA-FILE loads before the code.  See src/emulator/oak-native.h
+;;; for the stub's layout and the run-time side.
+;;;
+;;; The translation works instruction by instruction and keeps the
+;;; emulator's value stack: the C code does what the bytecode would,
+;;; without the dispatch.  An instruction it has no C for is an escape:
+;;; it stays in the stub as bytecode, and the C hands it to the
+;;; emulator, which comes back after running it.  So every block
+;;; translates, unless it needs more resume points than a NATIVE
+;;; instruction can name; then it stays bytecode.
+
+;;; For the instructions translated that can trap, the number of the
+;;; argless instruction whose trap operation handles their failure.
+
+(define native-trap-numbers
+  '((plus . 1) (times . 5) (subtract . 31) (= . 32) (< . 33) (=0? . 8)
+    (<0? . 18) (car . 40) (cdr . 41) (contents . 14) (set-contents . 15)
+    (negate . 2) (div . 7) (crunch . 11) (putc . 13) (modulo . 19)
+    (ash . 20) (rot . 21) (store-bp-i . 22) (load-bp-i . 23)
+    (allocate . 25) (assq . 26) (bit-not . 34) (locate-bp-i . 38)
+    (set-car . 42) (set-cdr . 43) (locate-car . 44) (locate-cdr . 45)
+    (throw . 48) (object-unhash . 50) (vlen-allocate . 53) (inc-loc . 54)
+    (continue . 56) (fx-plus . 59) (fx-times . 60) (remainder . 62)
+    (quotientm . 63) (get-argline-char . 66) (test-and-set-locative . 71)
+    (dump-world . 73) (load-world . 74) (^super-tail . 34)))
+
+;;; The bitwise pseudo-instructions are LOG-OPs; the number is the
+;;; truth table the assembler would put in the argument field.
+
+(define native-log-op-specs
+  '((bit-and . 1) (bit-nand . 14) (bit-or . 7) (bit-nor . 8)
+    (bit-xor . 6) (bit-equiv . 9) (bit-andca . 4)))
+
+;;; The register set, in STORE-REG/LOAD-REG argument order
+;;; (assembler.oak); each entry is (name load-expression).  Stores are
+;;; special-cased in the translator.
+
+(define native-registers
+  '((t . 0) (nil . 1) (fixnum-type . 2) (loc-type . 3) (cons-type . 4)
+    (subtype-table . 5) (bp . 6) (env . 7) (nargs . 8) (env-type . 9)
+    (argless-tag-trap-table . 10) (arged-tag-trap-table . 11)
+    (object-type . 12) (boot-code . 13) (free-ptr . 14) (cons-limit . 15)
+    (segment-type . 16) (uninitialized . 17) (next-newspace-size . 18)
+    (method-type . 19) (operation-type . 20) (false . 21) (process . 22)
+    (threads-enabled? . 23)))
+
+(define native-stream-primitive-arity
+  '(0 0 0 2 2 2 1 1 2 1 1 1 2 2 4 2 4 1))
+
+;;; The most resume points a function can have, and the NATIVE
+;;; instruction for one: the argument is a byte, and eight opcodes
+;;; supply the rest.
+
+(define native-max-resume-points 2048)
+
+(define (native-resume-instruction k)
+  (list (nth '(native native-256 native-512 native-768
+		      native-1024 native-1280 native-1536 native-1792)
+	     (quotient k 256))
+	(modulo k 256)))
+
+;;; Small fixnums are made in the C code; other constants go in the
+;;; stub's constant pool.
+
+(define (native-small-fixnum? x)
+  (and (fixnum? x) (< (- (expt 2 28)) x) (< x (expt 2 28))))
+
+;;; Escaped instructions, counted by NATIVE-TRANSLATE-BLOCK for the
+;;; report at the end of a file: an alist of opcode and count.
+
+(define native-escape-counts '())
+
+;;; Direct-call site caches minted so far in the file being compiled
+;;; (oak_native_site in oak-native.h): a FUNCALL whose operation was
+;;; just pushed from a global gets one, and jumps straight to the
+;;; function the global's operation resolved to last time.
+
+(define native-site-count 0)
+
+;;; Whole-program compilation (CompilerPlan.md milestone 5).
+;;;
+;;; Every native compile also writes FILE.ois, a summary: the globals
+;;; the file defines (with the C function index, arity and inferred
+;;; result type of each lambda), the globals it may assign, and the
+;;; globals whose operations escape as values (an ADD-METHOD target,
+;;; or passed around, so new methods could reach them).  oakc's
+;;; --whole-program second pass hands every other file's summary in
+;;; through #*NATIVE-SUMMARIES and sets #*NATIVE-WHOLE-PROGRAM?; the
+;;; translator then resolves calls statically where that is sound:
+;;;
+;;; - A call to a function defined in the same file is always direct,
+;;;   in every mode: the guard compares the operation's method's code
+;;;   vector against the callee's stub (a constant in this module), so
+;;;   a redefined global simply misses and takes the generic path.
+;;; - A call to another file's function, or to a world function with a
+;;;   native lambda method, is direct in whole-program builds: the
+;;;   guard compares the operation against a cell the generated
+;;;   link-time prelude binds to the resolved operation (%oakc-v-N),
+;;;   and the callee's C function is named across translation units,
+;;;   which only an executable links.  Sound without a closed world:
+;;;   reassignment just misses the guard.
+;;; - A call to a generic operation with exactly one method, on a
+;;;   concrete type, neither extended nor escaped anywhere in the
+;;;   program, becomes a guarded call: argument-type check against the
+;;;   prelude-bound type (%oakc-t-N), then a direct jump to the method
+;;;   (%oakc-m-N) with its bp offset (%oakc-o-N).  This one assumes
+;;;   the closed world --whole-program declares: no new methods at run
+;;;   time for those operations.
+
+(set! #*native-whole-program? #f)
+
+;;; Emit FILE.c and FILE.oa but skip the C compiler: whole-program C
+;;; calls across translation units, which no shared object could
+;;; resolve, so oakc compiles it itself with -DON_STATIC.
+
+(set! #*native-emit-only? #f)
+
+;;; The other files' summaries, ((file-name . summary) ...), and the
+;;; locale compilation resolves globals in.
+
+(set! #*native-summaries '())
+(set! #*native-compile-locale #f)
+
+;;; oakc's whole-program pass compiles each file twice; the second
+;;; pass reuses the first's module prefix (see NATIVE-COMPILE-FILE-AUX).
+
+(set! #*native-force-prefix #f)
+
+;;; The C-locals lowering (the plan's IR back end, opt-in): within a
+;;; run of trap-free, allocation-free instructions whose types the
+;;; abstract stack proves, the top of the value stack is lowered into
+;;; C locals (v0..v7) instead of memory -- loads, constants, globals'
+;;; contents, EQ?, proven comparisons, proven CAR/CDR, and branches on
+;;; a local condition.  A run begins by reserving stack room while no
+;;; local is live (ON_RESERVE), so every spill is a plain store and no
+;;; collection can run while a ref's only copy sits in a C variable;
+;;; anything that can trap, allocate, call, poll or merge control
+;;; spills first and uses the ordinary emission, so correctness never
+;;; rests on the lowering.  oakc --ir turns it on.
+
+(set! #*native-ir? #f)
+
+;;; A tag naming the file being compiled, for the prelude cells'
+;;; names: each file is compiled by its own emulator, so a counter
+;;; alone would collide.
+
+(define native-file-tag "f")
+
+;;; Per-file collections, reset by NATIVE-TRANSFORM-FILE-BLOCK's
+;;; callers: block records ((original stub index arity) ...), the
+;;; file's own defines ((sym index arity rtype) ...), assignment and
+;;; escape fact lists, result types per block index, the cross-file
+;;; function names to declare extern, the prelude cells to request,
+;;; and counters for the report.
+
+(define native-block-records '())	; ((original stub index) ...)
+(define native-defines '())		; ((sym arity original-block) ...)
+(define native-assigns '())
+(define native-escaped-globals '())
+(define native-block-rtypes '())	; ((index . type-token) ...)
+(define native-extern-names '())
+(define native-prelude-needs '())
+(define native-prelude-count 0)
+(define native-dcall-count 0)
+(define native-dcall-records '())	; ((serial . target) ...)
+(define native-direct-count 0)
+(define native-guarded-count 0)
+(define native-elision-count 0)
+(define native-fuse-count 0)
+(define native-inline-count 0)
+(define native-inline-label-count 0)
+
+;;; Cross-file inlining (whole-program mode): a small, self-contained
+;;; function body -- stack operations, arithmetic, non-tail calls, its
+;;; own branches, one CHECK-NARGS at the start and one RETURN at the
+;;; end -- is spliced in place of a call to it, the summaries carrying
+;;; the bodies across files.  The splice drops the operation push and
+;;; the callee's CHECK-NARGS (the arity matched at compile time), so
+;;; the stack the body sees is exactly the arguments, and the abstract
+;;; stack then flows through it, eliding checks in context.
+
+(define native-inline-max 24)
+
+(define native-inline-ops
+  '(load-stk store-stk pop blt-stk swap blast load-imm load-imm-fix
+    load-glo load-glo-con store-nargs funcall-cxt plus subtract times
+    = < eq? not =0? <0? car cdr cons branch branch-t branch-nil
+    long-branch long-branch-t long-branch-nil label))
+
+;;; (arity . instructions), CHECK-NARGS and RETURN stripped, or #f.
+
+(define (native-inlinable-body block)
+  (destructure* ('code ivars instrs) block
+    (and (null? ivars)
+	 (pair? instrs)
+	 (eq? (car (car instrs)) 'check-nargs)
+	 (<= (length instrs) native-inline-max)
+	 (iterate aux ((l (cdr instrs)))
+	   (cond ((null? l) #f)
+		 ((null? (cdr l))
+		  (and (eq? (car (car l)) 'return)
+		       (cons (cadr (car instrs))
+			     (subseq (cdr instrs) 0
+				     (- (length instrs) 2)))))
+		 ((eq? (car (car l)) 'return) #f)
+		 ((memq (car (car l)) native-inline-ops) (aux (cdr l)))
+		 (else #f))))))
+
+(define (native-summary-body g)
+  (iterate aux ((l #*native-summaries))
+    (cond ((null? l) #f)
+	  ((assq g (native-summary-field (cdr (car l)) 'bodies)))
+	  (else (aux (cdr l))))))
+
+(define (native-inline-body g nargs)
+  ;; Inlining has no guard to miss, unlike a direct call, so only a
+  ;; global nothing ever reassigns qualifies.
+  (and (not (memq g native-assigns))
+       (not (native-globally-assigned? g))
+       (let* ((own (assq g native-defines))
+	      (ai (cond (own (native-inlinable-body (caddr own)))
+			(else (let ((e (native-summary-body g)))
+				(and e (cdr e)))))))
+	 (and ai (eq? (car ai) nargs) (cdr ai)))))
+
+;;; Fresh names for a spliced body's labels, so two splices of one
+;;; body cannot collide.
+
+(define (native-rename-labels body)
+  (let ((alist '()))
+    (map (lambda (i)
+	   (if (memq (car i) '(label branch branch-t branch-nil
+			       long-branch long-branch-t long-branch-nil))
+	       (let* ((l (cadr i))
+		      (hit (assq l alist)))
+		 (list (car i)
+		       (cond (hit (cdr hit))
+			     (else
+			      (let ((nl (intern
+					 (format #f "%OAKI-~D"
+						 native-inline-label-count))))
+				(set! native-inline-label-count
+				      (+ native-inline-label-count 1))
+				(set! alist (cons (cons l nl) alist))
+				nl)))))
+	       i))
+	 body)))
+
+;;; Splice inlinable callees into the instruction list, one level: a
+;;; tail call grows a RETURN, a FUNCALL-CXT-BR a branch to its label.
+
+(define (native-inline-calls instrs)
+  (iterate aux ((l instrs) (acc '()))
+    (cond ((null? l) (reverse! acc))
+	  ((and (eq? (car (car l)) 'load-glo-con)
+		(pair? (cdr l))
+		(eq? (car (car (cdr l))) 'store-nargs)
+		(pair? (cdr (cdr l)))
+		(memq (car (car (cdr (cdr l))))
+		      '(funcall-cxt funcall-cxt-br funcall-tail))
+		(native-inline-body (cadr (car l))
+				    (cadr (car (cdr l)))))
+	   (let* ((call (car (cdr (cdr l))))
+		  (body (native-rename-labels
+			 (native-inline-body (cadr (car l))
+					     (cadr (car (cdr l))))))
+		  (tail (case (car call)
+			  ((funcall-tail) '((return)))
+			  ((funcall-cxt-br)
+			   (list (list 'branch (cadr call))))
+			  (else '()))))
+	     (set! native-inline-count (+ native-inline-count 1))
+	     (aux (cdr (cdr (cdr l)))
+		  (append! (reverse (append body tail)) acc))))
+	  (else (aux (cdr l) (cons (car l) acc))))))
+
+;;; The abstract stack: what the translator knows about the top of the
+;;; value stack, a list from the top down ('fixnum, 'pair, 'bool,
+;;; 'nil, 'char, 'operation, (glo . SYM) for a global's contents, or
+;;; 'unknown); shorter than the real stack, and emptied at every label
+;;; or unmodeled instruction, so it only ever understates.
+
+(define (native-astack-ref astack n)
+  (cond ((null? astack) 'unknown)
+	((= n 0) (car astack))
+	(else (native-astack-ref (cdr astack) (- n 1)))))
+
+(define (native-astack-pop astack n)
+  (cond ((= n 0) astack)
+	((null? astack) '())
+	(else (native-astack-pop (cdr astack) (- n 1)))))
+
+(define (native-type-token x)
+  (cond ((null? x) 'nil)
+	((fixnum? x) 'fixnum)
+	((pair? x) 'pair)
+	((char? x) 'char)
+	((string? x) 'string)
+	((eq? x #t) 'bool)
+	(else 'unknown)))
+
+(define (native-fixnum-top2? astack)
+  (and (eq? (native-astack-ref astack 0) 'fixnum)
+       (eq? (native-astack-ref astack 1) 'fixnum)))
+
+;;; The result type of the block being translated as INDEX, joined
+;;; over its returns.
+
+(define (native-note-rtype index tok)
+  (let ((tok (if (pair? tok) 'unknown tok))
+	(x (assq index native-block-rtypes)))
+    (cond ((not x)
+	   (set! native-block-rtypes
+		 (cons (cons index tok) native-block-rtypes)))
+	  ((not (eq? (cdr x) tok))
+	   (set! (cdr x) 'unknown)))))
+
+;;; The abstract stack after INSTR runs without trapping.  CALL-RTYPE
+;;; is the result type a FUNCALL's callee is summarized to return.
+
+(define (native-astack-after op instr astack call-rtype nargs)
+  (case op
+    ((noop label-ignore) astack)
+    ((check-nargs check-nargs-gte) (native-astack-pop astack 1))
+    ((load-stk)
+     (cons (native-astack-ref astack (cadr instr)) astack))
+    ((store-stk blast)
+     ;; Writes below the top: forget the written slot conservatively.
+     (native-astack-pop astack (+ (cadr instr) 1)))
+    ((pop) (native-astack-pop astack (cadr instr)))
+    ((swap) '())
+    ((blt-stk)
+     (let ((stuff (cadr instr)) (trash (caddr instr)))
+       (if (> stuff (length astack))
+	   '()
+	   (append (subseq astack 0 stuff)
+		   (native-astack-pop astack (+ stuff trash))))))
+    ((load-imm-fix) (cons 'fixnum astack))
+    ((load-imm) (cons (native-type-token (cadr instr)) astack))
+    ((load-glo-con) (cons (cons 'glo (cadr instr)) astack))
+    ((load-glo load-code make-cell make-env-loc make-bp-loc)
+     (cons 'unknown astack))
+    ((contents set-contents) '())
+    ((plus subtract times)
+     ;; The result can be a bignum (the overflow trap), so only its
+     ;; number-ness is known; call it unknown.
+     (cons 'unknown (native-astack-pop astack 2)))
+    ((= < eq?) (cons 'bool (native-astack-pop astack 2)))
+    ((not =0? <0?) (cons 'bool (native-astack-pop astack 1)))
+    ((car cdr) (cons 'unknown (native-astack-pop astack 1)))
+    ((cons) (cons 'pair (native-astack-pop astack 2)))
+    ((make-lambda) (cons 'operation (native-astack-pop astack 2)))
+    ((make-closed-environment) '())
+    ((store-nargs) astack)
+    ((funcall-cxt funcall-cxt-br funcall-tail)
+     (if (< nargs 0)
+	 '()
+	 (cons call-rtype (native-astack-pop astack (+ nargs 1)))))
+    ((load-reg) (cons 'unknown astack))
+    ((load-env) (cons 'unknown astack))
+    ((store-env) astack)
+    ((load-bp store-bp) (if (eq? op 'load-bp) (cons 'unknown astack) astack))
+    (else '())))
+
+;;; What a FUNCALL of the global G with NARGS arguments resolves to:
+;;; (same INDEX RTYPE), (cross NAME RTYPE), (guarded NAME OPNAME
+;;; TYPENAME), or #f for the site cache.  Compile-time arity
+;;; mismatches get a warning; the callee's own CHECK-NARGS still rules
+;;; at run time.
+
+(define (native-arity-warn g arity nargs)
+  (when (and (fixnum? arity) (not (= arity nargs)))
+    (format #t "~&Warning: ~S takes ~D arguments, called here with ~D.~%"
+	    g arity nargs)))
+
+(define (native-summary-field summary key)
+  (let ((x (assq key summary)))
+    (if x (cdr x) '())))
+
+(define (native-globally-assigned? g)
+  (iterate aux ((l #*native-summaries))
+    (cond ((null? l) #f)
+	  ((memq g (native-summary-field (cdr (car l)) 'assigns)) #t)
+	  (else (aux (cdr l))))))
+
+(define (native-globally-escaped? g)
+  (iterate aux ((l #*native-summaries))
+    (cond ((null? l) #f)
+	  ((memq g (native-summary-field (cdr (car l)) 'escapes)) #t)
+	  (else (aux (cdr l))))))
+
+;;; A prelude cell: KIND is v (the operation a global holds at link
+;;; time), m (a method), t (a type's value) or o (a bp offset); FORM
+;;; is what the prelude binds it to.  Returns the new cell's name.
+
+(define (native-prelude-cell kind form)
+  (iterate aux ((l native-prelude-needs))
+    (cond ((null? l)
+	   (let ((sym (intern (format #f "%OAKC-~A-~A-~D"
+					native-file-tag kind
+					native-prelude-count))))
+	     (set! native-prelude-count (+ native-prelude-count 1))
+	     (set! native-prelude-needs
+		   (cons (list sym form) native-prelude-needs))
+	     sym))
+	  ((equal? (cadr (car l)) form)	; one cell per pinned form
+	   (car (car l)))
+	  (else (aux (cdr l))))))
+
+;;; The native C function name recorded in the stub code vector CV, a
+;;; string, or #f when CV is not a native stub.  The name lives 5
+;;; words from the end (oak-native.h); %VREF indexes past the 2-word
+;;; header.
+
+(define (native-stub-name cv)
+  (let ((size ((%slot 1) cv)))		; total words; %VREF 0 is word 3
+    (and (fixnum? size)
+	 (> size 8)
+	 (let ((op (quotient (bit-and (nth cv 0) 255) 4)))
+	   (and (<= 35 op) (<= op 42)
+		(let ((name (%vref cv (- size 8))))
+		  (and (string? name) name)))))))
+
+;;; The value the global G will have at link time: the contents of its
+;;; cell in the compile locale, or a marker when unbound.
+
+(define (native-global-value g)
+  (let* ((loc #*native-compile-locale)
+	 (cell (and loc (variable? loc g))))
+    (if cell
+	(contents cell)
+	'%native-no-value)))
+
+(define (native-lambda-method op-value)
+  (and (not (eq? op-value '%native-no-value))
+       (procedure? op-value)
+       (let ((m (%get-an-ivar operation op-value 'lambda?)))
+	 (and (not (eq? m 0)) (not (eq? m #f)) m))))
+
+;;; The world's global name for each type token the abstract stack can
+;;; prove, so a guarded call's prelude can name the type.
+
+(define native-token-type-names
+  '((fixnum . fixnum) (pair . cons-pair) (char . character)
+    (string . string) (nil . null-type)))
+
+;;; What a FUNCALL of the global G with NARGS arguments on a first
+;;; argument of (abstract) type ARG-TOKEN resolves to: (same INDEX
+;;; RTYPE), (cross NAME RTYPE), (cross-pinned NAME PIN RTYPE),
+;;; (guarded NAME PIN MCELL OCELL RTYPE), or #f for the site cache.
+
+(define (native-direct-target g nargs arg-token)
+  (let ((own (assq g native-defines)))
+    (cond (own
+	   ;; This file's function: the stub guard needs no pin, and
+	   ;; the callee's index and result type resolve through the
+	   ;; block records (the callee may not be translated yet).
+	   (destructure* (g2 arity blk) own
+	     g2
+	     (native-arity-warn g arity nargs)
+	     (let* ((rec (assq blk native-block-records))
+		    (rt (and rec
+			     (let ((r (assq (caddr rec)
+					    native-block-rtypes)))
+			       (and r (cdr r))))))
+	       (list 'same blk (or rt 'unknown)))))
+	  ((not #*native-whole-program?) #f)
+	  ((native-globally-assigned? g) #f)
+	  ((native-cross-define g nargs))
+	  (else (native-world-target g nargs arg-token)))))
+
+;;; G as another program file's function, from the summaries.
+
+(define (native-cross-define g nargs)
+  (iterate aux ((l #*native-summaries))
+    (if (null? l)
+	#f
+	(let ((d (assq g (native-summary-field (cdr (car l)) 'defines))))
+	  (if (not d)
+	      (aux (cdr l))
+	      (destructure* (g2 index arity rtype) d
+		g2
+		(native-arity-warn g arity nargs)
+		(let ((prefix (car (native-summary-field
+				    (cdr (car l)) 'prefix))))
+		  (and prefix (fixnum? index) (not (< index 0))
+		       (list 'cross-pinned
+			     (format #f "~A_~D" prefix index)
+			     (native-prelude-cell 'v g)
+			     rtype)))))))))
+
+;;; G as a world binding.  A lambda operation's native method is
+;;; called directly, pinned to the link-time operation; sound in any
+;;; world, since a reassigned global misses the pin.  A generic
+;;; operation resolves only when the argument's type is proven and the
+;;; program neither assigns nor passes the operation around -- the
+;;; closed world --whole-program declares.
+
+(define (native-world-target g nargs arg-token)
+  (let ((v (native-global-value g)))
+    (and (not (eq? v '%native-no-value))
+	 (procedure? v)
+	 (let ((m (native-lambda-method v)))
+	   (if m
+	       (let ((name (native-method-c-name m)))
+		 (and name
+		      (list 'cross-pinned name
+			    (native-prelude-cell 'v g) 'unknown)))
+	       (let ((type-name (cdr (or (assq arg-token
+					       native-token-type-names)
+					 '(#f . #f)))))
+		 (and type-name
+		      (not (native-globally-escaped? g))
+		      (let* ((typ (native-global-value type-name))
+			     (hit (and (not (eq? typ '%native-no-value))
+				       (%find-method-entry typ v)))
+			     (name (and hit
+					(native-method-c-name (car hit)))))
+			(and name
+			     (list 'guarded name
+				   (native-prelude-cell 'v g)
+				   (native-prelude-cell
+				    'm (list '%method-for g type-name))
+				   (native-prelude-cell
+				    'o (list '%bp-offset-for g type-name))
+				   'unknown))))))))))
+
+(define (native-method-c-name m)
+  (let* ((cv (%get-an-ivar %method m 'the-code))
+	 (name (native-stub-name cv)))
+    (and name (#^string name))))
+
+;;; Scan the original file block, before translation, for the facts
+;;; the summaries and the direct calls need: (LOAD-CODE B)(MAKE-LAMBDA)
+;;; (LOAD-GLO G)(SET-CONTENTS) is a definition of G, with G's arity
+;;; read from B's CHECK-NARGS; every other LOAD-GLO target may be
+;;; assigned (the cell's locative is only taken to be written); and a
+;;; LOAD-GLO-CON not feeding the FUNCALL right after it lets the
+;;; operation escape as a value, where ADD-METHOD could reach it.
+;;; Escapes count only inside functions: the top level runs before the
+;;; link-time prelude pins anything, so a top-level ADD-METHOD -- the
+;;; common case -- is already part of the closed world.
+
+(define (native-prescan-file-block block)
+  (set! native-defines '())
+  (set! native-assigns '())
+  (set! native-escaped-globals '())
+  (labels (((arity-of b)
+	    (destructure* ('code ivars2 instrs2) b
+	      ivars2
+	      (if (and (pair? instrs2)
+		       (eq? (car (car instrs2)) 'check-nargs))
+		  (cadr (car instrs2))
+		  #f)))
+	   ((walk b top?)
+	    (destructure* ('code ivars instrs) b
+	      ivars
+	      (iterate loop ((l instrs))
+		(unless (null? l)
+		  (let ((i (car l)))
+		    (case (car i)
+		      ((load-code)
+		       (walk (cadr i) #f)
+		       (let ((r (cdr l)))
+			 (if (and (pair? r)
+				  (eq? (car (car r)) 'make-lambda)
+				  (pair? (cdr r))
+				  (eq? (car (car (cdr r))) 'load-glo)
+				  (pair? (cdr (cdr r)))
+				  (eq? (car (car (cdr (cdr r))))
+				       'set-contents))
+			     (let ((g (cadr (car (cdr r)))))
+			       ;; A second lambda stored under the same
+			       ;; name is a redefinition: an assignment,
+			       ;; not a definition.
+			       (if (assq g native-defines)
+				   (set! native-assigns
+					 (cons g native-assigns))
+				   (set! native-defines
+					 (cons (list g
+						     (arity-of (cadr i))
+						     (cadr i))
+					       native-defines)))
+			       (loop (cdr (cdr (cdr r)))))
+			     (loop (cdr l)))))
+		      ((load-glo)
+		       (set! native-assigns (cons (cadr i) native-assigns))
+		       (loop (cdr l)))
+		      ((load-glo-con)
+		       (let* ((r (cdr l))
+			      (r2 (if (and (pair? r)
+					   (eq? (car (car r)) 'store-nargs))
+				      (cdr r)
+				      r)))
+			 (unless (or top?
+				     (and (pair? r2)
+					  (memq (car (car r2))
+						'(funcall-cxt funcall-cxt-br
+						    funcall-tail))))
+			   (set! native-escaped-globals
+				 (cons (cadr i) native-escaped-globals))))
+		       (loop (cdr l)))
+		      (else (loop (cdr l))))))))))
+    (walk block #t)))
+
+;;; In strict mode (oakc and the native world build), an instruction
+;;; without a C translation is an error rather than an escape to the
+;;; emulator: a stand-alone executable has no emulator to escape to.
+
+(set! #*native-strict? #f)
+
+;;; Instructions listed here are escaped rather than translated, even
+;;; in strict mode: a bisection aid, not for production builds.
+
+(set! #*native-exclusions '())
+
+(define (native-count-escape op)
+  (let ((x (assq op native-escape-counts)))
+    (if x
+	(set! (cdr x) (+ (cdr x) 1))
+	(set! native-escape-counts (cons (cons op 1) native-escape-counts)))))
+
+;;; Translate the code block BLOCK, (code ivar-list instructions), into
+;;; the C function ON_FN(INDEX), written to the string output stream
+;;; OUT.  Return the stub block to assemble in its place, or #f if it
+;;; can't be translated.  The stub's next to last instruction, the one
+;;; holding the function's name, is (load-imm #f): the name depends on
+;;; all of the C, and is filled in once that is written.
+
+(define (native-translate-block block index out)
+  (destructure* ('code ivars instrs) block
+    (let ((instrs (if #*native-whole-program?
+		      (native-inline-calls instrs)
+		      instrs))
+	  (body (make string-output-stream))
+	  (resume-count 1)		; resume point 0 is entry
+	  (resumes (list (cons 0 "r0")))	; resume point -> C label
+	  (label-resumes '())		; label -> resume point
+	  (labels-seen '())
+	  (escapes '())			; (instruction . resume point)
+	  (operands '())		; instructions
+	  (constants '())		; (kind value)
+	  (astack '())			; the abstract stack, top first
+	  (nargs-now #f)		; the last STORE-NARGS, if adjacent
+	  (skip-next #f)		; this instruction consumed the next
+	  (fuse-pops 0)			; what a fused pair pops net
+	  (vtemps '())			; C locals holding the stack top, top first
+	  (run-live #f)			; a reservation is open
+	  (temp-max 0))			; locals the function needs declared
+
+      (labels (((emit line)
+		(format body "  ~A~%" line))
+
+	       ;; The C of a call through a fresh site cache.  The
+	       ;; operation is read back off the stack: see
+	       ;; ON_SITE_CALL on why no C local can carry it.
+	       ((site-call)
+		(let ((i native-site-count))
+		  (set! native-site-count (+ i 1))
+		  (emit (format #f "ON_SITE_CALL(&on_sites[~D], sp[0]);" i))))
+
+	       ;; A statically resolved call (see the whole-program
+	       ;; notes above): the guard proves the operation on top
+	       ;; of the stack is the one compiled against, then the
+	       ;; registers are set and the callee's C is entered
+	       ;; directly; a miss falls through to the ON_FUNCALL the
+	       ;; caller emits after this.  The ON_DC_* macros are
+	       ;; bound per call at the top of the file, once every
+	       ;; block's fate is known.
+	       ((direct-call target)
+		(let ((serial native-dcall-count))
+		  (set! native-dcall-count (+ serial 1))
+		  (set! native-dcall-records
+			(cons (cons serial target) native-dcall-records))
+		  (case (car target)
+		    ((same)
+		     (set! native-direct-count (+ native-direct-count 1))
+		     (let ((ci (constant-index 'load-code (cadr target))))
+		       (emit "x = sp[0];")
+		       (emit (format #f "if (ON_DC_OK_~D && TAG_IS(x, PTR_TAG)" serial))
+		       (emit "    && (y = REF_SLOT(x, OPERATION_LAMBDA_OFF), TAG_IS(y, PTR_TAG))")
+		       (emit (format #f "    && REF_SLOT(y, METHOD_CODE_OFF) == ON_CONST(C~D)" ci))
+		       (emit "    && !ON_PENDING())")
+		       (emit (format #f "  ON_DIRECT_JUMP(y, ON_DC_FN_~D);" serial))))
+		    ((cross-pinned)
+		     (set! native-direct-count (+ native-direct-count 1))
+		     (let ((ci (constant-index 'load-glo (caddr target))))
+		       (emit "x = sp[0];")
+		       (emit (format #f "if (x == *LOC_TO_PTR(ON_CONST(C~D)) && TAG_IS(x, PTR_TAG)" ci))
+		       (emit "    && (y = REF_SLOT(x, OPERATION_LAMBDA_OFF), TAG_IS(y, PTR_TAG))")
+		       (emit "    && !ON_PENDING())")
+		       (emit (format #f "  ON_DIRECT_JUMP(y, ON_DC_FN_~D);" serial))))
+		    ((guarded)
+		     (set! native-guarded-count (+ native-guarded-count 1))
+		     (destructure* (g2 name vcell mcell ocell rt) target
+		       g2 name rt
+		       (let ((cv (constant-index 'load-glo vcell))
+			     (cm (constant-index 'load-glo mcell))
+			     (co (constant-index 'load-glo ocell)))
+			 (emit "x = sp[0];")
+			 (emit (format #f "if (x == *LOC_TO_PTR(ON_CONST(C~D))" cv))
+			 (emit "    && sp - value_stack.bp >= 1 && !ON_PENDING())")
+			 (emit (format #f "  { y = *LOC_TO_PTR(ON_CONST(C~D));" cm))
+			 (emit (format #f "    e_bp = REF_TO_PTR(sp[-1]) + REF_TO_INT(*LOC_TO_PTR(ON_CONST(C~D)));" co))
+			 (emit (format #f "    ON_DIRECT_JUMP(y, ON_DC_FN_~D); }" serial))))))))
+
+	       ;; The C-locals lowering's bookkeeping (#*native-ir?).
+	       ;; The top (TEMPS) logical stack cells live in C locals,
+	       ;; VTEMPS naming them top first; everything deeper is on
+	       ;; the real stack, SP lagging the logical top by
+	       ;; (TEMPS).
+	       ((temps) (length vtemps))
+	       ((start-run)
+		(unless run-live
+		  (emit "ON_RESERVE(8);")
+		  (set! run-live #t)))
+	       ((push-temp)
+		(when (= (temps) 8) (spill))
+		(start-run)
+		(let ((name (format #f "v~D" (temps))))
+		  (set! vtemps (cons name vtemps))
+		  (when (> (temps) temp-max)
+		    (set! temp-max (temps)))
+		  name))
+	       ((spill)
+		;; Bottom to top, plain stores into the reserved room.
+		(dolist (v (reverse vtemps))
+		  (emit (format #f "*++sp = ~A;" v)))
+		(set! vtemps '())
+		(set! run-live #f))
+	       ;; The C of logical cell SP[-K], and the ON_NEED a
+	       ;; memory touch there wants (STACK_UNFLUSH cannot
+	       ;; collect, so reading memory mid-run is safe).
+	       ((tref k)
+		(if (< k (temps))
+		    (nth vtemps k)
+		    (let ((m (- k (temps))))
+		      (if (zero? m)
+			  "sp[0]"
+			  (format #f "sp[-~D]" m)))))
+	       ((tneed k)
+		(when (>= k (temps))
+		  (let ((m (- k (temps))))
+		    (when (> m 0)
+		      (emit (format #f "ON_NEED(~D);" m))))))
+	       ;; Logically pop N cells: locals freed, memory popped
+	       ;; (ON_POP's slow path cannot collect).
+	       ((drop n)
+		(let* ((t (min n (temps)))
+		       (m (- n t)))
+		  (set! vtemps (native-astack-pop vtemps t))
+		  (when (> m 0)
+		    (emit (format #f "ON_POP(~D);" m)))))
+
+	       ;; The lowering itself: OP emitted with its values in C
+	       ;; locals when that is sound here, or #f, and the
+	       ;; ordinary emission runs after a spill.  Only trap-free
+	       ;; work qualifies: a trap wants its operands on the real
+	       ;; stack, an allocation or a poll must never find a ref
+	       ;; only a local holds.  BNEXT is the branch fused onto a
+	       ;; comparison.
+	       ((ir-emit op instr bnext)
+		(case op
+		  ((load-imm-fix)
+		   (let ((v (push-temp)))
+		     (emit (format #f "~A = INT_TO_REF(~D);" v (cadr instr))))
+		   #t)
+		  ((load-imm)
+		   (let* ((c (cadr instr))
+			  (rhs (cond ((null? c) "e_nil")
+				     ((eq? c #t) "e_t")
+				     ((native-small-fixnum? c)
+				      (format #f "INT_TO_REF(~D)" c))
+				     (else
+				      (format #f "ON_CONST(C~D)"
+					      (constant-index 'load-imm c)))))
+			  (v (push-temp)))
+		     (emit (format #f "~A = ~A;" v rhs)))
+		   #t)
+		  ((load-glo)
+		   (let* ((rhs (format #f "ON_CONST(C~D)"
+				       (constant-index 'load-glo (cadr instr))))
+			  (v (push-temp)))
+		     (emit (format #f "~A = ~A;" v rhs)))
+		   #t)
+		  ((load-glo-con)
+		   (let* ((rhs (format #f "*LOC_TO_PTR(ON_CONST(C~D))"
+				       (constant-index 'load-glo (cadr instr))))
+			  (v (push-temp)))
+		     (emit (format #f "~A = ~A;" v rhs)))
+		   #t)
+		  ((load-stk)
+		   ;; The reservation can flush, and a flush can
+		   ;; collect, so it comes before any operand is read
+		   ;; into a C variable -- here and in every case
+		   ;; below.
+		   (start-run)
+		   (tneed (cadr instr))
+		   (emit (format #f "x = ~A;" (tref (cadr instr))))
+		   (let ((v (push-temp)))
+		     (emit (format #f "~A = x;" v)))
+		   #t)
+		  ((pop)
+		   (drop (cadr instr))
+		   #t)
+		  ((eq?)
+		   (start-run)
+		   (tneed 1)
+		   (emit (format #f "x = ~A; y = ~A;" (tref 0) (tref 1)))
+		   (drop 2)
+		   (cond (bnext
+			  (set! fuse-pops 2)
+			  (spill)
+			  (branch-on "x == y" bnext))
+			 (else
+			  (let ((v (push-temp)))
+			    (emit (format #f "~A = ON_BOOL(x == y);" v)))))
+		   #t)
+		  ((= <)
+		   (and (native-fixnum-top2? astack)
+			(let ((cond-c (if (eq? op '=) "x == y"
+					  "(ssize_t)x < (ssize_t)y")))
+			  (set! native-elision-count
+				(+ native-elision-count 1))
+			  (start-run)
+			  (tneed 1)
+			  (emit (format #f "x = ~A; y = ~A;"
+					(tref 0) (tref 1)))
+			  (drop 2)
+			  (cond (bnext
+				 (set! fuse-pops 2)
+				 (spill)
+				 (branch-on cond-c bnext))
+				(else
+				 (let ((v (push-temp)))
+				   (emit (format #f "~A = ON_BOOL(~A);"
+						 v cond-c)))))
+			  #t)))
+		  ((=0? <0?)
+		   (and (eq? (native-astack-ref astack 0) 'fixnum)
+			(let ((cond-c (if (eq? op '=0?)
+					  "x == INT_TO_REF(0)"
+					  "(ssize_t)x < 0")))
+			  (set! native-elision-count
+				(+ native-elision-count 1))
+			  (start-run)
+			  (emit (format #f "x = ~A;" (tref 0)))
+			  (drop 1)
+			  (cond (bnext
+				 (set! fuse-pops 1)
+				 (spill)
+				 (branch-on cond-c bnext))
+				(else
+				 (let ((v (push-temp)))
+				   (emit (format #f "~A = ON_BOOL(~A);"
+						 v cond-c)))))
+			  #t)))
+		  ((not)
+		   (start-run)
+		   (emit (format #f "x = ~A;" (tref 0)))
+		   (drop 1)
+		   (let ((v (push-temp)))
+		     (emit (format #f "~A = ON_BOOL(x == e_nil);" v)))
+		   #t)
+		  ((car cdr)
+		   (and (eq? (native-astack-ref astack 0) 'pair)
+			(block
+			  (set! native-elision-count
+				(+ native-elision-count 1))
+			  (start-run)
+			  (emit (format #f "x = ~A;" (tref 0)))
+			  (drop 1)
+			  (let ((v (push-temp)))
+			    (emit (format #f "~A = REF_SLOT(x, ~A);" v
+					  (if (eq? op 'car)
+					      "CONS_PAIR_CAR_OFF"
+					      "CONS_PAIR_CDR_OFF"))))
+			  #t)))
+		  ((branch-t long-branch-t branch-nil long-branch-nil)
+		   (and (> (temps) 0)
+			(block
+			  (emit (format #f "x = ~A;" (tref 0)))
+			  (drop 1)
+			  (spill)
+			  (emit (format #f "if (x ~A e_nil) {"
+					(if (memq op '(branch-t long-branch-t))
+					    "!=" "==")))
+			  (branch-to (cadr instr))
+			  (emit "}")
+			  #t)))
+		  (else #f)))
+
+	       ;; A comparison fused with the branch right after it
+	       ;; (value unboxing: the boolean never exists).  COND-C
+	       ;; is the C of the comparison; BI the branch.
+	       ((branch-on cond-c bi)
+		(set! native-fuse-count (+ native-fuse-count 1))
+		(set! skip-next #t)
+		(emit (format #f "if (~A) {"
+			      (if (memq (car bi) '(branch-t long-branch-t))
+				  cond-c
+				  (format #f "!(~A)" cond-c))))
+		(branch-to (cadr bi))
+		(emit "}"))
+
+	       ;; A new resume point, at the C label r<K>, which PLACE
+	       ;; puts down.
+	       ((new-resume)
+		(let ((k resume-count))
+		  (set! resume-count (+ k 1))
+		  (set! resumes (cons (cons k (format #f "r~D" k)) resumes))
+		  k))
+
+	       ((place k)
+		(format body " r~D: ;~%" k))
+
+	       ;; The resume point at a label something returns to or
+	       ;; branches back to.
+	       ((label-resume l)
+		(cond ((assq l label-resumes) => cdr)
+		      (else
+		       (let ((k resume-count))
+			 (set! resume-count (+ k 1))
+			 (set! resumes
+			       (cons (cons k (format #f "L_~A" (native-c-label l)))
+				     resumes))
+			 (set! label-resumes (cons (cons l k) label-resumes))
+			 k))))
+
+	       ;; The index in the constant pool of (KIND VALUE), adding it.
+	       ((constant-index kind value)
+		(iterate aux ((l constants) (i (- (length constants) 1)))
+		  (cond ((null? l)
+			 (set! constants (cons (list kind value) constants))
+			 (- (length constants) 1))
+			((and (eq? (car (car l)) kind)
+			      (eq? (cadr (car l)) value))
+			 i)
+			(else (aux (cdr l) (- i 1))))))
+
+	       ;; The index among the operands of the instruction INSTR,
+	       ;; adding it.
+	       ((operand instr)
+		(set! operands (cons instr operands))
+		(- (length operands) 1))
+
+	       ;; Hand INSTR to the emulator, as a statement or after an
+	       ;; "else", and resume after it.
+	       ((escape prefix instr)
+		(when (and #*native-strict?
+			   (not (memq (car instr) #*native-exclusions)))
+		  (error "No C translation for ~S (native compiler, strict mode)."
+			 instr))
+		(let ((k (new-resume)))
+		  (set! escapes (cons (cons instr k) escapes))
+		  (native-count-escape (car instr))
+		  (emit (format #f "~AON_ESCAPE(E~D);" prefix
+				(- (length escapes) 1)))
+		  (place k)))
+
+	       ;; An unconditional trap: context, then the argless
+	       ;; instruction's trap operation on NARGS arguments.
+	       ((trap-now op nargs)
+		(let ((k (new-resume)))
+		  (emit (format #f "ON_TRAP(~D, ~D, ~D);"
+				(cdr (assq op native-trap-numbers)) nargs k))
+		  (place k)))
+
+	       ;; An arged instruction's trap, after an "if": argument
+	       ;; AF, NARGS-EXPR arguments (a C expression).
+	       ((atrap-resume opno af nargs-expr)
+		(let ((k (new-resume)))
+		  (emit (format #f "else ON_ATRAP(~D, ~D, ~A, ~D);"
+				opno af nargs-expr k))
+		  (place k)))
+
+	       ;; An instruction that can trap: on failure call the trap
+	       ;; operation with its NARGS arguments, returning to a
+	       ;; resume point placed right after it.
+	       ((trap-resume op nargs)
+		(let ((k (new-resume)))
+		  (emit (format #f "else ON_TRAP(~D, ~D, ~D);"
+				(cdr (assq op native-trap-numbers)) nargs k))
+		  (place k)))
+
+	       ((branch-to l)
+		(when (memq l labels-seen)
+		  ;; A backward branch: give pending signals a chance.
+		  (emit (format #f "ON_POLL(~D);" (label-resume l))))
+		(emit (format #f "goto L_~A;" (native-c-label l)))))
+
+	(iterate iloop ((todo instrs))
+	 (unless (null? todo)
+	  (let ((instr (car todo)))
+	  (let* ((op (car instr))
+		 (excluded? (or (memq op #*native-exclusions)
+				(memq 'all #*native-exclusions)))
+		 (top0 (native-astack-ref astack 0))
+		 (glo-sym (and (pair? top0) (eq? (car top0) 'glo)
+			       (cdr top0)))
+		 (callsite? (memq op '(funcall-cxt funcall-cxt-br
+				       funcall-tail)))
+		 ;; The branch right after a comparison, for fusing.
+		 (branch-next
+		  (and (not excluded?)
+		       (pair? (cdr todo))
+		       (memq (car (car (cdr todo)))
+			     '(branch-t long-branch-t
+			       branch-nil long-branch-nil))
+		       (not (memq (car (car (cdr todo)))
+				  #*native-exclusions))
+		       (car (cdr todo))))
+		 ;; The operation this FUNCALL calls was just pushed
+		 ;; from a global: resolved statically when that is
+		 ;; sound (TARGET), through a site cache otherwise.
+		 (target (and callsite? glo-sym (not excluded?) nargs-now
+			      (native-direct-target
+			       glo-sym nargs-now
+			       (native-astack-ref astack 1))))
+		 (direct? (and callsite? glo-sym (not excluded?)))
+		 (rtype (cond ((not target) 'unknown)
+			      ((eq? (car target) 'same) (caddr target))
+			      ((eq? (car target) 'cross-pinned)
+			       (nth target 3))
+			      (else 'unknown))))
+	    (set! skip-next #f)
+	    (format body "  /* ~A */~%" (native-c-identifier (#^string op)))
+	    (if excluded?
+	      (block
+		(when (and #*native-ir? (> (temps) 0)) (spill))
+		(escape "" instr))
+	      (if (and #*native-ir? (ir-emit op instr branch-next))
+		'lowered
+	      (block
+		(when (and #*native-ir? (> (temps) 0)) (spill))
+	      (case op
+	      ((noop))
+	      ((check-nargs)
+	       (emit (format #f "if (e_nargs != ~D) ON_NARGS_TRAP(24, ~D);"
+			     (cadr instr) (cadr instr)))
+	       (emit "ON_POP(1);"))
+	      ((check-nargs-gte)
+	       (emit (format #f "if (e_nargs < ~D) ON_NARGS_TRAP(25, ~D);"
+			     (cadr instr) (cadr instr)))
+	       (emit "ON_POP(1);"))
+	      ((load-stk)
+	       (emit (format #f "ON_NEED(~D); x = sp[-~D]; ON_PUSH(x);"
+			     (cadr instr) (cadr instr))))
+	      ((store-stk)
+	       (emit (format #f "ON_NEED(~D); sp[-~D] = sp[0];"
+			     (cadr instr) (cadr instr))))
+	      ((pop)
+	       (emit (format #f "ON_POP(~D);" (cadr instr))))
+	      ((blt-stk)
+	       (let ((stuff (cadr instr))
+		     (trash (caddr instr)))
+		 (emit (format #f "ON_NEED(~D);" (+ stuff trash -1)))
+		 (dotimes (j stuff)
+		   (let ((from (- (+ j 1) stuff)))
+		     (emit (format #f "sp[~D] = sp[~D];" (- from trash) from))))
+		 (emit (format #f "sp -= ~D;" trash))))
+	      ((swap)
+	       (emit (format #f "ON_NEED(~D); x = sp[0]; sp[0] = sp[-~D]; sp[-~D] = x;"
+			     (cadr instr) (cadr instr) (cadr instr))))
+	      ((blast)
+	       (emit (format #f "ON_NEED(~D); sp[-~D] = sp[0]; sp--;"
+			     (cadr instr) (cadr instr))))
+	      ((load-imm-fix)
+	       (emit (format #f "ON_PUSH(INT_TO_REF(~D));" (cadr instr))))
+	      ((load-imm)
+	       (let ((c (cadr instr)))
+		 (cond ((null? c) (emit "ON_PUSH(e_nil);"))
+		       ((eq? c #t) (emit "ON_PUSH(e_t);"))
+		       ((native-small-fixnum? c)
+			(emit (format #f "ON_PUSH(INT_TO_REF(~D));" c)))
+		       (else
+			(emit (format #f "ON_PUSH(ON_CONST(C~D));"
+				      (constant-index 'load-imm c)))))))
+	      ((load-glo)
+	       (emit (format #f "ON_PUSH(ON_CONST(C~D));"
+			     (constant-index 'load-glo (cadr instr)))))
+	      ((load-glo-con)
+	       (emit (format #f "x = *LOC_TO_PTR(ON_CONST(C~D)); ON_PUSH(x);"
+			     (constant-index 'load-glo (cadr instr)))))
+	      ((load-code)
+	       (emit (format #f "ON_PUSH(ON_CONST(C~D));"
+			     (constant-index 'load-code (cadr instr)))))
+	      ((contents)
+	       (emit "x = sp[0];")
+	       (emit "if (TAG_IS(x, LOC_TAG)) sp[0] = *LOC_TO_PTR(x);")
+	       (trap-resume op 1))
+	      ((set-contents)
+	       (emit "ON_NEED(1); x = sp[0];")
+	       (emit "if (TAG_IS(x, LOC_TAG)) { sp--; *LOC_TO_PTR(x) = sp[0]; }")
+	       (trap-resume op 2))
+	      ((plus subtract)
+	       ;; Proven fixnums (the abstract stack) keep the overflow
+	       ;; check but lose the tag check.
+	       (emit "ON_NEED(1); x = sp[0]; y = sp[-1];")
+	       (if (native-fixnum-top2? astack)
+		   (block
+		     (set! native-elision-count (+ native-elision-count 1))
+		     (emit (format #f "if ((a = REF_TO_INT(x) ~A REF_TO_INT(y), ON_FITS(a))) *--sp = INT_TO_REF(a);"
+				   (if (eq? op 'plus) "+" "-"))))
+		   (emit (format #f "if (ON_FIXNUMS(x, y) && (a = REF_TO_INT(x) ~A REF_TO_INT(y), ON_FITS(a))) *--sp = INT_TO_REF(a);"
+				 (if (eq? op 'plus) "+" "-"))))
+	       (trap-resume op 2))
+	      ((times)
+	       (emit "ON_NEED(1); x = sp[0]; y = sp[-1];")
+	       (if (native-fixnum-top2? astack)
+		   (block
+		     (set! native-elision-count (+ native-elision-count 1))
+		     (emit "if (ON_TIMES(a, x, y)) *--sp = INT_TO_REF(a);"))
+		   (emit "if (ON_FIXNUMS(x, y) && ON_TIMES(a, x, y)) *--sp = INT_TO_REF(a);"))
+	       (trap-resume op 2))
+	      ((= <)
+	       ;; Proven fixnums cannot trap: no check, no resume
+	       ;; point; fused with a following branch, no boolean.
+	       (emit "ON_NEED(1); x = sp[0]; y = sp[-1];")
+	       (cond ((and branch-next (native-fixnum-top2? astack))
+		      (set! native-elision-count (+ native-elision-count 1))
+		      (set! fuse-pops 2)
+		      (emit "ON_POP(2);")
+		      (branch-on (if (eq? op '=) "x == y"
+				     "(ssize_t)x < (ssize_t)y")
+				 branch-next))
+		     ((native-fixnum-top2? astack)
+		      (set! native-elision-count (+ native-elision-count 1))
+		      (emit (format #f "*--sp = ON_BOOL(~A);"
+				    (if (eq? op '=) "x == y"
+					"(ssize_t)x < (ssize_t)y"))))
+		     (else
+		      (emit (format #f "if (ON_FIXNUMS(x, y)) *--sp = ON_BOOL(~A);"
+				    (if (eq? op '=) "x == y"
+					"(ssize_t)x < (ssize_t)y")))
+		      (trap-resume op 2))))
+	      ((eq?)
+	       ;; Never traps: fused with a following branch for free.
+	       (emit "ON_NEED(1); x = sp[0]; y = sp[-1];")
+	       (cond (branch-next
+		      (set! fuse-pops 2)
+		      (emit "ON_POP(2);")
+		      (branch-on "x == y" branch-next))
+		     (else (emit "*--sp = ON_BOOL(x == y);"))))
+	      ((not)
+	       (emit "sp[0] = ON_BOOL(sp[0] == e_nil);"))
+	      ((=0? <0?)
+	       (cond ((and branch-next
+			   (eq? (native-astack-ref astack 0) 'fixnum))
+		      (set! native-elision-count (+ native-elision-count 1))
+		      (set! fuse-pops 1)
+		      (emit "x = sp[0]; ON_POP(1);")
+		      (branch-on (if (eq? op '=0?) "x == INT_TO_REF(0)"
+				     "(ssize_t)x < 0")
+				 branch-next))
+		     ((eq? (native-astack-ref astack 0) 'fixnum)
+		      (set! native-elision-count (+ native-elision-count 1))
+		      (emit (format #f "sp[0] = ON_BOOL(~A);"
+				    (if (eq? op '=0?) "sp[0] == INT_TO_REF(0)"
+					"(ssize_t)sp[0] < 0"))))
+		     (else
+		      (emit "x = sp[0];")
+		      (emit (format #f "if (TAG_IS(x, INT_TAG)) sp[0] = ON_BOOL(~A);"
+				    (if (eq? op '=0?) "x == INT_TO_REF(0)"
+					"(ssize_t)x < 0")))
+		      (trap-resume op 1))))
+	      ((car cdr)
+	       (if (eq? (native-astack-ref astack 0) 'pair)
+		   (block
+		     (set! native-elision-count (+ native-elision-count 1))
+		     (emit (format #f "sp[0] = REF_SLOT(sp[0], ~A);"
+				   (if (eq? op 'car) "CONS_PAIR_CAR_OFF"
+				       "CONS_PAIR_CDR_OFF"))))
+		   (block
+		     (emit "x = sp[0];")
+		     (emit (format #f "if (TAG_IS(x, PTR_TAG) && REF_SLOT(x, 0) == e_cons_type) sp[0] = REF_SLOT(x, ~A);"
+				   (if (eq? op 'car) "CONS_PAIR_CAR_OFF"
+				       "CONS_PAIR_CDR_OFF")))
+		     (trap-resume op 1))))
+	      ((cons)
+	       (emit "ON_NEED(1); sp = oak_native_cons(sp);"))
+	      ((make-cell)
+	       (emit "sp = oak_native_make_cell(sp);"))
+	      ((make-lambda)
+	       (emit "ON_NEED(1); sp = oak_native_make_lambda(sp);"))
+	      ((make-closed-environment)
+	       (let ((n (cadr instr)))
+		 (if (< 0 n)
+		     (emit (format #f "ON_NEED(~D); sp = oak_native_make_closed_environment(sp, ~D);"
+				   (- n 1) n))
+		     ;; Zero captured variables: the compiler never emits
+		     ;; this, but the emulator accepts it, so match it.
+		     (emit "sp = oak_native_make_closed_environment(sp, 0);"))))
+	      ((branch long-branch)
+	       (branch-to (cadr instr)))
+	      ((branch-t long-branch-t branch-nil long-branch-nil)
+	       (emit "ON_NEED(1); x = *sp--;")
+	       (emit (format #f "if (x ~A e_nil) {"
+			     (if (memq op '(branch-t long-branch-t)) "!=" "==")))
+	       (branch-to (cadr instr))
+	       (emit "}"))
+	      ((label)
+	       (let ((l (cadr instr)))
+		 (set! labels-seen (cons l labels-seen))
+		 (format body " L_~A: ;~%" (native-c-label l))))
+	      ((store-nargs)
+	       (emit (format #f "e_nargs = ~D;" (cadr instr))))
+	      ((funcall-cxt)
+	       (let ((k (new-resume)))
+		 (emit (format #f "ON_PUSH_CONTEXT(~D);" k))
+		 (cond (target (direct-call target))
+		       (direct? (site-call)))
+		 (emit "ON_FUNCALL;")
+		 (place k)))
+	      ((funcall-cxt-br)
+	       (emit (format #f "ON_PUSH_CONTEXT(~D);"
+			     (label-resume (cadr instr))))
+	       (cond (target (direct-call target))
+		     (direct? (site-call)))
+	       (emit "ON_FUNCALL;"))
+	      ((funcall-tail)
+	       (cond (target (direct-call target))
+		     (direct? (site-call)))
+	       (emit "ON_FUNCALL;"))
+	      ((push-cxt push-cxt-long)
+	       (emit (format #f "ON_PUSH_CONTEXT(~D);" (label-resume (cadr instr)))))
+
+	      ((return)
+	       (native-note-rtype index (native-astack-ref astack 0))
+	       (emit "ON_RETURN;"))
+	      ((load-env)
+	       (emit (format #f "ON_PUSH(e_env[~D]);" (cadr instr))))
+	      ((store-env)
+	       (emit (format #f "e_env[~D] = sp[0];" (cadr instr))))
+	      ((make-env-loc)
+	       (emit (format #f "ON_PUSH(PTR_TO_LOC(e_env + ~D));" (cadr instr))))
+	      ;; Instance variables: the offset is read from the stub,
+	      ;; where REMAP-YOUR-IVARS may change it.
+	      ((load-bp)
+	       (emit (format #f "x = e_bp[ON_OPERAND(P~D)]; ON_PUSH(x);"
+			     (operand instr))))
+	      ((store-bp)
+	       (emit (format #f "e_bp[ON_OPERAND(P~D)] = sp[0];" (operand instr))))
+	      ((make-bp-loc)
+	       (emit (format #f "ON_PUSH(PTR_TO_LOC(e_bp + ON_OPERAND(P~D)));"
+			     (operand instr))))
+	      ((load-reg)
+	       (case (cadr instr)
+		   ((t) (emit "ON_PUSH(e_t);"))
+		   ((nil false) (emit "ON_PUSH(e_nil);"))
+		   ((fixnum-type) (emit "ON_PUSH(e_fixnum_type);"))
+		   ((loc-type) (emit "ON_PUSH(e_loc_type);"))
+		   ((cons-type) (emit "ON_PUSH(e_cons_type);"))
+		   ((subtype-table) (emit "ON_PUSH(PTR_TO_REF(e_subtype_table - 2));"))
+		   ((bp) (emit "ON_PUSH(PTR_TO_LOC(e_bp));"))
+		   ((env) (emit "ON_PUSH(PTR_TO_REF(e_env));"))
+		   ((nargs) (emit "ON_PUSH(INT_TO_REF((ssize_t)e_nargs));"))
+		   ((env-type) (emit "ON_PUSH(e_env_type);"))
+		   ((argless-tag-trap-table) (emit "ON_PUSH(PTR_TO_REF(e_argless_tag_trap_table - 2));"))
+		   ((arged-tag-trap-table) (emit "ON_PUSH(PTR_TO_REF(e_arged_tag_trap_table - 2));"))
+		   ((object-type) (emit "ON_PUSH(e_object_type);"))
+		   ((boot-code) (emit "ON_PUSH(e_boot_code);"))
+		   ((free-ptr) (emit "ON_PUSH(PTR_TO_LOC(free_point));"))
+		   ((cons-limit) (emit "ON_PUSH(PTR_TO_LOC(new_space.end));"))
+		   ((segment-type) (emit "ON_PUSH(e_segment_type);"))
+		   ((uninitialized) (emit "ON_PUSH(e_uninitialized);"))
+		   ((next-newspace-size) (emit "ON_PUSH(INT_TO_REF(e_next_newspace_size));"))
+		   ((method-type) (emit "ON_PUSH(e_method_type);"))
+		   ((operation-type) (emit "ON_PUSH(e_operation_type);"))
+		   ((process) (emit "ON_PUSH(e_process);"))
+		   ((threads-enabled?) (emit "ON_PUSH(e_nil);"))
+		   (else (escape "" instr))))
+	      ((store-reg)
+	       (let* ((reg (cadr instr))
+		      (r (cdr (assq reg native-registers)))
+		      (checked
+		       (lambda (tag body)
+			 (emit "x = sp[0];")
+			 (emit (format #f "if (TAG_IS(x, ~A)) { ~A }" tag body))
+			 (atrap-resume 19 r 1))))
+		 (case reg
+		   ((t) (emit "e_t = sp[0];"))
+		   ((nil false)
+		    (emit "e_nil = sp[0]; wp_table[0] = e_nil; rebuild_wp_hashtable();"))
+		   ((fixnum-type) (emit "e_fixnum_type = sp[0];"))
+		   ((loc-type) (emit "e_loc_type = sp[0];"))
+		   ((cons-type) (emit "e_cons_type = sp[0];"))
+		   ((subtype-table)
+		    (checked "PTR_TAG" "e_subtype_table = REF_TO_PTR(x) + 2;"))
+		   ((bp) (checked "LOC_TAG" "e_bp = LOC_TO_PTR(x);"))
+		   ((env) (checked "PTR_TAG" "e_env = REF_TO_PTR(x);"))
+		   ((nargs) (checked "INT_TAG" "e_nargs = REF_TO_INT(x);"))
+		   ((env-type) (emit "e_env_type = sp[0];"))
+		   ((argless-tag-trap-table)
+		    (checked "PTR_TAG" "e_argless_tag_trap_table = REF_TO_PTR(x) + 2;"))
+		   ((arged-tag-trap-table)
+		    (checked "PTR_TAG" "e_arged_tag_trap_table = REF_TO_PTR(x) + 2;"))
+		   ((object-type) (emit "e_object_type = sp[0];"))
+		   ((boot-code) (emit "e_boot_code = sp[0];"))
+		   ((free-ptr) (checked "LOC_TAG" "free_point = LOC_TO_PTR(x);"))
+		   ((cons-limit) (checked "LOC_TAG" "new_space.end = LOC_TO_PTR(x);"))
+		   ((segment-type)
+		    (emit "e_segment_type = sp[0];")
+		    (emit "value_stack.segment = e_nil; context_stack.segment = e_nil;"))
+		   ((uninitialized) (emit "e_uninitialized = sp[0];"))
+		   ((next-newspace-size)
+		    (checked "INT_TAG" "e_next_newspace_size = REF_TO_INT(x);"))
+		   ((method-type) (emit "e_method_type = sp[0];"))
+		   ((operation-type) (emit "e_operation_type = sp[0];"))
+		   ((process) (emit "e_process = sp[0];"))
+		   (else (escape "" instr)))))
+	      ((negate)
+	       (emit "x = sp[0];")
+	       (emit "if (TAG_IS(x, INT_TAG) && x != MIN_REF) sp[0] = (ref_t)(-((ssize_t)x));")
+	       (trap-resume op 1))
+	      ((div)
+	       (emit "ON_NEED(1); x = sp[0]; y = sp[-1];")
+	       (emit "if (ON_FIXNUMS(x, y) && y != INT_TO_REF(0) && !(y == INT_TO_REF(-1) && x == MIN_REF)) { sp -= 1; sp[0] = INT_TO_REF((ssize_t)x / (ssize_t)y); }")
+	       (trap-resume op 2))
+	      ((modulo)
+	       (emit "ON_NEED(1); x = sp[0]; y = sp[-1];")
+	       (emit "if (ON_FIXNUMS(x, y) && y != INT_TO_REF(0)) { a = REF_TO_INT(x) % REF_TO_INT(y); if ((a < 0 && (ssize_t)y > 0) || ((ssize_t)y < 0 && (ssize_t)x > 0 && a > 0)) a += REF_TO_INT(y); sp -= 1; sp[0] = INT_TO_REF(a); }")
+	       (trap-resume op 2))
+	      ((remainder)
+	       (emit "ON_NEED(1); x = sp[0]; y = sp[-1];")
+	       (emit "if (ON_FIXNUMS(x, y) && y != INT_TO_REF(0)) { sp -= 1; sp[0] = INT_TO_REF(REF_TO_INT(x) % REF_TO_INT(y)); }")
+	       (trap-resume op 2))
+	      ((quotientm)
+	       (emit "ON_NEED(1); x = sp[0]; y = sp[-1];")
+	       (emit "if (ON_FIXNUMS(x, y) && y != INT_TO_REF(0) && !(y == INT_TO_REF(-1) && x == MIN_REF)) { a = (ssize_t)x / (ssize_t)y; if (((ssize_t)x < 0 && (ssize_t)y > 0 && a * (ssize_t)y > (ssize_t)x) || ((ssize_t)y < 0 && (ssize_t)x > 0 && a * (ssize_t)y < (ssize_t)x)) a -= 1; sp -= 1; sp[0] = INT_TO_REF(a); }")
+	       (trap-resume op 2))
+	      ((fx-plus)
+	       (emit "ON_NEED(1); x = sp[0]; y = sp[-1];")
+	       (emit "if (ON_FIXNUMS(x, y)) { sp -= 1; sp[0] = x + y; }")
+	       (trap-resume op 2))
+	      ((fx-times)
+	       (emit "ON_NEED(1); x = sp[0]; y = sp[-1];")
+	       (emit "if (ON_FIXNUMS(x, y)) { sp -= 1; sp[0] = (ref_t)(REF_TO_INT(x) * y); }")
+	       (trap-resume op 2))
+	      ((most-negative-fixnum?)
+	       (emit "sp[0] = ON_BOOL(sp[0] == MIN_REF);"))
+	      ((bit-not)
+	       (emit "x = sp[0];")
+	       (emit "if (TAG_IS(x, INT_TAG)) sp[0] = ~x - (TAG_MASK - INT_TAG);")
+	       (trap-resume op 1))
+	      ((bit-and bit-nand bit-or bit-nor bit-xor bit-equiv bit-andca log-op)
+	       (let* ((spec (if (eq? op 'log-op)
+				(cadr instr)
+				(cdr (assq op native-log-op-specs))))
+		      (terms '()))
+		 (when (not (zero? (bit-and spec 1)))
+		   (set! terms (cons "(x & y)" terms)))
+		 (when (not (zero? (bit-and spec 2)))
+		   (set! terms (cons "(~x & y)" terms)))
+		 (when (not (zero? (bit-and spec 4)))
+		   (set! terms (cons "(x & ~y)" terms)))
+		 (when (not (zero? (bit-and spec 8)))
+		   (set! terms (cons "(~x & ~y)" terms)))
+		 (emit "ON_NEED(1); x = sp[0]; y = sp[-1];")
+		 (emit (format #f "if (ON_FIXNUMS(x, y)) { sp -= 1; sp[0] = (~A) & ~~TAG_MASKL; }"
+			       (if (null? terms)
+				   "0"
+				   (iterate aux ((l (cdr terms)) (a (car terms)))
+				     (if (null? l) a
+					 (aux (cdr l) (format #f "~A | ~A" a (car l))))))))
+		 (atrap-resume 2 spec 2)))
+	      ((set-car set-cdr)
+	       (emit "ON_NEED(1); x = sp[0];")
+	       (emit (format #f "if (TAG_IS(x, PTR_TAG) && REF_SLOT(x, 0) == e_cons_type) { sp -= 1; REF_SLOT(x, ~A) = sp[0]; }"
+			     (if (eq? op 'set-car) "CONS_PAIR_CAR_OFF" "CONS_PAIR_CDR_OFF")))
+	       (trap-resume op 2))
+	      ((locate-car locate-cdr)
+	       (emit "x = sp[0];")
+	       (emit (format #f "if (TAG_IS(x, PTR_TAG) && REF_SLOT(x, 0) == e_cons_type) sp[0] = PTR_TO_LOC(&REF_SLOT(x, ~A));"
+			     (if (eq? op 'locate-car) "CONS_PAIR_CAR_OFF" "CONS_PAIR_CDR_OFF")))
+	       (trap-resume op 1))
+	      ((load-type)
+	       (emit "sp[0] = oak_native_type(sp[0]);"))
+	      ((get-tag)
+	       (emit "sp[0] = INT_TO_REF(sp[0] & TAG_MASK);"))
+	      ((get-data)
+	       (emit "oak_rt_get_data(sp);"))
+	      ((crunch)
+	       (emit "ON_NEED(1);")
+	       (emit "if (oak_rt_crunch(&sp)) ;")
+	       (trap-resume op 2))
+	      ((reverse-cons)
+	       (emit "ON_NEED(1); sp = oak_rt_reverse_cons(sp);"))
+	      ((allocate)
+	       (emit "ON_NEED(1);")
+	       (emit "if (oak_rt_allocate(&sp)) ;")
+	       (trap-resume op 2))
+	      ((vlen-allocate)
+	       (emit "ON_NEED(1);")
+	       (emit "if (oak_rt_vlen_allocate(&sp)) ;")
+	       (trap-resume op 2))
+	      ((assq)
+	       (emit "ON_NEED(1);")
+	       (emit "if (oak_rt_assq(&sp)) ;")
+	       (trap-resume op 2))
+	      ((ash)
+	       (emit "ON_NEED(1);")
+	       (emit "if (oak_rt_ash(&sp)) ;")
+	       (trap-resume op 2))
+	      ((rot)
+	       (emit "ON_NEED(1);")
+	       (emit "if (ON_FIXNUMS(sp[0], sp[-1])) sp = oak_rt_rot(sp);")
+	       (trap-resume op 2))
+	      ((load-length)
+	       (emit "oak_rt_load_length(sp);"))
+	      ((getc)
+	       (emit "sp = oak_rt_getc(sp);"))
+	      ((putc)
+	       (emit "if (oak_rt_putc(sp)) ;")
+	       (trap-resume op 1))
+	      ((stream-primitive)
+	       (let ((n (cadr instr)))
+		 (let ((arity (nth native-stream-primitive-arity n)))
+		   (when (> arity 1)
+		     (emit (format #f "ON_NEED(~D);" (- arity 1))))
+		   (emit (format #f "ti = oak_rt_stream_primitive(~D, &sp);" n))
+		   (emit "if (ti < 0) ;")
+		   (atrap-resume 31 n "ti"))))
+	      ((object-hash)
+	       (emit "sp[0] = ref_to_wp(sp[0]);"))
+	      ((object-unhash)
+	       (emit "x = sp[0];")
+	       (emit "if (TAG_IS(x, INT_TAG)) sp[0] = wp_to_ref(x);")
+	       (trap-resume op 1))
+	      ((store-bp-i)
+	       (emit "ON_NEED(1); x = sp[0];")
+	       (emit "if (TAG_IS(x, INT_TAG)) { sp -= 1; e_bp[REF_TO_INT(x)] = sp[0]; }")
+	       (trap-resume op 2))
+	      ((load-bp-i)
+	       (emit "x = sp[0];")
+	       (emit "if (TAG_IS(x, INT_TAG)) sp[0] = e_bp[REF_TO_INT(x)];")
+	       (trap-resume op 1))
+	      ((locate-bp-i)
+	       (emit "x = sp[0];")
+	       (emit "if (TAG_IS(x, INT_TAG)) sp[0] = PTR_TO_LOC(e_bp + REF_TO_INT(x));")
+	       (trap-resume op 1))
+	      ((inc-loc)
+	       (emit "ON_NEED(1); x = sp[0]; y = sp[-1];")
+	       (emit "if (TAG_IS(x, LOC_TAG) && TAG_IS(y, INT_TAG)) { sp -= 1; sp[0] = PTR_TO_LOC(LOC_TO_PTR(x) + REF_TO_INT(y)); }")
+	       (trap-resume op 2))
+	      ((store-slot)
+	       (emit "ON_NEED(1); x = sp[0];")
+	       (emit (format #f "if (TAG_IS(x, PTR_TAG)) { sp -= 1; REF_SLOT(x, ~D) = sp[0]; } else ON_ATRAP_TAIL(26, ~D, 2);"
+			     (cadr instr) (cadr instr))))
+	      ((load-slot)
+	       (emit "x = sp[0];")
+	       (emit (format #f "if (TAG_IS(x, PTR_TAG)) sp[0] = REF_SLOT(x, ~D);"
+			     (cadr instr)))
+	       (atrap-resume 27 (cadr instr) 1))
+	      ((locate-slot)
+	       (emit "x = sp[0];")
+	       (emit (format #f "if (TAG_IS(x, PTR_TAG)) sp[0] = PTR_TO_LOC(&REF_SLOT(x, ~D));"
+			     (cadr instr)))
+	       (atrap-resume 30 (cadr instr) 1))
+	      ((filltag)
+	       (emit "x = sp[0];")
+	       (emit (format #f "if (TAG_IS(x, PTR_TAG)) { REF_SLOT(x, ESCAPE_OBJECT_VAL_OFF) = INT_TO_REF((sp - value_stack.bp + 1) + value_stack.pushed_count - ~D); REF_SLOT(x, ESCAPE_OBJECT_CXT_OFF) = INT_TO_REF((context_stack.sp - context_stack.bp + 1) + context_stack.pushed_count); }"
+			     (cadr instr)))
+	       (atrap-resume 32 (cadr instr) 1))
+	      ((throw)
+	       (emit "ON_NEED(1); ON_SYNC;")
+	       (emit "if (oak_rt_throw()) ON_DISPATCH;")
+	       (emit "sp = value_stack.sp;")
+	       (trap-now op 2))
+	      ((fill-continuation)
+	       (emit "ON_SYNC; oak_rt_fill_continuation(); sp = value_stack.sp;"))
+	      ((continue)
+	       (emit "ON_NEED(1); ON_SYNC;")
+	       (emit "if (oak_rt_continue()) ON_DISPATCH;")
+	       (emit "sp = value_stack.sp;")
+	       (trap-now op 2))
+	      ((gc)
+	       (emit "ON_SYNC; oak_rt_gc(0); sp = value_stack.sp;"))
+	      ((full-gc)
+	       (emit "ON_SYNC; oak_rt_gc(1); sp = value_stack.sp;"))
+	      ((halt)
+	       (emit (format #f "ON_SYNC; oak_rt_halt(~D);" (cadr instr))))
+	      ((dump-world)
+	       (emit "ON_NEED(1);")
+	       (emit "if (oak_rt_dump_world(&sp)) ;")
+	       (trap-resume op 2))
+	      ((load-world)
+	       (emit "ON_NEED(1);")
+	       (emit "if (oak_rt_load_world(&sp)) ON_DISPATCH;")
+	       (trap-now op 2))
+	      ((get-time)
+	       (emit "ON_PUSH(INT_TO_REF(get_user_time()));"))
+	      ((get-argline-char)
+	       (emit "ON_NEED(1); x = sp[0]; y = sp[-1];")
+	       (emit "if (ON_FIXNUMS(x, y)) { int c = program_arg_char(REF_TO_INT(x), REF_TO_INT(y)); sp -= 1; sp[0] = (c == -1) ? e_nil : CHAR_TO_REF(c); }")
+	       (trap-resume op 2))
+	      ((test-and-set-locative)
+	       (emit "ON_NEED(2); x = sp[0];")
+	       (emit "if (TAG_IS(x, LOC_TAG)) { y = sp[-1]; sp -= 2; if (*LOC_TO_PTR(x) != y) sp[0] = e_false; else { *LOC_TO_PTR(x) = sp[0]; sp[0] = e_t; } }")
+	       (trap-resume op 3))
+	      ((make-heavyweight-thread)
+	       (emit "sp[0] = e_nil;"))
+	      ((thread-yield)
+	       (emit "ON_PUSH(e_nil);"))
+	      ((enable-alarms)
+	       (emit "sp = oak_rt_enable_alarms(sp);"))
+	      ((disable-alarms)
+	       (emit "sp = oak_rt_disable_alarms(sp);"))
+	      ((reset-alarm-counter)
+	       (emit "sp = oak_rt_reset_alarm_counter(sp);"))
+	      ((big-endian?)
+	       (format body "#ifdef WORDS_BIGENDIAN~%")
+	       (emit "ON_PUSH(e_t);")
+	       (format body "#else~%")
+	       (emit "ON_PUSH(e_nil);")
+	       (format body "#endif~%"))
+	      ((^super-cxt)
+	       (let ((k (new-resume))
+		     (ktrap #f))
+		 (emit (format #f "ON_PUSH_CONTEXT(~D);" k))
+		 (set! ktrap (new-resume))
+		 (emit (format #f "ON_SUPER_TAIL(~D);" ktrap))
+		 (place ktrap)
+		 (place k)))
+	      ((^super-cxt-br)
+	       (emit (format #f "ON_PUSH_CONTEXT(~D);" (label-resume (cadr instr))))
+	       (let ((ktrap (new-resume)))
+		 (emit (format #f "ON_SUPER_TAIL(~D);" ktrap))
+		 (place ktrap)))
+	      ((^super-tail)
+	       (let ((ktrap (new-resume)))
+		 (emit (format #f "ON_SUPER_TAIL(~D);" ktrap))
+		 (place ktrap)))
+	      (else (escape "" instr))))))
+	    ;; What the next instruction may assume (read astack and
+	    ;; nargs-now in that order: the funcall pop count is the
+	    ;; STORE-NARGS before it).
+	    (set! astack
+		  (cond (skip-next	; fused: operands popped, no push
+			 (native-astack-pop astack fuse-pops))
+			(excluded? '())
+			(else
+			 (native-astack-after op instr astack rtype
+					      (if nargs-now nargs-now -1)))))
+	    (set! nargs-now
+		  (and (not excluded?)
+		       (cond ((eq? op 'store-nargs) (cadr instr))
+			     ((eq? op 'load-glo-con) nargs-now)
+			     (else #f)))))
+	  (iloop (if skip-next (cdr (cdr todo)) (cdr todo))))))
+
+	;; Every label used must have been defined in the block, every
+	;; resume point must fit in the NATIVE instruction.
+	(and (iterate aux ((l label-resumes))
+	       (or (null? l)
+		   (and (memq (car (car l)) labels-seen)
+			(aux (cdr l)))))
+	     (<= resume-count native-max-resume-points)
+	     (native-write-function out index ivars (#^string body)
+				    resume-count resumes escapes
+				    operands constants temp-max))))))
+
+;;; Write the translated block's C function and build its stub (the
+;;; writing half of NATIVE-TRANSLATE-BLOCK, separate so neither half
+;;; outgrows a long branch).
+
+(define (native-write-function out index ivars body resume-count resumes
+			       escapes operands constants temp-max)
+  (let* ((constants (reverse constants))
+	 (escapes (reverse escapes))
+	 (operands (reverse operands))
+	 (e-count (length escapes))
+	 ;; Instruction indexes in the stub: the NATIVE instructions,
+	 ;; then the escapes, two instructions each, then the operands,
+	 ;; then the constants, each a LOAD-IMM (or a LOAD-GLO or
+	 ;; LOAD-CODE, the same instruction) followed by padding and
+	 ;; its inline ref.  The first ref of a code vector, slot 2, is
+	 ;; its ivar map.
+	 (n (+ resume-count (* 2 e-count) (length operands)))
+	 ;; The stub is assembled for the target: its slot numbers in
+	 ;; the C must use the target's packing (host and target agree
+	 ;; except under --target).
+	 (ipr (architecture-instructions-per-ref #*target-architecture))
+	 (first-ref (quotient (+ ipr n 1 ipr -1) ipr))
+	 (slot (lambda (i) (+ 2 first-ref (* 2 i)))))
+    ;; ON_FN_DECL: static, except in an executable, where another
+    ;; file's direct calls may name this function.
+    (format out "~%ON_FN_DECL~%ON_FN(~D)(unsigned k)~%{~%" index)
+    (dotimes (i (length constants))
+      (format out "#define C~D ~D~%" i (slot i)))
+    (dotimes (j e-count)
+      (format out "#define E~D ~D~%" j (+ resume-count (* 2 j))))
+    (dotimes (j (length operands))
+      (format out "#define P~D ~D~%" j
+	      (+ resume-count (* 2 e-count) j)))
+    (format out "  ON_ENTER;~%  ref_t x, y;~%  ssize_t a;~%  int ti;~%")
+    (format out "  (void)x; (void)y; (void)a; (void)ti;~%")
+    (when (> temp-max 0)
+      ;; The C-locals lowering's values (#*native-ir?).
+      (format out "  ref_t")
+      (dotimes (i temp-max)
+	(format out "~A v~D" (if (zero? i) "" ",") i))
+      (format out ";~%"))
+    (format out "  switch (k)~%    {~%")
+    (dolist (r (reverse resumes))
+      (format out "    case ~D: goto ~A;~%" (car r) (cdr r)))
+    (format out "    default: oak_native_bad_resume(k); return 0;~%    }~%")
+    (format out " r0: ;~%")
+    (write-string body out)
+    (format out "  oak_native_bad_resume(k);~%  return 0;~%")
+    (dotimes (i (length constants))
+      (format out "#undef C~D~%" i))
+    (dotimes (j e-count)
+      (format out "#undef E~D~%" j))
+    (dotimes (j (length operands))
+      (format out "#undef P~D~%" j))
+    (format out "}~%")
+    `(code ,ivars
+	   (,@(map native-resume-instruction (native-iota resume-count))
+	    ,@(splice (map (lambda (e)
+			     (list (car e)
+				   (native-resume-instruction (cdr e))))
+			   escapes))
+	    ,@operands
+	    ,@constants
+	    ,(list 'load-imm #f)
+	    (load-imm ())
+	    (load-imm ())))))
+
+(define (native-iota n)
+  (iterate aux ((i (- n 1)) (l '()))
+    (if (< i 0) l (aux (- i 1) (cons i l)))))
+
+;;; Labels are gensyms; make them C identifiers.
+
+(define (native-c-label l)
+  (native-c-identifier (#^string l)))
+
+(define (native-c-identifier s)
+  (#^string (map (lambda (c)
+		   (let ((n (#^number c)))
+		     (if (or (and (<= (#^number #\a) n) (<= n (#^number #\z)))
+			     (and (<= (#^number #\A) n) (<= n (#^number #\Z)))
+			     (and (<= (#^number #\0) n) (<= n (#^number #\9))))
+			 c
+			 #\_)))
+		 (#^list-type s))))
+
+;;; Walk the top-level block of a file, translating it and every block
+;;; in it that can be.  The C functions go to OUT.  Return the new top-level
+;;; block and the stubs' name-holding instructions, in a pair.
+
+(define (native-transform-file-block block out top-native?)
+  (set! native-escape-counts '())
+  (set! native-site-count 0)
+  (set! native-block-records '())
+  (set! native-block-rtypes '())
+  (set! native-extern-names '())
+  (set! native-dcall-count 0)
+  (set! native-dcall-records '())
+  (set! native-direct-count 0)
+  (set! native-guarded-count 0)
+  (set! native-elision-count 0)
+  (set! native-fuse-count 0)
+  (set! native-inline-count 0)
+  (set! native-inline-label-count 0)
+  (native-prescan-file-block block)
+  (let ((count 0)
+	(kept 0)
+	(name-instrs '()))
+    (labels (((walk original top?)
+	      (destructure* ('code ivars instrs) original
+		(let ((mapped `(code ,ivars
+				     ,(map (lambda (i)
+					     (if (eq? (car i) 'load-code)
+						 `(load-code ,(walk (cadr i) #f))
+						 i))
+					   instrs))))
+		  ;; A file bound for a cold world keeps its top-level
+		  ;; code as bytecode (see NATIVE-COMPILE-FILE).
+		  (if (and top? (not top-native?))
+		      mapped
+		      (let ((stub (native-translate-block mapped count out)))
+			(cond (stub
+			       (set! name-instrs
+				     (cons (native-name-instruction stub)
+					   name-instrs))
+			       (set! native-block-records
+				     (cons (list original stub count)
+					   native-block-records))
+			       (set! count (+ count 1))
+			       stub)
+			      (else
+			       (set! kept (+ kept 1))
+			       ;; A result type recorded under this
+			       ;; index belongs to no function.
+			       (set! native-block-rtypes
+				     (iterate aux ((l native-block-rtypes)
+						   (acc '()))
+				       (cond ((null? l) acc)
+					     ((= (car (car l)) count)
+					      (aux (cdr l) acc))
+					     (else (aux (cdr l)
+							(cons (car l) acc))))))
+			       (when (> #*compiler-noisiness 1)
+				 (format #t "~&A block was left as bytecode: too many resume points.~%"))
+			       mapped))))))))
+      (let ((top (walk block #t)))
+	;; Direct-call guards made constants of original blocks; point
+	;; them at the stubs that replaced those blocks, so the .oa
+	;; shares one block between the guard and the MAKE-LAMBDA.
+	(labels (((fix-stub stub)
+		  (destructure* ('code ivars instrs) stub
+		    ivars
+		    (dolist (i instrs)
+		      (when (eq? (car i) 'load-code)
+			(let ((r (assq (cadr i) native-block-records)))
+			  (when r
+			    (set! (car (cdr i)) (cadr r)))))))))
+	  (dolist (r native-block-records)
+	    (fix-stub (cadr r))))
+	(when (> #*compiler-noisiness 0)
+	  (format #t "~&~D blocks native, ~D left as bytecode~A.~%"
+		  count kept
+		  (if (zero? (+ native-direct-count native-guarded-count
+				native-elision-count native-fuse-count
+				native-inline-count))
+		      ""
+		      (format #f "; ~D direct and ~D guarded calls, ~D inlined, ~D checks elided, ~D branches fused"
+			      native-direct-count native-guarded-count
+			      native-inline-count native-elision-count
+			      native-fuse-count))))
+	(when (and (> #*compiler-noisiness 1)
+		   (not (null? native-escape-counts)))
+	  (format #t "~&Escapes to the emulator: ~S~%" native-escape-counts))
+	(cons top (reverse! name-instrs))))))
+
+(define (native-name-instruction stub)
+  (destructure* ('code ivars instrs) stub
+    (nth instrs (- (length instrs) 3))))
+
+;;; The prefix of the C function names in a module: the file's name and
+;;; a hash of the C.  Modules share the emulator's name space, so two
+;;; may only use the same names for the same code.
+
+(define (native-name-prefix file text)
+  (let ((len (length text)))
+    (iterate aux ((i 0) (h1 0) (h2 0))
+      (if (= i len)
+	  (format #f "oakn_~A_~D_~D" (native-c-identifier file) h1 h2)
+	  (let ((c (#^number (nth text i))))
+	    (aux (+ i 1)
+		 (modulo (+ (* h1 31) c) 2147483647)
+		 (modulo (+ (* h2 131) c) 2147483629)))))))
+
+;;; The interface summary, FILE.ois: who the file defines (with each
+;;; function's index in the module, arity and inferred result type),
+;;; what it may assign, and what escapes as a value.  The module
+;;; prefix carries the content hash, so a stale summary resolves to a
+;;; name the link cannot find rather than to wrong code.
+
+(define (native-write-summary file prefix)
+  (with-open-file (s file out)
+    (format s ";oaklisp-summary prefix=~A~%" prefix)
+    (print (list
+	    (cons 'prefix (list prefix))
+	    (cons 'defines
+		  (map (lambda (d)
+			 (destructure* (g arity blk) d
+			   (let* ((rec (assq blk native-block-records))
+				  (idx (if rec (caddr rec) -1))
+				  (rt (assq idx native-block-rtypes)))
+			     (list g idx arity
+				   (if rt (cdr rt) 'unknown)))))
+		       native-defines))
+	    (cons 'assigns native-assigns)
+	    (cons 'escapes native-escaped-globals)
+	    (cons 'bodies
+		  (iterate aux ((l native-defines) (acc '()))
+		    (if (null? l)
+			acc
+			(let ((ai (native-inlinable-body (caddr (car l)))))
+			  (aux (cdr l)
+			       (if ai
+				   (cons (cons (car (car l)) ai) acc)
+				   acc)))))))
+	   s)
+    (format s "~%")))
+
+;;; The link-time prelude's share from this file, FILE.needs: one
+;;; DEFINE per cell the guards read.  oakc gathers every file's into
+;;; prelude.oak, compiled and baked after the program, so the cells
+;;; fill once everything is defined; a call before that just misses
+;;; its guard.
+
+(define (native-write-needs file)
+  (with-open-file (s file out)
+    (format s ";;; Generated: the whole-program prelude's cells.~%")
+    (dolist (n (reverse native-prelude-needs))
+      (print (list 'define (car n) (cadr n)) s)
+      (format s "~%"))))
+
+;;; Read the other files' summaries for the whole-program pass.
+
+(define (native-read-summaries files)
+  (set! #*native-summaries
+	(map (lambda (f)
+	       (cons f (with-open-file (s (append f ".ois") in)
+			 (read s))))
+	     files)))
+
+;;; The C file around the functions.
+
+(define (native-write-c-file file-name prefix text count)
+  (with-open-file (s file-name out)
+    (format s "/* Generated by the Oaklisp native compiler. */~%~%")
+    (format s "#include \"oak-native.h\"~%~%#define ON_PREFIX ~A~%~%" prefix)
+    (format s "/* Direct-call site caches (and a spare: never empty). */~%")
+    (format s "static oak_native_site on_sites[~D];~%"
+	    (+ native-site-count 1))
+    ;; Forward declarations: a direct call may name a function defined
+    ;; further down.
+    (dotimes (i count)
+      (format s "ON_FN_DECL ON_FN(~D)(unsigned);~%" i))
+    ;; Statically resolved callees: another translation unit's are
+    ;; declared extern (an executable resolves them; see ON_FN_DECL),
+    ;; and each call's ON_DC_FN_<serial> is bound here, once every
+    ;; block's fate is known.  A same-file callee that stayed bytecode
+    ;; gets ON_DC_OK 0: its guard is compiled away.
+    (let ((externs '()))
+      (dolist (r native-dcall-records)
+	(let ((target (cdr r)))
+	  (when (memq (car target) '(cross-pinned guarded))
+	    (let ((name (cadr target)))
+	      (unless (mem equal? name externs)
+		(set! externs (cons name externs)))))))
+      (dolist (name externs)
+	(format s "extern int ~A(unsigned);~%" name)))
+    (dolist (r native-dcall-records)
+      (let* ((serial (car r))
+	     (target (cdr r)))
+	(case (car target)
+	  ((same)
+	   (let ((rec (assq (cadr target) native-block-records)))
+	     (if rec
+		 (format s "#define ON_DC_OK_~D 1~%#define ON_DC_FN_~D ON_FN(~D)~%"
+			 serial serial (caddr rec))
+		 (format s "#define ON_DC_OK_~D 0~%#define ON_DC_FN_~D oak_native_dead~%"
+			 serial serial))))
+	  ((cross-pinned guarded)
+	   (format s "#define ON_DC_FN_~D ~A~%" serial (cadr target))))))
+    (write-string text s)
+    (format s "~%static const oak_native_entry entries[] = {~%")
+    (dotimes (i count)
+      (format s "  {ON_STR(ON_FN(~D)), ON_FN(~D)},~%" i i))
+    (format s "};~%~%OAK_NATIVE_MODULE(entries, on_sites);~%")))
+
+;;; Run the C compiler.  As with LOAD-NATIVE-MODULE, an older world
+;;; compiling this file needs the new streams.oa loaded first.
+
+(define (native-cc c-file so-file)
+  (let ((c-file (#^string c-file))
+	(so-file (#^string so-file)))
+    ((%stream-primitive 16)
+     (make-locative (%vref c-file 0)) (length c-file)
+     (make-locative (%vref so-file 0)) (length so-file))))
+
+;;; Compile FILE-NAME.oak into FILE-NAME.oa, with natively compiled
+;;; code in FILE-NAME.so (beside the .oa, wherever --outdir puts it).
+
+;;; The optional flag says whether the file's top-level code may go
+;;; native too (the default).  Files linked into a cold world keep a
+;;; bytecode top level: the cold linker chains files by rewriting the
+;;; top block's final RETURN to a NOOP, which must stay bytecode.
+
+(define (native-compile-file the-locale file-name . flags)
+  (listify-args
+   (lambda (flags)
+     (native-compile-file-aux the-locale file-name
+			      (or (null? flags) (car flags))))
+   . flags))
+
+(define (native-compile-file-aux the-locale file-name top-native?)
+  (let* ((sub-locale (make locale (list the-locale)))
+	 (forms (read-file (append file-name ".oak")))
+	 (out-name (compiler-output-name file-name))
+	 (base (file-base out-name))
+	 (module (append (file-name-nondirectory base) ".so"))
+	 (top (bind ((#*file-load-time-macros (load-time-macro-names forms)))
+		`(code ()
+		       ,(peephole-optimize
+			 (append!
+			  (splice
+			   (map (lambda (form)
+				  (print-appropriate-noise form)
+				  (append!
+				   (bind ((#*compiling-a-file? #t))
+				     (gen-code
+				      (compile the-locale
+					       (bind ((#*current-locale sub-locale))
+						 (expand-groveling sub-locale form)))
+				      'next))
+				   (list '(pop 1))))
+				forms))
+			  (list '(return)))))))
+	 (text (make string-output-stream))
+	 (tag (block
+		(set! native-file-tag
+		      (native-c-identifier (file-name-nondirectory base)))
+		(set! native-prelude-needs '())
+		(set! native-prelude-count 0)
+		native-file-tag))
+	 (native+names (bind ((#*native-compile-locale the-locale))
+			 (native-transform-file-block top text top-native?)))
+	 (name-instrs (cdr native+names))
+	 (text (#^string text))
+	 ;; oakc's whole-program pass keeps the first pass's module
+	 ;; prefix, so the names the other files' summaries hold stay
+	 ;; the names the executable links.
+	 (prefix (or #*native-force-prefix
+		     (native-name-prefix (file-name-nondirectory base) text)))
+	 (native?
+	  (and (not (null? name-instrs))
+	       (block
+		 (native-write-c-file (append base ".c") prefix text
+				      (length name-instrs))
+		 (native-write-summary (append base ".ois") prefix)
+		 (native-write-needs (append base ".needs"))
+		 (or #*native-emit-only?
+		     (native-cc (append base ".c") (append base ".so"))
+		     (block
+		       (format #t "~&Warning: compiling ~A.c failed; ~A.oa will be all bytecode.~%"
+			       base base)
+		       #f)))))
+	 (top (cond (native?
+		     (let ((i 0))
+		       (dolist (instr name-instrs)
+			 (set! (car (cdr instr)) (format #f "~A_~D" prefix i))
+			 (set! i (+ i 1))))
+		     (car native+names))
+		    (else top))))
+    (let ((tmp-name (append out-name "-tmp")))
+      (write-file-with-header
+       tmp-name
+       (if (not native?)
+	   (bytecode-header-string host-architecture)
+	   (format #f "~A~%~A" (bytecode-header-string host-architecture)
+		   (native-header-string module)))
+       (make-oaf-list (assemble top)))
+      (unless (rename-file tmp-name out-name)
+	(error "Unable to rename ~A to ~A." tmp-name out-name)))
+    (when (> #*compiler-noisiness 0)
+      (format #t "~&"))
+    #f))
+
+;;; eof

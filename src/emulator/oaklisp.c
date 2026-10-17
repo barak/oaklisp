@@ -34,13 +34,22 @@
 #include "worldio.h"
 #include "loop.h"
 #include "xmalloc.h"
+#include "native.h"
+#include "oak-embed.h"
 #ifdef USE_MARK_SWEEP
 #include "gc-ms.h"
 #endif
 
 
+#ifndef THREADS
+/* Natively compiled modules resolve their oak_rt_* helpers against
+   this executable, so the archive member holding them must be linked
+   in even though the interpreter itself never calls them. */
+void (*volatile oak_force_native_ops) (void) = oak_native_run;
+#endif
+
 int
-main(int argc, char **argv)
+oak_main(int argc, char **argv, const oak_embedding *emb)
 {
 #ifdef THREADS
   int my_index;
@@ -71,8 +80,23 @@ main(int argc, char **argv)
   init_weakpointer_tables();
 
   init_stacks();
+  oak_native_init();
 
-  read_world(world_file_name);
+  if (emb != NULL)
+    {
+      unsigned i;
+
+      for (i = 0; i < emb->module_count; i++)
+	oak_native_register(emb->modules[i]);
+      oak_embedded_program = emb->program;
+      oak_embedded_program_size = emb->program_size;
+    }
+  oak_load_pending_native_modules();
+
+  if (emb != NULL && emb->world != NULL)
+    read_world_mem(emb->world, emb->world_size);
+  else
+    read_world(world_file_name);
 
   new_space.size = e_next_newspace_size = original_newspace_size;
   alloc_space(&new_space, new_space.size);
@@ -108,4 +132,25 @@ main(int argc, char **argv)
   loop(INT_TO_REF(54321));
 
   return 0;
+}
+
+int
+oak_main_embedded(int argc, char **argv, const oak_embedding *emb,
+		  const char *const *oak_args, int n_oak_args)
+{
+  /* argv[0], the built-in Oaklisp switches, then "--" and the user's
+     own arguments, kept out of switch processing (it stops at the
+     --exit the built-in switches end with) but visible to the program
+     through the argument-line operations. */
+  char **nargv = xmalloc(((size_t)argc + n_oak_args + 2) * sizeof(char *));
+  int i, j = 0;
+
+  nargv[j++] = argv[0];
+  for (i = 0; i < n_oak_args; i++)
+    nargv[j++] = (char *)oak_args[i];
+  nargv[j++] = "--";
+  for (i = 1; i < argc; i++)
+    nargv[j++] = argv[i];
+  nargv[j] = NULL;
+  return oak_main(j, nargv, emb);
 }

@@ -101,14 +101,14 @@ The compiler reaches a fixpoint: `make check` runs `check-fixpoint`, `check-cold
 
 ### Tests and benchmarks
 
-`make check` runs `tests/*.test` (automake test driver; logs in `tests/*.log`). Test programs `tests/*.oak` print `PASS`/`FAIL` lines; `tests/testlib.sh` has the helpers. `make bench` runs `tests/bench.sh` (`-r N`, `-o file`, `-c old new`). Note that `--load` binds `#*print-length`/`#*print-level`; the test programs reset them.
+`make check` runs `tests/*.test` (automake test driver; logs in `tests/*.log`). Test programs `tests/*.oak` print `PASS`/`FAIL` lines; `tests/testlib.sh` has the helpers. `make bench` runs `tests/bench.sh` (`-r N`, `-o file`, `-c old new`; `-n` compiles the benchmarks natively, `-x` builds them as stand-alone executables with oakc, `-w` as whole-program executables, so all four compare: bytecode, mixed native, separate and whole-program compilation). Note that `--load` binds `#*print-length`/`#*print-level`; the test programs reset them. `make -C src/world check-native-fixpoint` (run by consistency.test when the native world exists) recompiles every source with the native world's compiler and demands byte-identical objects.
 
 `make prebuilt` refreshes `prebuilt/` (bytecode as `bc2-32` or `bc4-64` per this system's packing, this machine's world, instr-data.c, PDFs).
 
 ### Important build notes
 
 - **64-bit by default:** On 64-bit platforms, builds natively with 64-bit pointers and 62-bit fixnums. Use `--disable-64-bit` to force 32-bit mode (adds `-m32`).
-- **Big-endian works** for both word sizes (tested under qemu-user with s390x and powerpc cross compilers, `./configure --host=s390x-linux-gnu CC=... LDFLAGS=-static`). On 64-bit big-endian, instructions live in the *high* 32 bits of each code ref (first in memory order); see `code-vector.oak`, `fasl.oak`, and `read_ref()` in `worldio.c`.
+- **Big-endian works** for both word sizes, native code included (tested under qemu-user; zig makes a no-install cross compiler: `./configure --host=s390x-linux-gnu CC="zig cc -target s390x-linux-musl -std=gnu23 -D_GNU_SOURCE" LDFLAGS=-static`, world built from the host's `.oa` files, and `tests/qemu-native.sh` runs natively compiled programs statically linked into an emulator-carrying executable, since a static binary cannot dlopen). On 64-bit big-endian, instructions live in the *high* 32 bits of each code ref (first in memory order); see `code-vector.oak`, `fasl.oak`, and `read_ref()` in `worldio.c`.
 - **Cold-world files can't contain bignums:** the linkers range-check integer constants against the target fixnum size. Don't write literals ≥ 2^29 in files listed in `COLDFILES`.
 - **Shifts are not constant-folded:** `ash-left`/`ash-right`/`rot-*` wrap modulo the fixnum size, so folding them would make compiled code depend on the compiling host's word size. They deliberately lack `foldable-mixin` (numbers.oak).
 - **Rest args are not lists:** `(define (f a . rest) ...)` follows the documented Oaklisp semantics (rest args live on the stack; use `listify-args`/`consume-args`; a bare `(rest-length rest)` leaves them on the stack and the compiler warns). A change making `lambda` auto-listify was dropped (twice) because it broke `^super`, `exit`, etc. when the world was recompiled. Exception: `scheme.oak`/`scheme-macros.oak` are compiled in `scheme-locale`, whose `add-method` gives dotted lists their R3RS meaning, so code there must be written R3RS-style.
@@ -134,6 +134,7 @@ The compiler reaches a fixpoint: `make check` runs `check-fixpoint`, `check-cold
 | `oak-cold-linker.c` | C reimplementation of the cold linker (optional, `--enable-cold-linker`) |
 | `cmdline.c` | Command-line parsing |
 | `weak.c` | Weak pointer tables |
+| `native.c`, `oak-native.h` | Natively compiled code: module loading, the NATIVE instruction's support, the header generated C includes |
 
 ### Tag scheme (2-bit, low bits)
 
@@ -264,6 +265,155 @@ Where `ref_shift` is 2 for 32-bit, 3 for 64-bit.
 ### String packing
 
 Strings are stored as: `[type-ptr, total-word-count, char-count, packed-chars...]`. Characters are packed low byte first into the fixnum of each word, as many as fit: 3 with 32-bit refs (`c0 | c1<<8 | c2<<16`), 7 with 64-bit. Total size = `3 + ceil(strlen / chars-per-word)`. `%chars-per-word` in strings.oak is a variable derived from `%%word-size`, not a constant, so objects are word-size independent; the linkers (`target-chars-per-word`, `CHARS_PER_WORD`) and `oak_c_string_fill` know the same rule.
+
+## Native Compiler (`native-compiler.oak`)
+
+Mixed mode, milestones 1-2 of `CompilerPlan.md`.  `--compile-native
+FILE` (`native-compile-file`, in compiler-locale) compiles as
+`--compile` does up to the peephole-optimized instruction lists, then
+translates every code block (top-level code included) instruction by
+instruction into a C function in `FILE.c`, built with the C compiler
+(`(%stream-primitive 16)`, `oak_native_cc`) into `FILE.so`.  `FILE.oa`
+is ordinary bytecode with a second header line `;oaklisp-native
+FILE.so`, which `load-oa-file` loads (`(%stream-primitive 15)`,
+dlopen) relative to the .oa.  The stub layout is described at the top
+of `oak-native.h`.
+
+- A translated block's code vector is a stub: `NATIVE k` instructions
+  (opcodes 35-42: opcode 35 + k/256, argument k%256, up to 2048 resume
+  points), escapes, operands, constants, then the C function's name
+  and the index/epoch the emulator caches its lookup in.
+- An instruction without C (an *escape*) stays in the stub as bytecode
+  followed by a NATIVE instruction; the C hands it to the emulator, so
+  it runs, traps included, exactly as in bytecode.  LOAD-BP, STORE-BP
+  and MAKE-BP-LOC read their offsets from copies kept in the stub
+  (*operands*), which `remap-your-ivars` rewrites as it would bytecode.
+- Generated code keeps the emulator's value and context stacks; values
+  live across calls only there, so the GC, `call/cc` and stack flushing
+  need nothing new.  A non-tail call pushes a context frame returning
+  to the NATIVE instruction of the next resume point.  Calls are
+  dispatched in C (lambda, or the operation's method cache /
+  `oak_native_find_method`); native-to-native calls and returns jump
+  directly with `musttail` where the C compiler has it, otherwise via
+  the emulator (`-DOAK_NATIVE_TRAMPOLINE` forces that).
+- A call whose operation was just pushed from a global (milestone 5)
+  gets a per-call-site cache (`oak_native_site`, `ON_SITE_CALL` in
+  `oak-native.h`): operation → method, code, environment, C function,
+  jumped to directly on a hit.  A lambda site needs only the operation
+  compare (the lambda slot is never written); a generic site also
+  caches the first argument's type and bp offset, witnessed by the
+  operation's own one-entry cache, which `%INSTALL-METHOD-WITH-ENV`
+  parks -- so ADD-METHOD needs no epoch, and a site refills only on
+  that witness (type-alternating sites cost compares, never fills).
+  Sites hold raw refs, so every GC, world load and module registration
+  flushes them all (`oak_native_flush_sites`); a redefined global
+  misses on the operation compare and refills.
+- The emulator links with `-rdynamic` so modules see its symbols, and
+  passes the generated code its own `CC`/`CFLAGS` and `-I` this build
+  tree (env `OAKLISP_NATIVE_CC`, `OAKLISP_NATIVE_CFLAGS`,
+  `OAKLISP_NATIVE_INCLUDE` override); headers are not installed yet.
+- Function names are the file name plus a hash of the C, since modules
+  share one name space in the emulator.
+- Tests: `native.test`; `native-parity.test` compiles every
+  `tests/*.oak` both ways and compares the output; `standalone.test`
+  builds and runs stand-alone executables.
+- Not with `--enable-threads`.  `load-file.oak` and
+  `native-compiler.oak` need the new `streams.oa` preloaded when an
+  older world compiles them (as `file-io.oak` does); `warm.oak`,
+  `fasl.oak` and `load-file.oak` need the new `subprimitive.oa` for
+  `%embedded-program-char` (stream primitive 17: a character of the
+  embedded program, or with index -1 whether one is embedded, which is
+  how warm boot and the loader keep quiet in an executable).
+
+### Stand-alone executables (`oakc`, milestones 3-4): straight C
+
+`./oakc prog.oak... [-o prog]` (top level, generated by configure, runs
+out of the build tree) builds an executable that is C through and
+through: no interpreter is linked in (`nm PROG` shows no `loop`), no
+bytecode runs, and nothing is loaded at startup.  It needs the native
+runtime: `make -C src/world native-world` first.
+
+- Every source is compiled to C in strict mode (`#*native-strict?`:
+  an instruction without a C translation is an error; there are none
+  left - the full instruction set is translated, `native-ops.c`
+  holding the C of the big ones and `dispatch.c` the method search,
+  both shared with the interpreter).
+- At build time `bake-file` (load-file.oak) links each compiled file
+  into the native world without running it, collecting one operation
+  per file in `*baked-program*`, and the world is dumped; the
+  generated main.c carries that image as data and enters
+  `oak_main_native` (embed-native.c), whose engine is the native call
+  driver `oak_native_run` (native-ops.c) - a small funcall/trap/signal
+  dispatcher, not an interpreter.  At run time `(run-baked-program)`
+  runs the files in order.
+- Preemption works in compiled code: `ON_PENDING`/`ON_POLL`
+  (oak-native.h) count the shared alarm clock (`oak_timer_*`, data.c)
+  that ENABLE-ALARMS drives, and the driver (and the emulator's NATIVE
+  case) deliver alarm traps exactly like the interpreter; the thread
+  system (multiproc.oak) depends on it.
+- Runtime `eval`/`compile` of non-trivial forms needs bytecode, which
+  such an executable cannot run ("bytecode reached" is the error);
+  simple `--eval` forms are interpreted and work.  The escape hatch is
+  `--interpreter`: the same baked world and native modules, entered
+  through the emulator (`oak_main_embedded`), so evaled code runs in
+  the interpreter while everything compiled stays native.  Plain oakc
+  warns, naming the global, when a program's objects mention `eval`,
+  `compile` or `compile-file`.
+- `--strip` is dead code removal: `strip-locales` (load-file.oak)
+  empties the locales before the bake dump, keeping only
+  RUN-BAKED-PROGRAM and the globals the `--eval` forms name, the
+  pre-dump GC drops what nothing reaches, and runtime modules whose
+  stubs did not survive are left out of the link (oakc reads the
+  surviving function names out of the image).  Nothing can be looked
+  up by name afterwards, so it excludes `--interpreter`.
+- `-w`/`--whole-program`: each file is compiled twice -- summaries
+  (`.ois`: defines with arity and inferred result type, assigns,
+  escapes) first, then codegen with every summary in hand.  Calls
+  resolve statically: same-file always (guarded by the callee's code
+  vector, shared in the .oa by the assembler's block memoization),
+  cross-file and into the runtime in executables (extern functions,
+  guarded by operation pins a generated link-time prelude binds), and
+  type-proven generic calls through `%method-for`/`%bp-offset-for`
+  (closed world assumed for those).  Redefinition misses the guards
+  and falls back.  Small single-definition never-assigned functions
+  inline across files (their bodies travel in the `.ois`); the
+  abstract-stack inference drops tag checks on proven operands,
+  cross-file via the summaries' result types, and fuses a comparison
+  into the branch right after it (`EQ?` always, others when proven),
+  in every mode.
+- `--ir` turns on the C-locals lowering: within trap-free,
+  allocation-free runs the stack top lives in C locals (`v0..v7`),
+  spilled with plain stores into room reserved while no local was live
+  (`ON_RESERVE`), so no collection can find a ref only a C variable
+  holds; everything else spills first and uses the ordinary emission.
+- Options: `-o`, repeatable `--eval EXPR` (after the program runs),
+  `--locale`, `--runtime DIR`, `-w`/`--whole-program`, `--ir`,
+  `--interpreter`, `--strip`, `--keep`.  The executable's own
+  arguments follow a `--` on the argument line.  Sizes: ~7 MB
+  stripped, ~9 MB with the full runtime linked.
+
+`make native-world` (in `src/world`, needs the ordinary world first)
+rebuilds the whole world natively into `src/world/native/`: stub `.oa`
+files (top-level blocks stay bytecode for the cold linker's
+return-to-noop chaining), a world image built by the normal
+cold-link/boot stages run with `--native-module` for every `.so`, and
+`liboaknat.a` + `oak-runtime-modules.h` for oakc.  Compiler files
+compile in compiler-locale, scheme files in scheme-locale, like
+`COMPILE_ALL`.  The emulator can run that world too, given the
+`--native-module` flags (mixed mode, used by the build itself).
+
+Debugging aids: `OAK_RT_TRACE=1` logs the control helpers (throw,
+continuations) with stack heights; `--trace-traps` also logs native
+traps (`NTRAP ...`) in non-FAST builds; `#*native-exclusions` (a list
+of instruction names, or `(all)`) makes the translator escape those
+instructions to the emulator - a bisection aid for mixed mode only.
+
+One multiproc fix came out of this (`force` in multiproc.oak): a
+waiter left in the scheduler queue and resumed later runs the next
+fresh thunk on its own dead stack extent, so a throw out of a forced
+promise body unwinds into garbage; `force` now drains the queue before
+suspending.  Stock bytecode almost never hit it because alarm
+preemption drained the queue first.
 
 ## Key Technical Constraints
 

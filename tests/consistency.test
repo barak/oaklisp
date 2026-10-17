@@ -1,12 +1,15 @@
 #!/bin/sh
 # Every route to an object or a cold world agrees: the world
-# reproduces its own objects, all cold linkers build the same cold
-# world, and the Guile-hosted compiler (if there is a Guile) produces
-# the same objects.  These are the check-* targets in src/world, run
-# from one script so that they do not race each other for the objects
-# they build.
+# reproduces its own objects, the natively compiled world (if built)
+# does too, all cold linkers build the same cold world, and the
+# Guile-hosted compiler (if there is a Guile) produces the same
+# objects.  These are the check-* targets in src/world, run from one
+# script so that they do not race each other for the objects they
+# build.
 . "$(dirname "$0")/testlib.sh"
 $MAKE -C "$top_builddir/src/world" check-fixpoint || fail "check-fixpoint"
+$MAKE -C "$top_builddir/src/world" check-native-fixpoint \
+  || fail "check-native-fixpoint"
 $MAKE -C "$top_builddir/src/world" check-cold-linkers || fail "check-cold-linkers"
 if test "$GUILE" != no; then
   $MAKE -C "$top_builddir/src/world" check-guile-compile || fail "check-guile-compile"

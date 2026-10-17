@@ -464,6 +464,17 @@
   self)
 
 (add-method (force (future-obj flag val scheduled? dependantsQ sched-policy err-policy) self)
+  ;; Run whatever the scheduler still holds before suspending.  A
+  ;; waiter left in the queue and resumed later runs the next fresh
+  ;; thunk on its own dead stack extent, where this caller's catch
+  ;; frames do not exist, and a throw out of the forced body then
+  ;; unwinds into garbage.  The preemptive alarm usually drains the
+  ;; queue first, which is why this almost never showed; draining here
+  ;; makes it certain, preemption or not.
+  (iterate drain ((i 0))
+    (unless (or (qempty? *scheduleQ*) (= i 100))
+      (pause)
+      (drain (+ i 1))))
   (acquire-mutex self) ; this mutex prevents dependants from enqueueing badly
   (if flag
       (block (release-mutex self)

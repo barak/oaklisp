@@ -1,0 +1,141 @@
+#!/bin/sh
+# Stand-alone executables (oakc): straight C.  Test programs and
+# benchmarks run with no world file, from anywhere, output matching the
+# bytecode run; a two-file build exercises separate compilation; nm
+# proves no interpreter is linked in.  Needs the native runtime:
+# skipped until "make -C src/world native-world" has been run.
+. "$(dirname "$0")/testlib.sh"
+OAKC=$top_builddir/oakc
+test -x "$OAKC" || fail "no oakc at $OAKC"
+NAT=$top_builddir/src/world/native
+test -f "$NAT/liboaknat.a" || skip "no native runtime (make -C src/world native-world)"
+rm -rf standalone && mkdir standalone && cd standalone || exit 99
+
+# Expected output: the PASS/FAIL lines of the bytecode run.
+expected() {
+  oak -- --load "$testdir/$1" --exit 2>&1 | grep -E '^(PASS|FAIL)' > "$1.want"
+  grep -c '^PASS' "$1.want" >/dev/null || fail "no PASS lines from $1 under the emulator"
+  grep -q '^FAIL' "$1.want" && fail "the emulator itself fails $1"
+  :
+}
+
+# check_exe PROG OAKC-ARGS...: build, run with no world in sight,
+# compare the PASS/FAIL lines with the bytecode run's.
+check_exe() {
+  prog=$1
+  out=$prog-x
+  shift
+  "$OAKC" "$@" -o "$out" >oakc.log 2>&1 || { cat oakc.log; fail "oakc failed for $out"; }
+  nm "$out" | grep -qE ' T loop$' && fail "$out links the interpreter"
+  OAKWORLD=/nonexistent ./"$out" > "$out.got.raw" 2>&1 || fail "$out exited nonzero"
+  grep -E '^(PASS|FAIL)' "$out.got.raw" > "$out.got"
+  cmp "$prog.want" "$out.got" || { diff "$prog.want" "$out.got" | head; fail "$out output differs"; }
+  echo "ok $out ($(grep -c '^PASS' "$out.got") checks)"
+}
+
+for p in arith bignum control data objects promises; do
+  cp "$testdir/$p.oak" .
+  expected $p.oak
+  check_exe $p.oak $p.oak
+done
+
+# Separate compilation: two files, the second using the first.
+cp "$testdir/native-me.oak" "$testdir/native-check.oak" .
+oak -- --load "$testdir/native-me" --load "$testdir/native-check" --exit 2>&1 \
+  | grep -E '^(PASS|FAIL)' > native-check.oak.want
+check_exe native-check.oak native-me.oak native-check.oak
+
+# A benchmark, with --eval for the entry point.
+cp "$testdir/bench-tak.oak" .
+"$OAKC" bench-tak.oak --eval '(print (bench) standard-output)' -o tak-x >oakc.log 2>&1 \
+  || { cat oakc.log; fail "oakc failed for tak-x"; }
+out=$(OAKWORLD=/nonexistent ./tak-x) || fail "tak-x exited nonzero"
+test "$out" = 9 || fail "tak-x printed '$out', wanted 9"
+echo "ok tak-x"
+
+# Run-time eval: straight C warns at build time and dies at the evaled
+# form; --interpreter (the escape hatch) runs it, still booting the
+# baked native world.
+cp "$testdir/eval-check.oak" .
+expected eval-check.oak
+"$OAKC" eval-check.oak -o eval-nc-x >oakc.log 2>&1 \
+  || { cat oakc.log; fail "oakc failed for eval-nc-x"; }
+grep -q 'needs --interpreter' oakc.log \
+  || fail "no eval warning from oakc for eval-check.oak"
+if OAKWORLD=/nonexistent ./eval-nc-x > eval-nc-x.out 2>&1; then
+  fail "eval-nc-x ran eval without the interpreter"
+fi
+grep -qi 'bytecode reached' eval-nc-x.out \
+  || { head eval-nc-x.out; fail "eval-nc-x died some other way"; }
+echo "ok eval-nc-x (refused, as straight C must)"
+"$OAKC" --interpreter eval-check.oak -o eval-x >oakc.log 2>&1 \
+  || { cat oakc.log; fail "oakc --interpreter failed for eval-x"; }
+grep -q 'needs --interpreter' oakc.log \
+  && fail "oakc warned about eval under --interpreter"
+OAKWORLD=/nonexistent ./eval-x > eval-x.got.raw 2>&1 \
+  || fail "eval-x exited nonzero"
+grep -E '^(PASS|FAIL)' eval-x.got.raw > eval-x.got
+cmp eval-check.oak.want eval-x.got \
+  || { diff eval-check.oak.want eval-x.got | head
+       fail "eval-x output differs"; }
+echo "ok eval-x ($(grep -c '^PASS' eval-x.got) checks, interpreter linked)"
+
+# Dead code removal: a stripped executable gives the same output from
+# a smaller image, and --strip keeps the globals its --eval forms name.
+"$OAKC" --strip arith.oak -o arith-s-x >oakc.log 2>&1 \
+  || { cat oakc.log; fail "oakc --strip failed for arith-s-x"; }
+OAKWORLD=/nonexistent ./arith-s-x > arith-s-x.got.raw 2>&1 \
+  || fail "arith-s-x exited nonzero"
+grep -E '^(PASS|FAIL)' arith-s-x.got.raw > arith-s-x.got
+cmp arith.oak.want arith-s-x.got \
+  || { diff arith.oak.want arith-s-x.got | head; fail "arith-s-x output differs"; }
+big=$(wc -c < arith.oak-x); small=$(wc -c < arith-s-x)
+test "$small" -lt "$big" \
+  || fail "stripped arith-s-x ($small) is not smaller than arith.oak-x ($big)"
+echo "ok arith-s-x (stripped: $small < $big bytes)"
+"$OAKC" --strip bench-tak.oak --eval '(print (bench) standard-output)' \
+  -o tak-s-x >oakc.log 2>&1 \
+  || { cat oakc.log; fail "oakc --strip failed for tak-s-x"; }
+out=$(OAKWORLD=/nonexistent ./tak-s-x) || fail "tak-s-x exited nonzero"
+test "$out" = 9 || fail "tak-s-x printed '$out', wanted 9"
+echo "ok tak-s-x (stripped, --eval kept)"
+
+# The C-locals lowering (--ir): the same programs, lowered, same
+# output.
+check_exe arith.oak --ir arith.oak
+check_exe data.oak --ir data.oak
+check_exe control.oak --ir control.oak
+
+# Whole-program mode: two files, calls resolved statically across them
+# and into the runtime through guards, a generated link-time prelude,
+# and output identical to the emulator's.
+cp "$testdir/wp-a.oak" "$testdir/wp-b.oak" .
+oak -- --load "$testdir/wp-a" --load "$testdir/wp-b" --exit 2>&1 \
+  | grep -E '^(PASS|FAIL)' > wp.want
+grep -q '^FAIL' wp.want && fail "the emulator itself fails the wp programs"
+grep -cq '^PASS' wp.want || fail "no PASS lines from the wp programs"
+"$OAKC" -w wp-a.oak wp-b.oak -o wp-x >oakc.log 2>&1 \
+  || { cat oakc.log; fail "oakc -w failed"; }
+nm wp-x | grep -qE ' T loop$' && fail "wp-x links the interpreter"
+OAKWORLD=/nonexistent ./wp-x > wp-x.got.raw 2>&1 \
+  || { head wp-x.got.raw; fail "wp-x exited nonzero"; }
+grep -E '^(PASS|FAIL)' wp-x.got.raw > wp-x.got
+cmp wp.want wp-x.got \
+  || { diff wp.want wp-x.got | head; fail "wp-x output differs"; }
+echo "ok wp-x ($(grep -c '^PASS' wp-x.got) checks, whole program)"
+"$OAKC" -w --ir wp-a.oak wp-b.oak -o wp-ir-x >oakc.log 2>&1 \
+  || { cat oakc.log; fail "oakc -w --ir failed"; }
+OAKWORLD=/nonexistent ./wp-ir-x > wp-ir-x.raw 2>&1 \
+  || fail "wp-ir-x exited nonzero"
+grep -E '^(PASS|FAIL)' wp-ir-x.raw > wp-ir-x.got
+cmp wp.want wp-ir-x.got \
+  || { diff wp.want wp-ir-x.got | head; fail "wp-ir-x output differs"; }
+echo "ok wp-ir-x ($(grep -c '^PASS' wp-ir-x.got) checks, whole program, lowered)"
+"$OAKC" -w bench-tak.oak --eval '(print (bench) standard-output)' \
+  -o tak-w-x >oakc.log 2>&1 \
+  || { cat oakc.log; fail "oakc -w failed for tak-w-x"; }
+out=$(OAKWORLD=/nonexistent ./tak-w-x) || fail "tak-w-x exited nonzero"
+test "$out" = 9 || fail "tak-w-x printed '$out', wanted 9"
+echo "ok tak-w-x (whole program)"
+
+echo "standalone test passed"

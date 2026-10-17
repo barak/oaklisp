@@ -15,7 +15,8 @@ _oaklisp()
         --no-line-editing --trace-files --trace-segs --trace-valcon
         --trace-cxtcon --trace-stks --trace-instructions --trace-methods
         --trace-mcache --"
-    local oaklisp_opts="--help --version --eval --load --compile --outdir
+    local oaklisp_opts="--help --version --eval --load --compile
+        --compile-native --outdir
         --target --locale --pthreads --exit"
 
     # Which side of "--" are we on?
@@ -31,7 +32,7 @@ _oaklisp()
         --outdir)
             _filedir -d
             return ;;
-        --load|--compile)
+        --load|--compile|--compile-native)
             local f names=()
             for f in "$cur"*.oak "$cur"*.oa; do
                 [[ -e $f ]] || continue
