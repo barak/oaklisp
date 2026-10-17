@@ -236,6 +236,15 @@ multiproc.oa: $(if $(filter world,$(OAK_COMPILE)),old/multi-em.oa)
 
 file-io.oa: OAKEXTRALOAD = --load old/streams
 file-io.oa: $(if $(filter world,$(OAK_COMPILE)),old/streams.oa)
+# Likewise native-compiler.oak, number 16; load-file.oak and warm.oak
+# use %EMBEDDED-PROGRAM-CHAR from subprimitive.oak, so an older world
+# needs the fresh subprimitive.oa to open code it the same way.
+native-compiler.oa: OAKEXTRALOAD = --load old/streams
+native-compiler.oa: $(if $(filter world,$(OAK_COMPILE)),old/streams.oa)
+load-file.oa: OAKEXTRALOAD = --load old/subprimitive --load old/streams
+load-file.oa: $(if $(filter world,$(OAK_COMPILE)),old/subprimitive.oa old/streams.oa)
+warm.oa fasl.oa: OAKEXTRALOAD = --load old/subprimitive
+warm.oa fasl.oa: $(if $(filter world,$(OAK_COMPILE)),old/subprimitive.oa)
 
 # LAZY-CONS is the macro that used to be LCONS, and was the name of
 # the type now called LAZY-CONS-PAIR: in a world from before the
@@ -340,20 +349,130 @@ clean-world:
 
 .PHONY: rebuild-world clean-world
 
+##### A natively compiled world (CompilerPlan.md milestone 3)
+
+# "make native-world" rebuilds the world with the native compiler into
+# native/: every object is a stub whose code is C in the .so beside it,
+# the world images are built from those, and the same C is compiled
+# with -DON_STATIC into liboaknat.a, with oak-runtime-modules.h naming
+# the modules, for executables built by "oakc --runtime native".  The
+# world in native/oakworld.bin only runs with its modules supplied
+# (--native-module for every .so, or statically in an oakc executable);
+# the build stages below pass them explicitly.  Top-level blocks stay
+# bytecode (the cold linker's return-to-noop chaining; see
+# native-compiler.oak), so a file's code proper is all native.
+
+NATDIR = native
+NATWORLDFILES = $(COLDFILES) $(MISCFILES) $(COMPFILES) $(EXPORTFILES) \
+ $(RNRSFILES)
+# Each file compiles in its own locale, as COMPILE_ALL does below.
+NATLOCALE = system-locale
+$(addprefix $(NATDIR)/,$(COMPFILES)): NATLOCALE = compiler-locale
+$(NATDIR)/scheme.oa $(NATDIR)/scheme-macros.oa: NATLOCALE = scheme-locale
+
+# Every module built so far (a file all of whose code is top level has
+# none); registering more than a world uses is harmless.
+NATMODS = `for m in *.so; do test -f $$m && printf ' --native-module %s' $$m; done`
+
+# The .so beside each .oa is C that includes the native headers, so a
+# header change (an ABI bump above all) rebuilds them.
+NATIVEHDRS = $(top_srcdir)/src/emulator/oak-native.h \
+ $(top_srcdir)/src/emulator/native-ops.h
+
+$(NATDIR)/%.oa: %.oak oakworld.bin $(NATIVEHDRS)
+	@$(MKDIR_P) $(NATDIR)
+	$(OAK) $(OAKFLAGS) --world $(abs_builddir)/oakworld.bin -- \
+	   --outdir $(NATDIR) \
+	   --eval '(bind ((#*compiler-noisiness 0) (#*native-strict? #t) (#*native-exclusions (quote ($(NATEXCL))))) (native-compile-file $(NATLOCALE) "$(basename $<)" #f))' \
+	   --exit
+
+$(NATDIR)/new.cold: $(addprefix $(NATDIR)/,$(COLDFILES)) tool.oa
+	cd $(NATDIR) && rm -f new.cold new.sym && \
+	$(OAKBOOT) $(OAKFLAGS) --world $(abs_builddir)/oakworld.bin -- \
+	   --load ../tool \
+	   --eval "(tool-files '($(COLDFILESD:.oa=)) 'new \"$(OAK_BYTECODE_ARCH)\")" \
+	   --exit
+
+# The boot registers every .so in the directory (NATMODS), so all of
+# them must be current, not only the cold files': a left-over module
+# built against another emulator ABI would stop the boot.
+$(NATDIR)/oakworld-1.bin: $(NATDIR)/new.cold $(addprefix $(NATDIR)/,$(NATWORLDFILES))
+	cd $(NATDIR) && \
+	$(OAKBOOT) $(OAKFLAGS) $(NATMODS) --world new.cold --dump oakworld-1.bin
+
+$(NATDIR)/oakworld-2.bin: $(NATDIR)/oakworld-1.bin $(addprefix $(NATDIR)/,$(MISCFILES))
+	cd $(NATDIR) && \
+	$(OAKBOOT) $(OAKFLAGS) $(NATMODS) --world oakworld-1.bin --dump oakworld-2.bin \
+	   -- \
+	   $(foreach f, $(MISCFILES:.oa=),--load $(f)) \
+	   --exit
+
+$(NATDIR)/oakworld-3.bin: $(NATDIR)/oakworld-2.bin $(addprefix $(NATDIR)/,$(COMPFILES) $(EXPORTFILES))
+	cd $(NATDIR) && \
+	$(OAKBOOT) $(OAKFLAGS) $(NATMODS) --world oakworld-2.bin --dump oakworld-3.bin \
+	   -- \
+	   --locale compiler-locale \
+	   $(foreach f, $(COMPFILES:.oa=),--load $(f)) \
+	   --locale system-locale \
+	   $(foreach f, $(EXPORTFILES:.oa=),--load $(f)) \
+	   --exit
+
+$(NATDIR)/oakworld.bin: $(NATDIR)/oakworld-3.bin $(addprefix $(NATDIR)/,$(RNRSFILES))
+	cd $(NATDIR) && \
+	$(OAKBOOT) $(OAKFLAGS) $(NATMODS) --world oakworld-3.bin --dump oakworld.bin \
+	  -- \
+	  --eval '(define-instance scheme-locale locale (list system-locale))'\
+	  --eval "(export-symbol system-locale oaklisp-locale 'scheme-locale)" \
+	  --locale scheme-locale \
+	  $(foreach f, $(RNRSFILES:.oa=),--load $(f)) \
+	  --locale system-locale --exit
+
+RANLIB = @RANLIB@
+
+$(NATDIR)/liboaknat.a: $(NATDIR)/oakworld.bin
+	set -e; cd $(NATDIR); \
+	rm -f liboaknat.a oak-runtime-modules.h modexterns modrefs; \
+	for c in *.c; do \
+	  $(CC) $(CFLAGS) @OAKC_FAST@ -DHAVE_CONFIG_H -DON_STATIC \
+	    -I$(abs_top_srcdir)/src/emulator -I$(abs_top_builddir) \
+	    -c -o $${c%.c}.o $$c; \
+	  p=`sed -n 's/^\#define ON_PREFIX[ 	]*//p' $$c`; \
+	  echo "extern const oak_native_module $${p}_module;" >> modexterns; \
+	  printf ' &%s_module,' $$p >> modrefs; \
+	done; \
+	ar cru liboaknat.a *.o; \
+	$(RANLIB) liboaknat.a; \
+	{ echo '/* Generated by make native-world: the modules of the'; \
+	  echo '   native runtime, for the main.c oakc generates. */'; \
+	  cat modexterns; \
+	  printf '%s' '#define OAK_RUNTIME_MODULE_REFS'; cat modrefs; echo; \
+	} > oak-runtime-modules.h; \
+	rm -f modexterns modrefs
+
+native-world: $(NATDIR)/liboaknat.a
+
+.PHONY: native-world
+
+clean-native-world:
+	rm -rf $(NATDIR)
+
+.PHONY: clean-native-world
+
 ##### Compiling everything with a finished world
 
 # Compile the sources $$files (base names; found in $(srcdir), except
 # system-version.oak which configure writes here) into the current
-# directory with the emulator just built running the world $$world,
-# for --target $$target, each in its own locale, logging each to
-# NAME.log.  This is how the fixpoint check and the prebuilt refresh
-# compile; a finished world needs none of the preloading above.
+# directory with the emulator just built running the world $$world
+# (with the emulator switches $$mods, if set: the native world needs
+# its modules), for --target $$target, each in its own locale, logging
+# each to NAME.log.  This is how the fixpoint checks and the prebuilt
+# refresh compile; a finished world needs none of the preloading above.
 COMPILE_ALL = for f in $$files; do \
 	  loc=""; \
 	  case " $(COMPFILES:.oa=) " in *" $$f "*) loc="--locale compiler-locale";; esac; \
 	  case " $(RNRSFILES:.oa=) " in *" $$f "*) loc="--locale scheme-locale";; esac; \
 	  case $$f in system-version) src=$(abs_builddir)/$$f;; *) src=$(abs_srcdir)/$$f;; esac; \
-	  $(OAKBOOT) $(OAKFLAGS) --world $$world \
+	  $(OAKBOOT) $(OAKFLAGS) $$mods --world $$world \
 	    -- $$loc --target $$target --outdir . --compile $$src --exit > $$f.log 2>&1 \
 	    || { echo "compile failed: $$f (see `pwd`/$$f.log)"; exit 1; }; \
 	done
@@ -415,6 +534,29 @@ check-fixpoint: oakworld.bin $(ALLOAFILES)
 	test $$rc = 0 && echo "check-fixpoint: the world reproduces its own objects."; \
 	exit $$rc
 
+# The self-hosting check of CompilerPlan.md milestone 5: the native
+# world's compiler -- the compiler compiled to C by itself, every block
+# native -- recompiles every source to objects byte-identical to the
+# bytecode world's.  Needs "make native-world" first.
+check-native-fixpoint: $(ALLOAFILES)
+	@if test ! -f $(NATDIR)/oakworld.bin; then \
+	  echo "check-native-fixpoint: no native world (make native-world); skipped"; \
+	else \
+	  rm -rf native-fixpoint-check && $(MKDIR_P) native-fixpoint-check && \
+	  ( cd native-fixpoint-check && files='$(ALLOAFILES:.oa=)' \
+	      world=$(abs_builddir)/$(NATDIR)/oakworld.bin \
+	      target=$(OAK_BYTECODE_ARCH) \
+	      mods=`for m in $(abs_builddir)/$(NATDIR)/*.so; do printf ' --native-module %s' $$m; done` \
+	      && $(COMPILE_ALL) ) && \
+	  ( rc=0; cd native-fixpoint-check && for f in $(ALLOAFILES); do \
+	      cmpbody() { tail -n +2 "$$1" > cmp1.tmp; tail -n +2 "$$2" > cmp2.tmp; cmp -s cmp1.tmp cmp2.tmp; }; \
+	      cmpbody $$f ../$$f \
+		|| { echo "$$f: the native compiler's object differs"; rc=1; }; \
+	    done; \
+	    test $$rc = 0 && echo "check-native-fixpoint: the native compiler reproduces the world's objects."; \
+	    exit $$rc ); \
+	fi
+
 # The Guile-hosted compiler must produce the same objects as the
 # native one.  Needs Guile.
 check-guile-compile: oakworld.bin $(ALLOAFILES)
@@ -462,7 +604,8 @@ check-cold-linkers: oakworld.bin new.cold $(TOOLFILES)
 	rm -f linkcheck-*.cold linkcheck-*.sym; \
 	exit $$rc
 
-.PHONY: check-fixpoint check-guile-compile check-cold-linkers
+.PHONY: check-fixpoint check-native-fixpoint check-guile-compile \
+ check-cold-linkers
 
 CLEANFILES = guile.stamp
 

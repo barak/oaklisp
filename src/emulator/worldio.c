@@ -33,8 +33,11 @@
 #include "data.h"
 #include "xmalloc.h"
 #include "worldio.h"
+#include "stacks.h"
+#include "gc.h"
 #include "weak.h"
 #include "oak-header.h"
+#include "native.h"
 
 
 void xfread(void *ptr, size_t size, size_t nmemb, FILE *stream)
@@ -423,18 +426,87 @@ reoffset(ref_t baseAddr,
     }
 }
 
+static void read_world_stream(FILE * d, const char *str);
+
+void
+maybe_dump_world(int dumpstackp)
+{
+#ifdef THREADS
+  int *my_index_p;
+  int  my_index;
+  my_index_p = oak_tls_get(index_key);
+  my_index = *(my_index_p);
+#endif
+  /* Dump the stacks only for an internal abort.  EXIT passes a user's
+     status straight through to HALT and accepts 0 through 10, so a
+     script returning a conventional exit code must not get several
+     hundred bytes of raw stack contents on its standard output; the
+     codes the system raises itself (69 from a cold boot failure, 333
+     from the interpreter) are all well above that range. */
+  if (dumpstackp > 10)
+    {
+      dump_stack(&value_stack);
+      dump_stack(&context_stack);
+    }
+  if (dump_flag)
+    {
+      if (gc_before_dump && dumpstackp == 0)
+	{
+	  gc(true, true, "impending world dump", 0);
+	  dump_world(true);
+	}
+      else
+	dump_world(false);
+    }
+}
+
+
+
 void
 read_world(char *str)
 {
   FILE *d;
-  int magichar;
-
 
   if ((d = fopen(str, READ_BINARY_MODE)) == 0)
     {
       printf("Can't open \"%s\".\n", str);
       exit(EXIT_FAILURE);
     }
+  read_world_stream(d, str);
+}
+
+/* Load a world image from memory: an executable built by oakc carries
+   its world as an array (see oak-embed.h). */
+
+void
+read_world_mem(const unsigned char *bytes, size_t size)
+{
+  FILE *d;
+
+#ifdef HAVE_FMEMOPEN
+  d = fmemopen((void *)bytes, size, "r");
+#else
+  d = tmpfile();
+  if (d != NULL
+      && (fwrite(bytes, 1, size, d) != size || fseek(d, 0L, SEEK_SET) != 0))
+    {
+      fclose(d);
+      d = NULL;
+    }
+#endif
+  if (d == NULL)
+    {
+      fprintf(stderr, "Error: unable to set up the embedded world.\n");
+      exit(EXIT_FAILURE);
+    }
+  read_world_stream(d, "<embedded world>");
+}
+
+static void
+read_world_stream(FILE * d, const char *str)
+{
+  int magichar;
+
   magichar = getc(d);
   input_is_binary = 0;
   if (magichar == (int)';')
@@ -568,4 +640,8 @@ read_world(char *str)
 
   /* The weak pointer hash table is rebuilt when e_nil is set. */
   fclose(d);
+
+  /* Everything the native direct-call sites cached went with the old
+     heap. */
+  oak_native_flush_sites();
 }

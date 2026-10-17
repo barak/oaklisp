@@ -5,6 +5,8 @@
 prebuilt-tmp/
 guile.stamp
 fixpoint-check/
+native-fixpoint-check/
 guile-check/
 guile-cache/
 old/
+native/

@@ -140,6 +140,20 @@ Load a file.
 Compile file.oak yielding file.oa
 
 .TP
+.B \-\-native\-module file
+Load a shared object of natively compiled code before booting the
+world.  A world whose own code was compiled natively (make
+native-world) needs one of these for each of its modules.
+
+.TP
+.B \-\-compile\-native file
+Compile file.oak yielding file.oa, with as much of the code as it can
+compiled to C in file.c and built with the C compiler into the shared
+object file.so, which loading file.oa loads too.  The environment
+variables OAKLISP_NATIVE_CC and OAKLISP_NATIVE_CFLAGS override the C
+compiler and its options.
+
+.TP
 .B \-\-outdir dir
 Write the objects of subsequent
 .B \-\-compile

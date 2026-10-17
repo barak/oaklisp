@@ -22,6 +22,10 @@ endif
 
 dist_doc_DATA = README.md AUTHORS COPYING BUILD.md ChangeLog NEWS
 
+# oakc builds stand-alone executables out of the build tree (see
+# oakc.in); configure generates the script.
+EXTRA_DIST = oakc.in
+
 # Refresh the prebuilt bootstrap material in prebuilt/ from what was
 # just built: bytecode, a world image for this architecture, the
 # emulator's instruction table, and the documentation.

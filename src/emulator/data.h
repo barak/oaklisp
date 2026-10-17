@@ -124,6 +124,10 @@ extern char *dump_file_name;
 extern int dump_base;
 
 extern bool dump_flag;
+
+/* The alarm clock, shared between the interpreter and native code. */
+extern unsigned oak_timer_counter, oak_timer_increment;
+#define OAK_TIMER_LIMIT 1000
 extern bool gc_before_dump;
 
 extern int trace_gc;

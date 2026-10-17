@@ -1,0 +1,11 @@
+;;; Timing driver for a bench-NAME.oak file (defines (bench)), built
+;;; into a stand-alone executable by "bench.sh -x": best of 5 runs,
+;;; printed in CPU milliseconds, like the emulator-hosted bench runs.
+
+(let loop ((i 0) (best #f))
+  (if (= i 5)
+      (print best standard-output)
+      (let* ((t0 (get-time))
+	     (v (bench))
+	     (t (- (get-time) t0)))
+	(loop (+ i 1) (if (or (not best) (< t best)) t best)))))

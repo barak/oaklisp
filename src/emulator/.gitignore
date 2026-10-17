@@ -1,3 +1,4 @@
 *.o
 /instr-data.c
 /oaklisp
+liboakrt.a

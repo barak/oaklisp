@@ -26,6 +26,8 @@
 #define _WORLDIO_H_INCLUDED
 
 extern void dump_world(bool justnew);
+extern void maybe_dump_world(int dumpstackp);
 extern void read_world(char *string);
+extern void read_world_mem(const unsigned char *bytes, size_t size);
 
 #endif

@@ -53,6 +53,9 @@ AC_ARG_ENABLE([ndebug],
        [enable_ndebug=yes])
 AC_MSG_RESULT([$enable_ndebug])
 AM_CONDITIONAL([NDEBUG], [test x${enable_ndebug} = xyes])
+AS_IF([test x${enable_ndebug} = xyes],[OAKC_FAST=-DFAST],[OAKC_FAST=])
+AC_SUBST([OAKC_FAST])
+AC_PROG_RANLIB
 
 AC_MSG_CHECKING([enable_threads])
 AC_ARG_ENABLE([threads],
@@ -234,8 +237,28 @@ AC_FUNC_REALLOC
 AC_CHECK_FUNCS([strerror],,
  [AC_MSG_ERROR([required library function unavailable])])
 AC_CHECK_FUNCS([GetTickCount getrusage gettimeofday clock])
+AC_CHECK_FUNCS([fmemopen])
+
+# Natively compiled code (src/world/native-compiler.oak) is built into
+# shared objects that the emulator loads with dlopen.  They refer to
+# the emulator's own variables and functions, so it exports them.
+AC_SEARCH_LIBS([dlopen],[dl],
+ [AC_DEFINE([HAVE_DLOPEN],[1],[Define if dlopen is available.])])
+oak_save_LDFLAGS=${LDFLAGS}
+LDFLAGS="${LDFLAGS} -rdynamic"
+AC_MSG_CHECKING([whether the linker accepts -rdynamic])
+AC_LINK_IFELSE([AC_LANG_PROGRAM([],[])],
+ [AC_MSG_RESULT([yes]); OAK_EXPORT_DYNAMIC=-rdynamic],
+ [AC_MSG_RESULT([no]); OAK_EXPORT_DYNAMIC=])
+LDFLAGS=${oak_save_LDFLAGS}
+AC_SUBST([OAK_EXPORT_DYNAMIC])
+AS_CASE([${host_os}],
+ [darwin*],[OAK_NATIVE_SHARED="-bundle -undefined dynamic_lookup"],
+	   [OAK_NATIVE_SHARED="-shared"])
+AC_SUBST([OAK_NATIVE_SHARED])
 
 # Epilogue
+AC_CONFIG_FILES([oakc], [chmod +x oakc])
 AC_CONFIG_FILES([Makefile
                  doc/Makefile
                  man/Makefile

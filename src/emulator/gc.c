@@ -31,6 +31,7 @@
 #include "xmalloc.h"
 #include "stacks.h"
 #include "gc.h"
+#include "native.h"
 #ifdef USE_MARK_SWEEP
 #include "gc-ms.h"
 #endif
@@ -870,6 +871,10 @@ gc_top:
     if (trace_gc)
       fflush(stdout);
   }
+
+  /* The raw refs cached in native direct-call sites just moved. */
+  oak_native_flush_sites();
+
 #ifdef THREADS
 #ifdef USE_MARK_SWEEP
     if (!gc_concurrent_in_progress) {

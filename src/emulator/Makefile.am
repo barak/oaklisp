@@ -28,32 +28,54 @@ endif
 oak_cold_linker_SOURCES = oak-cold-linker.c
 EXTRA_PROGRAMS = oak-cold-linker
 
-oaklisp_SOURCES = cmdline.c data.c gc.c gc-ms.c instr.c lineedit.c	\
- loop.c oaklisp.c signals.c stacks.c threads.c timers.c weak.c		\
- worldio.c xmalloc.c cmdline.h config.h data.h gc.h gc-ms.h instr.h	\
- lineedit.h loop.h oak-atomic.h oak-getopt.h oak-header.h oak-thread.h	\
- signals.h stacks.h stacks-loop.h threads.h timers.h weak.h worldio.h	\
- xmalloc.h
+# Everything but main() goes into liboakrt.a, so that a stand-alone
+# executable built by oakc can link the emulator in under its own
+# generated main (see oak-embed.h and oakc.in at the top level).
+noinst_LIBRARIES = liboakrt.a
+liboakrt_a_SOURCES = cmdline.c data.c dispatch.c embed-native.c gc.c	\
+ gc-ms.c instr.c lineedit.c loop.c native.c native-ops.c oaklisp.c	\
+ signals.c stacks.c threads.c timers.c weak.c worldio.c xmalloc.c	\
+ cmdline.h config.h data.h dispatch.h gc.h gc-ms.h instr.h lineedit.h	\
+ loop.h native.h native-ops.h oak-atomic.h oak-embed.h oak-getopt.h	\
+ oak-header.h oak-native.h oak-thread.h signals.h stacks.h		\
+ stacks-loop.h threads.h timers.h weak.h worldio.h xmalloc.h
+
+oaklisp_SOURCES = main.c
+oaklisp_LDADD = liboakrt.a $(LIBS)
+
+# Natively compiled code is loaded with dlopen and links against the
+# emulator itself.  It is compiled with the same compiler and flags,
+# and includes oak-native.h from this tree (see native.c).
+oaklisp_LDFLAGS = $(OAK_EXPORT_DYNAMIC)
 
 if NDEBUG
 else
 BUILT_SOURCES = instr-data.c
 endif
 
-oaklisp_CPPFLAGS = $(AM_CPPFLAGS)
+OAKRT_CPPFLAGS = $(AM_CPPFLAGS)
 
-oaklisp_CPPFLAGS += -DDEFAULT_WORLD=\"$(pkglibdir)/oakworld.bin\"
+OAKRT_CPPFLAGS += -DDEFAULT_WORLD=\"$(pkglibdir)/oakworld.bin\"
 
 if ENABLE_THREADS
-oaklisp_CPPFLAGS += -DTHREADS -DUSE_MARK_SWEEP
+OAKRT_CPPFLAGS += -DTHREADS -DUSE_MARK_SWEEP
 endif
 
 if NDEBUG
-oaklisp_CPPFLAGS += -DFAST
+OAKRT_CPPFLAGS += -DFAST
+OAK_NATIVE_FAST = -DFAST
 endif
 
+OAKRT_CPPFLAGS += -DOAK_NATIVE_CC='"$(CC)"'				\
+ -DOAK_NATIVE_CFLAGS='"$(CFLAGS) -fPIC -fno-strict-aliasing"'		\
+ -DOAK_NATIVE_SHARED='"@OAK_NATIVE_SHARED@"'				\
+ -DOAK_NATIVE_INCLUDE='"-DHAVE_CONFIG_H $(OAK_NATIVE_FAST) -I$(abs_srcdir) -I$(abs_top_builddir)"'
+
+liboakrt_a_CPPFLAGS = $(OAKRT_CPPFLAGS)
+oaklisp_CPPFLAGS = $(OAKRT_CPPFLAGS)
+
 # Things to consider as configure.ac options:
-# oaklisp_CPPFLAGS += -DMAX_NEW_SPACE_SIZE=16000000
+# OAKRT_CPPFLAGS += -DMAX_NEW_SPACE_SIZE=16000000
 
 # bootstrapping problem: to compile the emulator we need a working
 # oaklisp to generate instr-data.c.  This is solved by trying to

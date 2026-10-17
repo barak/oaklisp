@@ -33,6 +33,7 @@
 #include "config.h"
 #include "data.h"
 #include "cmdline.h"
+#include "native.h"
 #include "xmalloc.h"
 #include "lineedit.h"
 #include "stacks.h"
@@ -50,6 +51,7 @@ enum {
   CXTSIZ_ARG,
   MAX_SEG_ARG,
   VERBOSE_GC_ARG,
+  NATIVE_MODULE_ARG,
 };
 
 
@@ -128,6 +130,7 @@ usage(char *prog)
 	  "\t--verbose-gc v       synonym for --trace-gc\n"
 	  "\t--trace-traps\n"
 	  "\t--batch              disable trapping of SIGINT\n"
+	  "\t--native-module file load a natively compiled module\n"
 #ifdef HAVE_LIBREADLINE
 	  "\t--no-line-editing    read the terminal without GNU readline\n"
 #endif
@@ -244,6 +247,7 @@ parse_cmd_line(int argc, char **argv)
 #endif
 #endif
 	{"trace-files", no_argument, &trace_files, true},
+	{"native-module", required_argument, 0, NATIVE_MODULE_ARG},
 	{0, 0, 0, 0}};
 
       retval = getopt_long_only(argc, argv,
@@ -269,6 +273,10 @@ parse_cmd_line(int argc, char **argv)
 
 	case WORLD_ARG:
 	  world_file_name = optarg;
+	  break;
+
+	case NATIVE_MODULE_ARG:
+	  oak_native_module_pending(optarg);
 	  break;
 
 	case DUMP_ARG:

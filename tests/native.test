@@ -1,0 +1,16 @@
+#!/bin/sh
+# The native compiler: compile a file to C and a shared object, load
+# it, and run checks against it.  Skipped if the C compiler or dlopen
+# is unavailable.
+. "$(dirname "$0")/testlib.sh"
+rm -rf native-check && mkdir native-check && cd native-check || exit 99
+cp "$testdir/native-me.oak" .
+oak -- --compile-native native-me --exit 2>&1 | tee compile.log
+test -f native-me.oa || fail "no object produced"
+test -f native-me.so || skip "no native module built (no C compiler or dlopen?)"
+sed -n 2p native-me.oa | grep -q '^;oaklisp-native native-me.so$' || fail "no native header line"
+grep -q 'ON_FN(0)' native-me.c || fail "no C functions"
+run_oak_test native-check.oak --load native-me || fail "checks failed"
+# The same object loaded from another directory finds its module.
+cd .. && run_oak_test native-check.oak --load native-check/native-me || fail "checks failed from elsewhere"
+echo "native test passed"

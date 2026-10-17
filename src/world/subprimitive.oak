@@ -153,6 +153,17 @@
 	       (object))
     (%read-char)))
 
+;;; The program an oakc executable embeds, read a character at a time
+;;; (see load-file.oak); asked for index -1 it answers whether there is
+;;; an embedded program at all, which is how warm-boot knows to keep
+;;; quiet.  An open-coded operation so that warm boot can ask before
+;;; the trap tables are back up.
+
+(define-constant %embedded-program-char
+  (add-method ((make-open-coded-operation '((stream-primitive 17)) 1 1)
+	       (fixnum) i)
+    (%embedded-program-char i)))
+
 (define-constant %assq
   (add-method ((make-open-coded-operation '((assq)) 2 1)
 	       (object) x y)

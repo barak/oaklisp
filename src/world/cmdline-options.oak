@@ -31,6 +31,10 @@ Oaklisp level options.
 
         --compile file     Compile file.oak yielding file.oa
 
+        --compile-native file
+                           Compile file.oak yielding file.oa, with what
+                           it can of the code compiled to C in file.so.
+
         --outdir dir       Write the objects of subsequent --compile
                            switches to directory dir rather than
                            beside their sources.
@@ -67,6 +71,18 @@ Example:
 		      (compile-file #*current-locale
 				    x))
 		    (format #t "...done.~%")))
+
+    ("compile-native" 1 ,(lambda (x)
+			   (format #t "~&oaklisp: compiling ~S natively..." x)
+			   (flush standard-output)
+			   (bind ((#*compiler-noisiness 0))
+			     (native-compile-file #*current-locale x))
+			   (format #t "...done.~%")))
+
+    ;; Used by the built-in command line of an executable built by
+    ;; oakc: load the program embedded in it.
+    ("load-embedded" 0 ,(lambda ()
+			  (load-embedded-program)))
 
     ("outdir" 1 ,(lambda (x)
 		   (set! #*compiler-output-directory x)))

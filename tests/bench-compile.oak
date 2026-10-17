@@ -1,0 +1,22 @@
+;;; The compiler compiling: expansion, analysis, code generation and
+;;; the peephole optimizer over a representative function, many times.
+;;; (The plan's compile-bench entry; compilation only builds code, so
+;;; this runs even in a straight-C executable.)
+
+(define (bench)
+  (let loop ((i 0) (n 0))
+    (if (= i 40)
+	n
+	(loop (+ i 1)
+	      (+ n (length
+		    (compile-code-fragment
+		     system-locale
+		     '(lambda (l)
+			(let walk ((l l) (acc '()))
+			  (cond ((null? l) (reverse acc))
+				((pair? (car l))
+				 (walk (cdr l) (cons (walk (car l) '()) acc)))
+				(else
+				 (walk (cdr l) (cons (* (car l) (car l))
+						     acc))))))
+		     'next)))))))

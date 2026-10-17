@@ -1,0 +1,29 @@
+;;; Whole-program test, file 1 of 2 (oakc --whole-program; see
+;;; standalone.test): what file 2 calls across the build.
+
+(define (check name got expected)
+  (if (equal? got expected)
+      (format #t "PASS ~A~%" name)
+      (format #t "FAIL ~A: got ~S expected ~S~%" name got expected))
+  (flush standard-output))
+
+;;; LOAD binds these to abbreviate its progress reports; not wanted here.
+(set! #*print-length #f)
+(set! #*print-level #f)
+
+(define (wp-add2 x) (+ x 2))
+
+;;; Returns a pair, provably: a caller's CAR needs no check.
+(define (wp-make-point a b) (cons a b))
+
+;;; A generic operation of the program's own: its method is invisible
+;;; at compile time (top levels have not run), so calls keep the
+;;; generic path -- the world's generics are the ones that resolve.
+(define-instance wp-area operation)
+(add-method (wp-area (cons-pair) self)
+  (* (car self) (cdr self)))
+
+;;; Same-file recursion through the global, direct in every mode.
+(define (wp-fact n) (if (= n 0) 1 (* n (wp-fact (- n 1)))))
+
+(check 'wp-fact-same-file (wp-fact 6) 720)

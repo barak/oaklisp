@@ -19,23 +19,29 @@
 
 (define warm-boot-actions '())
 
+;;; An executable built by oakc boots quietly.  %EMBEDDED-PROGRAM-CHAR
+;;; is open coded (subprimitive.oak): warm boot runs before the trap
+;;; tables are restored, so nothing here may allocate or trap.
+
 (define (warm-boot)
-  (%write-char #\W)
-  (%write-char #\a)
-  (%write-char #\r)
-  (%write-char #\m)
-  (%write-char #\space)
-  (%write-char #\b)
-  (%write-char #\o)
-  (%write-char #\o)
-  (%write-char #\t)
-  (%write-char #\i)
-  (%write-char #\n)
-  (%write-char #\g)
-  (%write-char #\space)
-  (dolist (op warm-boot-actions)
-    (op)
-    (%write-char #\.)))
+  (let ((quiet (%embedded-program-char -1)))
+    (unless quiet
+      (%write-char #\W)
+      (%write-char #\a)
+      (%write-char #\r)
+      (%write-char #\m)
+      (%write-char #\space)
+      (%write-char #\b)
+      (%write-char #\o)
+      (%write-char #\o)
+      (%write-char #\t)
+      (%write-char #\i)
+      (%write-char #\n)
+      (%write-char #\g)
+      (%write-char #\space))
+    (dolist (op warm-boot-actions)
+      (op)
+      (unless quiet (%write-char #\.)))))
 
 
 (define (add-warm-boot-action op)

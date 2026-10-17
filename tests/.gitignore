@@ -5,3 +5,6 @@
 *.tmp
 *.bin
 compile-me-check/
+native-check/
+native-parity/
+standalone/

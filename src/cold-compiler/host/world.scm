@@ -154,7 +154,7 @@
 		 (ELSE
 		  (LET ((OP (MAKE (MIX-TYPES OC-MIXER (LIST OPEN-CODED-MIXIN OPERATION))
 				  (LIST (LIST (QUOTE STREAM-PRIMITIVE) N))
-				  (NTH (QUOTE (0 0 0 2 2 2 1 1 2 1 1 1 2 2 4)) N)
+				  (NTH (QUOTE (0 0 0 2 2 2 1 1 2 1 1 1 2 2 4 2 4 1)) N)
 				  1)))
 		    (SET! SP-ALIST (CONS (CONS N OP) SP-ALIST))
 		    OP)))))))
@@ -200,7 +200,7 @@
 (define compiler-files
   '("crunch" "mac-comp-stuff" "mac-compiler-nodes" "mac-compiler1"
     "mac-compiler2" "mac-compiler3" "mac-code" "assembler" "peephole"
-    "file-compiler" "compiler-exports"))
+    "file-compiler" "native-compiler" "compiler-exports"))
 
 ;;; Once make-locales.oak has made SYSTEM-LOCALE, move the proto
 ;;; locale's contents there and start using real locales.

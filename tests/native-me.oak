@@ -1,0 +1,30 @@
+;;; Functions for the native compiler test (native.test compiles this
+;;; with --compile-native and native-check.oak checks it): calls and
+;;; returns between native functions, deep recursion that flushes the
+;;; stacks, arithmetic that overflows into bignums through the trap
+;;; operations, continuations, errors, constants and globals.
+
+(define (count-up n) (if (= n 0) 0 (+ 1 (count-up (- n 1)))))
+(define (loop-down n acc) (if (= n 0) acc (loop-down (- n 1) (+ acc 1))))
+(define (fib n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))
+(define (tak x y z)
+  (if (not (< y x)) z
+      (tak (tak (- x 1) y z) (tak (- y 1) z x) (tak (- z 1) x y))))
+(define (sum-to n) (iterate aux ((i n) (s 0)) (if (= i 0) s (aux (- i 1) (+ s i)))))
+(define (my-length l) (if (null? l) 0 (+ 1 (my-length (cdr l)))))
+(define (make-list-n n) (if (= n 0) '() (cons n (make-list-n (- n 1)))))
+(define (my-car x) (car x))
+(define (add a b) (+ a b))
+(define (sub a b) (- a b))
+(define (less? a b) (< a b))
+(define (same? a b) (= a b))
+(define (callcc-test n)
+  (call/cc (lambda (k) (+ 1 (count-with-escape n k)))))
+(define (count-with-escape n k)
+  (if (= n 0) (k 'escaped) (+ 1 (count-with-escape (- n 1) k))))
+(define (two-args a b) (list a b))
+(define *counter* 0)
+(define (bump!) (set! *counter* (+ *counter* 1)) *counter*)
+(define (closure-maker x) (lambda (y) (+ x y)))
+(define (constants) (list "a string" 'a-symbol '(1 2 (3 4)) #\c 1000000000000 -5 #t '()))
+(define (fact n) (if (= n 0) 1 (* n (fact (- n 1)))))

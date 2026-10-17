@@ -105,7 +105,9 @@
   (load-code-segment
    locale
    (with-open-file (s (append file ".oa") in)
-     (check-bytecode-header s (append file ".oa"))
+     (for-each (lambda (module)
+		 (load-native-module (native-module-path file module)))
+	       (check-bytecode-header s (append file ".oa")))
      (let ((segment (make-oa-list (read-oaf-list s))))
        ;; The object has to be the whole file.  A truncation that
        ;; happened to land where every bracket was already closed would
@@ -118,21 +120,170 @@
 ;;; Read the ";oaklisp-bytecode ..." header line, if any, at the start
 ;;; of a .oa file, and complain if it is for an incompatible
 ;;; architecture.  Files without a header are legacy files, assumed
-;;; to be compatible.  Other leading comment lines are skipped.
+;;; to be compatible.  Return the native modules named by
+;;; ";oaklisp-native ..." lines.  Other leading comment lines are
+;;; skipped.
 
 (define (check-bytecode-header stream name)
-  (iterate aux ()
+  (iterate aux ((modules '()))
     (skip-whitespace stream)
-    (when (eq? (peek-char stream) #\;)
-      (let ((line (read-comment-line stream)))
-	(cond ((parse-bytecode-header line)
-	       => (lambda (arch)
-		    (unless (bytecode-compatible? arch host-architecture)
-		      (error "~A was compiled for architecture ~A, incompatible with this ~A system."
-			     name
-			     (bytecode-architecture-name arch)
-			     (architecture-name host-architecture)))))))
-      (aux))))
+    (cond ((eq? (peek-char stream) #\;)
+	   (let ((line (read-comment-line stream)))
+	     (cond ((parse-bytecode-header line)
+		    => (lambda (arch)
+			 (unless (bytecode-compatible? arch host-architecture)
+			   (error "~A was compiled for architecture ~A, incompatible with this ~A system."
+				  name
+				  (bytecode-architecture-name arch)
+				  (architecture-name host-architecture)))
+			 (aux modules)))
+		   ((parse-native-header line)
+		    => (lambda (module) (aux (cons module modules))))
+		   (else (aux modules)))))
+	  (else (reverse! modules)))))
+
+;;; A native module is named relative to the directory of the .oa
+;;; file naming it.
+
+(define (native-module-path file module)
+  (if (eq? (nth module 0) #\/)
+      module
+      (iterate aux ((i (- (length file) 1)))
+	(cond ((= i -1) module)
+	      ((eq? (nth file i) #\/) (append (head file (+ i 1)) module))
+	      (else (aux (- i 1)))))))
+
+;;; An executable built by oakc (see oakc.in at the top level) carries
+;;; the .oa texts of its files in memory; %EMBEDDED-PROGRAM-CHAR hands
+;;; them out a character at a time, and the --load-embedded switch in
+;;; its built-in command line loads them here.  The native modules were
+;;; registered before boot, so the ";oaklisp-native" header lines are
+;;; skipped along with the rest.
+
+(define-instance embedded-program-stream type '(index) (list input-stream object))
+
+(add-method (initialize (embedded-program-stream index) self)
+  (set! index 0)
+  self)
+
+(add-method (really-read-char (embedded-program-stream index) self)
+  (let ((c (%embedded-program-char index)))
+    (if (null? c)
+	the-eof-token
+	(block (set! index (+ index 1))
+	       c))))
+
+(define (load-embedded-program)
+  (let ((s (make embedded-program-stream)))
+    (iterate aux ()
+      (skip-whitespace s)
+      (cond ((eq? (peek-char s) the-eof-token) 'loaded)
+	    ((eq? (peek-char s) #\;)
+	     (read-comment-line s)
+	     (aux))
+	    (else
+	     (load-code-segment #*current-locale
+				(make-oa-list (read-oaf-list s)))
+	     (aux))))))
+
+;;; A straight-C executable (oakc) carries no .oa text at all: at
+;;; build time BAKE-FILE links each compiled file into the world
+;;; without running it, collecting one operation per file, and the
+;;; world is then dumped into the executable.  At run time its built-in
+;;; command line calls RUN-BAKED-PROGRAM, which runs them in order.
+
+(define *baked-program* '())
+
+(define (bake-file the-locale file)
+  (let ((seg (with-open-file (s (append file ".oa") in)
+	       ;; The header lines are for the dynamic loader; the
+	       ;; executable's modules are linked in, so skip them.
+	       (iterate aux ()
+		 (skip-whitespace s)
+		 (when (eq? (peek-char s) #\;)
+		   (read-comment-line s)
+		   (aux)))
+	       (make-oa-list (read-oaf-list s)))))
+    (bind ((#*current-locale the-locale))
+      (set! *baked-program*
+	    (append *baked-program*
+		    (list (%install-method-with-env
+			   object
+			   (make operation)
+			   (link-code-segment the-locale seg)
+			   %empty-environment)))))
+    'baked))
+
+(define (run-baked-program)
+  (dolist (op *baked-program*)
+    (op)))
+
+;;; Dead code removal for a baked executable (oakc --strip,
+;;; CompilerPlan.md milestone 5): the locale tables are what keep every
+;;; global alive, so emptying them lets the pre-dump GC drop everything
+;;; the program, the boot path and the trap tables do not reach.  KEEP
+;;; names the globals the executable's command line still looks up
+;;; (RUN-BAKED-PROGRAM and whatever its --eval forms mention).  A
+;;; stripped world cannot look anything else up by name: EVAL of new
+;;; code, APROPOS and friends are gone, which is why this is opt-in and
+;;; refused alongside --interpreter.
+
+(define-instance %strip-locale operation)
+
+(add-method (%strip-locale (locale variable-table frozen-symbols macro-alist)
+			   self keep)
+  (let ((new (make-eq-hash-table)))
+    (dolist (sym keep)
+      (let ((cell (table-entry variable-table sym)))
+	(when cell
+	  (set! (table-entry new sym) cell))))
+    (set! variable-table new)
+    (set! frozen-symbols '())
+    (set! macro-alist '())
+    self))
+
+(define (strip-locales keep)
+  (dolist (loc (list system-locale compiler-locale scheme-locale
+		     user-locale oaklisp-locale))
+    (%strip-locale loc keep)))
+
+;;; Link-time method resolution for whole-program executables (oakc
+;;; --whole-program, CompilerPlan.md milestone 5): the generated
+;;; prelude binds the methods, types and bp offsets that statically
+;;; resolved call sites read through cells.  The search mirrors the
+;;; emulator's FIND-METHOD-TYPE-PAIR: the type's own alist, then the
+;;; supertypes, depth first and left to right.
+
+(define (%find-method-entry typ op)
+  (let ((hit (%assq op (%get-an-ivar type typ 'operation-method-alist))))
+    (if hit
+	(cons (cdr hit) typ)
+	(iterate aux ((supers (%get-an-ivar type typ 'supertype-list)))
+	  (cond ((null? supers) #f)
+		((%find-method-entry (car supers) op))
+		(else (aux (cdr supers))))))))
+
+(define (%method-for op typ)
+  (let ((hit (%find-method-entry typ op)))
+    (if hit
+	(car hit)
+	(error "No method for ~S on ~S at link time." op typ))))
+
+(define (%bp-offset-for op typ)
+  (let* ((hit (%find-method-entry typ op))
+	 (x (and hit (%assq (cdr hit) (get-bp-alist typ)))))
+    (if x (cdr x) 0)))
+
+;;; Load the shared object holding natively compiled code (see
+;;; native-compiler.oak).  When bootstrapping from an older world the
+;;; Makefile loads the freshly compiled streams.oa before compiling
+;;; this file, so that %STREAM-PRIMITIVE knows number 15.
+
+(define (load-native-module file)
+  (let ((file (#^string file)))
+    (unless ((%stream-primitive 15) (make-locative (%vref file 0))
+				    (length file))
+      (error "Unable to load native module ~A." file))))
 
 (define (read-comment-line stream)
   (iterate aux ((chars '()))
