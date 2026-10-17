@@ -140,6 +140,35 @@ make bench BENCHFLAGS=-i         # lowered executables
 (`bench-eval` fails by design in executables: run-time eval needs
 `--interpreter`.)
 
+### Rough timings
+
+`make bench` best-of-5 CPU milliseconds on one machine (x86-64,
+i9-14900KF, gcc 16.2, 2026-10-16); the speedup column is bytecode
+over the executable:
+
+| benchmark | bytecode | mixed (`-n`) | executable (`-x`) | speedup |
+|-----------|---------:|-------------:|------------------:|--------:|
+| bignum    |       50 |           52 |                20 |    2.5× |
+| compile   |       26 |           26 |                13 |    2.0× |
+| cons      |      116 |           63 |                64 |    1.8× |
+| dispatch  |      128 |           83 |                53 |    2.4× |
+| fib       |       60 |           18 |                17 |    3.5× |
+| format    |      111 |          112 |                44 |    2.5× |
+| hash      |      463 |          470 |               255 |    1.8× |
+| sort      |      194 |          187 |                75 |    2.6× |
+| strings   |      336 |          321 |               138 |    2.4× |
+| tak       |       55 |           16 |                15 |    3.7× |
+
+So, very roughly, a compiled executable runs **2–4× faster than
+bytecode, typically around 2.5×**.  Mixed mode only compiles the
+program itself, so it matches the executable where the time is in the
+program's own code (fib, tak) and matches bytecode where the time is
+in the still-bytecode library (format, hash, strings); the executable,
+whose runtime is native too, is faster across the board.  These are
+microbenchmarks — real programs land wherever their mix of program
+code, library code and allocation puts them — and `eval` (262 ms as
+bytecode) has no executable column by design.
+
 `make check` runs the native suites when the pieces exist:
 `native.test` (mixed mode), `native-parity.test` (every test program,
 both ways, byte-identical), `standalone.test` (executables: plain,
