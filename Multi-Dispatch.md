@@ -35,7 +35,11 @@ method that dispatched on the first.  `<` on fixnums is typical
 
 ```
 
-There are about thirty such sites in `src/world`, concentrated in
+(That was the code before this was built; the `bignum` clause now
+lives in `bignum.oak` and the `rational` one in `rational.oak`, which
+is half the point.)
+
+There were about thirty such sites in `src/world`, concentrated in
 `numbers.oak`, `bignum.oak`, `rational.oak` and `complex.oak`, plus a
 scattering of `is-a?` chains elsewhere.  Each has the same defects:
 the cases for one operation are gathered in one place instead of
@@ -390,33 +394,69 @@ compiler can evaluate.
 
 ## 8. Changes by file
 
-- `src/world/macros0.oak`, `src/world/scheme-macros.oak` — the
-  `add-method` expanders learn the grammar.  There are two of them,
-  since `scheme-locale` gives dotted parameter lists their R3RS
-  meaning; they should share a parser.
+What it came to, as built:
+
 - `src/world/mac-compiler1.oak`, `mac-compiler-nodes.oak`,
-  `mac-compiler3.oak`, `mac-compiler2.oak`, `mac-code.oak` — the
+  `mac-compiler2.oak`, `mac-compiler3.oak`, `mac-code.oak` — the
   method node carries per-parameter specializers and local/slot pairs
-  instead of a flat ivar list; `ivar-heuristic` and `munch-together`
-  read the slot side, the contour binds the local side.
+  instead of a flat ivar list; `ivar-heuristic` and the code block
+  read the slot side, the contour binds the local side.  The
+  `add-method` expanders did not have to learn anything: a group in a
+  later parameter position was a syntax error before, so the parsing
+  all happens in `code->ast`.
+- `src/world/multi-method.oak` — new: the `%multi-method` type, the
+  selection rule, the cache, the installer the compiler emits, and
+  the locative by which a method reaches a slot of a parameter after
+  the first.  It is loaded first in layer 2 and uses nothing defined
+  after it, so the rest of the cold world can dispatch on several
+  arguments.
 - `src/world/kernel1-install.oak`, `src/world/code-vector.oak` — both
-  `%install-method-with-env` definitions take the specializer tuple
-  and the verified triples, and build or extend a `%multi-method`.
-- `src/world/kernel0.oak`, `src/world/subprimitive.oak` — the
-  operation grows two slots.
-- `src/emulator/data.h`, `dispatch.c`, `dispatch.h`, `loop.c` — the
-  tuple cache and the multimethod branch of the search.
-- `src/emulator/oak-native.h`, `native-ops.c` — the site cache keys on
-  a tuple, or declines to cache multi operations at first.
-- `src/world/native-compiler.oak`, `src/world/load-file.oak` — static
-  resolution either accounts for multimethods or refuses to resolve
-  them; refusing is correct and is the first step.
-- `src/cold-compiler/host/kernel.scm` — the same dispatch rule, which
-  must land before any world source uses a multimethod.
-- `src/world/has-method.oak`, `anonymous.oak`, `op-error.oak`, and the
-  `describe`/`trace`/`apropos` paths — everything that walks an
-  `operation-method-alist` must expect a `%multi-method` in it.
-- `doc/lim/methods.tex`, `doc/lang`, `doc/summary` — documentation.
+  `%install-method-with-env` definitions hand a plain method to an
+  existing `%multi-method` as its fallback entry rather than
+  overwriting it.
+- `src/world/tag-trap.oak` — hooks up a FUNCALL trap handler for the
+  multimethod case straight away; `op-error.oak`, four layers later,
+  replaces it with `failed-funcall`, which does that and everything
+  else.
+- `src/world/consume.oak`, `interpreter.oak` — `apply` moves to sit
+  beside `listify-args`, because that trap handler needs it.
+- `src/emulator/data.h`, `data.c`, `dispatch.c`, `dispatch.h`,
+  `loop.c`, `gc.c`, `gc-ms.c`, `native-ops.c`, `oak-native.h` — the
+  `%multi-method` type register, `is_method()` in place of the old
+  `== e_nil` test, and the tuple cache the FUNCALL case reads.  The
+  operation did not grow any slots: the cache lives in the
+  `%multi-method`, so `%simple-operation-length` is still 5 and
+  `tool.oak`, `oak-cold-linker.c` and the cold world layout are
+  untouched.
+- `src/world/native-compiler.oak` — declines to resolve a
+  multimethod statically, which is correct and costs a trap.
+- `src/cold-compiler/host/kernel.scm`, `translate.scm`, `world.scm` —
+  the same rule again in Scheme.  The host installs methods as host
+  procedures rather than as `%method` objects, so it cannot use
+  multi-method.oak; it needs its own `<mm>`, applicability,
+  specificity and slot locatives, and `(var slot)` aliasing besides.
+  Nothing from source can build without this.
+- `src/world/numbers.oak`, `bignum.oak`, `rational.oak`,
+  `complex.oak`, `subtypes.oak`, `strings.oak`, `mapping.oak`,
+  `sequences.oak`, `promise.oak` — the conversion, §9 step 6.
+- `doc/lang/methods.tex`, `doc/lim/methods.tex`,
+  `doc/summary/OaklispSummary.tex` — documentation.
+
+Three things about the cold world had to be learned the hard way, and
+they are the reason step 6 was not simply a matter of editing
+`numbers.oak`:
+
+- A file compiled into the cold world may call a multimethod long
+  before `op-error.oak` exists, and a cache miss has to reach
+  Oaklisp.  Hence the early trap handler, and hence `apply` moving.
+- Anything on the dispatch path must be defined before the first file
+  that dispatches.  `multi-method.oak` therefore writes out its own
+  `reverse`, `append`, `memq`, `assq` and `any?` rather than waiting
+  for `mapping.oak`.
+- `object` is not a supertype of `operation`: the kernel builds the
+  type of an operation by hand.  A specializer of `object` stands for
+  a parameter nobody specialized, so it is compared for rather than
+  asked `subtype?`.
 
 ## 9. Order of work
 
@@ -451,12 +491,18 @@ Each step builds, bootstraps, and passes `make check` by itself.
    vector, memoized per tuple.  This is how CLOS does it and it needs
    no VM change; the 3-word context frame stays 3 words.
 6. **Convert the world**: the comparison and arithmetic operators in
-   `numbers.oak`, `bignum.oak`, `rational.oak`, `complex.oak`.  A
-   source file using a multimethod cannot be compiled by a bootstrap
-   world that lacks the installer, so this waits a release or uses the
-   `OAKEXTRALOAD` preload already in `src/world/Makefile.am`.  Cold
-   files stay single-dispatch.
-7. **Documentation and tests.**
+   `numbers.oak`, `bignum.oak`, `rational.oak`, `complex.oak`.
+   *Done*, cold files included -- see the three cold world problems
+   at the end of §8 -- and with it the comparisons in `subtypes.oak`,
+   `strings.oak`, `mapping.oak` and `sequences.oak`, which were
+   asymmetric for want of a second dispatch: `(eqv? (delay 3) 3)` was
+   `#t` and `(eqv? 3 (delay 3))` was `#f`, and `(= 3 "a")` signalled
+   while `(= "a" 3)` quietly said no.  A bootstrap world from before
+   this cannot compile these sources, since it has no installer to
+   emit a call to; building from source with Guile, from prebuilt
+   bytecode, or from a current world all work, so this is a release
+   boundary and not a wall.
+7. **Documentation and tests.**  *Done.*
 
 ## 10. Benchmarks
 
@@ -511,6 +557,15 @@ dispatch.  Before the cache it was 2995 ms, forty times a plain
 dispatch, which is what the slow path costs: a trap, the arguments
 listified, the precedence list rebuilt, and the applicable entries
 sorted, on every call.
+
+### After the conversion
+
+The numeric tower pays nothing for being written this way.  The
+`bignum` benchmark, which is where the converted arithmetic actually
+runs, is 150 ms before the conversion and 149 ms after, over four
+alternating runs; everything else in `make bench` moves less than the
+run-to-run spread on this machine, which turns out to be as much as
+thirty percent for the smaller benchmarks.
 
 ## References
 

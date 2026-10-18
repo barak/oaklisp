@@ -131,10 +131,13 @@ alist.
 
 Selection runs once per tuple of argument types.  The
 \df{\%multi-method} holds a short list of cache lines, each the types
-of the arguments after the first paired with the method and its
-instance variable frame offset, and \df{FUNCALL} walks that list and
-jumps on a hit; only a miss traps, and the selection that follows adds
-the line it computed.  Eight lines are kept, newest first, and adding
+of the arguments --- the first argument's among them, because the
+frame offset stored beside it was computed from that type and two
+subtypes of the home type need not put the home type's instance
+variables in the same place --- paired with the method and that
+offset, and \df{FUNCALL} walks that list and jumps on a hit; only a
+miss traps, and the selection that follows adds the line it
+computed.  Eight lines are kept, newest first, and adding
 or replacing a method empties the cache.  The operation's one-entry
 cache holds the \df{\%multi-method} where it would hold a method, so a
 repeated first argument type skips the search as well.
@@ -150,6 +153,29 @@ once on the way into the method and turns each use of the slot's name
 into the contents of it, so a method that names no such slot pays
 nothing, and one that does pays the two lookups once per call however
 often it reads or assigns the slot.
+
+Three things follow from the cold world being able to dispatch this
+way, since \df{multi-method.oak} is loaded at the head of layer 2 and
+\df{numbers.oak} and the files after it use multimethods.  Nothing on
+the dispatch path may call anything defined later, so the file writes
+out the few list operations it needs rather than waiting for
+\df{mapping.oak}.  A cache miss has to reach Oaklisp long before
+\df{op-error.oak} installs \df{failed-funcall}, so \df{tag-trap.oak}
+puts a handler for the multimethod case in slots 21 and 22 as soon as
+there is a table, and \df{apply}, which that handler needs, lives in
+\df{consume.oak} beside \df{listify-args}.  And a specializer of
+\df{object} is compared for rather than asked \df{subtype?}: it
+stands for a parameter nobody specialized and so matches anything,
+including an operation, whose type the kernel builds by hand without
+making it a subtype of \df{object}.
+
+Writing \lpar object\rpar\ for the first parameter of a method is not
+quite the same as leaving the group out, although the two mean the
+same thing.  The \df{add-method} expander supplies a quoted type
+object when there is no group, which is what \df{lambda} wants and
+what the fasl dumper cannot write; a file compiled to a \df{.oa} must
+therefore say \lpar object\rpar, so that the type is named by a
+global reference instead.
 
 \subsection{Adding Methods}
 

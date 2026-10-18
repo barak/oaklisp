@@ -103,6 +103,21 @@ totally orders its ancestors, so at the parameter where two methods
 differ one of them always comes first, and comparing the parameters
 left to right therefore picks out exactly one most specific method.
 
+A promise in any dispatched position is forced and the call retried,
+which is how a method written this way keeps the behaviour of the
+\df{fselect-type} it replaces.  Forcing happens when the method that
+would otherwise be chosen matched the promise only through
+\df{object}, so a method that really wants a promise still gets one.
+This is what makes the equality and comparison operators symmetric:
+\texttt{(eqv? (delay 3) 3)} and \texttt{(eqv? 3 (delay 3))} are both
+true, where before the second was false.
+
+The numeric tower is written this way.  Each type's file now carries
+the rules that mention it --- \df{bignum.oak} says what \texttt{(< fixnum
+bignum)} means, rather than \df{numbers.oak} naming a type that does
+not exist yet --- and comparing values of unrelated kinds is the same
+error whichever side each is on.
+
 
 \section{Scoping}
 

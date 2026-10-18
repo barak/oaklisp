@@ -285,6 +285,8 @@
 (add-method (home-obj x (circ) y) 'shaped)
 (check "object as the home type"
        (list (home-obj 1 2) (home-obj 1 c)) '(fallback shaped))
+
+
 ;;; The method chosen is remembered by the tuple of argument types,
 ;;; the first argument's among them: the instance variable frame
 ;;; offset kept beside it was computed from that type, and these two
