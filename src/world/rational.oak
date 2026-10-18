@@ -81,71 +81,82 @@
      (error "Unknown fraction printing style ~S." #*fraction-display-style))))
 
 
-(add-method (plus/2 (fraction the-numerator the-denominator) x y)
-  (fselect-type y
-    ((rational)
-     	 (let ((numy (numerator y))
-	       (deny (denominator y)))
-	   (fx/ (+ (* the-numerator deny) (* numy the-denominator))
-		(* the-denominator deny))))
-    ((complex)
-     (plus/2 y x))
-    (otherwise
-     (error "Illegal second arg: (%PLUS ~A ~A)~%" x y))))
+(add-method (plus/2 (fraction (xnum the-numerator) (xden the-denominator)) x
+		    (fraction (ynum the-numerator) (yden the-denominator)) y)
+  (fx/ (+ (* xnum yden) (* ynum xden))
+       (* xden yden)))
 
-(add-method (times/2 (fraction the-numerator the-denominator) x y)
-  (fselect-type y
-    ((rational)
-     (fx/ (* the-numerator (numerator y))
-	  (* the-denominator (denominator y))))
-    ((complex)
-     (times/2 y x))
-    (otherwise
-     (error "Illegal second arg: (%TIMES ~A ~A)" x y))))
+(add-method (plus/2 (fraction the-numerator the-denominator) x (rational) y)
+  (let ((numy (numerator y))
+	(deny (denominator y)))
+    (fx/ (+ (* the-numerator deny) (* numy the-denominator))
+	 (* the-denominator deny))))
 
+(add-method (plus/2 (fraction) x (complex) y) (plus/2 y x))
+
+(add-method (plus/2 (fraction) x y)
+  (error "Illegal second arg: (%PLUS ~A ~A)~%" x y))
+
+(add-method (times/2 (fraction (xnum the-numerator) (xden the-denominator)) x
+		     (fraction (ynum the-numerator) (yden the-denominator)) y)
+  (fx/ (* xnum ynum) (* xden yden)))
+
+(add-method (times/2 (fraction the-numerator the-denominator) x (rational) y)
+  (fx/ (* the-numerator (numerator y))
+       (* the-denominator (denominator y))))
+
+(add-method (times/2 (fraction) x (complex) y) (times/2 y x))
+
+(add-method (times/2 (fraction) x y)
+  (error "Illegal second arg: (%TIMES ~A ~A)" x y))
+
+
+(add-method (/ (rational) x (rational) y)
+  (fx/ (* (numerator x) (denominator y))
+       (* (denominator x) (numerator y))))
+
+(add-method (/ (rational) x (complex) y) (/r y x))
 
 (add-method (/ (rational) x y)
-  (fselect-type y
-    ((rational) (fx/ (* (numerator x) (denominator y))
-		     (* (denominator x) (numerator y))))
-    ((complex) (/r y x))
-    (otherwise (error "Illegal second arg: (/ ~A ~A)" x y))))
+  (error "Illegal second arg: (/ ~A ~A)" x y))
+
+(add-method (/r (rational) x (integer) y)
+  (fx/ (* (denominator x) y)
+       (numerator x)))
+
+(add-method (/r (rational) x (rational) y)
+  (fx/ (* (denominator x) (numerator y))
+       (* (numerator x) (denominator y))))
 
 (add-method (/r (rational) x y)
-  (fselect-type y
-    ((integer)
-     (fx/ (* (denominator x) y)
-	  (numerator x)))
-    ((rational)
-     (fx/ (* (denominator x) (numerator y))
-	  (* (numerator x) (denominator y))))
-    (otherwise (error "Illegal second arg: (/ ~A ~A)" x y))))
+  (error "Illegal second arg: (/ ~A ~A)" x y))
 
 (add-method (minus (fraction the-numerator the-denominator) self)
   ;; Make the fraction directly, since no normalization will be needed.
   (make fraction (- the-numerator) the-denominator))
 
-(add-method (subtract/2 (fraction the-numerator the-denominator) x y)
-  (fselect-type y
-    ((rational)
-     (let ((numy (numerator y))
-	   (deny (denominator y)))
-       (fx/ (- (* the-numerator deny) (* numy the-denominator))
-	    (* the-denominator deny))))
-    (otherwise
-     (^super number subtract/2 x y))))
+(add-method (subtract/2 (fraction the-numerator the-denominator) x
+			(rational) y)
+  (let ((numy (numerator y))
+	(deny (denominator y)))
+    (fx/ (- (* the-numerator deny) (* numy the-denominator))
+	 (* the-denominator deny))))
+
+(add-method (subtract/2 (fraction) x y)
+  (^super number subtract/2 x y))
 
 ;;;;;;;;;;;;;;;;;;;;;
 ;;; Comparison
 ;;;;;;;;;;;;;;;;;;;;;
 
-(add-method (= (fraction the-numerator the-denominator) x y)
-  (fselect-type y
-    ((fraction)
-     (and (= the-numerator (numerator y))
-	  (= the-denominator (denominator y))))
-    ((number) #f)
-    (otherwise (error "Illegal second arg (= ~D ~D)." x y))))
+(add-method (= (fraction (xnum the-numerator) (xden the-denominator)) x
+	       (fraction (ynum the-numerator) (yden the-denominator)) y)
+  (and (= xnum ynum) (= xden yden)))
+
+(add-method (= (fraction) x (number) y) #f)
+
+(add-method (= (fraction) x y)
+  (error "Illegal second arg (= ~D ~D)." x y))
 
 
 ;;; EQUAL? on fractions is the method above, so it compares values while
@@ -159,11 +170,19 @@
   (bit-xor (rot-left (hash-key the-numerator) 13)
 	   (hash-key the-denominator)))
 
-(add-method (< (fraction the-numerator the-denominator) x y)
-  (fselect-type y
-    ((rational) (< (* the-numerator (denominator y))
-		   (* (numerator y) the-denominator)))
-    (otherwise (error "Illegal second arg (< ~D ~D)." x y))))
+;;; A fraction as the second argument of a fixnum comparison.  This
+;;; was a clause of an FSELECT-TYPE in numbers.oak, which had to name
+;;; RATIONAL's only non-integer subtype before there was one.
+
+(add-method (< (fixnum) x (rational) y)
+  (< (* x (denominator y)) (numerator y)))
+
+(add-method (< (fraction the-numerator the-denominator) x (rational) y)
+  (< (* the-numerator (denominator y))
+     (* (numerator y) the-denominator)))
+
+(add-method (< (fraction) x y)
+  (error "Illegal second arg (< ~D ~D)." x y))
 
 ;;; For speed:
 

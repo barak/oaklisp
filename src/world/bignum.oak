@@ -133,12 +133,14 @@
   (maybe-make-bignum (- sign) digits))
 
 
-(add-method (= (bignum sign digits) x y)
-  (fselect-type y
-    ((bignum) (and (= sign (bignum-sign y))
-		   (equal? digits (bignum-digits y))))
-    ((number) #f)
-    (otherwise (error "Domain error in second arg (= ~D ~D)." x y))))
+(add-method (= (bignum (xsign sign) (xdigits digits)) x
+	       (bignum (ysign sign) (ydigits digits)) y)
+  (and (= xsign ysign) (equal? xdigits ydigits)))
+
+(add-method (= (bignum) x (number) y) #f)
+
+(add-method (= (bignum) x y)
+  (error "Domain error in second arg (= ~D ~D)." x y))
 
 
 ;;; EQUAL? on two bignums is the method above, so it compares values;
@@ -161,101 +163,141 @@
 
 
 
-(add-method (< (bignum sign digits) x y)
-  (let ((ytype (get-type y))
-	(xneg (= sign -1)))
-    (if (eq? ytype fixnum) xneg
-	(let ((yneg (negative? y)))
-	  (cond ((and xneg (not yneg)) #t)
-		((and (not xneg) yneg) #f)
-		((eq? ytype bignum)
-		 ;; Same sign, so compare magnitudes -- the other way
-		 ;; round when both are negative.  Note that this has to
-		 ;; stay a strict comparison in both directions: taking
-		 ;; the complement of |X| < |Y| for the negative case
-		 ;; would answer #t for two equal negative bignums, and
-		 ;; QUOTIENTM's (> (* a y) x) test would then take an
-		 ;; exact division for an inexact one and round down
-		 ;; once too often.
-		 (let ((ydigits (bignum-digits y)))
-		   (if xneg
-		       (digitlist-< ydigits digits)
-		       (digitlist-< digits ydigits))))
-		((subtype? ytype rational)
-		 (< (* x (denominator y)) (numerator y)))
-		(else
-		 (error "Domain error in second argument (< ~S ~S)." x y)))))))
+;;; A bignum always exceeds every fixnum in magnitude, so only its
+;;; sign matters here.
+
+(add-method (< (bignum sign) x (fixnum) y)
+  (= sign -1))
+
+(add-method (< (bignum (xsign sign) (xdigits digits)) x
+	       (bignum (ysign sign) (ydigits digits)) y)
+  (cond ((= xsign ysign)
+	 ;; Same sign, so compare magnitudes -- the other way round
+	 ;; when both are negative.  Note that this has to stay a
+	 ;; strict comparison in both directions: taking the
+	 ;; complement of |X| < |Y| for the negative case would answer
+	 ;; #t for two equal negative bignums, and QUOTIENTM's
+	 ;; (> (* a y) x) test would then take an exact division for
+	 ;; an inexact one and round down once too often.
+	 (if (= xsign -1)
+	     (digitlist-< ydigits xdigits)
+	     (digitlist-< xdigits ydigits)))
+	(else (= xsign -1))))
+
+(add-method (< (bignum) x (rational) y)
+  (< (* x (denominator y)) (numerator y)))
+
+(add-method (< (bignum) x y)
+  (error "Domain error in second argument (< ~S ~S)." x y))
 
 
 
-(add-method (plus/2 (bignum sign digits) x y)
-  (fselect-type y
-    ((integer)
-     (let ((ydigits (bignum-digits y))
-	   (ysign (bignum-sign y)))
-       (cond ((= sign ysign)
-	      (maybe-make-bignum sign (sum-digitlists digits ydigits)))
-	     ((digitlist-< ydigits digits)
-	      (maybe-make-bignum sign (diff-digitlists digits ydigits)))
-	     (else
-	      (maybe-make-bignum ysign (diff-digitlists ydigits digits))))))
-    ((number) (plus/2 y x))
-    (otherwise (error "Nonnumeric addition (plus/2 ~S ~S)" x y))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; A bignum as the second argument of a fixnum operation.
+;;;
+;;; These used to be clauses of an FSELECT-TYPE in numbers.oak, which
+;;; had to name BIGNUM before there was one.  They belong here, with
+;;; the type.
+
+(add-method (< (fixnum) x (bignum) y)
+  (not (negative? y)))
+
+;;; A bignum divisor always exceeds a fixnum dividend in magnitude, so
+;;; the truncated quotient is zero and the remainder is the dividend
+;;; itself.
+
+(add-method (remainder (fixnum) x (bignum) y) x)
+
+(add-method (quotient (fixnum) x (bignum) y) 0)
+
+;;; Likewise the floored remainder, which differs from the truncated
+;;; one only when the signs disagree, and the floored quotient, which
+;;; is -1 exactly when the signs differ and X isn't zero.
+
+(add-method (modulo (fixnum) x (bignum) y)
+  (cond ((zero? x) 0)
+	((negative? x) (if (negative? y) x (+ x y)))
+	(else (if (negative? y) (+ x y) x))))
+
+(add-method (quotientm (fixnum) x (bignum) y)
+  (cond ((zero? x) 0)
+	((negative? x) (if (negative? y) 0 -1))
+	(else (if (negative? y) -1 0))))
+
+
+(add-method (plus/2 (bignum sign digits) x (integer) y)
+  (let ((ydigits (bignum-digits y))
+	(ysign (bignum-sign y)))
+    (cond ((= sign ysign)
+	   (maybe-make-bignum sign (sum-digitlists digits ydigits)))
+	  ((digitlist-< ydigits digits)
+	   (maybe-make-bignum sign (diff-digitlists digits ydigits)))
+	  (else
+	   (maybe-make-bignum ysign (diff-digitlists ydigits digits))))))
+
+(add-method (plus/2 (bignum) x (number) y) (plus/2 y x))
+
+(add-method (plus/2 (bignum) x y)
+  (error "Nonnumeric addition (plus/2 ~S ~S)" x y))
 
 
 
 
 
-(add-method (times/2 (bignum sign digits) x y)
+(add-method (times/2 (bignum sign digits) x (fixnum) y)
   (if (zero? y)
       0
-      (fselect-type y
-	((fixnum)
-	 (let ((ydigits (bignum-digits y))
-	       (ysign (bignum-sign y)))
-	   (maybe-make-bignum (fx-times sign ysign)
-			      (if (< (if (negative? y) (- y) y) bignum-base)
-				  (simple-multiply-step (car ydigits) digits)
-				  (multiply-digitlists digits ydigits)
-				  ))))
-	((integer)
-	 (let ((ydigits (bignum-digits y))
-	       (ysign (bignum-sign y)))
-	   (maybe-make-bignum (fx-times sign ysign)
-			      ;;(mult-digitlists digits ydigits)
-			      (multiply-digitlists digits ydigits)
-			      )))
-	((number) (times/2 y x))
-	(otherwise (error "Nonnumeric argument (TIMES/2 ~S ~S)" x y)))))
+      (let ((ydigits (bignum-digits y))
+	    (ysign (bignum-sign y)))
+	(maybe-make-bignum (fx-times sign ysign)
+			   (if (< (if (negative? y) (- y) y) bignum-base)
+			       (simple-multiply-step (car ydigits) digits)
+			       (multiply-digitlists digits ydigits)
+			       )))))
+
+;;; A bignum is never zero, so only the fixnum case above needs the
+;;; check for it.
+
+(add-method (times/2 (bignum sign digits) x (integer) y)
+  (let ((ydigits (bignum-digits y))
+	(ysign (bignum-sign y)))
+    (maybe-make-bignum (fx-times sign ysign)
+		       ;;(mult-digitlists digits ydigits)
+		       (multiply-digitlists digits ydigits)
+		       )))
+
+(add-method (times/2 (bignum) x (number) y)
+  (if (zero? y) 0 (times/2 y x)))
+
+(add-method (times/2 (bignum) x y)
+  (error "Nonnumeric argument (TIMES/2 ~S ~S)" x y))
 
 
 
-(add-method (quotient (bignum sign digits) x y)
-  (fselect-type y
-    ((integer)
-     (let ((ydigits (bignum-digits y))
-	   (ysign (bignum-sign y)))
-       (maybe-make-bignum
-	(fx-times sign ysign)
-	(first (quorem-digitlists digits ydigits))
-	)))
-    (otherwise (error "bad second argument (QUOTIENT ~S ~S)" x y))))
-
-
-
-(add-method (remainder (bignum sign digits) x y)
-  (fselect-type y
-    ((integer)
-     (let ((ydigits (bignum-digits y))
-	   (ysign (bignum-sign y)))
-       (maybe-make-bignum
-	sign
-	(second (quorem-digitlists digits ydigits))
-	)))
-    (otherwise
-     ;;(error "bad second argument (REMAINDER ~S ~S)" x y)
-     (^super integer remainder x y)
+(add-method (quotient (bignum sign digits) x (integer) y)
+  (let ((ydigits (bignum-digits y))
+	(ysign (bignum-sign y)))
+    (maybe-make-bignum
+     (fx-times sign ysign)
+     (first (quorem-digitlists digits ydigits))
      )))
+
+(add-method (quotient (bignum) x y)
+  (error "bad second argument (QUOTIENT ~S ~S)" x y))
+
+
+
+(add-method (remainder (bignum sign digits) x (integer) y)
+  (let ((ydigits (bignum-digits y))
+	(ysign (bignum-sign y)))
+    (maybe-make-bignum
+     sign
+     (second (quorem-digitlists digits ydigits))
+     )))
+
+(add-method (remainder (bignum) x y)
+  ;;(error "bad second argument (REMAINDER ~S ~S)" x y)
+  (^super integer remainder x y))
 
 
 
@@ -983,33 +1025,35 @@
 ;;; control got here in the first place, so calling either of them on
 ;;; the shifting path would trap straight back and never terminate.
 
+(add-method (ash-left (integer) x (fixnum) y)
+  (cond ((zero? y) x)
+	((positive? y) (* x (expt 2 y)))
+	((most-negative-fixnum? y) (if (negative? x) -1 0))
+	(else (quotientm x (expt 2 (- y))))))
+
+(add-method (ash-left (integer) x (bignum) y)
+  (cond ((negative? y) (if (negative? x) -1 0))
+	((zero? x) 0)
+	(else (error "Shift count too large: (ASH-LEFT ~D ~D).~%" x y))))
+
 (add-method (ash-left (integer) x y)
-  (fselect-type y
-    ((fixnum)
-     (cond ((zero? y) x)
-	   ((positive? y) (* x (expt 2 y)))
-	   ((most-negative-fixnum? y) (if (negative? x) -1 0))
-	   (else (quotientm x (expt 2 (- y))))))
-    ((bignum)
-     (cond ((negative? y) (if (negative? x) -1 0))
-	   ((zero? x) 0)
-	   (else (error "Shift count too large: (ASH-LEFT ~D ~D).~%" x y))))
-    (otherwise (error "Illegal second arg (ASH-LEFT ~D ~D).~%" x y))))
+  (error "Illegal second arg (ASH-LEFT ~D ~D).~%" x y))
+
+(add-method (ash-right (integer) x (fixnum) y)
+  (cond ((zero? y) x)
+	((positive? y) (quotientm x (expt 2 y)))
+	((most-negative-fixnum? y)
+	 (if (zero? x)
+	     0
+	     (error "Shift count too large: (ASH-RIGHT ~D ~D).~%" x y)))
+	(else (* x (expt 2 (- y))))))
+
+(add-method (ash-right (integer) x (bignum) y)
+  (cond ((not (negative? y)) (if (negative? x) -1 0))
+	((zero? x) 0)
+	(else (error "Shift count too large: (ASH-RIGHT ~D ~D).~%" x y))))
 
 (add-method (ash-right (integer) x y)
-  (fselect-type y
-    ((fixnum)
-     (cond ((zero? y) x)
-	   ((positive? y) (quotientm x (expt 2 y)))
-	   ((most-negative-fixnum? y)
-	    (if (zero? x)
-		0
-		(error "Shift count too large: (ASH-RIGHT ~D ~D).~%" x y)))
-	   (else (* x (expt 2 (- y))))))
-    ((bignum)
-     (cond ((not (negative? y)) (if (negative? x) -1 0))
-	   ((zero? x) 0)
-	   (else (error "Shift count too large: (ASH-RIGHT ~D ~D).~%" x y))))
-    (otherwise (error "Illegal second arg (ASH-RIGHT ~D ~D).~%" x y))))
+  (error "Illegal second arg (ASH-RIGHT ~D ~D).~%" x y))
 
 ;;; eof
