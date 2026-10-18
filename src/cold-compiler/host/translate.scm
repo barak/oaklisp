@@ -226,6 +226,7 @@
 	  ((eq? (car b) 'ivar)
 	   (list 'vector-ref (list 'oak-obj-v (mctx-self ctx))
 		 (list '+ (mctx-bp ctx) (list 'vector-ref (mctx-ivx ctx) (cdr b)))))
+	  ((eq? (car b) 'slot) (list 'loc-contents (cdr b)))
 	  (else (oak-host-error "bad binding ~S" b)))))
 
 (define (translate-set sym value-code env ctx locale)
@@ -244,6 +245,7 @@
 			 (list '+ (mctx-bp ctx) (list 'vector-ref (mctx-ivx ctx) (cdr b)))
 			 g)
 		   g)))
+	  ((eq? (car b) 'slot) (list 'loc-set-contents! (cdr b) value-code))
 	  (else (oak-host-error "bad binding ~S" b)))))
 
 (define (translate-make-locative sym env ctx locale)
@@ -260,6 +262,7 @@
 	  ((eq? (car b) 'ivar)
 	   (list 'make-slot-loc (mctx-self ctx)
 		 (list '+ (mctx-bp ctx) (list 'vector-ref (mctx-ivx ctx) (cdr b)))))
+	  ((eq? (car b) 'slot) (cdr b))
 	  (else (oak-host-error "bad binding ~S" b)))))
 
 ;;; Bind formals (possibly improper) to gensyms; returns (guile-formals . env).
@@ -276,26 +279,122 @@
 	     (loop (cdr f) (cons g gf) (cons (cons (car f) (cons 'local g)) env))))
 	  (else (oak-host-error "Bad formals ~S" formals)))))
 
+;;; A method parameter may carry a (TYPE SLOT ...) group before its
+;;; name, and a slot in such a group may be written (VAR SLOT) to call
+;;; it something else.  See Multi-Dispatch.md and the same parsing in
+;;; src/world/mac-compiler1.oak.
+
+(define (ivar-spec-slot spec)
+  (cond ((symbol? spec) spec)
+	((and (pair? spec) (pair? (cdr spec)) (null? (cddr spec))
+	      (symbol? (car spec)) (symbol? (cadr spec)))
+	 (cadr spec))
+	(else (oak-host-error "Malformed instance variable ~S" spec))))
+
+(define (ivar-spec-var spec) (if (symbol? spec) spec (car spec)))
+
+;;; ARGS as (GROUP . VARIABLE) pairs, GROUP being () for a parameter
+;;; with no group before it.  A rest name is left to BIND-FORMALS.
+
+(define (method-param-list args)
+  (let loop ((l args) (acc '()))
+    (cond ((or (null? l) (symbol? l)) (reverse acc))
+	  ((symbol? (car l)) (loop (cdr l) (cons (cons '() (car l)) acc)))
+	  ((pair? (car l))
+	   (if (or (null? (cdr l)) (not (symbol? (cadr l))))
+	       (oak-host-error "Type group ~S has no parameter after it" (car l))
+	       (loop (cddr l) (cons (cons (car l) (cadr l)) acc))))
+	  (else (oak-host-error "~S is not a parameter" (car l))))))
+
+;;; ARGS with the groups taken out, keeping any improper tail.
+
+(define (method-formals args)
+  (let loop ((l args) (acc '()))
+    (cond ((null? l) (reverse acc))
+	  ((symbol? l) (append (reverse acc) l))
+	  ((symbol? (car l)) (loop (cdr l) (cons (car l) acc)))
+	  (else (loop (cddr l) (cons (cadr l) acc))))))
+
+;;; The specializers of the parameters after the first: an
+;;; unspecialized one is OBJECT, and trailing unspecialized ones are
+;;; dropped, so a method written the way methods have always been
+;;; written dispatches on one argument as it always has.
+
+(define (method-specializers params)
+  (let trim ((l (reverse (map car params))))
+    (cond ((null? l) '())
+	  ((null? (car l)) (trim (cdr l)))
+	  (else (map (lambda (group) (if (null? group) #f (car group)))
+		     (reverse l))))))
+
+;;; The slots the parameters after the first open, as (VAR ARGUMENT
+;;; TYPE-FORM SLOT).
+
+(define (method-outer-slots params)
+  (let loop ((l params) (acc '()))
+    (cond ((null? l) (reverse acc))
+	  ((null? (car (car l))) (loop (cdr l) acc))
+	  (else
+	   (loop (cdr l)
+		 (let slots ((specs (cdr (car (car l)))) (acc acc))
+		   (if (null? specs)
+		       acc
+		       (slots (cdr specs)
+			      (cons (list (ivar-spec-var (car specs))
+					  (cdr (car l))
+					  (car (car (car l)))
+					  (ivar-spec-slot (car specs)))
+				    acc)))))))))
+
 ;;; (%ADD-METHOD (op (type . ivars) . args) body)
 (define (translate-add-method form env ctx locale)
   (let* ((sig (cadr form))
 	 (op-form (car sig))
 	 (typ-form (car (cadr sig)))
-	 (ivars (cdr (cadr sig)))
-	 (args (cddr sig))
+	 (ivar-specs (cdr (cadr sig)))
+	 (ivars (map ivar-spec-slot ivar-specs))
+	 (ivar-names (map ivar-spec-var ivar-specs))
+	 (raw-args (cddr sig))
+	 (params (method-param-list raw-args))
+	 (rest-params (if (null? params) '() (cdr params)))
+	 (specializers (method-specializers rest-params))
+	 (outer-slots (method-outer-slots rest-params))
+	 (args (method-formals raw-args))
 	 (body (caddr form)))
-    (if (lambda-op-pattern? op-form typ-form ivars locale)
-	(list 'make-lambda-op (translate-method-lambda args '() body env ctx locale #f))
-	(let ((ivx (tr-gensym 'IVX)))
-	  (list 'oak-install-method!
-		(translate op-form env ctx locale)
-		(translate typ-form env ctx locale)
-		(list 'quote ivars)
-		(list 'lambda (list ivx)
-		      (translate-method-lambda args ivars body env ctx locale ivx)))))))
+    (cond
+     ((lambda-op-pattern? op-form typ-form ivars locale)
+      (list 'make-lambda-op
+	    (translate-method-lambda args '() '() outer-slots body
+				     env ctx locale #f)))
+     (else
+      (let ((ivx (tr-gensym 'IVX))
+	    (maker (lambda (ivx)
+		     (list 'lambda (list ivx)
+			   (translate-method-lambda args ivars ivar-names
+						    outer-slots body
+						    env ctx locale ivx)))))
+	(if (null? specializers)
+	    (list 'oak-install-method!
+		  (translate op-form env ctx locale)
+		  (translate typ-form env ctx locale)
+		  (list 'quote ivars)
+		  (maker ivx))
+	    (list 'oak-install-multi-method!
+		  (translate op-form env ctx locale)
+		  (translate typ-form env ctx locale)
+		  (cons 'list (map (lambda (sp)
+				     (if sp
+					 (translate sp env ctx locale)
+					 (list 'quote *object*)))
+				   specializers))
+		  (list 'oak-install-method-proc
+			(translate typ-form env ctx locale)
+			(list 'quote ivars)
+			(maker ivx)))))))))
 
 ;;; (lambda (BP . formals) body) with ivars visible.
-(define (translate-method-lambda args ivars body env ctx locale ivx)
+(define (translate-method-lambda args ivars ivar-names outer-slots body
+				 env ctx locale ivx)
   (let* ((bp (tr-gensym 'BP))
 	 (bound (bind-formals args env))
 	 (gformals (car bound))
@@ -311,15 +410,31 @@
 		   env1
 		   (let ((nargs (- (length env1) (length env))))
 		     (append (list-head env1 nargs)
-			     (let loop ((ivs ivars) (k 0) (acc '()))
+			     (let loop ((ivs ivar-names) (k 0) (acc '()))
 			       (if (null? ivs) (reverse acc)
 				   (loop (cdr ivs) (+ k 1)
 					 (cons (cons (car ivs) (cons 'ivar k)) acc))))
 			     env)))))
     (when (and (pair? ivars) (not first-arg))
       (oak-host-error "ADD-METHOD with ivars ~S but no arguments" ivars))
-    (list 'lambda (cons bp gformals)
-	  (translate body env2 ctx2 locale))))
+    ;; A slot of a parameter after the first is reached through a
+    ;; locative the method makes on the way in; see §7 of
+    ;; Multi-Dispatch.md.
+    (let loop ((slots outer-slots) (env3 env2) (binds '()))
+      (if (null? slots)
+	  (list 'lambda (cons bp gformals)
+		(if (null? binds)
+		    (translate body env3 ctx2 locale)
+		    (list 'let* (reverse binds) (translate body env3 ctx2 locale))))
+	  (let* ((entry (car slots))
+		 (g (tr-gensym 'LOC))
+		 (code (list 'ivar-slot-locative
+			     (translate-var-ref (cadr entry) env2 ctx2 locale)
+			     (translate (caddr entry) env2 ctx2 locale)
+			     (list 'quote (cadddr entry)))))
+	    (loop (cdr slots)
+		  (cons (cons (car entry) (cons 'slot g)) env3)
+		  (cons (list g code) binds)))))))
 
 (define (translate-labels form env ctx locale)
   (let* ((clauses (cadr form))
@@ -397,18 +512,23 @@
 (define (make-lambda-op proc)
   (make-native-op *operation* proc))
 
-(define (oak-install-method! op type ivars maker)
+;;; The procedure of a method on TYPE naming IVARS: MAKER takes the
+;;; vector of their indices in TYPE's own frame.
+
+(define (oak-install-method-proc type ivars maker)
   (unless (and (oak-obj? type)
 	       (oak-true? (oak-subtype? (vector-ref (oak-obj-v type) 0) *type*)))
     (oak-host-error "ADD-METHOD: ~S is not a type" (oak-describe type)))
-  (let ((ivx (list->vector
-	      (map (lambda (iv)
-		     (or (ivar-index type iv)
-			 (oak-host-error "Variable ~A declared in ADD-METHOD isn't in ~A, the ivars of ~A."
-					 iv (type-ivar-list type) (oak-describe type))))
-		   ivars))))
-    (oak-add-method! op type (maker ivx))
-    op))
+  (maker (list->vector
+	  (map (lambda (iv)
+		 (or (ivar-index type iv)
+		     (oak-host-error "Variable ~A declared in ADD-METHOD isn't in ~A, the ivars of ~A."
+				     iv (type-ivar-list type) (oak-describe type))))
+	       ivars))))
+
+(define (oak-install-method! op type ivars maker)
+  (oak-add-method! op type (oak-install-method-proc type ivars maker))
+  op)
 
 ;;;==========================================================================
 ;;; Eval and load
