@@ -240,23 +240,63 @@
 ;;; argument as it always has.
 
 (define (method-specializers params form)
+  form
   (iterate trim ((l (reverse (map car params))))
     (cond ((null? l) '())
 	  ((null? (car l)) (trim (cdr l)))
 	  (else
 	   (map (lambda (group)
-		  (cond ((null? group) (list 'quote object))
-			((not (null? (cdr group)))
-			 (error "Instance variables of a parameter after the ~
-first are not implemented yet, in ~S." form))
-			(else (car group))))
+		  (if (null? group) (list 'quote object) (car group)))
 		(reverse l))))))
+
+;;; The slots that the parameters after the first open, as (VARIABLE
+;;; LOCATIVE ARGUMENT TYPE SLOT): the body sees VARIABLE, which
+;;; INDIRECT-TO-HEAP-V turns into the contents of LOCATIVE, a variable
+;;; the method binds once on the way in -- the BP register holds the
+;;; frame of the first argument alone, so there is nowhere else for a
+;;; later one's slots to come from.  A parameter with no specializer
+;;; cannot name slots, OBJECT having none.
+
+(define (method-outer-slots params form)
+  (iterate aux ((l params) (acc '()))
+    (cond ((null? l) (reverse! acc))
+	  ((null? (car (car l))) (aux (cdr l) acc))
+	  (else
+	   (aux (cdr l)
+		(iterate slots ((specs (cdr (car (car l)))) (acc acc))
+		  (if (null? specs)
+		      acc
+		      (slots (cdr specs)
+			     (cons (list (ivar-spec-var (car specs))
+					 (gensym "SLOT")
+					 (cdr (car l))
+					 (car (car (car l)))
+					 (ivar-spec-slot (car specs) form))
+				   acc)))))))))
+
+;;; BOD with those locatives bound around it.  This is built after
+;;; macro expansion, so it is the expansion of a LET and not a LET:
+;;; an inline lambda, whose contour the body sees straight through.
+
+(define (bind-outer-slots bod slots)
+  (if (null? slots)
+      bod
+      `((%add-method ((',make ',operation) (',object)
+		      ,@(map cadr slots))
+		     ,bod)
+	,@(map (lambda (entry)
+		 (destructure* (var loc arg typ slot) entry
+		   var loc
+		   `(%ivar-slot-locative ,arg ,typ ',slot)))
+	       slots))))
+
 
 
 (add-method (initialize (ast-method-node method-type status op primitivep
 					 inlabels?
 					 ivarlist ivaralist ivarmap ivarlocmap
-					 specializers arglist heaplist
+					 specializers outer-slots
+					 arglist heaplist
 					 rest-name body)
 			self form)
   (destructure* (kind-o-method (inop (typ . ivars) . args) bod) form
@@ -287,23 +327,26 @@ first are not implemented yet, in ~S." form))
 	       rest-name))
     (let* ((params (method-param-list (if rest-name (make-proper args) args)
 				      form))
-	   (specs (method-specializers (if (null? params) '() (cdr params))
-				       form)))
+	   (rest-params (if (null? params) '() (cdr params)))
+	   (specs (method-specializers rest-params form)))
       (when (and params (not (null? (car (car params)))))
 	(error "Two type groups in a row in ~S." form))
       (when (and primitivep (not (null? specs)))
 	(error "_ADD-METHOD cannot dispatch on more than one argument, in ~S."
 	       form))
       (set! specializers (map code->ast specs))
+      (set! outer-slots (method-outer-slots rest-params form))
       ;; rest-name goes on front of arglist:
       (set! arglist (if rest-name
 			(cons rest-name (map cdr params))
 			(map cdr params))))
     (set! op (code->ast inop))		;see below
     (set! method-type (code->ast typ))
-    (set! body (code->ast bod))
+    (set! body (code->ast (bind-outer-slots bod outer-slots)))
     (^super ast-contour-node initialize self
-	    (union (map cdr ivaralist) arglist) form)))
+	    (union (map car outer-slots)
+		   (union (map cdr ivaralist) arglist))
+	    form)))
 
 
 

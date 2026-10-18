@@ -296,6 +296,35 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;         instance variables of a parameter after the first          ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; The BP register holds the instance variable frame of the first
+;;; argument alone, so a slot of a later one is reached through its
+;;; locative: where TYP's own instance variables begin in this OBJ is
+;;; one lookup in its type's bp alist -- the lookup FUNCALL does to
+;;; set BP -- and SLOT's place among them is another.  The compiler
+;;; calls this once on the way into the method, binding the result,
+;;; so a method that names no such slot pays nothing and one that
+;;; does pays once however often it reads or assigns it.
+
+(define-instance %type-ivar-list operation)
+(add-method (%type-ivar-list (type ivar-list) self) ivar-list)
+
+(define (%ivar-slot-locative obj typ slot)
+  (let ((here (assq typ (get-bp-alist (get-type obj)))))
+    (cond ((not here)
+	   (error "~S is not an instance of ~S, whose ~S it should have."
+		  obj typ slot))
+	  ((position-in-list slot (%type-ivar-list typ))
+	   => (lambda (index)
+		(%increment-locative (%set-tag obj %locative-tag)
+				     (+ (cdr here) index))))
+	  (else
+	   (error "~S is not an instance variable of ~S." slot typ)))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;                          installation                               ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

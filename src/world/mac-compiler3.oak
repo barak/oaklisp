@@ -350,12 +350,24 @@
 (add-method (indirect-to-heap-v (ast-node ) self) (map-ast! self indirect-to-heap-v))
 
 (add-method (indirect-to-heap-v (ast-variable-node var-type name source-contour) self)
-    (if (or (eq? var-type 'evar)
+    (let ((outer (and (eq? var-type 'ivar)
+		      (is-a? source-contour ast-method-node)
+		      (assq name (methn-outer-slots source-contour)))))
+      (cond
+       ;; A slot of a parameter after the first stands for the
+       ;; contents of the locative the method bound on the way in.
+       ;; FOLD-CONTENTS-V turns an assignment to it, or a
+       ;; MAKE-LOCATIVE of it, back into that locative.
+       (outer
+	(let ((new (addedcode->ast (list contents (cadr outer)) self)))
+	  (classify-variables new)
+	  new))
+       ((or (eq? var-type 'evar)
 	    (eq? var-type 'global)
 	    (and (eq? var-type 'stack)
 		 (heap? source-contour name)))
-	(addedcode->ast (list contents self) self)
-	self))
+	(addedcode->ast (list contents self) self))
+       (else self))))
 
 
 

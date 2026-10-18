@@ -353,52 +353,40 @@ A `%multi-method` is recognized by `e_multi_method_type`, VM register
 ## 7. Instance variables of arguments after the first
 
 This is the one mechanism the symmetric syntax genuinely adds, and it
-turns out to need no new VM register and no change to the code-block
-format.
+needs no new VM register and no change to the code-block format.
 
 `load-bp` reads `e_bp`, which dispatch computes from argument one
 alone, so a slot of argument *k* cannot use it.  But the offset is
 computable from pieces that already exist.  Because a type's
 `type-bp-alist` records where each ancestor's own instance variables
 begin, and a type's `ivar-list` holds only its own, the absolute word
-offset of a slot of argument *k* is
+offset of a slot of argument *k* is where `specializer_k`'s frame
+begins in that argument's type, plus the slot's position in
+`specializer_k`'s `ivar-list` — exactly the arithmetic the VM does for
+argument one when it sets `e_bp`.  `%ivar-slot-locative`
+(`src/world/multi-method.oak`) does both lookups and returns the
+locative.
 
-```
-(cdr (%assq specializer_k (type-bp-alist (get-type arg_k)))) + index
-```
+The compiler binds that locative once, on the way into the method,
+and the body reads and writes the slot through it:
 
-where `index` is the slot's position in `specializer_k`'s own
-`ivar-list` — exactly the arithmetic the VM does for argument one when
-it sets `e_bp`.
+- *Binding*: the method body is wrapped in the expansion of a `let` —
+  an inline lambda, whose contour the body sees straight through —
+  binding one hidden variable per slot.  A method that names no such
+  slot is not wrapped and pays nothing; one that does pays two short
+  list searches per call, however often it then reads or assigns the
+  slot.
+- *Reference*: `indirect-to-heap-v` turns each use of the slot's name
+  into the contents of that locative, which is what it already does
+  for a variable that lives in a cell.  `fold-contents-v` then turns
+  an assignment or a `make-locative` of it back into the locative
+  itself, so `(set! yr ...)` and `(make-locative yr)` work as they do
+  for argument one's slots, with no further machinery.
 
-The three pieces:
-
-- *The index* is resolved at compile time.  `ivar-heuristic`
-  (`src/world/mac-compiler3.oak`) already evaluates a method's type
-  expression when it can, and nearly always can, since the specializer
-  is a global holding a type.  For parameters after the first, require
-  that it succeed and signal a clear error when it does not, rather
-  than inventing a map: argument one can fall back on install-time
-  patching because its map travels in the code block header, and
-  widening that header would reach into `remap-your-ivars`,
-  `tool.oak` and `oak-cold-linker.c` for very little.
-- *The base* is computed once per call, at method entry, into a stack
-  local: one `%assq` down the argument's bp alist, in Oaklisp, per
-  specialized parameter whose slots the body actually uses.  Methods
-  that specialize without naming slots pay nothing.  If this ever
-  shows up in a profile, `lookup_bp_offset()` already exists in C and
-  can be exposed as a subprimitive.
-- *The access* uses existing opcodes.  `%increment-locative` takes a
-  runtime offset, so a read is the contents of the argument's locative
-  incremented by base plus index, and a write is that locative's
-  setter — which gives `(set! yr ...)` on another argument's slot for
-  free, as with argument one.
-
-Install-time safety without a format change: the resolved
-`(specializer slot index)` triples are passed to
-`%install-method-with-env` as an ordinary argument and verified there,
-so a type redefined between compiling and loading is caught instead of
-silently reading the wrong word.
+Nothing is resolved at compile time, so a type redefined between
+compiling and loading cannot leave a stale offset behind, and the
+specializer may be any expression rather than only a name the
+compiler can evaluate.
 
 ## 8. Changes by file
 
@@ -457,7 +445,7 @@ Each step builds, bootstraps, and passes `make check` by itself.
    the interpreter's `FUNCALL`.
 4. **Slots of arguments after the first**, per §7.  Separable from
    dispatch, and testable with an ordinary single-dispatch method that
-   happens to name a second argument's slots.
+   happens to name a second argument's slots.  *Done.*
 5. **`call-next-method`**, if wanted, as effective-method closures
    carrying the remaining applicable methods in the environment
    vector, memoized per tuple.  This is how CLOS does it and it needs

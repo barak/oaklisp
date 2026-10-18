@@ -175,6 +175,52 @@
 
 (check "forced second argument" (combine c (delay (make sqr))) 'circ-sqr)
 
+;;; Instance variables of a parameter after the first, which is what
+;;; the symmetric syntax is for: BP holds the frame of the first
+;;; argument alone, so these go through a locative the method binds
+;;; on the way in.
+
+(define-instance cpx type '(re im) (list object))
+(add-method (initialize (cpx re im) self a b) (set! re a) (set! im b) self)
+(define-instance parts operation)
+(add-method (parts (cpx re im) self) (list re im))
+
+(define-instance cadd operation)
+(add-method (cadd (cpx (xr re) (xi im)) x (cpx (yr re) (yi im)) y)
+  (list (+ xr yr) (+ xi yi)))
+
+(check "slots of both parameters" (cadd (make cpx 1 2) (make cpx 10 20))
+       '(11 22))
+
+(define-instance cbump operation)
+(add-method (cbump (cpx) x (cpx (yr re)) y) (set! yr (+ yr 100)) (parts y))
+
+(define-instance cloc operation)
+(add-method (cloc (cpx) x (cpx (yr re)) y) (contents (make-locative yr)))
+
+(define z (make cpx 10 20))
+(check "assigning a later parameter's slot" (cbump z z) '(110 20))
+(check "locative of a later parameter's slot" (cloc z z) 110)
+
+;;; The slot is found in the argument's own frame, so a subtype that
+;;; adds instance variables of its own still works.
+
+(define-instance cpx3 type '(w) (list cpx))
+(add-method (initialize (cpx3 w) self a b c)
+  (set! w c)
+  (^super cpx initialize self a b))
+
+(check "subtype as a later argument" (cadd (make cpx 1 2) (make cpx3 10 20 30))
+       '(11 22))
+
+;;; A method may name slots of a parameter it dispatches on without
+;;; the first parameter being specialized at all.
+
+(define-instance tag-im operation)
+(add-method (tag-im x (cpx (b im)) y) b)
+
+(check "slots with an unspecialized first parameter" (tag-im 'anything z) 20)
+
 ;;; The method chosen is remembered by the tuple of argument types,
 ;;; the first argument's among them: the instance variable frame
 ;;; offset kept beside it was computed from that type, and these two
