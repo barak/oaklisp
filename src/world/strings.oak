@@ -349,8 +349,14 @@
 ;;; String predicates
 ;;;
 
-(add-method (= (string) x y)
+;;; Both arguments are dispatched on: (= 3 "a") is an error, so
+;;; (= "a" 3) had better be one too.
+
+(add-method (= (string) x (string) y)
   (equal? x y))
+
+(add-method (= (string) x y)
+  (error "Incompatible types: (= ~S ~S)." x y))
 
 
 ;;; Strings are compared a machine word at a time rather than a
@@ -384,17 +390,25 @@
 			 (else #f)))))))
 
 
-  (add-method (equal? (string) a b)
+  (add-method (equal? (string) a (string) b)
     (or (eq? a b)
 	(and (eq? (get-type a) (get-type b))
 	     (let ((l (length a)))
 	       (and (= l (length b))
 		    (or (zero? l)
-			(string-guts-equal? a b l))))))))
+			(string-guts-equal? a b l)))))))
+
+  ;; Dispatching on the second argument as well is what forces a
+  ;; promise there, as one in the first argument is forced.
+  (add-method (equal? (string) a b)
+    (eq? a b)))
 
 
 
 (add-method (< (string) s1 s2)
+  (error "Incompatible types: (< ~S ~S)." s1 s2))
+
+(add-method (< (string) s1 (string) s2)
   (let ((l1 (length s1))
 	(l2 (length s2)))
     (iterate aux ((i 0))

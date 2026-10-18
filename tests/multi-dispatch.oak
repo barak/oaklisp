@@ -221,6 +221,70 @@
 
 (check "slots with an unspecialized first parameter" (tag-im 'anything z) 20)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;        the symmetry dispatching on one argument cannot have      ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; A promise is forced whichever side of a comparison it is on: the
+;;; first argument by the method FORCIBLE has, the second because the
+;;; methods of these operations dispatch on it and the one that
+;;; matched the promise matched it only through OBJECT.
+
+(check "eqv? forces the first argument"  (eqv? (delay 3) 3) #t)
+(check "eqv? forces the second argument" (eqv? 3 (delay 3)) #t)
+(check "eqv? forces both"  (eqv? (delay 3) (delay 3)) #t)
+(check "equal? forces the first argument"  (equal? (delay 3) 3) #t)
+(check "equal? forces the second argument" (equal? 3 (delay 3)) #t)
+(check "equal? forces a string"  (equal? "ab" (delay (copy "ab"))) #t)
+(check "equal? forces a list"    (equal? '(1 2) (delay (list 1 2))) #t)
+(check "= forces either argument"
+       (list (= (delay 3) 3) (= 3 (delay 3))) '(#t #t))
+(check "< forces either argument"
+       (list (< (delay 3) 4) (< 3 (delay 4))) '(#t #t))
+
+;;; An unspecialized parameter matches an operation, whose type the
+;;; kernel builds by hand and does not make a subtype of OBJECT.
+
+(check "a hole matches an operation" (eqv? 3 car) #f)
+(check "a hole matches an operation the other way" (eqv? car 3) #f)
+
+;;; Comparing across kinds is the same error whichever side it is on.
+
+(define (errs? thunk) (catch-errors (general-error (lambda (e) 'err)) (thunk)))
+
+;;; The operands go through variables: these are foldable operations,
+;;; and the compiler would otherwise announce each error as it tried.
+
+(define three 3)
+(define a-string "a")
+(define a-char #\a)
+(define a-list '(1))
+
+(check "= number with string"
+       (list (errs? (lambda () (= three a-string)))
+	     (errs? (lambda () (= a-string three))))
+       '(err err))
+(check "= number with character"
+       (list (errs? (lambda () (= three a-char)))
+	     (errs? (lambda () (= a-char three))))
+       '(err err))
+(check "< string with list"
+       (list (errs? (lambda () (< a-string a-list)))
+	     (errs? (lambda () (< a-list a-string))))
+       '(err err))
+(check "and still compares within a kind"
+       (list (= "ab" (copy "ab")) (= "ab" "ba") (= #\a #\a) (= #\a #\b)
+	     (< "ab" "b") (< #\a #\b))
+       '(#t #f #t #f #t #t))
+
+;;; A multimethod whose home type is OBJECT absorbs the plain method
+;;; that was there, whichever order they are added in.
+
+(define-instance home-obj operation)
+(add-method (home-obj x y) 'fallback)
+(add-method (home-obj x (circ) y) 'shaped)
+(check "object as the home type"
+       (list (home-obj 1 2) (home-obj 1 c)) '(fallback shaped))
 ;;; The method chosen is remembered by the tuple of argument types,
 ;;; the first argument's among them: the instance variable frame
 ;;; offset kept beside it was computed from that type, and these two

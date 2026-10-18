@@ -685,15 +685,25 @@
 ;(define-instance exp operation)
 
 ;;; Make the usual equality tests work on numbers.
+;;;
+;;; These dispatch on the second argument as well, so that a number is
+;;; unequal to a non-number rather than to everything the first
+;;; argument's type does not recognise -- and so that a promise in
+;;; either position is forced and the comparison retried, which is
+;;; what makes (EQV? 3 (DELAY 3)) agree with (EQV? (DELAY 3) 3).
 
 (dolist (op (list eqv? equal?))
 
-  (add-method (op (number) x y)
+  (add-method (op (number) x (number) y)
     (and (eq? (get-type x) (get-type y))
 	 (= x y)))
 
-  (add-method (op (fixnum) x y)
-    (eq? x y)))
+  (add-method (op (number) x y) #f)
+
+  (add-method (op (fixnum) x (fixnum) y)
+    (eq? x y))
+
+  (add-method (op (fixnum) x y) #f))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

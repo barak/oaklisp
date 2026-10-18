@@ -135,9 +135,12 @@
 (add-method (/r (complex) x y)
   (error "Inappropriate type.~%"))
 
-(add-method (= (complex the-real-part the-imag-part) x y)
+(add-method (= (complex the-real-part the-imag-part) x (number) y)
   (and (= the-imag-part (imag-part y))
        (= the-real-part (real-part y))))
+
+(add-method (= (complex) x y)
+  (error "Illegal second arg (= ~S ~S)." x y))
 
 
 ;;; As for the other numeric types: EQUAL? compares the components, so

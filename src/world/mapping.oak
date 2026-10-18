@@ -159,8 +159,15 @@
 			(or (eq? xd yd)
 			    (%equal-bounded? xd yd d)))))))))
 
-(add-method (equal? (pair) x y)
+;;; The second argument is dispatched on so that a promise there is
+;;; forced and the comparison retried, as it is when the promise is
+;;; the first argument.  The fallback answers what the walk would.
+
+(add-method (equal? (pair) x (pair) y)
   (%equal-bounded? x y *equal-depth-limit*))
+
+(add-method (equal? (pair) x y)
+  (eq? x y))
 
 (add-method (equal? (object) x y)
   (eq? x y))
