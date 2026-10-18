@@ -1,0 +1,355 @@
+;;; This file is part of Oaklisp.
+;;;
+;;; This program is free software; you can redistribute it and/or modify
+;;; it under the terms of the GNU General Public License as published by
+;;; the Free Software Foundation; either version 2 of the License, or
+;;; (at your option) any later version.
+;;;
+;;; This program is distributed in the hope that it will be useful,
+;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;; GNU General Public License for more details.
+;;;
+;;; The GNU GPL is available at http://www.gnu.org/licenses/gpl.html
+;;; or from the Free Software Foundation, 59 Temple Place - Suite 330,
+;;; Boston, MA 02111-1307, USA
+
+
+;;; Methods that dispatch on more than their first argument.  See
+;;; Multi-Dispatch.md.
+;;;
+;;; A method's home type is the type of its first parameter, which is
+;;; where OPERATION-METHOD-ALIST has always put it.  All the methods
+;;; of one operation with one home type live in a single
+;;; %MULTI-METHOD stored in that alist, each with the tuple of
+;;; specializers of its remaining parameters.  The emulator's method
+;;; search returns that object, sees it is not a %METHOD, and traps to
+;;; FAILED-FUNCALL, which calls %MULTI-DISPATCH here to pick an entry.
+;;;
+;;; Selection keeps Oaklisp's rule that the first type in the search
+;;; order with a method for the operation wins: only the entries of
+;;; the %MULTI-METHOD that search reaches are considered, so a
+;;; multimethod shadows the methods above it exactly as a single
+;;; method always has.  Within it the most specific applicable entry
+;;; runs, and an entry that specializes on nothing after the first
+;;; parameter -- which is what an ordinary ADD-METHOD on the home type
+;;; makes -- is the least specific of all, so it serves as the
+;;; fallback that the OTHERWISE clause of an FSELECT-TYPE used to.
+;;;
+;;; Each entry carries an operation of its own with just that method
+;;; installed, so running the chosen entry is an ordinary call: the
+;;; registers, the instance variable frame and the argument count are
+;;; set the way they always are.  A method that uses no instance
+;;; variable is installed on OBJECT, where it lands in the LAMBDA?
+;;; slot and takes up no room in any method alist.
+
+
+(define-instance %multi-method type
+  '(extra-arity				;specializers after the first parameter
+    entries)				;(tuple method operation), newest first
+  (list object))
+
+
+;;; Reading and writing the kernel objects involved, by name.
+
+(define-instance %type-supertypes operation)
+(add-method (%type-supertypes (type supertype-list) self) supertype-list)
+
+(define-instance %type-method-alist operation)
+(add-method (%type-method-alist (type operation-method-alist) self)
+  operation-method-alist)
+
+(define-instance %type-add-method-entry operation)
+(add-method (%type-add-method-entry (type operation-method-alist) self entry)
+  (set! operation-method-alist (cons entry operation-method-alist)))
+
+(define-instance %operation-lambda operation)
+(add-method (%operation-lambda (operation lambda?) self) lambda?)
+
+;;; Take OP off the fast paths that assume one method per type: a
+;;; lambda in the LAMBDA? slot moves to OBJECT's alist, as
+;;; %INSTALL-METHOD-WITH-ENV would move it, and the one-entry cache is
+;;; flushed by parking its type at the fixnum no type can equal.
+
+(define-instance %operation-go-generic operation)
+(add-method (%operation-go-generic (operation lambda? cache-type) self)
+  (when (and lambda? (not (eq? lambda? 0)))
+    (%type-add-method-entry object (cons self lambda?)))
+  (set! lambda? nil)
+  (set! cache-type 0))
+
+;;; The fields of a %MULTI-METHOD are taken by slot and not by name.
+;;; The compiler guesses a type's layout by evaluating the type
+;;; expression, which it cannot do for a type defined in the file it
+;;; is compiling: a world that already has this file loaded would
+;;; guess, and the Guile-hosted compiler would not, and the two would
+;;; emit different instance variable maps for the same source.
+
+(define (%multi-extra-arity mm) ((%slot 1) mm))
+(define (%multi-entries mm) ((%slot 2) mm))
+(define (%multi-set-extra-arity! mm n) (set! ((%slot 1) mm) n))
+(define (%multi-set-entries! mm l) (set! ((%slot 2) mm) l))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                            selection                                ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; The precedence list of a type: its supertype graph depth first and
+;;; left to right, keeping the first occurrence of each -- the order
+;;; the emulator's method search visits.
+
+(define (%type-precedence-list typ)
+  (iterate aux ((todo (list typ)) (acc '()))
+    (cond ((null? todo) (reverse! acc))
+	  ((memq (car todo) acc) (aux (cdr todo) acc))
+	  (else (aux (append (%type-supertypes (car todo)) (cdr todo))
+		     (cons (car todo) acc))))))
+
+;;; The %MULTI-METHOD that the emulator's search for OP on an instance
+;;; of TYP reaches, or #f when that search finds an ordinary method or
+;;; nothing at all.
+
+(define (%multi-method-for op typ)
+  (iterate aux ((l (%type-precedence-list typ)))
+    (cond ((null? l) #f)
+	  ((assq op (%type-method-alist (car l)))
+	   => (lambda (hit)
+		(and (eq? (get-type (cdr hit)) %multi-method) (cdr hit))))
+	  (else (aux (cdr l))))))
+
+(define (%multi-first-type args)
+  (if (null? args) object (get-type (car args))))
+
+;;; Tuples are padded to the multimethod's arity with OBJECT, so a
+;;; tuple and the arguments after the first line up position by
+;;; position.  A position with no argument is matched by OBJECT alone.
+;;;
+;;; OBJECT is tested for rather than asked about, because it stands
+;;; for a parameter that was not specialized at all and so matches
+;;; everything -- including an operation, whose type the kernel builds
+;;; by hand and does not make a subtype of OBJECT.
+
+(define (%multi-applicable? tuple args)
+  (iterate aux ((tu tuple) (as args))
+    (cond ((null? tu) #t)
+	  ((null? as) (and (eq? (car tu) object) (aux (cdr tu) as)))
+	  ((eq? (car tu) object) (aux (cdr tu) (cdr as)))
+	  ((subtype? (get-type (car as)) (car tu)) (aux (cdr tu) (cdr as)))
+	  (else #f))))
+
+;;; 1 if TUPLE-A is the more specific, -1 if TUPLE-B is, 0 if neither
+;;; precedes the other: the first position where they differ decides,
+;;; by which specializer comes first in the precedence list of the
+;;; type of the argument there.
+
+(define (%multi-compare tuple-a tuple-b args)
+  (iterate aux ((a tuple-a) (b tuple-b) (as args))
+    (cond ((null? a) 0)
+	  ((eq? (car a) (car b))
+	   (aux (cdr a) (cdr b) (if (null? as) as (cdr as))))
+	  (else
+	   (iterate scan ((l (%type-precedence-list
+			      (if (null? as) object (get-type (car as))))))
+	     (cond ((null? l)
+		    ;; Neither is in the list, so one of them is the
+		    ;; OBJECT of an unspecialized parameter, which comes
+		    ;; after everything.
+		    (cond ((eq? (car b) object) 1)
+			  ((eq? (car a) object) -1)
+			  (else 0)))
+		   ((eq? (car l) (car a)) 1)
+		   ((eq? (car l) (car b)) -1)
+		   (else (scan (cdr l)))))))))
+
+;;; The one entry of APPLICABLE more specific than all the others.
+;;; There always is one: a type's search order totally orders its
+;;; ancestors, so at the first position where two tuples differ one
+;;; specializer precedes the other, and left to right over a total
+;;; order is a total order.  The #f is a guard, not a case.
+
+(define (%multi-best applicable args)
+  (iterate outer ((l applicable))
+    (cond ((null? l) #f)
+	  ((iterate inner ((m applicable))
+	     (cond ((null? m) #t)
+		   ((eq? (car m) (car l)) (inner (cdr m)))
+		   ((= 1 (%multi-compare (car (car l)) (car (car m)) args))
+		    (inner (cdr m)))
+		   (else #f)))
+	   (car l))
+	  (else (outer (cdr l))))))
+
+;;; The entries of MM that apply to the arguments after the first.
+
+(define (%multi-applicable-entries mm args)
+  (iterate aux ((l (%multi-entries mm)) (acc '()))
+    (cond ((null? l) acc)
+	  ((%multi-applicable? (car (car l)) args) (aux (cdr l) (cons (car l) acc)))
+	  (else (aux (cdr l) acc)))))
+
+;;; Did ENTRY match a promise only because its specializer there is
+;;; OBJECT?  Then the type dispatched on was the promise's own, and
+;;; forcing may well reach an entry that really wanted the value --
+;;; which is what the clauses of an FSELECT-TYPE do before its
+;;; OTHERWISE.
+
+(define (%multi-matched-a-promise? tuple args)
+  (and forcible-magic
+       (iterate aux ((tu tuple) (as args))
+	 (cond ((or (null? tu) (null? as)) #f)
+	       ((and (eq? (car tu) object)
+		     (subtype? (get-type (car as)) forcible))
+		#t)
+	       (else (aux (cdr tu) (cdr as)))))))
+
+;;; ARGS with the promises among them forced, or #f when there are
+;;; none.
+
+(define (%multi-force-args args)
+  (and forcible-magic
+       (any? (lambda (a) (subtype? (get-type a) forcible)) args)
+       (map (lambda (a)
+	      (if (subtype? (get-type a) forcible) (force a) a))
+	    args)))
+
+;;; What to do about a call of OP on ARGS that the emulator handed
+;;; over because the method search reached a %MULTI-METHOD: (CALL
+;;; . operation) to run an entry, (RETRY . arguments) to dispatch
+;;; again with promises forced, or #f when OP has no multimethod here
+;;; and the call has really failed, which the caller reports as it
+;;; reports any other failure.  Signals when the applicable entries
+;;; have no most specific one.
+
+(define (%multi-resolve op args)
+  (let ((mm (and (is-a? op operation)
+		 (%multi-method-for op (%multi-first-type args)))))
+    (and mm
+	 (let* ((rest (if (null? args) '() (cdr args)))
+		(applicable (%multi-applicable-entries mm rest))
+		(best (and applicable (%multi-best applicable rest))))
+	   (cond ((and best (not (%multi-matched-a-promise? (car best) rest)))
+		  (cons 'call (caddr best)))
+		 ((%multi-force-args args) => (lambda (f) (cons 'retry f)))
+		 (best (cons 'call (caddr best)))
+		 ((null? applicable) #f)
+		 (else
+		  (error "Ambiguous methods for ~S on ~S." op args)))))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                          installation                               ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (%multi-pad tuple n)
+  (iterate aux ((l tuple) (i n) (acc '()))
+    (cond ((= i 0) (reverse! acc))
+	  ((null? l) (aux l (- i 1) (cons object acc)))
+	  (else (aux (cdr l) (- i 1) (cons (car l) acc))))))
+
+(define (%multi-init! mm)
+  (%multi-set-extra-arity! mm 0)
+  (%multi-set-entries! mm '()))
+
+;;; Widen every tuple when a method specializing on more parameters
+;;; than any before it arrives.
+
+(define (%multi-grow! mm n)
+  (when (> n (%multi-extra-arity mm))
+    (%multi-set-extra-arity! mm n)
+    (%multi-set-entries! mm
+			 (map (lambda (e) (cons (%multi-pad (car e) n) (cdr e)))
+			      (%multi-entries mm)))))
+
+;;; Two tuples name the same methods when they name the same types,
+;;; which EQ? decides position by position.  (EQUAL? would too, but it
+;;; is a generic operation, and this runs while the cold world is
+;;; being built, before there are methods on it for everything.)
+
+(define (%multi-tuple=? a b)
+  (cond ((null? a) (null? b))
+	((null? b) #f)
+	((eq? (car a) (car b)) (%multi-tuple=? (cdr a) (cdr b)))
+	(else #f)))
+
+(define (%multi-replace! mm tuple entry)
+  (%multi-set-entries!
+   mm
+   (cons entry
+	 (iterate aux ((l (%multi-entries mm)) (acc '()))
+	   (cond ((null? l) (reverse! acc))
+		 ((%multi-tuple=? (car (car l)) tuple) (aux (cdr l) acc))
+		 (else (aux (cdr l) (cons (car l) acc))))))))
+
+(define (%multi-put! mm tuple method inner)
+  (%multi-grow! mm (length tuple))
+  (let ((padded (%multi-pad tuple (%multi-extra-arity mm))))
+    (%multi-replace! mm padded (list padded method inner))))
+
+;;; An operation with METHOD as its only method, for the slow path to
+;;; call.  A method that touches no instance variable goes on OBJECT,
+;;; where the LAMBDA? slot holds it and no alist grows; one that does
+;;; must go on its home type, so that dispatch sets the instance
+;;; variable frame from the first argument as usual.
+
+(define (%multi-wrap-method typ method)
+  (let ((inner (make operation)))
+    (%type-add-method-entry typ (cons inner method))
+    ;; A fresh operation's LAMBDA? is the 0 that means no method has
+    ;; ever been added, which the emulator treats as a bad operation
+    ;; rather than searching; installing by hand has to clear it.
+    (%operation-go-generic inner)
+    inner))
+
+;;; The %MULTI-METHOD for OP at TYP, made if there is none.  A plain
+;;; method already installed there becomes the entry that specializes
+;;; on nothing after the first parameter.
+
+(define (%multi-method-at! op typ)
+  (let ((hit (assq op (%type-method-alist typ))))
+    (cond ((and hit (eq? (get-type (cdr hit)) %multi-method)) (cdr hit))
+	  (else
+	   (let ((mm (make %multi-method)))
+	     (%multi-init! mm)
+	     (cond (hit
+		    (%multi-put! mm '() (cdr hit)
+				 (%multi-wrap-method typ (cdr hit)))
+		    (set! (cdr hit) mm))
+		   (else (%type-add-method-entry typ (cons op mm))))
+	     mm)))))
+
+;;; Give the multimethod of OP at TYP, if it has one, the method an
+;;; ordinary ADD-METHOD just made: it is the entry specializing on
+;;; nothing after the first parameter.  %INSTALL-METHOD-WITH-ENV calls
+;;; this instead of overwriting the alist entry.
+
+(define (%multi-install-default! op typ method)
+  (%multi-put! (%multi-method-at! op typ) '() method
+	       (%multi-wrap-method typ method)))
+
+;;; What the compiler emits for a method that specializes on more than
+;;; its first parameter: %INSTALL-METHOD-WITH-ENV with the
+;;; specializers of the parameters after the first.
+
+(define (%install-multi-method-with-env typ op code-body env specializers)
+  (let* ((uses-ivars? (not (null? ((%slot 2) code-body))))
+	 (home (if uses-ivars? typ object))
+	 (inner (make operation)))
+    ;; Building the method through the ordinary installer checks the
+    ;; code body's instance variable map against the type and remaps
+    ;; it if need be, exactly as for a single-dispatch method.
+    (%install-method-with-env home inner code-body env)
+    ;; Before looking in TYP's alist, not after: taking OP off the
+    ;; fast path moves a lambda of its own into OBJECT's alist, and
+    ;; when TYP is OBJECT that lambda is the plain method this
+    ;; multimethod has to absorb as its fallback entry.
+    (%operation-go-generic op)
+    (%multi-put! (%multi-method-at! op typ)
+		 specializers
+		 (if uses-ivars?
+		     (cdr (assq inner (%type-method-alist typ)))
+		     (%operation-lambda inner))
+		 inner)
+    op))
+
+;;; eof

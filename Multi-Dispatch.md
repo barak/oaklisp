@@ -220,27 +220,49 @@ defaults to `object`.  Call that the method's home type.  Dispatch
 therefore still begins by walking the type graph of argument one; the
 remaining specializers select among the methods found there.
 
-**Applicability.**  A method applies to a call when the call supplies
-at least as many arguments as the method has specialized parameters,
-and each specialized parameter's specializer is a supertype of (or
-equal to) the type of the corresponding argument — one `%assq` in that
-argument's `type-bp-alist`.
+**The first hit still wins.**  Oaklisp has never had CLOS's rule that
+every applicable method competes.  It takes the first type in the
+search order with a method for the operation, and that method shadows
+everything above it.  Multi-dispatch keeps exactly that: the methods
+sharing an operation and a home type are gathered into one object, the
+search returns it where it would have returned a single method, and
+the choice is made among *its* entries alone.  A multimethod on a type
+shadows the methods on its supertypes just as a single method always
+has, and a method on a subtype shadows the multimethod.
 
-**Specificity.**  Given two applicable methods, compare their
-specializers left to right.  At the first parameter where the
-specializers differ, the more specific method is the one whose
-specializer comes earlier in the *precedence list* of that argument's
-actual type, where the precedence list is defined as the depth-first,
-left-to-right pre-order walk of the supertype DAG with repeats
-dropped — precisely the order `find_method_type_pair()` already
-visits.  If neither method precedes the other at that parameter, the
-call is ambiguous and signals a proceedable error.
+This is the conservative reading, and it is what makes the change
+safe: an operation with no multimethods dispatches to exactly the
+method it always did, type by type.  It also keeps selection cheap,
+since every candidate shares a home type and only the parameters after
+the first can discriminate.  The price is that a specialized method on
+a supertype is not consulted once a subtype has any method at all —
+the price Oaklisp has always paid, now visible in a new place.  What
+the `otherwise` clause of an `fselect-type` used to do is done by a
+method on the home type that leaves the later parameters
+unspecialized: that entry applies to everything and is the least
+specific of all, so it is the fallback.
 
-Defining the precedence list to be the existing search order, rather
-than importing CLOS's class precedence list, is what makes this change
-conservative: for any operation with no multimethods the new rule
-selects exactly the method the old one did, type by type.  This is
-worth testing rather than asserting, and §9 does.
+**Applicability.**  An entry applies when each of its specializers is
+a supertype of (or equal to) the type of the argument in that
+position — one `%assq` in that argument's `type-bp-alist` — and a
+position with no argument is matched by `object` alone.
+
+**Specificity.**  Given two applicable entries, compare their
+specializers left to right.  At the first position where they differ,
+the more specific is the one whose specializer comes earlier in the
+*precedence list* of that argument's actual type, where the precedence
+list is the depth-first, left-to-right pre-order walk of the supertype
+DAG with repeats dropped — precisely the order
+`find_method_type_pair()` visits.  The entry that runs is the one more
+specific than every other applicable entry.
+
+There is always exactly one.  A type's search order totally orders its
+ancestors, and every specializer of an applicable entry is one of
+them, so at the first position where two entries differ one of them
+always comes first; comparing left to right over a total order is
+itself a total order on distinct tuples.  Unlike CLOS, then, Oaklisp
+has no ambiguous calls to report — the selector keeps a check and
+signals if it ever finds none, but that is a guard, not a case.
 
 **Zero arguments.**  The dedicated zero-argument case goes away as a
 special case and survives as an instance of the general rule.  A call
@@ -252,13 +274,14 @@ the general rule rather than a branch with its own logic, and `e_bp`
 is left undefined exactly as it is today — a method whose home type is
 `object` has no instance variables to point at.
 
-**Forcibles.**  `fselect-type` forces a promise or future that matches
-no clause and retries.  That behaviour is preserved by the slow path:
-a call that finds no applicable method already traps into Oaklisp
-through `%arged-tag-trap-table` entry 21 and reaches `failed-funcall`
-(`src/world/op-error.oak`), which forces a forcible first argument and
-retries.  Extend it to force forcible arguments in any dispatched
-position before giving up.
+**Forcibles.**  `fselect-type` tries its clauses, and if none matched
+and the value is a promise, forces it and starts the case again, so
+that `otherwise` sees the forced value.  Selection does the same: when
+the entry that would win matched a promise only because its
+specializer there is `object`, the promises among the arguments are
+forced and the call dispatched again.  A call that fails outright
+reaches `failed-funcall` (`src/world/op-error.oak`) and is reported
+there as any other failed call is.
 
 **Arity.**  Oaklisp operations are arity-polymorphic: each method
 checks its own argument count.  A parameter position beyond the end of
@@ -267,37 +290,50 @@ apply.
 
 ## 6. Representation
 
-**Operation.**  Two new slots, taking `%simple-operation-length` and
-`OPERATION_LENGTH` from 5 to 7: `multi?`, the number of leading
-parameters any of this operation's methods specializes on, or `#f`
-when none does; and `dispatch-cache`, a simple vector of cache lines,
-or `#f`.  `kernel0.oak` builds operations by hand at cold load, so its
-layout of `operation` changes with them, as does the Guile host's.
-
-Once an operation acquires a multimethod it is multi for all of its
-calls, since otherwise a call could take the single-dispatch path
-straight past an applicable multimethod.  Its `lambda?` slot is
-therefore cleared and its one-entry cache abandoned in favour of the
-new one.  Operations that never see a multimethod are untouched and
-keep today's three tiers exactly.
-
 **Type.**  Unchanged.  This is the main economy of the design: the
 per-type alists, the bp alists, the ivar lists and the cold-world
 layout all stay as they are, and `tool.oak` and `oak-cold-linker.c`
-need no change.
+need no change at all.
 
-**Method sets.**  Where a type's `operation-method-alist` entry today
-maps an operation to a method, it may instead map it to a
-`%multi-method`: an object holding the list of (specializer-tuple .
-method) pairs that share that operation and home type.  The
-interpreter's only new obligation on the search path is to notice that
-what the alist handed back is not a `%method`.
+**Method sets.**  Where a type's `operation-method-alist` entry held a
+`%method`, it may now hold a `%multi-method`
+(`src/world/multi-method.oak`): an object with the number of
+specializers after the first that any of its methods has, and a list
+of entries, each a tuple of those specializers (padded with `object`),
+the method, and an operation of its own.
 
-**Cache.**  A line is `[type-1, ..., type-n, method, bp-offset]`,
-compared by identity, in a small vector searched linearly and replaced
-round-robin.  The common case is n = 2 and a handful of lines.
-Invalidation is by epoch: `%install-method-with-env` already flushes
-the one-entry cache by storing fixnum 0, and does the same here.
+**The entry's own operation.**  Running a chosen entry has to set the
+registers, the instance variable frame and the argument count exactly
+as an ordinary call does, and the way to get all of that is to make an
+ordinary call.  So each entry carries an operation with just that one
+method installed.  A method that uses no instance variable is
+installed on `object`, where it goes in the `lambda?` slot and takes
+up no room in any alist; one that does must go on its home type, so
+that dispatch sets the frame from the first argument as usual.
+
+**The emulator.**  The method search is untouched.  Its callers now
+ask `is_method()` (`src/emulator/dispatch.h`) about what it returned
+instead of comparing with `nil`: a `%multi-method` is not a method, so
+the call traps exactly as a missing method does, through
+`%arged-tag-trap-table` entry 21 to `failed-funcall`, and nothing is
+cached.  The four callers are `loop.c`'s `FUNCALL` and `^SUPER`,
+`oak_native_find_method()` and `native-ops.c`'s `^SUPER`; the native
+compiler declines to resolve such a call statically.
+
+**Selection** is Oaklisp, in `multi-method.oak`: find the
+`%multi-method` the search would reach, keep the applicable entries,
+take the most specific, and call its operation on the original
+arguments.
+
+**Caching** is the next step and is not yet built.  The plan is two
+more slots in the operation, taking `%simple-operation-length` and
+`OPERATION_LENGTH` from 5 to 7: the number of leading parameters any
+of the operation's methods specializes on, and a small vector of cache
+lines `[type-1, ..., type-n, method, bp-offset]` compared by identity
+and replaced round-robin, filled from the world on a miss and flushed
+the way the one-entry cache is flushed, by parking a fixnum where a
+type belongs.  Operations that never see a multimethod keep today's
+three tiers exactly, so there is nothing to pay for not using this.
 
 ## 7. Instance variables of arguments after the first
 
@@ -391,29 +427,30 @@ Each step builds, bootstraps, and passes `make check` by itself.
 1. **`(var slot)` aliasing**, on argument one only.  Splits the method
    node's ivar list into local and slot names.  Useful on its own, and
    it lands the parser and compiler surgery before any dispatch change
-   rides on it.
+   rides on it.  *Done.*
 2. **The general grammar and a correct slow path.**  Specializers in
    every position, `%multi-method` in the alists, applicability,
    specificity and ambiguity in Oaklisp, reached by having the
-   interpreter trap when the alist yields a non-method.  Multimethods
-   work; they are slow.
+   emulator trap when the alist yields a non-method.  Multimethods
+   work; they are slow.  *Done.*  The Guile host needed no change of
+   its own: it hosts the world's compiler rather than reimplementing
+   it, and nothing in the world uses a multimethod yet.
 3. **The tuple cache** in C, filled by the world on a miss.  The
    single-dispatch path must be unchanged within measurement noise.
 4. **Slots of arguments after the first**, per §7.  Separable from
    dispatch, and testable with an ordinary single-dispatch method that
    happens to name a second argument's slots.
-5. **Guile host parity**, before the world itself uses any of this.
-6. **`call-next-method`**, if wanted, as effective-method closures
+5. **`call-next-method`**, if wanted, as effective-method closures
    carrying the remaining applicable methods in the environment
    vector, memoized per tuple.  This is how CLOS does it and it needs
    no VM change; the 3-word context frame stays 3 words.
-7. **Convert the world**: the comparison and arithmetic operators in
+6. **Convert the world**: the comparison and arithmetic operators in
    `numbers.oak`, `bignum.oak`, `rational.oak`, `complex.oak`.  A
    source file using a multimethod cannot be compiled by a bootstrap
    world that lacks the installer, so this waits a release or uses the
    `OAKEXTRALOAD` preload already in `src/world/Makefile.am`.  Cold
    files stay single-dispatch.
-8. **Documentation and tests.**
+7. **Documentation and tests.**
 
 ## 10. Benchmarks
 

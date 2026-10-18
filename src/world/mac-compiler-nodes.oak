@@ -56,6 +56,7 @@
 	 ivaralist			;(slot . variable standing for it)
 	 ivarmap			;assumed layout of ivars in type
 	 ivarlocmap			;IVARMAP with the variables of IVARALIST
+	 specializers			;types of the parameters after the first
 	 arglist			;arguments declared
 	 heaplist			;args that must be moved to heap
 	 primitivep			;whether its the crude open coded kind
@@ -106,7 +107,7 @@
 		  localvars envlist closedlist nojumplist environment)
 (create-accessors ast-method-node methn-
 		  method-type op status ivarlist ivaralist arglist heaplist
-		  ivarmap ivarlocmap rest-name body)
+		  ivarmap ivarlocmap specializers rest-name body)
 (create-accessors ast-labels-node labn-
 		  gensymlist labellist lambdalist body)
 
@@ -262,7 +263,7 @@
 (add-map-walk ast-set-node variable expression)
 (add-map-walk ast-variable-node)
 
-(add-map-walk ast-method-node op method-type body)
+(add-map-walk ast-method-node op method-type body (specializers))
 (add-map-walk ast-labels-node body (lambdalist))
 
 (add-map-walk ast-make-locative-node variable)

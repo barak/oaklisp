@@ -59,4 +59,124 @@
 (define q (make pt3 1 2 3))
 (check "subtype slots" (list (aliased q) (pt3-z q)) '((1 2) 3))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;              dispatch on more than one argument                    ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-instance shape type '() (list object))
+(define-instance circ type '() (list shape))
+(define-instance sqr type '() (list shape))
+(define-instance round-sqr type '() (list circ sqr))
+
+(define c (make circ))
+(define s (make sqr))
+(define r (make round-sqr))
+
+(define-instance combine operation)
+(add-method (combine (circ) x (circ) y) 'circ-circ)
+(add-method (combine (circ) x (sqr) y) 'circ-sqr)
+(add-method (combine (circ) x y) 'circ-any)
+(add-method (combine (sqr) x (shape) y) 'sqr-shape)
+
+(check "two specializers" (list (combine c c) (combine c s)) '(circ-circ circ-sqr))
+(check "unspecialized tail is the fallback" (combine c 7) 'circ-any)
+(check "supertype specializer" (list (combine s c) (combine s s))
+       '(sqr-shape sqr-shape))
+
+;;; The second argument's own type decides between two entries whose
+;;; specializers are related.
+
+(define-instance narrow operation)
+(add-method (narrow (circ) x (shape) y) 'shape)
+(add-method (narrow (circ) x (circ) y) 'circ)
+
+(check "more specific second argument wins" (narrow c c) 'circ)
+(check "less specific second argument applies" (narrow c s) 'shape)
+
+;;; A multimethod is reached through a subtype of its home type, and
+;;; the first argument's own type still picks the home type.
+
+(check "subtype of the home type" (combine r c) 'circ-circ)
+
+;;; Three parameters, and a hole in the middle.
+
+(define-instance triple operation)
+(add-method (triple (circ) x (sqr) y (circ) z) 'c-s-c)
+(add-method (triple (circ) x y (sqr) z) 'c-any-s)
+(add-method (triple (circ) x y z) 'c-any-any)
+
+(check "three specializers" (triple c s c) 'c-s-c)
+(check "hole in the middle" (triple c 1 s) 'c-any-s)
+(check "shortest wins only when it must" (triple c 1 2) 'c-any-any)
+
+;;; Order of definition does not matter: an ordinary single-dispatch
+;;; method added after the multimethods becomes their fallback, and
+;;; one added before them survives as the fallback.
+
+(define-instance after-op operation)
+(add-method (after-op (circ) x (sqr) y) 'specialized)
+(add-method (after-op (circ) x y) 'fallback)
+
+(define-instance before-op operation)
+(add-method (before-op (circ) x y) 'fallback)
+(add-method (before-op (circ) x (sqr) y) 'specialized)
+
+(check "fallback added last" (list (after-op c s) (after-op c 1))
+       '(specialized fallback))
+(check "fallback added first" (list (before-op c s) (before-op c 1))
+       '(specialized fallback))
+
+;;; Replacing an entry replaces just that one.
+
+(define-instance again-op operation)
+(add-method (again-op (circ) x (sqr) y) 'first)
+(add-method (again-op (circ) x (circ) y) 'other)
+(add-method (again-op (circ) x (sqr) y) 'second)
+
+(check "redefining one entry" (list (again-op c s) (again-op c c))
+       '(second other))
+
+;;; Methods on an unrelated type are untouched, and so is the
+;;; operation's behaviour where it has no multimethod at all.
+
+(define-instance elsewhere operation)
+(add-method (elsewhere (circ) x (sqr) y) 'multi)
+(add-method (elsewhere (fixnum) x y) 'fixnum)
+
+(check "other home types unaffected" (list (elsewhere c s) (elsewhere 1 2))
+       '(multi fixnum))
+
+;;; Instance variables of the first parameter work as always.
+
+(define-instance box type '(v) (list object))
+(add-method (initialize (box v) self x) (set! v x) self)
+(define-instance unbox operation)
+(add-method (unbox (box v) self (circ) y) (list 'circ v))
+(add-method (unbox (box v) self (sqr) y) (set! v (+ v 1)) (list 'sqr v))
+
+(define bx (make box 10))
+(check "first parameter's slots" (unbox bx c) '(circ 10))
+(check "first parameter's slots assigned" (unbox bx s) '(sqr 11))
+
+;;; Zero-argument and one-argument calls still dispatch the way they
+;;; always did, now as the short cases of the general rule.
+
+(define-instance nullary operation)
+(add-method (nullary (object)) 'none)
+(check "zero arguments" (nullary) 'none)
+
+(define-instance unary operation)
+(add-method (unary (circ) x) 'one)
+(check "one argument" (unary c) 'one)
+
+;;; A promise in a dispatched position is forced and the call retried,
+;;; as FSELECT-TYPE would have done.
+
+(check "forced second argument" (combine c (delay (make sqr))) 'circ-sqr)
+
+;;; HAS-METHOD? sees a multimethod.
+
+(check "has-method?" (and (has-method? circ combine) #t) #t)
+
 ;;; eof

@@ -1871,7 +1871,7 @@ loop(ref_t initial_tos)
 		      find_method_type_pair(x, y_type,
 					    &e_current_method, &meth_type);
 
-		      if (e_current_method == e_nil)
+		      if (!is_method(e_current_method))
 			{
 			  if (trace_traps) {
 			    printf("No handler for operation ");
@@ -2324,7 +2324,7 @@ loop(ref_t initial_tos)
 		find_method_type_pair(x, the_type,
 				      &e_current_method, &meth_type);
 
-		if (e_current_method == e_nil)
+		if (!is_method(e_current_method))
 		  {
 		    if (trace_traps)
 		      printf("No handler for ^super operation.\n");

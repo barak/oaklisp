@@ -213,10 +213,50 @@
   (if (symbol? spec) spec (car spec)))
 
 
+;;; The parameters of a method after the first, as (GROUP . VARIABLE)
+;;; pairs: GROUP is the (TYPE SLOT ...) written before the variable it
+;;; specializes, or () when the parameter has none.  The group of the
+;;; first parameter has already been taken off by the caller, so a
+;;; group on the first pair here means two were written in a row.
+
+(define (method-param-list args form)
+  (iterate aux ((l args) (acc '()))
+    (cond ((null? l) (reverse! acc))
+	  ((symbol? (car l)) (aux (cdr l) (cons (cons '() (car l)) acc)))
+	  ((pair? (car l))
+	   (cond ((null? (cdr l))
+		  (error "Type group ~S has no parameter after it in ~S."
+			 (car l) form))
+		 ((not (symbol? (cadr l)))
+		  (error "~S should be a parameter name in ~S."
+			 (cadr l) form))
+		 (else (aux (cddr l) (cons (cons (car l) (cadr l)) acc)))))
+	  (else (error "~S is not a parameter in ~S." (car l) form)))))
+
+;;; The specializers of PARAMS, the parameters after the first, as
+;;; type expressions: an unspecialized parameter gets OBJECT, and
+;;; trailing unspecialized parameters are dropped, so that a method
+;;; written the way methods have always been written dispatches on one
+;;; argument as it always has.
+
+(define (method-specializers params form)
+  (iterate trim ((l (reverse (map car params))))
+    (cond ((null? l) '())
+	  ((null? (car l)) (trim (cdr l)))
+	  (else
+	   (map (lambda (group)
+		  (cond ((null? group) (list 'quote object))
+			((not (null? (cdr group)))
+			 (error "Instance variables of a parameter after the ~
+first are not implemented yet, in ~S." form))
+			(else (car group))))
+		(reverse l))))))
+
+
 (add-method (initialize (ast-method-node method-type status op primitivep
 					 inlabels?
 					 ivarlist ivaralist ivarmap ivarlocmap
-					 arglist heaplist
+					 specializers arglist heaplist
 					 rest-name body)
 			self form)
   (destructure* (kind-o-method (inop (typ . ivars) . args) bod) form
@@ -245,9 +285,20 @@
     (when (and rest-name (not (rest-passed-on? bod rest-name)))
       (warning "Method with rest argument ~S never passes it along, so extra arguments will be left on the stack.~%"
 	       rest-name))
-    ;; rest-name goes on front of arglist:
-    (set! arglist (if rest-name (cons rest-name (make-proper args))
-		     args))
+    (let* ((params (method-param-list (if rest-name (make-proper args) args)
+				      form))
+	   (specs (method-specializers (if (null? params) '() (cdr params))
+				       form)))
+      (when (and params (not (null? (car (car params)))))
+	(error "Two type groups in a row in ~S." form))
+      (when (and primitivep (not (null? specs)))
+	(error "_ADD-METHOD cannot dispatch on more than one argument, in ~S."
+	       form))
+      (set! specializers (map code->ast specs))
+      ;; rest-name goes on front of arglist:
+      (set! arglist (if rest-name
+			(cons rest-name (map cdr params))
+			(map cdr params))))
     (set! op (code->ast inop))		;see below
     (set! method-type (code->ast typ))
     (set! body (code->ast bod))

@@ -187,8 +187,10 @@
 
 (define-instance am-I-a-lambda? operation)
 
-(add-method (am-I-a-lambda? (ast-method-node op ivarlist method-type) self)
+(add-method (am-I-a-lambda? (ast-method-node op ivarlist specializers
+					     method-type) self)
   (and (null? ivarlist)
+       (null? specializers)
        (and (is-a? op ast-combination-node)
 	    (guarded-value-probe (combn-op op) ast-constant-node constn-value make)
 	    (= 1 (length (combn-args op)))
@@ -213,28 +215,55 @@
 ; _%install-method-with-env, %make-closed-environment, %make-cell
 
 
+;;; The specializers of the parameters after the first, as code that
+;;; makes a list of them.  CONS is spliced in as the open coded
+;;; operation it is, rather than calling LIST, because a method that
+;;; dispatches on several arguments may be compiled into a file the
+;;; cold world loads before there is a LIST to call.
+
+(define (specializer-list-code specializers)
+  (iterate aux ((l specializers))
+    (if (null? l)
+	''()
+	`(,cons ,(car l) ,(aux (cdr l))))))
+
+
 (define-instance insert-method-maker-v operation)
 
 (add-method (insert-method-maker-v (ast-node) self)
   (map-ast! self insert-method-maker-v))
 
-(add-method (insert-method-maker-v (ast-method-node status op method-type body primitivep) self)
+(add-method (insert-method-maker-v (ast-method-node status op method-type body
+						    specializers primitivep)
+				   self)
   (let ((envlist (contn-envlist self)))
     (map-ast! self insert-method-maker-v)
     (cond ((eq? status 'method)
 	   (set! status 'code)
 	   (let* ((lambda-p (am-I-a-lambda? self))
+		  (env-form
+		   (if envlist
+		       `(,%make-closed-environment
+			 ,@(map (lambda (x) `(%make-locative ,x)) envlist))
+		       '%empty-environment))
 		  (wrapping
-		   (if primitivep
-		       (addedcode->ast `(,_%install-method-with-env
-					 ,method-type ,op ,self
-					 ,(if envlist
-					      `(,%make-closed-environment
-						,@(map (lambda (x) `(%make-locative ,x))
-						       envlist))
-					      `%empty-environment))
-				       self)
-		       (addedcode->ast
+		   (cond
+		    ;; Dispatches on more than the first argument: the
+		    ;; installer takes the specializers of the rest and
+		    ;; gathers the methods sharing this operation and
+		    ;; home type.
+		    (specializers
+		     (addedcode->ast
+		      `(%install-multi-method-with-env
+			,method-type ,op ,self ,env-form
+			,(specializer-list-code specializers))
+		      self))
+		    (primitivep
+		     (addedcode->ast `(,_%install-method-with-env
+				       ,method-type ,op ,self ,env-form)
+				     self))
+		    (else
+		     (addedcode->ast
 			(splice
 			 (list
 			  (list
@@ -249,21 +278,17 @@
 			  (if lambda-p
 			      '() (list op))
 			  (list self)
-			  (if envlist
-			      (list `(,%make-closed-environment
-				      ,@(map (lambda (x) `(%make-locative ,x))
-					     envlist)))
-			      (list `%empty-environment)
-;		      '()
-)))
-			self))))
+			  (list env-form)))
+		      self)))))
 	     (classify-variables wrapping)
 	     (set! op nichevo)		;these have been plugged
 	     (set! method-type nichevo)	;into the wrapping
+	     (set! specializers '())
 	     wrapping))
 	  (else
 	   (set! op nichevo)
 	   (set! method-type nichevo)
+	   (set! specializers '())
 	   self))))
 
 

@@ -64,10 +64,20 @@
 			((%slot 7) object))))
 	   (let ((the-ass (%assq op operation-method-alist)))
 		  (set! ((%slot 1) op) nil)
-		  (if the-ass
-		      (set! (cdr the-ass) the-method)
-		      (set! operation-method-alist
-			   (cons (cons op the-method) operation-method-alist)))))))
+		  (cond ((and the-ass
+			      (not (eq? (get-type (cdr the-ass)) %method)))
+			 ;; OP already dispatches on more than this type
+			 ;; here, so the new method becomes the entry
+			 ;; specializing on nothing after the first
+			 ;; parameter.  See multi-method.oak, which the
+			 ;; cold world loads long after this file but well
+			 ;; before anything can have made a %MULTI-METHOD.
+			 (%multi-install-default! op self the-method))
+			(the-ass (set! (cdr the-ass) the-method))
+			(else
+			 (set! operation-method-alist
+			      (cons (cons op the-method)
+				    operation-method-alist))))))))
   (if *add-method-mutex* (release-mutex *add-method-mutex*))
   op)
 

@@ -552,10 +552,15 @@
 				    'o (list '%bp-offset-for g type-name))
 				   'unknown))))))))))
 
+;;; A multimethod's alist entry is a %MULTI-METHOD, which has no code
+;;; of its own and no statically resolvable callee: such a call falls
+;;; back on the site cache and the emulator's trap.
+
 (define (native-method-c-name m)
-  (let* ((cv (%get-an-ivar %method m 'the-code))
-	 (name (native-stub-name cv)))
-    (and name (#^string name))))
+  (and (eq? (get-type m) %method)
+       (let* ((cv (%get-an-ivar %method m 'the-code))
+	      (name (native-stub-name cv)))
+	 (and name (#^string name)))))
 
 ;;; Scan the original file block, before translation, for the facts
 ;;; the summaries and the direct calls need: (LOAD-CODE B)(MAKE-LAMBDA)

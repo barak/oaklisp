@@ -187,7 +187,7 @@
     ;; into something not already listed.
     %fluid _add-method native-add-method %empty-environment
     %install-method-with-env %install-method %install-lambda
-    %install-lambda-with-env
+    %install-lambda-with-env %install-multi-method-with-env
     get-current-fluid-bindings set-current-fluid-bindings
     fluid-binding-list
     signal-destructure-error

@@ -48,6 +48,14 @@
       (when monitor-for-bruce
 	(%write-char #\%))
       (contents (apply (locater op) args)))
+     ;; A multimethod: the emulator's search reached a %MULTI-METHOD
+     ;; rather than a method and left the choice among its entries to
+     ;; us.  See multi-method.oak.
+     ((%multi-resolve op args)
+      => (lambda (what)
+	   (if (eq? (car what) 'call)
+	       (apply (cdr what) args)
+	       (apply op (cdr what)))))
      ;; In an ideal world this would be handled at user level:
      ((and forcible-magic (not (null? args))
 	   ;; IS-A? not used because it might force the promise, and

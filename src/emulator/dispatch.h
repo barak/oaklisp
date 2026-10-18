@@ -97,6 +97,19 @@ lookup_bp_offset(ref_t y_type, ref_t meth_type)
 		 INT_TO_REF(0));
 }
 
+/* A method search returns whatever the type's method alist holds,
+   which for an operation that dispatches on more than its first
+   argument is a %MULTI-METHOD rather than a %METHOD: choosing among
+   its entries is Oaklisp's job, so the caller traps exactly as it
+   does when there is no method at all, and caches nothing.  See
+   src/world/multi-method.oak. */
+
+static inline bool
+is_method(ref_t x)
+{
+  return TAG_IS(x, PTR_TAG) && REF_SLOT(x, 0) == e_method_type;
+}
+
 extern void find_method_type_pair(ref_t op, ref_t obj_type,
 				  ref_t * method_ptr, ref_t * type_ptr);
 
