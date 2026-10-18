@@ -349,7 +349,8 @@
       subtype-table bp env nargs env-type
       argless-tag-trap-table arged-tag-trap-table object-type boot-code
       free-ptr cons-limit segment-type uninitialized next-newspace-size
-      method-type operation-type false process threads-enabled?))
+      method-type operation-type false process threads-enabled?
+      multi-method-type))
 
 ;;; Try and longify an instruction.  Return a list of opcodes to replace the old one.
 

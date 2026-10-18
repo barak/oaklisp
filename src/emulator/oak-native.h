@@ -62,6 +62,7 @@
 #include "weak.h"
 #include "timers.h"
 #include "cmdline.h"
+#include "dispatch.h"
 #include "native-ops.h"
 
 #ifdef THREADS
@@ -370,6 +371,10 @@ oak_native_call_1(oak_native_fn * fn, int ignore_signal)
 	  offset = REF_SLOT(op, OPERATION_CACHE_TYPE_OFF_OFF);
 	}
       else if ((m = oak_native_find_method(op, y_type, &offset)) == e_nil)
+	return 0;
+      /* The operation's cache may hold a %MULTI-METHOD, which only
+	 the interpreter's FUNCALL knows what to do with. */
+      if (!is_method(m))
 	return 0;
       e_bp = REF_TO_PTR(y) + REF_TO_INT(offset);
     }

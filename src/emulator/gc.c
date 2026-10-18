@@ -579,6 +579,7 @@ gc_top:
 	GC_TOUCH (e_uninitialized);
 	GC_TOUCH (e_method_type);
 	GC_TOUCH (e_operation_type);
+	GC_TOUCH (e_multi_method_type);
 
 	FORTHREADS {
 	  for (p = gc_examine_buffer; p < gc_examine_ptr; p++)
@@ -705,6 +706,7 @@ gc_top:
 	GGC_CHECK (e_uninitialized);
 	GGC_CHECK (e_method_type);
 	GGC_CHECK (e_operation_type);
+	GGC_CHECK (e_multi_method_type);
 
 	/* Scan the stacks. */
 	FORTHREADS {

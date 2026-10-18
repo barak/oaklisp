@@ -325,15 +325,30 @@ compiler declines to resolve such a call statically.
 take the most specific, and call its operation on the original
 arguments.
 
-**Caching** is the next step and is not yet built.  The plan is two
-more slots in the operation, taking `%simple-operation-length` and
-`OPERATION_LENGTH` from 5 to 7: the number of leading parameters any
-of the operation's methods specializes on, and a small vector of cache
-lines `[type-1, ..., type-n, method, bp-offset]` compared by identity
-and replaced round-robin, filled from the world on a miss and flushed
-the way the one-entry cache is flushed, by parking a fixnum where a
-type belongs.  Operations that never see a multimethod keep today's
-three tiers exactly, so there is nothing to pay for not using this.
+**Caching.**  The operation keeps its five words: the cache belongs to
+the `%multi-method`, which is where the search ends up anyway.  Its
+third slot holds a short list of lines, each `(key method
+. bp-offset)`, where the key lists the types of the arguments after
+the first, as many as the arity, with the fixnum 0 for an argument the
+call did not supply.  `FUNCALL` walks that list comparing refs; on a
+hit it sets `e_current_method` and `e_bp` and jumps, and on a miss it
+traps, and selection adds the line it just computed.  Eight lines are
+kept, newest first, so a call site that cycles through more
+combinations than that pays for selection rather than growing the
+cache without bound.  Adding or replacing an entry empties the cache.
+
+The operation's own one-entry cache now holds the `%multi-method`
+where it would hold a method, so a repeated call on the same first
+argument type skips the search as well.  Everything that reads that
+cache therefore has to ask `is_method()` first — `oak_native_call_1()`
+does, and declines, which sends a multimethod call from natively
+compiled code through the interpreter's `FUNCALL` and so through the
+cache.  Operations that never see a multimethod keep today's three
+tiers exactly, so there is nothing to pay for not using any of this.
+
+A `%multi-method` is recognized by `e_multi_method_type`, VM register
+24, set when `multi-method.oak` loads and again by the reboot code in
+`booted.oak`, as the other type registers are.
 
 ## 7. Instance variables of arguments after the first
 
@@ -437,6 +452,9 @@ Each step builds, bootstraps, and passes `make check` by itself.
    it, and nothing in the world uses a multimethod yet.
 3. **The tuple cache** in C, filled by the world on a miss.  The
    single-dispatch path must be unchanged within measurement noise.
+   *Done*, though natively compiled code still takes the slow path:
+   `oak_native_call_1()` declines a `%MULTI-METHOD` and falls back on
+   the interpreter's `FUNCALL`.
 4. **Slots of arguments after the first**, per §7.  Separable from
    dispatch, and testable with an ordinary single-dispatch method that
    happens to name a second argument's slots.
@@ -471,32 +489,40 @@ variation is around ten percent.
 
 | idiom | ms | what it is |
 |-------|-----|------------|
-| `one/mono`  |  64 | single dispatch, first argument's type fixed: the method cache hits |
+| `one/mono`  |  66 | single dispatch, first argument's type fixed: the method cache hits |
 | `one/poly`  |  66 | single dispatch, first argument's type varying: the cache misses, full search |
-| `fselect`   | 200 | dispatch on the first argument, `fselect-type` on the second |
-| `select`    | 179 | the same with `select-type`, which skips the forcible check |
-| `is-a?`     | 231 | dispatch on the first argument, a chain of `is-a?` on the second |
-| `deep/mono` |  58 | method four levels up a chain, type fixed: the cache hits |
-| `deep/poly` |  74 | the same with the type varying: the cache misses and the chain is walked |
-| `double`    |  94 | double dispatch: a second operation, chosen per first-argument type |
-| `nullary`   |  54 | a zero-argument call, for the path §5 folds into the general rule |
+| `fselect`   | 202 | dispatch on the first argument, `fselect-type` on the second |
+| `select`    | 196 | the same with `select-type`, which skips the forcible check |
+| `is-a?`     | 228 | dispatch on the first argument, a chain of `is-a?` on the second |
+| `deep/mono` |  52 | method four levels up a chain, type fixed: the cache hits |
+| `deep/poly` |  65 | the same with the type varying: the cache misses and the chain is walked |
+| `double`    |  95 | double dispatch: a second operation, chosen per first-argument type |
+| `multi`     |  74 | one method per combination, dispatched on both arguments |
+| `nullary`   |  51 | a zero-argument call, for the path §5 folds into the general rule |
 
 Compare a row only against its own pair: the method bodies differ
 between the groups, so `deep` and `one` are not comparable to each
 other.
 
-Three things to take from this.  Dispatch itself is cheap — the
-difference between a method cache hit and a full search is 3% on a
-shallow hierarchy and 28% on a four-level chain, so
-`find_method_type_pair()` with its move-to-front alists is nearly as
-fast as the cache in front of it.  A multimethod cache has that to
-beat, not some slow path.  Second, the manual idioms cost three to four
-times a plain dispatch: `fselect-type` more than triples the call, and
-the `is-a?` chain is worse still, so there is real room.  Third, the
-cheapest workaround available today is plain double dispatch at 94 ms
-— two full dispatches and a second operation per first-argument type
-still beat one dispatch plus four `subtype?` tests.  A native
-multimethod that cannot beat 94 ms is not worth having.
+Dispatch itself is cheap.  The difference between a method cache hit
+and a full search is nil on a shallow hierarchy and 25% on a
+four-level chain, so `find_method_type_pair()` with its move-to-front
+alists is about as fast as the cache in front of it; a multimethod
+cache has that to beat, not some slow path.  The manual idioms cost
+three to four times a plain dispatch: `fselect-type` triples the call
+and the `is-a?` chain is worse, so there was real room.  The cheapest
+workaround was plain double dispatch at 95 ms — two full dispatches
+and a second operation per first-argument type still beat one
+dispatch plus four `subtype?` tests.
+
+`multi` is the native thing, and at 74 ms it costs about what a single
+dispatch costs: a type tuple that the cache has seen runs with the
+same work as an ordinary call plus a walk down a short list of cache
+lines.  It is a third of `fselect-type` and comfortably under double
+dispatch.  Before the cache it was 2995 ms, forty times a plain
+dispatch, which is what the slow path costs: a trap, the arguments
+listified, the precedence list rebuilt, and the applicable entries
+sorted, on every call.
 
 ## References
 

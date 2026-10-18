@@ -175,6 +175,32 @@
 
 (check "forced second argument" (combine c (delay (make sqr))) 'circ-sqr)
 
+;;; The method chosen is remembered by the tuple of argument types,
+;;; the first argument's among them: the instance variable frame
+;;; offset kept beside it was computed from that type, and these two
+;;; subtypes of the home type put the home type's frame in different
+;;; places.
+
+(define-instance padding type '(pad) (list object))
+(define-instance holder type '(held) (list object))
+(define-instance kid-one type '() (list holder padding))
+(define-instance kid-two type '() (list padding holder))
+
+(define-instance set-held operation)
+(add-method (set-held (holder held) self v) (set! held v) self)
+
+(define-instance get-held operation)
+(add-method (get-held (holder held) self (circ) y) held)
+(add-method (get-held (holder held) self y) (list 'other held))
+
+(define k1 (set-held (make kid-one) 'one))
+(define k2 (set-held (make kid-two) 'two))
+
+(check "frame offset per first argument type"
+       (list (get-held k1 c) (get-held k2 c) (get-held k1 c))
+       '(one two one))
+
+
 ;;; HAS-METHOD? sees a multimethod.
 
 (check "has-method?" (and (has-method? circ combine) #t) #t)

@@ -46,8 +46,14 @@
 
 (define-instance %multi-method type
   '(extra-arity				;specializers after the first parameter
-    entries)				;(tuple method operation), newest first
+    entries				;(tuple method operation home), newest first
+    cache)				;(key method . bp-offset), newest first
   (list object))
+
+;;; The emulator looks in the cache itself; see MULTI_ARITY_OFF and
+;;; the rest in src/emulator/dispatch.h.
+
+(set! ((%register 'multi-method-type)) %multi-method)
 
 
 ;;; Reading and writing the kernel objects involved, by name.
@@ -87,8 +93,10 @@
 
 (define (%multi-extra-arity mm) ((%slot 1) mm))
 (define (%multi-entries mm) ((%slot 2) mm))
+(define (%multi-cache mm) ((%slot 3) mm))
 (define (%multi-set-extra-arity! mm n) (set! ((%slot 1) mm) n))
 (define (%multi-set-entries! mm l) (set! ((%slot 2) mm) l))
+(define (%multi-set-cache! mm l) (set! ((%slot 3) mm) l))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -229,12 +237,62 @@
 		(applicable (%multi-applicable-entries mm rest))
 		(best (and applicable (%multi-best applicable rest))))
 	   (cond ((and best (not (%multi-matched-a-promise? (car best) rest)))
+		  (%multi-remember! mm best args)
 		  (cons 'call (caddr best)))
 		 ((%multi-force-args args) => (lambda (f) (cons 'retry f)))
 		 (best (cons 'call (caddr best)))
 		 ((null? applicable) #f)
 		 (else
 		  (error "Ambiguous methods for ~S on ~S." op args)))))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                            the cache                               ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; Selection runs once per tuple of argument types: the emulator
+;;; finds the line and jumps, and only a miss comes here.  Lines are
+;;; kept newest first and the list is cut off, so a call that cycles
+;;; through more combinations than that pays for selection each time
+;;; rather than growing the cache without bound.
+
+(define %multi-cache-lines 8)
+
+;;; The types of the arguments, as many as the arity and one more for
+;;; the first, with 0 where the call supplied no argument -- the key
+;;; the emulator compares against.  The first argument's type is in
+;;; the key because the instance variable frame offset stored beside
+;;; it was computed from that type, and two subtypes of the home type
+;;; need not put the home type's frame in the same place.
+
+(define (%multi-cache-key n args)
+  (iterate aux ((i n) (as args) (acc '()))
+    (cond ((= i 0) (reverse! acc))
+	  ((null? as) (aux (- i 1) as (cons 0 acc)))
+	  (else (aux (- i 1) (cdr as) (cons (get-type (car as)) acc))))))
+
+(define (%multi-first-n l n)
+  (iterate aux ((l l) (n n) (acc '()))
+    (if (or (= n 0) (null? l))
+	(reverse! acc)
+	(aux (cdr l) (- n 1) (cons (car l) acc)))))
+
+;;; Where the instance variable frame of ENTRY's method begins in the
+;;; first argument: the offset the emulator would have computed from
+;;; the method's home type, as FUNCALL does for a single method.
+
+(define (%multi-bp-offset entry args)
+  (if (null? args)
+      0
+      (let ((x (assq (cadddr entry) (get-bp-alist (get-type (car args))))))
+	(if x (cdr x) 0))))
+
+(define (%multi-remember! mm entry args)
+  (%multi-set-cache!
+   mm
+   (cons (cons (%multi-cache-key (+ 1 (%multi-extra-arity mm)) args)
+	       (cons (cadr entry) (%multi-bp-offset entry args)))
+	 (%multi-first-n (%multi-cache mm) (- %multi-cache-lines 1)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -249,13 +307,15 @@
 
 (define (%multi-init! mm)
   (%multi-set-extra-arity! mm 0)
-  (%multi-set-entries! mm '()))
+  (%multi-set-entries! mm '())
+  (%multi-set-cache! mm '()))
 
 ;;; Widen every tuple when a method specializing on more parameters
 ;;; than any before it arrives.
 
 (define (%multi-grow! mm n)
   (when (> n (%multi-extra-arity mm))
+    (%multi-set-cache! mm '())
     (%multi-set-extra-arity! mm n)
     (%multi-set-entries! mm
 			 (map (lambda (e) (cons (%multi-pad (car e) n) (cdr e)))
@@ -273,6 +333,7 @@
 	(else #f)))
 
 (define (%multi-replace! mm tuple entry)
+  (%multi-set-cache! mm '())
   (%multi-set-entries!
    mm
    (cons entry
@@ -281,10 +342,10 @@
 		 ((%multi-tuple=? (car (car l)) tuple) (aux (cdr l) acc))
 		 (else (aux (cdr l) (cons (car l) acc))))))))
 
-(define (%multi-put! mm tuple method inner)
+(define (%multi-put! mm tuple method inner home)
   (%multi-grow! mm (length tuple))
   (let ((padded (%multi-pad tuple (%multi-extra-arity mm))))
-    (%multi-replace! mm padded (list padded method inner))))
+    (%multi-replace! mm padded (list padded method inner home))))
 
 ;;; An operation with METHOD as its only method, for the slow path to
 ;;; call.  A method that touches no instance variable goes on OBJECT,
@@ -313,7 +374,8 @@
 	     (%multi-init! mm)
 	     (cond (hit
 		    (%multi-put! mm '() (cdr hit)
-				 (%multi-wrap-method typ (cdr hit)))
+				 (%multi-wrap-method typ (cdr hit))
+				 typ)
 		    (set! (cdr hit) mm))
 		   (else (%type-add-method-entry typ (cons op mm))))
 	     mm)))))
@@ -325,7 +387,7 @@
 
 (define (%multi-install-default! op typ method)
   (%multi-put! (%multi-method-at! op typ) '() method
-	       (%multi-wrap-method typ method)))
+	       (%multi-wrap-method typ method) typ))
 
 ;;; What the compiler emits for a method that specializes on more than
 ;;; its first parameter: %INSTALL-METHOD-WITH-ENV with the
@@ -349,7 +411,8 @@
 		 (if uses-ivars?
 		     (cdr (assq inner (%type-method-alist typ)))
 		     (%operation-lambda inner))
-		 inner)
+		 inner
+		 home)
     op))
 
 ;;; eof

@@ -120,6 +120,26 @@
 (add-method (dbl-d (vc) self k) (+ k 6))
 (add-method (dbl-d (vd) self k) (+ k 7))
 
+;;; Native multi-dispatch: a method per combination.
+
+(define-instance comb-multi operation)
+(add-method (comb-multi (va n) self (va) y) (+ n 1))
+(add-method (comb-multi (va n) self (vb) y) (+ n 2))
+(add-method (comb-multi (va n) self (vc) y) (+ n 3))
+(add-method (comb-multi (va n) self (vd) y) (+ n 4))
+(add-method (comb-multi (vb n) self (va) y) (+ n 2))
+(add-method (comb-multi (vb n) self (vb) y) (+ n 3))
+(add-method (comb-multi (vb n) self (vc) y) (+ n 4))
+(add-method (comb-multi (vb n) self (vd) y) (+ n 5))
+(add-method (comb-multi (vc n) self (va) y) (+ n 3))
+(add-method (comb-multi (vc n) self (vb) y) (+ n 4))
+(add-method (comb-multi (vc n) self (vc) y) (+ n 5))
+(add-method (comb-multi (vc n) self (vd) y) (+ n 6))
+(add-method (comb-multi (vd n) self (va) y) (+ n 4))
+(add-method (comb-multi (vd n) self (vb) y) (+ n 5))
+(add-method (comb-multi (vd n) self (vc) y) (+ n 6))
+(add-method (comb-multi (vd n) self (vd) y) (+ n 7))
+
 ;;; A deeper hierarchy, with the only method four levels up: what the
 ;;; one-entry method cache is worth, since a miss walks the chain.
 
@@ -220,6 +240,7 @@
 		       (cons "deep/poly" (lambda ()
 					   (run comb-deep deep-pairs)))
 		       (cons "double"   (lambda () (run comb-dbl pairs)))
+		       (cons "multi"    (lambda () (run comb-multi pairs)))
 		       (cons "nullary"  run-nullary)))
     (format #t "~12A~6D~%" (car entry) (best (cdr entry)))))
 
@@ -232,6 +253,7 @@
      (run comb-deep deep-mono-pairs)
      (run comb-deep deep-pairs)
      (run comb-dbl pairs)
+     (run comb-multi pairs)
      (run-nullary)))
 
 ;;; eof
