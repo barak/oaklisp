@@ -53,6 +53,7 @@
     ))
 (define layer2
   '(
+    multi-method pl
     eqv pl
     mapping pl
     fastmap pl
@@ -113,7 +114,6 @@
     cold do				;cold load streams
     nargs pl
     has-method pl
-    multi-method pl
     op-error pl
     error2 pl
     error3 pl

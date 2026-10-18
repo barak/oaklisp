@@ -52,6 +52,15 @@
 	    (listify-args aux i arg . args)))))
 
 
+;;; FUNCALL and FUNCALL-TAIL.  op-error.oak gives these their real
+;;; handler, but that is four layers away and a cold file can call a
+;;; multimethod before then, so until it does they get the part of
+;;; the job that multi-method.oak can already do.
+
+(set! (nth %arged-tag-trap-table 21) %multi-early-funcall)
+(set! (nth %arged-tag-trap-table 22) %multi-early-funcall)
+
+
 ;;; NATIVE (35 to 42) traps when the shared object holding its C
 ;;; function has not been loaded; see native-compiler.oak.
 (dotimes (i 8)

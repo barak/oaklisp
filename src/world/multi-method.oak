@@ -56,6 +56,35 @@
 (set! ((%register 'multi-method-type)) %multi-method)
 
 
+;;; This file is loaded before mapping.oak, so that the rest of the
+;;; cold world can dispatch on several arguments; the list operations
+;;; it needs while installing a method are therefore written out here
+;;; rather than taken from there.  (SUBTYPE?, MEMQ and the like are
+;;; used only when a call is dispatched, by which time there are.)
+
+(define (%multi-reverse l)
+  (iterate aux ((l l) (acc '()))
+    (if (null? l) acc (aux (cdr l) (cons (car l) acc)))))
+
+(define (%multi-member? x l)
+  (cond ((null? l) #f)
+	((eq? x (car l)) #t)
+	(else (%multi-member? x (cdr l)))))
+
+(define (%multi-append a b)
+  (if (null? a) b (cons (car a) (%multi-append (cdr a) b))))
+
+(define (%multi-assq key l)
+  (cond ((null? l) #f)
+	((eq? key (car (car l))) (car l))
+	(else (%multi-assq key (cdr l)))))
+
+(define (%multi-any? pred l)
+  (cond ((null? l) #f)
+	((pred (car l)) #t)
+	(else (%multi-any? pred (cdr l)))))
+
+
 ;;; Reading and writing the kernel objects involved, by name.
 
 (define-instance %type-supertypes operation)
@@ -71,6 +100,12 @@
 
 (define-instance %operation-lambda operation)
 (add-method (%operation-lambda (operation lambda?) self) lambda?)
+
+;;; GET-BP-ALIST by another name: bp-alist.oak is three layers away,
+;;; and a multimethod can be called before it.
+
+(define-instance %type-bp-alist operation)
+(add-method (%type-bp-alist (type type-bp-alist) self) type-bp-alist)
 
 ;;; Take OP off the fast paths that assume one method per type: a
 ;;; lambda in the LAMBDA? slot moves to OBJECT's alist, as
@@ -108,10 +143,10 @@
 ;;; the emulator's method search visits.
 
 (define (%type-precedence-list typ)
-  (iterate aux ((todo (list typ)) (acc '()))
-    (cond ((null? todo) (reverse! acc))
-	  ((memq (car todo) acc) (aux (cdr todo) acc))
-	  (else (aux (append (%type-supertypes (car todo)) (cdr todo))
+  (iterate aux ((todo (cons typ '())) (acc '()))
+    (cond ((null? todo) (%multi-reverse acc))
+	  ((%multi-member? (car todo) acc) (aux (cdr todo) acc))
+	  (else (aux (%multi-append (%type-supertypes (car todo)) (cdr todo))
 		     (cons (car todo) acc))))))
 
 ;;; The %MULTI-METHOD that the emulator's search for OP on an instance
@@ -121,7 +156,7 @@
 (define (%multi-method-for op typ)
   (iterate aux ((l (%type-precedence-list typ)))
     (cond ((null? l) #f)
-	  ((assq op (%type-method-alist (car l)))
+	  ((%assq op (%type-method-alist (car l)))
 	   => (lambda (hit)
 		(and (eq? (get-type (cdr hit)) %multi-method) (cdr hit))))
 	  (else (aux (cdr l))))))
@@ -216,10 +251,15 @@
 
 (define (%multi-force-args args)
   (and forcible-magic
-       (any? (lambda (a) (subtype? (get-type a) forcible)) args)
-       (map (lambda (a)
-	      (if (subtype? (get-type a) forcible) (force a) a))
-	    args)))
+       (%multi-any? (lambda (a) (subtype? (get-type a) forcible)) args)
+       (iterate aux ((l args) (acc '()))
+	 (if (null? l)
+	     (%multi-reverse acc)
+	     (aux (cdr l)
+		  (cons (if (subtype? (get-type (car l)) forcible)
+			    (force (car l))
+			    (car l))
+			acc))))))
 
 ;;; What to do about a call of OP on ARGS that the emulator handed
 ;;; over because the method search reached a %MULTI-METHOD: (CALL
@@ -246,6 +286,35 @@
 		  (error "Ambiguous methods for ~S on ~S." op args)))))))
 
 
+;;; The cold world can call a multimethod long before op-error.oak
+;;; installs the real FUNCALL trap handler -- a tuple of argument
+;;; types that is not yet in the cache traps -- so tag-trap.oak hooks
+;;; this up as soon as there is a table to hook it into, and
+;;; op-error.oak replaces it with FAILED-FUNCALL, which does this and
+;;; everything else besides.  A trap that is not a multimethod at all
+;;; is a real error, and this early there is nothing to report it
+;;; with but ERROR.
+
+(define (%multi-early-funcall n . args)
+  (listify-args %multi-early-dispatch . args))
+
+(define (%multi-early-dispatch args)
+  (let* ((op (car args))
+	 (rest (cdr args))
+	 (what (%multi-resolve op rest)))
+    (cond ((not what)
+	   ;; There is nothing here to report an error with: the printer
+	   ;; is layers away and ERROR would trap its way back in, so
+	   ;; say so a character at a time and stop.
+	   (dolist (c '(#\newline #\n #\o #\space #\m #\e #\t #\h #\o #\d
+			#\space #\i #\n #\space #\c #\o #\l #\d #\space
+			#\b #\o #\o #\t #\newline))
+	     (%write-char c))
+	   ((%halt 70) op))
+	  ((eq? (car what) 'call) (apply (cdr what) rest))
+	  (else (apply op (cdr what))))))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;                            the cache                               ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -267,14 +336,14 @@
 
 (define (%multi-cache-key n args)
   (iterate aux ((i n) (as args) (acc '()))
-    (cond ((= i 0) (reverse! acc))
+    (cond ((= i 0) (%multi-reverse acc))
 	  ((null? as) (aux (- i 1) as (cons 0 acc)))
 	  (else (aux (- i 1) (cdr as) (cons (get-type (car as)) acc))))))
 
 (define (%multi-first-n l n)
   (iterate aux ((l l) (n n) (acc '()))
     (if (or (= n 0) (null? l))
-	(reverse! acc)
+	(%multi-reverse acc)
 	(aux (cdr l) (- n 1) (cons (car l) acc)))))
 
 ;;; Where the instance variable frame of ENTRY's method begins in the
@@ -284,7 +353,7 @@
 (define (%multi-bp-offset entry args)
   (if (null? args)
       0
-      (let ((x (assq (cadddr entry) (get-bp-alist (get-type (car args))))))
+      (let ((x (%multi-assq (cadddr entry) (%type-bp-alist (get-type (car args))))))
 	(if x (cdr x) 0))))
 
 (define (%multi-remember! mm entry args)
@@ -312,7 +381,7 @@
 (add-method (%type-ivar-list (type ivar-list) self) ivar-list)
 
 (define (%ivar-slot-locative obj typ slot)
-  (let ((here (assq typ (get-bp-alist (get-type obj)))))
+  (let ((here (%multi-assq typ (%type-bp-alist (get-type obj)))))
     (cond ((not here)
 	   (error "~S is not an instance of ~S, whose ~S it should have."
 		  obj typ slot))
@@ -330,7 +399,7 @@
 
 (define (%multi-pad tuple n)
   (iterate aux ((l tuple) (i n) (acc '()))
-    (cond ((= i 0) (reverse! acc))
+    (cond ((= i 0) (%multi-reverse acc))
 	  ((null? l) (aux l (- i 1) (cons object acc)))
 	  (else (aux (cdr l) (- i 1) (cons (car l) acc))))))
 
@@ -346,9 +415,14 @@
   (when (> n (%multi-extra-arity mm))
     (%multi-set-cache! mm '())
     (%multi-set-extra-arity! mm n)
-    (%multi-set-entries! mm
-			 (map (lambda (e) (cons (%multi-pad (car e) n) (cdr e)))
-			      (%multi-entries mm)))))
+    (%multi-set-entries!
+     mm
+     (iterate aux ((l (%multi-entries mm)) (acc '()))
+       (if (null? l)
+	   (%multi-reverse acc)
+	   (aux (cdr l)
+		(cons (cons (%multi-pad (car (car l)) n) (cdr (car l)))
+		      acc)))))))
 
 ;;; Two tuples name the same methods when they name the same types,
 ;;; which EQ? decides position by position.  (EQUAL? would too, but it
@@ -367,7 +441,7 @@
    mm
    (cons entry
 	 (iterate aux ((l (%multi-entries mm)) (acc '()))
-	   (cond ((null? l) (reverse! acc))
+	   (cond ((null? l) (%multi-reverse acc))
 		 ((%multi-tuple=? (car (car l)) tuple) (aux (cdr l) acc))
 		 (else (aux (cdr l) (cons (car l) acc))))))))
 
@@ -396,7 +470,7 @@
 ;;; on nothing after the first parameter.
 
 (define (%multi-method-at! op typ)
-  (let ((hit (assq op (%type-method-alist typ))))
+  (let ((hit (%assq op (%type-method-alist typ))))
     (cond ((and hit (eq? (get-type (cdr hit)) %multi-method)) (cdr hit))
 	  (else
 	   (let ((mm (make %multi-method)))
@@ -438,7 +512,7 @@
     (%multi-put! (%multi-method-at! op typ)
 		 specializers
 		 (if uses-ivars?
-		     (cdr (assq inner (%type-method-alist typ)))
+		     (cdr (%assq inner (%type-method-alist typ)))
 		     (%operation-lambda inner))
 		 inner
 		 home)
