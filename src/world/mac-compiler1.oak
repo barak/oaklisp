@@ -193,9 +193,30 @@
 	(else (any? (lambda (sub) (rest-passed-on? sub rest-var))
 		    (make-proper form)))))
 
+;;; A slot specification in the type group of an ADD-METHOD parameter
+;;; is either SLOT, which names an instance variable of the type and
+;;; stands for it in the body, or (VAR SLOT), which calls it VAR there
+;;; instead -- needed when two parameters have the same type, and
+;;; useful whenever the declared name is wrong for the body.
+
+(define (ivar-spec-slot spec form)
+  (cond ((symbol? spec) spec)
+	((and (pair? spec)
+	      (pair? (cdr spec))
+	      (null? (cddr spec))
+	      (symbol? (car spec))
+	      (symbol? (cadr spec)))
+	 (cadr spec))
+	(else (error "Malformed instance variable ~S in ~S." spec form))))
+
+(define (ivar-spec-var spec)
+  (if (symbol? spec) spec (car spec)))
+
+
 (add-method (initialize (ast-method-node method-type status op primitivep
 					 inlabels?
-					 ivarlist ivarmap arglist heaplist
+					 ivarlist ivaralist ivarmap ivarlocmap
+					 arglist heaplist
 					 rest-name body)
 			self form)
   (destructure* (kind-o-method (inop (typ . ivars) . args) bod) form
@@ -204,8 +225,13 @@
       (error "Error parsing ~S as a %METHOD." form))
     (set! status 'method)
     (set! inlabels? nil)
-    (set! ivarlist ivars)
+    (set! ivaralist (map (lambda (spec)
+			   (cons (ivar-spec-slot spec form)
+				 (ivar-spec-var spec)))
+			 ivars))
+    (set! ivarlist (map car ivaralist))
     (set! ivarmap nil)
+    (set! ivarlocmap nil)
     (set! heaplist nil)
     (set! primitivep (eq? kind-o-method '_%add-method))
     (set! rest-name (improper-list? args))
@@ -225,7 +251,8 @@
     (set! op (code->ast inop))		;see below
     (set! method-type (code->ast typ))
     (set! body (code->ast bod))
-    (^super ast-contour-node initialize self (union ivarlist arglist) form)))
+    (^super ast-contour-node initialize self
+	    (union (map cdr ivaralist) arglist) form)))
 
 
 

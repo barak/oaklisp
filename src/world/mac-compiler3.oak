@@ -77,7 +77,9 @@
       self))
 
 
-(add-method (fold-constants-v (ast-method-node ivarlist ivarmap primitivep method-type
+(add-method (fold-constants-v (ast-method-node ivarlist ivaralist ivarmap
+						   ivarlocmap primitivep
+						   method-type
 						   status arglist body) self locale)
   (map-ast-with-arg! self fold-constants-v locale)
   (set! ivarmap '())
@@ -90,6 +92,16 @@
 	   (error "Couldn't generate heuristic map for ~S~%" (listify self)))
 	  (else
 	   (set! ivarmap ivarlist))))
+  ;; The code body carries the map of slot names, which is what
+  ;; %INSTALL-METHOD-WITH-ENV matches against the type; instance
+  ;; variable references in the body are by the variables those slots
+  ;; were bound to, so code generation needs the map in those terms.
+  (set! ivarlocmap
+	(map (lambda (slot)
+	       (cond ((not slot) slot)
+		     ((assq slot ivaralist) => cdr)
+		     (else slot)))
+	     ivarmap))
   (cond ((and (eq? 'inline status)
 	      (= 1 (length arglist))
 	      (eq? ast-variable-node (get-type body))

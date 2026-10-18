@@ -177,7 +177,7 @@
 
 	 ((eq? var-type 'ivar)
 	  `((,(if store? 'store-bp 'load-bp)
-	     ,(compute-offset self (methn-ivarmap source-contour))
+	     ,(compute-offset self (methn-ivarlocmap source-contour))
 	     ,name)))
 
 	 ((eq? var-type 'global)
@@ -297,7 +297,9 @@ variable.  Use DEFINE-LOCAL-SYNTAX to macroexpand it here too.~%"
 		    (list var-type name)))
 	    ((eq? var-type 'ivar)
 	     (list
-	       `(make-bp-loc ,(compute-offset self (methn-ivarmap source-contour)) ,name)))
+	       `(make-bp-loc ,(compute-offset self
+					      (methn-ivarlocmap source-contour))
+			     ,name)))
 	    (else (error "Makloc: Error in var-type for ~S" (list var-type name))))
       (primitive-continuation self cont)))
 

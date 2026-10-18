@@ -1,0 +1,62 @@
+;;; Dispatch: slot aliasing in method parameter groups, and dispatch
+;;; on the types of more than one argument.  See Multi-Dispatch.md.
+
+(define (check name got expected)
+  (if (equal? got expected)
+      (format #t "PASS ~A~%" name)
+      (format #t "FAIL ~A: got ~S expected ~S~%" name got expected))
+  (flush standard-output))
+
+;;; LOAD binds these to abbreviate its progress reports; not wanted here.
+(set! #*print-length #f)
+(set! #*print-level #f)
+
+
+;;; Slot aliasing: (VAR SLOT) names SLOT but calls it VAR.
+
+(define-instance pt type '(x y) (list object))
+(add-method (initialize (pt x y) self a b) (set! x a) (set! y b) self)
+
+(define-instance aliased operation)
+(add-method (aliased (pt (a x) (b y)) self) (list a b))
+
+(define-instance aliased-set operation)
+(add-method (aliased-set (pt (a x)) self v) (set! a v) a)
+
+(define-instance aliased-loc operation)
+(add-method (aliased-loc (pt (a x)) self) (contents (make-locative a)))
+
+(define-instance mixed operation)
+(add-method (mixed (pt (a x) y) self) (list a y))
+
+(define p (make pt 3 4))
+
+(check "alias reads slots" (aliased p) '(3 4))
+(check "alias assigns slot" (block (aliased-set p 7) (aliased p)) '(7 4))
+(check "alias locative" (aliased-loc p) 7)
+(check "alias beside plain slot" (mixed p) '(7 4))
+
+;;; The same type twice in one method, which is what aliasing is for:
+;;; without it the two slots named X would collide.
+
+(define-instance pt-add operation)
+(add-method (pt-add (pt (ax x) (ay y)) self other)
+  (list (+ ax (car (aliased other))) (+ ay (cadr (aliased other)))))
+
+(check "two instances of a type" (pt-add (make pt 1 2) (make pt 10 20))
+       '(11 22))
+
+;;; Aliasing does not disturb an inherited layout: the slot named is
+;;; still looked up in the type the method is added to.
+
+(define-instance pt3 type '(z) (list pt))
+(add-method (initialize (pt3 z) self a b c)
+  (set! z c)
+  (^super pt initialize self a b))
+(define-instance pt3-z operation)
+(add-method (pt3-z (pt3 (c z)) self) c)
+
+(define q (make pt3 1 2 3))
+(check "subtype slots" (list (aliased q) (pt3-z q)) '((1 2) 3))
+
+;;; eof

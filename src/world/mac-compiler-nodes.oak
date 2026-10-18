@@ -52,8 +52,10 @@
 	 op				;the operation
 	 status				;'method,'inline, or 'code
 	 inlabels?			;labels clauses are special
-	 ivarlist			;ivars declared
+	 ivarlist			;slots declared, in the order written
+	 ivaralist			;(slot . variable standing for it)
 	 ivarmap			;assumed layout of ivars in type
+	 ivarlocmap			;IVARMAP with the variables of IVARALIST
 	 arglist			;arguments declared
 	 heaplist			;args that must be moved to heap
 	 primitivep			;whether its the crude open coded kind
@@ -103,7 +105,8 @@
 (create-accessors ast-contour-node contn-
 		  localvars envlist closedlist nojumplist environment)
 (create-accessors ast-method-node methn-
-		  method-type op status ivarlist arglist heaplist ivarmap rest-name body)
+		  method-type op status ivarlist ivaralist arglist heaplist
+		  ivarmap ivarlocmap rest-name body)
 (create-accessors ast-labels-node labn-
 		  gensymlist labellist lambdalist body)
 
