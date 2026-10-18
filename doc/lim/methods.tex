@@ -104,6 +104,53 @@ object-oriented style and makes extensive use of inheritance.
 
 
 
+\subsection{Dispatching on Several Arguments}
+
+A method may specialize on the types of several of its parameters.
+The home type of such a method is still the specializer of its first
+parameter, which is where \df{operation-method-alist} has always put
+it, and the search above is unchanged: the first type in it with an
+entry for the operation decides the matter.  What that entry holds may
+now be a \df{\%multi-method} rather than a \df{\%method} --- all the
+methods of that operation with that home type, each with the tuple of
+its remaining specializers --- and choosing among them is Oaklisp's
+job, in \df{src/world/multi-method.oak}.
+
+The emulator notices this where it would notice a missing method.
+Every caller of the method search asks \df{is\protect\_method()} about
+what came back, and a \df{\%multi-method} traps to the operation in
+slot 21 of the arged tag trap table, which is to say
+\df{failed-funcall}, exactly as no method at all does.  The method
+that applies and is more specific than every other applicable one is
+then called through an operation of its own, which each entry carries
+so that invoking it is an ordinary call: the registers, the instance
+variable frame and the argument count are set the way they always are.
+A method that uses no instance variable has that operation's
+\df{lambda?} slot pointing at it, so it takes up no room in any method
+alist.
+
+Selection runs once per tuple of argument types.  The
+\df{\%multi-method} holds a short list of cache lines, each the types
+of the arguments after the first paired with the method and its
+instance variable frame offset, and \df{FUNCALL} walks that list and
+jumps on a hit; only a miss traps, and the selection that follows adds
+the line it computed.  Eight lines are kept, newest first, and adding
+or replacing a method empties the cache.  The operation's one-entry
+cache holds the \df{\%multi-method} where it would hold a method, so a
+repeated first argument type skips the search as well.
+
+The \df{bp} register holds the instance variable frame of the first
+argument alone, so a slot named by a later parameter is reached
+through a locative instead.  Where the specializer's own instance
+variables begin in that argument is one lookup in its type's
+\df{type-bp-alist} --- the lookup \df{FUNCALL} makes to set \df{bp}
+--- and the slot's place among them is another;
+\df{\%ivar-slot-locative} does both.  The compiler binds the result
+once on the way into the method and turns each use of the slot's name
+into the contents of it, so a method that names no such slot pays
+nothing, and one that does pays the two lookups once per call however
+often it reads or assigns the slot.
+
 \subsection{Adding Methods}
 
 A serious complication results from the fact that the type field in an
@@ -144,6 +191,16 @@ there is already a value in the \df{lambda?} slot and the new method
 is not being installed for type \df{object}, the \df{lambda?} slot is
 cleared and the method that used to reside there is added to
 \df{operation-method-alist} of type \df{object}.
+
+\op{\%install-multi-method-with-env}{type operation code-body
+environment specializers}
+\doc{What the compiler emits for a method that specializes on more
+than its first parameter: like \df{\%install-method-with-env}, with
+\emph{specializers} the types of the parameters after the first.  It
+builds the method the ordinary way, so that the instance variable map
+of \emph{code-body} is checked and remapped against \emph{type} as
+usual, and files it in the \df{\%multi-method} of \emph{operation} at
+\emph{type}, making one if there is none.}
 
 \op{\%install-method-with-env}{type operation code-body environment}
 \doc{This flushes the method cache of \emph{operation}, ensures that
