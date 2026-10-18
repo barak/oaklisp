@@ -419,11 +419,47 @@ Each step builds, bootstraps, and passes `make check` by itself.
 
 Measured before any of this is built, so the native implementation has
 something to beat.  `tests/bench-multi.oak` times the idioms that
-multi-dispatch replaces; `make bench` runs it.  Each figure is the
-best of five runs, in CPU milliseconds, for the same number of calls
-through each idiom.
+multi-dispatch replaces; `make bench` runs it as one number, and
 
-<!-- BENCHMARK TABLE -->
+```sh
+oaklisp -- --load tests/bench-multi --eval '(breakdown)' --exit
+```
+
+prints the breakdown.  Four types under a common supertype, one
+binary operation per idiom, all computing the same thing from the
+types of both arguments over the same sixteen argument pairs; 640,000
+calls per idiom, best of five, CPU milliseconds, on an Intel i7-14700
+with gcc 16.2 and the default `--enable-ndebug` build.  Run-to-run
+variation is around ten percent.
+
+| idiom | ms | what it is |
+|-------|-----|------------|
+| `one/mono`  |  64 | single dispatch, first argument's type fixed: the method cache hits |
+| `one/poly`  |  66 | single dispatch, first argument's type varying: the cache misses, full search |
+| `fselect`   | 200 | dispatch on the first argument, `fselect-type` on the second |
+| `select`    | 179 | the same with `select-type`, which skips the forcible check |
+| `is-a?`     | 231 | dispatch on the first argument, a chain of `is-a?` on the second |
+| `deep/mono` |  58 | method four levels up a chain, type fixed: the cache hits |
+| `deep/poly` |  74 | the same with the type varying: the cache misses and the chain is walked |
+| `double`    |  94 | double dispatch: a second operation, chosen per first-argument type |
+| `nullary`   |  54 | a zero-argument call, for the path §5 folds into the general rule |
+
+Compare a row only against its own pair: the method bodies differ
+between the groups, so `deep` and `one` are not comparable to each
+other.
+
+Three things to take from this.  Dispatch itself is cheap — the
+difference between a method cache hit and a full search is 3% on a
+shallow hierarchy and 28% on a four-level chain, so
+`find_method_type_pair()` with its move-to-front alists is nearly as
+fast as the cache in front of it.  A multimethod cache has that to
+beat, not some slow path.  Second, the manual idioms cost three to four
+times a plain dispatch: `fselect-type` more than triples the call, and
+the `is-a?` chain is worse still, so there is real room.  Third, the
+cheapest workaround available today is plain double dispatch at 94 ms
+— two full dispatches and a second operation per first-argument type
+still beat one dispatch plus four `subtype?` tests.  A native
+multimethod that cannot beat 94 ms is not worth having.
 
 ## References
 

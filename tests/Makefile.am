@@ -43,7 +43,7 @@ OAKTESTS = arith.oak bignum.oak data.oak control.oak objects.oak io.oak locales.
 
 BENCHES = bench-tak.oak bench-fib.oak bench-bignum.oak bench-sort.oak	\
   bench-cons.oak bench-strings.oak bench-hash.oak bench-dispatch.oak	\
-  bench-eval.oak bench-format.oak bench-compile.oak
+  bench-multi.oak bench-eval.oak bench-format.oak bench-compile.oak
 
 EXTRA_DIST = $(TESTS) $(OAKTESTS) $(BENCHES) testlib.sh bench.sh \
   qemu-native.sh
