@@ -18,6 +18,22 @@
 ;;; Copyright (C) 1988 Kevin J. Lang & Barak A. Pearlmutter
 
 
+;;; The subprimitives: the machine as the rest of the world sees it.
+;;;
+;;; Each is an operation built from a list of instructions, which the
+;;; compiler emits in place of a call.  The method on it is written
+;;; as a call to the operation itself, which the compiler open codes
+;;; in its turn, so the body really is the instruction; the method
+;;; exists for the calls that are not open coded, where the operation
+;;; was passed as a value or found at run time.  The foldable ones
+;;; may also be run by the compiler on constant arguments.
+;;;
+;;; Most of these check nothing.  They are the pieces the safe
+;;; operations are built out of, and are not for general use.
+
+;;; The two-bit tag every reference carries, and the subtags that
+;;; divide up the immediates.  The emulator agrees, in data.h.
+
 (define-constant %fixnum-tag 0)
 (define-constant %immediate-tag 1)
 (define-constant %locative-tag 2)
@@ -26,6 +42,9 @@
 (define-constant %character-subtag (bit-or (ash-left 0 2) %immediate-tag))
 (define-constant %wp-subtag	   (bit-or (ash-left 1 2) %immediate-tag))
 
+
+;;; Arithmetic on references: step a locative along by whole cells,
+;;; and put a tag back on raw data.
 
 (define-constant %increment-locative
   (add-method ((make-open-coded-operation '((inc-loc)) 2 1)
@@ -38,6 +57,9 @@
 
 
 
+
+;;; The type of an object, the time of day, and the length of a
+;;; variable-length one.
 
 (define-constant get-type
   (add-method ((make-foldable-open-coded-operation '((load-type)) 1 1)
@@ -66,6 +88,10 @@
 ||#
 
 
+;;; Identity, and the test against NIL.  NOT is the same operation:
+;;; NIL is the only false value, so asking whether something is false
+;;; and asking whether it is the empty list are one question.
+
 (define-constant eq?
   (add-method ((make-foldable-open-coded-operation '((eq?)) 2 1)
 	       (object) x y)
@@ -78,6 +104,11 @@
 
 (define-constant not null?)
 
+;;; Raw allocation of SIZE cells of the given type.  The cells come
+;;; back uninitialized, so the caller must fill them before anything
+;;; else can run.  The VARLEN form puts the length in the object, for
+;;; types whose instances are not all the same size.
+
 (define-constant %allocate
   (add-method ((make-open-coded-operation '((allocate)) 2 1)
 	       (type) self size)
@@ -87,6 +118,10 @@
   (add-method ((make-open-coded-operation '((vlen-allocate)) 2 1)
 	       (type) self size)
     (%varlen-allocate self size)))
+
+;;; A reference taken apart and put back together: %DATA strips the
+;;; tag, %TAG is the tag alone, and %CRUNCH makes a reference of the
+;;; two.  %CRUNCH will build anything at all, valid or not.
 
 (define-constant %data
   (add-method ((make-open-coded-operation '((get-data)) 1 1)
@@ -104,6 +139,11 @@
   (add-method ((make-open-coded-operation '((crunch)) 2 1)
 	       (fixnum) x y)
     (%crunch x y)))
+
+;;; Fixnum arithmetic that wraps instead of overflowing into a
+;;; bignum, for the places where the bignum code itself has to add
+;;; and multiply.  MOST-NEGATIVE-FIXNUM? is the one value negation
+;;; has no answer for.
 
 (define-constant most-negative-fixnum?
   (add-method ((make-foldable-open-coded-operation '((most-negative-fixnum?))
@@ -125,6 +165,8 @@
 	(fx-times x y)
 	(error "Illegal second arg ~S to FX-PLUS." y))))
 
+;;; A character of the command line: argument X, character Y.
+
 (define-constant get-argline-char
   (add-method ((make-open-coded-operation '((get-argline-char)) 2 1)
 	       (fixnum) x y)
@@ -134,7 +176,10 @@
 
 
 
-;;; The following is for use only at boot time, for feedback before the I/O system is up.
+;;; Characters straight to and from the terminal, for the stretch of
+;;; the boot before the I/O system is up.  %PRINT-DIGIT is open coded
+;;; as the arithmetic that turns a digit into its character, so it
+;;; needs nothing underneath it at all.
 
 (define-constant %write-char
   (add-method ((make-open-coded-operation '((putc)) 1 1)
@@ -164,6 +209,9 @@
 	       (fixnum) i)
     (%embedded-program-char i)))
 
+;;; ASSQ as an instruction, since method lookup walks alists and
+;;; cannot call anything that might need a method lookup itself.
+
 (define-constant %assq
   (add-method ((make-open-coded-operation '((assq)) 2 1)
 	       (object) x y)
@@ -176,6 +224,9 @@
 	       (object))
     (%return)))
 
+
+;;; An instance variable by number rather than by name: the slot at
+;;; offset I of whatever BP points at.  Settable and locatable.
 
 (define-constant-instance %load-bp-i
   (mix-types oc-mixer (list open-coded-mixin locatable-operation))
@@ -191,6 +242,14 @@
 
 
 
+
+;;; (%REGISTER R) is the settable operation that reads and writes
+;;; the VM register R.  (%SLOT N) is the same for the Nth slot of an
+;;; object, and is locatable besides; (%HALT S) stops the machine
+;;; with status S.  Each builds the operation the first time it is
+;;; asked for and remembers it, so the compiler, folding the call,
+;;; emits the bare instruction; a register or slot number that is not
+;;; a constant costs a call and an alist lookup instead.
 
 (define-constant-instance %register
   (mix-types oc-mixer (list foldable-mixin operation)))
