@@ -36,6 +36,10 @@
 (define (boolean? x) (eq? x (not (not x))))
 
 
+;;; Pairs and symbols.  Most of what follows is an Oaklisp operation
+;;; under its R3RS name: SET-CAR! is the setter of CAR, LIST-TAIL and
+;;; LIST-REF are TAIL and NTH, and the conversions are coercers.
+
 (define-constant set-car! (setter car))
 (define-constant set-cdr! (setter cdr))
 
@@ -45,6 +49,10 @@
 (define symbol->string #^string)
 
 (define string->symbol #^symbol)
+
+;;; Characters.  Comparison in Oaklisp is generic and already
+;;; orders characters, so the R3RS names are the comparisons
+;;; themselves; only the case-insensitive forms need writing.
 
 (define-constant char=?  =)
 (define-constant char<?  <)
@@ -69,6 +77,10 @@
 (define char-downcase downcase)
 
 
+
+;;; Strings, the same way, since the comparisons order these too.
+;;; SUBSTRING takes two indexes, where Oaklisp's SUBSEQ takes a start
+;;; and a count.
 
 (define string-length length)
 (define string-ref nth)
@@ -100,6 +112,9 @@
       "" (apply append args)))
 
 
+;;; Conversions in both directions are the coercers, and copying and
+;;; filling are the generic sequence operations.
+
 (define string->list #^list-type)
 (define list->string #^string)
 
@@ -122,6 +137,10 @@
 (define vector-fill! fill!)
 
 
+
+;;; Ports are streams.  R3RS leaves the port out when it is the
+;;; standard one, so these take it as a rest argument; WRITE and
+;;; DISPLAY differ only in whether they print escapes.
 
 (define input-port? (type-pred input-stream))
 (define output-port? (type-pred output-stream))
