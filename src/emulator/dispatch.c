@@ -196,7 +196,7 @@ oak_native_find_method(ref_t op, ref_t y_type, ref_t *offset)
   ref_t method = e_nil, meth_type;
 
   find_method_type_pair(op, y_type, &method, &meth_type);
-  if (method == e_nil)
+  if (!is_method(method))
     return e_nil;
   *offset = lookup_bp_offset(y_type, meth_type);
 #ifdef OP_TYPE_METH_CACHE

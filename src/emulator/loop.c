@@ -1689,6 +1689,9 @@ loop(ref_t initial_tos)
 		case 22:
 		  e_process = x;
 		  GOTO_TOP;
+		case 24:
+		  e_multi_method_type = x;
+		  GOTO_TOP;
 		default:
 		  printf("STORE-REG %d, unknown .\n", arg_field);
 		  GOTO_TOP;
@@ -1772,6 +1775,9 @@ loop(ref_t initial_tos)
 #else
 		  PUSHVAL(e_nil);
 #endif
+		  GOTO_TOP;
+		case 24:
+		  PUSHVAL(e_multi_method_type);
 		  GOTO_TOP;
 		default:
 		  fprintf(stderr, "Error (vm interpreter): "
@@ -1917,6 +1923,69 @@ loop(ref_t initial_tos)
 #if defined(OP_TYPE_METH_CACHE) && defined(THREADS)
 		  }
 #endif
+
+		  if (!is_method(e_current_method))
+		    {
+		      /* The search found a %MULTI-METHOD: the method
+			 depends on the types of further arguments too.
+			 Its cache of type tuples is consulted here;
+			 choosing among its methods on a miss, and
+			 filling the cache, is FAILED-FUNCALL's job, so
+			 a miss traps as a missing method does.  See
+			 src/world/multi-method.oak. */
+		      bool hit = false;
+
+		      if (TAG_IS(e_current_method, PTR_TAG)
+			  && REF_SLOT(e_current_method, 0)
+			     == e_multi_method_type)
+			{
+			  ref_t mm = e_current_method, l;
+			  long arity =
+			    REF_TO_INT(REF_SLOT(mm, MULTI_ARITY_OFF));
+			  long reach = arity + 1;
+
+			  if (reach > (long)e_nargs)
+			    reach = (long)e_nargs;
+			  CHECKVAL_POP(reach);
+
+			  for (l = REF_SLOT(mm, MULTI_CACHE_OFF);
+			       !hit && l != e_nil; l = cdr(l))
+			    {
+			      ref_t line = car(l), k = car(line);
+			      /* The key starts with the first argument's
+				 own type: the frame offset beside it was
+				 computed from that type, and two subtypes
+				 of the home type need not put the home
+				 type's frame in the same place. */
+			      long i = 1;
+
+			      while (k != e_nil
+				     && car(k) == (i <= (long)e_nargs
+						   ? get_type(PEEKVAL_UP(i))
+						   : INT_TO_REF(0)))
+				{
+				  k = cdr(k);
+				  i += 1;
+				}
+			      if (k == e_nil)
+				{
+				  ref_t rest = cdr(line);
+
+				  e_current_method = car(rest);
+				  e_bp = REF_TO_PTR(y)
+				    + REF_TO_INT(cdr(rest));
+				  hit = true;
+				}
+			    }
+			}
+		      if (!hit)
+			{
+			  if (trace_traps)
+			    printf("No applicable method, or a miss on "
+				   "the multimethod cache.\n");
+			  TRAP0(e_nargs + 1);
+			}
+		    }
 		}
 	      else if (!TAG_IS(e_current_method, PTR_TAG)
 		       || REF_SLOT(e_current_method, 0) != e_method_type)
@@ -2324,7 +2393,7 @@ loop(ref_t initial_tos)
 		find_method_type_pair(x, the_type,
 				      &e_current_method, &meth_type);
 
-		if (e_current_method == e_nil)
+		if (!is_method(e_current_method))
 		  {
 		    if (trace_traps)
 		      printf("No handler for ^super operation.\n");

@@ -106,11 +106,16 @@
 
 
 
-;;; When multiple dispatch is up, this should dispatch on the second arg
-;;; symetrically.
+;;; A promise in either position is forced.  This is the first
+;;; argument; the second is the business of the methods a type has for
+;;; these, which dispatch on it (see the end of numbers.oak), so that
+;;; (EQV? 3 (DELAY 3)) answers what (EQV? (DELAY 3) 3) answers.
 
 (add-method (eqv? (forcible) self other)
   (eqv? (force self) other))
+
+(add-method (equal? (forcible) self other)
+  (equal? (force self) other))
 
 
 

@@ -41,6 +41,9 @@
 ;;; sequence type might work.
 
 (add-method (equal? (sequence) a b)
+  (eq? a b))
+
+(add-method (equal? (sequence) a (sequence) b)
   (or (eq? a b)
       (and (eq? (get-type a) (get-type b))
 	   (let ((l (length a)))

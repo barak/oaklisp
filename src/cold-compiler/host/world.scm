@@ -97,6 +97,10 @@
     ("fluid" . skip)                       ; already loaded
     ("vector-type" . load)
     ("vl-mixin" load ,(lambda () (install-vector-methods! *simple-vector*)))
+    ;; The host dispatches on several arguments itself (see <mm> in
+    ;; host/kernel.scm), since it installs methods as host procedures
+    ;; rather than as %METHOD objects.
+    ("multi-method" . skip)
     ("numbers" load ,(lambda ()
 			 (install-print-methods!)
 			 (install-number-print-methods!)))

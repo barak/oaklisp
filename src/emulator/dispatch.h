@@ -97,6 +97,29 @@ lookup_bp_offset(ref_t y_type, ref_t meth_type)
 		 INT_TO_REF(0));
 }
 
+/* %MULTI-METHOD (src/world/multi-method.oak): the specializers after
+   the first that any of its methods has, the methods themselves, and
+   a cache of lines, each (KEY METHOD . BP-OFFSET) where KEY lists the
+   types of the arguments after the first, as many as the arity, with
+   the fixnum 0 for an argument the call did not supply. */
+
+#define MULTI_ARITY_OFF		1
+#define MULTI_ENTRIES_OFF	2
+#define MULTI_CACHE_OFF		3
+
+/* A method search returns whatever the type's method alist holds,
+   which for an operation that dispatches on more than its first
+   argument is a %MULTI-METHOD rather than a %METHOD: choosing among
+   its entries is Oaklisp's job, so the caller traps exactly as it
+   does when there is no method at all, and caches nothing.  See
+   src/world/multi-method.oak. */
+
+static inline bool
+is_method(ref_t x)
+{
+  return TAG_IS(x, PTR_TAG) && REF_SLOT(x, 0) == e_method_type;
+}
+
 extern void find_method_type_pair(ref_t op, ref_t obj_type,
 				  ref_t * method_ptr, ref_t * type_ptr);
 

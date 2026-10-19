@@ -74,7 +74,8 @@ oakstack context_stack = {512, 512/2};
 ref_t e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type,
   e_env_type, *e_subtype_table, e_object_type, e_segment_type, e_boot_code,
   *e_arged_tag_trap_table, *e_argless_tag_trap_table,
-  e_uninitialized, e_method_type, e_operation_type = 0;
+  e_uninitialized, e_method_type, e_operation_type,
+  e_multi_method_type = 0;
 size_t e_next_newspace_size;
 size_t original_newspace_size = DEFAULT_NEWSPACE * 1024;
 
@@ -84,7 +85,8 @@ ref_t *e_bp, *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type,
   e_env_type, *e_subtype_table, e_object_type, e_segment_type, e_boot_code,
   e_code_segment,
   *e_arged_tag_trap_table, *e_argless_tag_trap_table, e_current_method,
-  e_uninitialized, e_method_type, e_operation_type, e_process = 0;
+  e_uninitialized, e_method_type, e_operation_type, e_multi_method_type,
+  e_process = 0;
 register_set_t *reg_set;
 size_t e_next_newspace_size;
 size_t original_newspace_size = DEFAULT_NEWSPACE * 1024;

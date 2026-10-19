@@ -673,6 +673,29 @@ Example:
 \end{alltt}
 
 
+\textbf{Dispatching on more than one argument:}
+
+Any parameter may carry a type, not just the first, and the method
+that runs is the most specific one whose types all match.  A
+parameter written with no type matches anything, so a method that
+names none after the first is the fallback.  A slot may be written
+\texttt{(variable name)} to call it something else, which is needed
+when two parameters have the same type.
+
+\begin{alltt}
+   (define-instance combine operation)
+   (add-method (combine (MyClass iv1) self (MyClass (other iv1)) y)
+               (+ iv1 other))
+   (add-method (combine (MyClass iv1) self (fixnum) y)
+               (+ iv1 y))
+   (add-method (combine (MyClass iv1) self y)
+               iv1)
+\end{alltt}
+
+Lookup still stops at the first type with a method for the operation,
+so a method on a subtype hides these just as it always has.
+
+
 \textbf{Instance constructor / initialization:}
 
 Format:

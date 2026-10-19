@@ -102,13 +102,14 @@ extern ref_t
   e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type, e_env_type,
  *e_subtype_table, e_object_type, e_segment_type, e_boot_code,
  *e_arged_tag_trap_table, *e_argless_tag_trap_table,
-  e_uninitialized, e_method_type, e_operation_type;
+  e_uninitialized, e_method_type, e_operation_type, e_multi_method_type;
 #else
 extern ref_t
  *e_bp, *e_env, e_t, e_nil, e_fixnum_type, e_loc_type, e_cons_type, e_env_type,
  *e_subtype_table, e_object_type, e_segment_type, e_boot_code, e_code_segment,
  *e_arged_tag_trap_table, *e_argless_tag_trap_table, e_current_method,
-  e_uninitialized, e_method_type, e_operation_type, e_process;
+  e_uninitialized, e_method_type, e_operation_type, e_multi_method_type,
+  e_process;
 
 extern instr_t *e_pc;
 

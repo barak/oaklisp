@@ -1,0 +1,259 @@
+;;; Two-argument dispatch: the idioms that multi-dispatch replaces.
+;;;
+;;; Four types under a common supertype, and one binary operation per
+;;; idiom, each computing the same thing -- a number determined by the
+;;; types of both arguments -- over the same sixteen argument pairs.
+;;; What differs is only how the second argument's type is consulted.
+;;; See Multi-Dispatch.md; when native multimethods exist, add an
+;;; idiom here that uses them and compare.
+;;;
+;;; The "mono" rows hold the first argument's type fixed, so the
+;;; operation's one-entry method cache always hits, and the "poly"
+;;; rows vary it so it always misses; compare a row only with its own
+;;; pair, since the method bodies differ between groups.
+;;;
+;;; (bench) times them all together, for "make bench".  For the
+;;; per-idiom table:
+;;;
+;;;   oaklisp -- --load tests/bench-multi --eval '(breakdown)' --exit
+
+(define-instance val type '() (list object))
+(define-instance va type '(n) (list val))
+(define-instance vb type '(n) (list val))
+(define-instance vc type '(n) (list val))
+(define-instance vd type '(n) (list val))
+
+(add-method (initialize (va n) self x) (set! n x) self)
+(add-method (initialize (vb n) self x) (set! n x) self)
+(add-method (initialize (vc n) self x) (set! n x) self)
+(add-method (initialize (vd n) self x) (set! n x) self)
+
+;;; Single dispatch on the first argument, ignoring the second: what
+;;; dispatch costs today when only one type matters.
+
+(define-instance comb-one operation)
+(add-method (comb-one (va n) self y) (+ n 1))
+(add-method (comb-one (vb n) self y) (+ n 2))
+(add-method (comb-one (vc n) self y) (+ n 3))
+(add-method (comb-one (vd n) self y) (+ n 4))
+
+;;; Dispatch on the first argument, FSELECT-TYPE on the second: the
+;;; idiom of numbers.oak, bignum.oak and complex.oak.  The forcible
+;;; clause FSELECT-TYPE adds is part of what is being measured.
+
+(define-instance comb-fsel operation)
+(add-method (comb-fsel (va n) self y)
+  (fselect-type y ((va) (+ n 1)) ((vb) (+ n 2)) ((vc) (+ n 3))
+		  ((vd) (+ n 4)) (otherwise 0)))
+(add-method (comb-fsel (vb n) self y)
+  (fselect-type y ((va) (+ n 2)) ((vb) (+ n 3)) ((vc) (+ n 4))
+		  ((vd) (+ n 5)) (otherwise 0)))
+(add-method (comb-fsel (vc n) self y)
+  (fselect-type y ((va) (+ n 3)) ((vb) (+ n 4)) ((vc) (+ n 5))
+		  ((vd) (+ n 6)) (otherwise 0)))
+(add-method (comb-fsel (vd n) self y)
+  (fselect-type y ((va) (+ n 4)) ((vb) (+ n 5)) ((vc) (+ n 6))
+		  ((vd) (+ n 7)) (otherwise 0)))
+
+;;; The same with SELECT-TYPE, which does not check for forcibles.
+
+(define-instance comb-sel operation)
+(add-method (comb-sel (va n) self y)
+  (select-type y ((va) (+ n 1)) ((vb) (+ n 2)) ((vc) (+ n 3))
+		 ((vd) (+ n 4)) (otherwise 0)))
+(add-method (comb-sel (vb n) self y)
+  (select-type y ((va) (+ n 2)) ((vb) (+ n 3)) ((vc) (+ n 4))
+		 ((vd) (+ n 5)) (otherwise 0)))
+(add-method (comb-sel (vc n) self y)
+  (select-type y ((va) (+ n 3)) ((vb) (+ n 4)) ((vc) (+ n 5))
+		 ((vd) (+ n 6)) (otherwise 0)))
+(add-method (comb-sel (vd n) self y)
+  (select-type y ((va) (+ n 4)) ((vb) (+ n 5)) ((vc) (+ n 6))
+		 ((vd) (+ n 7)) (otherwise 0)))
+
+;;; Dispatch on the first argument, a chain of IS-A? on the second.
+
+(define-instance comb-isa operation)
+(add-method (comb-isa (va n) self y)
+  (cond ((is-a? y va) (+ n 1)) ((is-a? y vb) (+ n 2))
+	((is-a? y vc) (+ n 3)) ((is-a? y vd) (+ n 4)) (else 0)))
+(add-method (comb-isa (vb n) self y)
+  (cond ((is-a? y va) (+ n 2)) ((is-a? y vb) (+ n 3))
+	((is-a? y vc) (+ n 4)) ((is-a? y vd) (+ n 5)) (else 0)))
+(add-method (comb-isa (vc n) self y)
+  (cond ((is-a? y va) (+ n 3)) ((is-a? y vb) (+ n 4))
+	((is-a? y vc) (+ n 5)) ((is-a? y vd) (+ n 6)) (else 0)))
+(add-method (comb-isa (vd n) self y)
+  (cond ((is-a? y va) (+ n 4)) ((is-a? y vb) (+ n 5))
+	((is-a? y vc) (+ n 6)) ((is-a? y vd) (+ n 7)) (else 0)))
+
+;;; Double dispatch: the first argument's method calls a second
+;;; operation, chosen for its own type, on the second argument.  Two
+;;; dispatches per call and an operation per first-argument type, but
+;;; the cases live with the types rather than in one table.
+
+(define-instance comb-dbl operation)
+(define-instance dbl-a operation)
+(define-instance dbl-b operation)
+(define-instance dbl-c operation)
+(define-instance dbl-d operation)
+
+(add-method (comb-dbl (va n) self y) (dbl-a y n))
+(add-method (comb-dbl (vb n) self y) (dbl-b y n))
+(add-method (comb-dbl (vc n) self y) (dbl-c y n))
+(add-method (comb-dbl (vd n) self y) (dbl-d y n))
+
+(add-method (dbl-a (va) self k) (+ k 1))
+(add-method (dbl-a (vb) self k) (+ k 2))
+(add-method (dbl-a (vc) self k) (+ k 3))
+(add-method (dbl-a (vd) self k) (+ k 4))
+(add-method (dbl-b (va) self k) (+ k 2))
+(add-method (dbl-b (vb) self k) (+ k 3))
+(add-method (dbl-b (vc) self k) (+ k 4))
+(add-method (dbl-b (vd) self k) (+ k 5))
+(add-method (dbl-c (va) self k) (+ k 3))
+(add-method (dbl-c (vb) self k) (+ k 4))
+(add-method (dbl-c (vc) self k) (+ k 5))
+(add-method (dbl-c (vd) self k) (+ k 6))
+(add-method (dbl-d (va) self k) (+ k 4))
+(add-method (dbl-d (vb) self k) (+ k 5))
+(add-method (dbl-d (vc) self k) (+ k 6))
+(add-method (dbl-d (vd) self k) (+ k 7))
+
+;;; Native multi-dispatch: a method per combination.
+
+(define-instance comb-multi operation)
+(add-method (comb-multi (va n) self (va) y) (+ n 1))
+(add-method (comb-multi (va n) self (vb) y) (+ n 2))
+(add-method (comb-multi (va n) self (vc) y) (+ n 3))
+(add-method (comb-multi (va n) self (vd) y) (+ n 4))
+(add-method (comb-multi (vb n) self (va) y) (+ n 2))
+(add-method (comb-multi (vb n) self (vb) y) (+ n 3))
+(add-method (comb-multi (vb n) self (vc) y) (+ n 4))
+(add-method (comb-multi (vb n) self (vd) y) (+ n 5))
+(add-method (comb-multi (vc n) self (va) y) (+ n 3))
+(add-method (comb-multi (vc n) self (vb) y) (+ n 4))
+(add-method (comb-multi (vc n) self (vc) y) (+ n 5))
+(add-method (comb-multi (vc n) self (vd) y) (+ n 6))
+(add-method (comb-multi (vd n) self (va) y) (+ n 4))
+(add-method (comb-multi (vd n) self (vb) y) (+ n 5))
+(add-method (comb-multi (vd n) self (vc) y) (+ n 6))
+(add-method (comb-multi (vd n) self (vd) y) (+ n 7))
+
+;;; A deeper hierarchy, with the only method four levels up: what the
+;;; one-entry method cache is worth, since a miss walks the chain.
+
+(define-instance d1 type '(n) (list val))
+(define-instance d2 type '() (list d1))
+(define-instance d3 type '() (list d2))
+(define-instance d4 type '() (list d3))
+(add-method (initialize (d1 n) self x) (set! n x) self)
+
+(define-instance comb-deep operation)
+(add-method (comb-deep (val) self y) 1)
+
+;;; A zero-argument operation, whose dispatch the plan folds into the
+;;; general rule.
+
+(define-instance nullary operation)
+(add-method (nullary (object)) 1)
+
+;;;
+
+(define objects (list (make va 10) (make vb 20) (make vc 30) (make vd 40)))
+
+;;; All sixteen ordered pairs: the first argument's type varies, so
+;;; the operation's one-entry method cache misses on every call.
+
+(define pairs
+  (iterate outer ((xs objects) (acc '()))
+    (if (null? xs)
+	acc
+	(outer (cdr xs)
+	       (iterate inner ((ys objects) (acc acc))
+		 (if (null? ys)
+		     acc
+		     (inner (cdr ys)
+			    (cons (cons (car xs) (car ys)) acc))))))))
+
+;;; The same count of pairs with one first-argument type, so the
+;;; method cache always hits and only the second argument varies.
+
+(define mono-pairs
+  (map (lambda (p) (cons (car objects) (cdr p))) pairs))
+
+(define deep-objects (list (make d1 10) (make d2 20) (make d3 30) (make d4 40)))
+
+(define deep-pairs
+  (iterate aux ((l pairs) (os deep-objects) (acc '()))
+    (cond ((null? l) acc)
+	  ((null? os) (aux l deep-objects acc))
+	  (else (aux (cdr l) (cdr os)
+		     (cons (cons (car os) (car os)) acc))))))
+
+(define deep-mono-pairs
+  (map (lambda (p) (cons (fourth deep-objects) (cdr p))) deep-pairs))
+
+(define reps 40000)
+
+(define (run op l)
+  (iterate aux ((i 0) (s 0))
+    (if (= i reps)
+	s
+	(aux (+ i 1)
+	     (iterate inner ((l2 l) (s s))
+	       (if (null? l2)
+		   s
+		   (inner (cdr l2)
+			  (+ s (op (car (car l2)) (cdr (car l2)))))))))))
+
+(define (run-nullary)
+  (iterate aux ((i 0) (s 0))
+    (if (= i reps)
+	s
+	(aux (+ i 1)
+	     (iterate inner ((k 0) (s s))
+	       (if (= k 16) s (inner (+ k 1) (+ s (nullary)))))))))
+
+(define (ms thunk)
+  (let ((t0 (get-time)))
+    (thunk)
+    (- (get-time) t0)))
+
+(define (best thunk)
+  (iterate aux ((i 0) (b #f))
+    (if (= i 5)
+	b
+	(let ((t (ms thunk)))
+	  (aux (+ i 1) (if (or (not b) (< t b)) t b))))))
+
+(define (breakdown)
+  (format #t "~&~D calls per idiom, best of 5, CPU milliseconds~%"
+	  (* reps 16))
+  (dolist (entry (list (cons "one/mono" (lambda () (run comb-one mono-pairs)))
+		       (cons "one/poly" (lambda () (run comb-one pairs)))
+		       (cons "fselect"  (lambda () (run comb-fsel pairs)))
+		       (cons "select"   (lambda () (run comb-sel pairs)))
+		       (cons "is-a?"    (lambda () (run comb-isa pairs)))
+		       (cons "deep/mono" (lambda ()
+					   (run comb-deep deep-mono-pairs)))
+		       (cons "deep/poly" (lambda ()
+					   (run comb-deep deep-pairs)))
+		       (cons "double"   (lambda () (run comb-dbl pairs)))
+		       (cons "multi"    (lambda () (run comb-multi pairs)))
+		       (cons "nullary"  run-nullary)))
+    (format #t "~12A~6D~%" (car entry) (best (cdr entry)))))
+
+(define (bench)
+  (+ (run comb-one mono-pairs)
+     (run comb-one pairs)
+     (run comb-fsel pairs)
+     (run comb-sel pairs)
+     (run comb-isa pairs)
+     (run comb-deep deep-mono-pairs)
+     (run comb-deep deep-pairs)
+     (run comb-dbl pairs)
+     (run comb-multi pairs)
+     (run-nullary)))
+
+;;; eof

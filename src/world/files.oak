@@ -53,6 +53,7 @@
     ))
 (define layer2
   '(
+    multi-method pl
     eqv pl
     mapping pl
     fastmap pl

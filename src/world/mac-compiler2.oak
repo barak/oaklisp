@@ -297,9 +297,13 @@
   (add-method (proceed (ast-node) self enc-cont)
     (walk-ast-with-arg self stash-enclosing-contour enc-cont))
 
-  (add-method (proceed (ast-method-node method-type op body) self enc-cont)
+  (add-method (proceed (ast-method-node method-type op body specializers)
+		       self enc-cont)
+    ;; The type expressions, like the operation, are evaluated
+    ;; where the method is written, not inside it.
     (stash-enclosing-contour method-type enc-cont)
     (stash-enclosing-contour op enc-cont)
+    (walk-with-arg stash-enclosing-contour specializers enc-cont)
     (stash-enclosing-contour body self))
 
   (add-method (proceed (ast-labels-node lambdalist body) self enc-cont)

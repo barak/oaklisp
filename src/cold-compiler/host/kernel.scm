@@ -361,6 +361,179 @@
   (set-opinfo-native! (op-info op) proc)
   op)
 
+;;;==========================================================================
+;;; Dispatch on more than one argument
+;;;==========================================================================
+
+;;; The rule of src/world/multi-method.oak, written again here because
+;;; the host installs methods as host procedures rather than as
+;;; %METHOD objects and so cannot use the world's own installer.  All
+;;; the methods of one operation with one home type live in a single
+;;; MM in that type's method alist, each under the tuple of
+;;; specializers of its parameters after the first.  The most specific
+;;; applicable entry runs, and an entry whose tuple is all OBJECT --
+;;; which is what an ordinary ADD-METHOD on the home type makes -- is
+;;; the least specific of all, hence the fallback.
+;;;
+;;; The host does not force promises here as FSELECT-TYPE did: nothing
+;;; it runs while compiling dispatches on one.
+
+(define-record-type <mm>
+  (raw-mm arity entries)
+  mm?
+  (arity mm-arity set-mm-arity!)
+  (entries mm-entries set-mm-entries!))    ; ((tuple . proc) ...)
+
+(define (mm-pad tuple n)
+  (let loop ((l tuple) (i n) (acc '()))
+    (cond ((= i 0) (reverse acc))
+	  ((null? l) (loop l (- i 1) (cons *object* acc)))
+	  (else (loop (cdr l) (- i 1) (cons (car l) acc))))))
+
+(define (mm-tuple=? a b)
+  (cond ((null? a) (null? b))
+	((null? b) #f)
+	((eq? (car a) (car b)) (mm-tuple=? (cdr a) (cdr b)))
+	(else #f)))
+
+(define (mm-put! mm tuple proc)
+  (let ((n (length tuple)))
+    (when (> n (mm-arity mm))
+      (set-mm-entries! mm (map (lambda (e) (cons (mm-pad (car e) n) (cdr e)))
+			       (mm-entries mm)))
+      (set-mm-arity! mm n)))
+  (let ((padded (mm-pad tuple (mm-arity mm))))
+    (set-mm-entries!
+     mm (cons (cons padded proc)
+	      (let loop ((l (mm-entries mm)) (acc '()))
+		(cond ((null? l) (reverse acc))
+		      ((mm-tuple=? (car (car l)) padded) (loop (cdr l) acc))
+		      (else (loop (cdr l) (cons (car l) acc))))))))
+  mm)
+
+;;; A type's supertype graph depth first and left to right, keeping
+;;; the first occurrence of each: the order the method search visits.
+
+(define (type-precedence-list typ)
+  (let loop ((todo (list typ)) (acc '()))
+    (cond ((null? todo) (reverse acc))
+	  ((memq (car todo) acc) (loop (cdr todo) acc))
+	  (else (loop (append (type-supers (car todo)) (cdr todo))
+		      (cons (car todo) acc))))))
+
+;;; OBJECT is tested for rather than asked about: it stands for a
+;;; parameter that was not specialized and so matches everything,
+;;; including an operation, whose type is not a subtype of OBJECT.
+
+(define (mm-applicable? tuple args)
+  (let loop ((tu tuple) (as args))
+    (cond ((null? tu) #t)
+	  ((null? as) (and (eq? (car tu) *object*) (loop (cdr tu) as)))
+	  ((eq? (car tu) *object*) (loop (cdr tu) (cdr as)))
+	  ((oak-true? (oak-subtype? (oak-get-type (car as)) (car tu)))
+	   (loop (cdr tu) (cdr as)))
+	  (else #f))))
+
+;;; 1 if TUPLE-A is the more specific, -1 if TUPLE-B is, 0 if neither
+;;; precedes the other: the first position where they differ decides,
+;;; by which specializer comes first in the precedence list of the
+;;; type of the argument there.
+
+(define (mm-compare tuple-a tuple-b args)
+  (let loop ((a tuple-a) (b tuple-b) (as args))
+    (cond ((null? a) 0)
+	  ((eq? (car a) (car b))
+	   (loop (cdr a) (cdr b) (if (null? as) as (cdr as))))
+	  (else
+	   (let scan ((l (type-precedence-list
+			  (if (null? as) *object* (oak-get-type (car as))))))
+	     (cond ((null? l)
+		    ;; One of them is the OBJECT of an unspecialized
+		    ;; parameter, which comes after everything.
+		    (cond ((eq? (car b) *object*) 1)
+			  ((eq? (car a) *object*) -1)
+			  (else 0)))
+		   ((eq? (car l) (car a)) 1)
+		   ((eq? (car l) (car b)) -1)
+		   (else (scan (cdr l)))))))))
+
+(define (mm-best entries args)
+  (let outer ((l entries))
+    (cond ((null? l) #f)
+	  ((let inner ((m entries))
+	     (cond ((null? m) #t)
+		   ((eq? (car m) (car l)) (inner (cdr m)))
+		   ((= 1 (mm-compare (car (car l)) (car (car m)) args)) (inner (cdr m)))
+		   (else #f)))
+	   (car l))
+	  (else (outer (cdr l))))))
+
+;;; The procedure of the entry to run.  REST are the arguments after
+;;; the first; the ivar frame is the home type's, the same for every
+;;; entry, so the caller's BP stands.
+
+(define (mm-pick mm op first rest)
+  (let* ((applicable (let loop ((l (mm-entries mm)) (acc '()))
+		       (cond ((null? l) acc)
+			     ((mm-applicable? (car (car l)) rest)
+			      (loop (cdr l) (cons (car l) acc)))
+			     (else (loop (cdr l) acc)))))
+	 (best (and (pair? applicable) (mm-best applicable rest))))
+    (if best
+	(cdr best)
+	(oak-host-error "No applicable method for ~A with args ~A"
+			(oak-describe op)
+			(map oak-describe (cons first rest))))))
+
+;;; Install PROC as the entry of OP at TYPE for TUPLE, the types of
+;;; the parameters after the first.
+
+(define (oak-install-multi-method! op type tuple proc)
+  (unless (oak-op? op)
+    (oak-host-error "ADD-METHOD to non-operation ~S" (oak-describe op)))
+  (let ((info (op-info op)))
+    (cond ((opinfo-native info) op)     ; locked: keep the native version
+	  (else
+	   (bump-method-epoch!)
+	   (let ((v (oak-obj-v op)))
+	     ;; Take OP off the lambda fast path, as %OPERATION-GO-GENERIC
+	     ;; does: a lambda in LAMBDA? moves to OBJECT's alist.
+	     (let ((l (vector-ref v OP-LAMBDA?)))
+	       (when (and (oak-true? l) (not (eqv? l 0)))
+		 (let ((ov (oak-obj-v *object*)))
+		   (vector-set! ov TYPE-OP-METH-ALIST
+				(cons (cons op l)
+				      (vector-ref ov TYPE-OP-METH-ALIST))))))
+	     (vector-set! v OP-LAMBDA? '()))
+	   (let* ((tv (oak-obj-v type))
+		  (alist (vector-ref tv TYPE-OP-METH-ALIST))
+		  (ass (assq op alist)))
+	     (cond ((and ass (mm? (cdr ass))) (mm-put! (cdr ass) tuple proc))
+		   (ass (let ((mm (raw-mm 0 '())))
+			  (mm-put! mm '() (cdr ass))
+			  (mm-put! mm tuple proc)
+			  (set-cdr! ass mm)))
+		   (else (let ((mm (raw-mm 0 '())))
+			   (mm-put! mm tuple proc)
+			   (vector-set! tv TYPE-OP-METH-ALIST
+					(cons (cons op mm) alist))))))
+	   op))))
+
+;;; The locative of SLOT of OBJ in TYPE's part of its frame, as
+;;; %IVAR-SLOT-LOCATIVE does: this is how a method reaches a slot of a
+;;; parameter after the first, whose frame BP does not hold.
+
+(define (ivar-slot-locative obj type slot)
+  (let ((i (ivar-index type slot)))
+    (unless i
+      (oak-host-error "~S is not an instance variable of ~A"
+		      slot (oak-describe type)))
+    (unless (oak-true? (oak-subtype? (oak-get-type obj) type))
+      (oak-host-error "~A is not an instance of ~A, whose ~S it should have"
+		      (oak-describe obj) (oak-describe type) slot))
+    (make-slot-loc obj (+ (bp-offset (oak-get-type obj) type) i))))
+
+
 ;;; Method installation, following kernel1-install.oak.
 (define (oak-add-method! op type proc)
   (unless (oak-op? op)
@@ -387,11 +560,18 @@
 		    (let* ((tv (oak-obj-v type))
 			   (alist (vector-ref tv TYPE-OP-METH-ALIST))
 			   (ass (assq op alist)))
-		      (if ass
-			  (set-cdr! ass proc)
-			  (vector-set! tv TYPE-OP-METH-ALIST
-				       (cons (cons op proc) alist)))))))
+		      (cond ((and ass (mm? (cdr ass)))
+			     ;; OP already dispatches on more than this type
+			     ;; here, so the new method is the entry that
+			     ;; specializes on nothing after the first
+			     ;; parameter.
+			     (mm-put! (cdr ass) '() proc))
+			    (ass (set-cdr! ass proc))
+			    (else
+			     (vector-set! tv TYPE-OP-METH-ALIST
+					  (cons (cons op proc) alist))))))))
 	   op))))
+
 
 ;;; Depth first search of the type graph, in the emulator's order.
 ;;; Returns (proc . meth-type) or #f.
@@ -482,7 +662,9 @@
 		  ((vector-ref (oak-obj-v op) OP-LAMBDA?) 0 a))
 		 (else
 		  (let ((m (lookup-method op (oak-get-type a))))
-		    (if m ((car m) (cdr m) a) (no-method-error op (list a)))))))
+		    (cond ((not m) (no-method-error op (list a)))
+			  ((mm? (car m)) ((mm-pick (car m) op a '()) (cdr m) a))
+			  (else ((car m) (cdr m) a)))))))
 	 (bad-call op (list a))))
     ((op a b)
      (if (oak-obj? op)
@@ -492,7 +674,9 @@
 		  ((vector-ref (oak-obj-v op) OP-LAMBDA?) 0 a b))
 		 (else
 		  (let ((m (lookup-method op (oak-get-type a))))
-		    (if m ((car m) (cdr m) a b) (no-method-error op (list a b)))))))
+		    (cond ((not m) (no-method-error op (list a b)))
+			  ((mm? (car m)) ((mm-pick (car m) op a (list b)) (cdr m) a b))
+			  (else ((car m) (cdr m) a b)))))))
 	 (bad-call op (list a b))))
     ((op a b c)
      (if (oak-obj? op)
@@ -502,7 +686,10 @@
 		  ((vector-ref (oak-obj-v op) OP-LAMBDA?) 0 a b c))
 		 (else
 		  (let ((m (lookup-method op (oak-get-type a))))
-		    (if m ((car m) (cdr m) a b c) (no-method-error op (list a b c)))))))
+		    (cond ((not m) (no-method-error op (list a b c)))
+			  ((mm? (car m))
+			   ((mm-pick (car m) op a (list b c)) (cdr m) a b c))
+			  (else ((car m) (cdr m) a b c)))))))
 	 (bad-call op (list a b c))))
     ((op a . rest)
      (if (oak-obj? op)
@@ -512,8 +699,10 @@
 		  (apply (vector-ref (oak-obj-v op) OP-LAMBDA?) 0 a rest))
 		 (else
 		  (let ((m (lookup-method op (oak-get-type a))))
-		    (if m (apply (car m) (cdr m) a rest)
-			(no-method-error op (cons a rest)))))))
+		    (cond ((not m) (no-method-error op (cons a rest)))
+			  ((mm? (car m))
+			   (apply (mm-pick (car m) op a rest) (cdr m) a rest))
+			  (else (apply (car m) (cdr m) a rest)))))))
 	 (bad-call op (cons a rest))))))
 
 (define (bad-call op args)
@@ -526,7 +715,10 @@
 (define (oak-super type op self . args)
   (let ((found (find-method op type)))
     (if found
-	(apply (car found) (bp-offset (oak-get-type self) (cdr found)) self args)
+	(let ((proc (if (mm? (car found))
+			(mm-pick (car found) op self args)
+			(car found))))
+	  (apply proc (bp-offset (oak-get-type self) (cdr found)) self args))
 	(oak-host-error "No ^SUPER method for ~A in ~A"
 			(oak-describe op) (oak-describe type)))))
 

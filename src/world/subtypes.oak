@@ -85,13 +85,20 @@
 (add-method (#^number (character) x)
   (ash-left (%data x) -6))
 
-(add-method (= (character) x y)
+;;; Both arguments are dispatched on, so that comparing a character
+;;; with something else is the same error whichever side it is on.
+
+(add-method (= (character) x (character) y)
   (eq? x y))
 
+(add-method (= (character) x y)
+  (error "Incompatible types: (= ~S ~S)." x y))
+
+(add-method (< (character) x (character) y)
+  (< (%character->fixnum x)
+     (%character->fixnum y)))
+
 (add-method (< (character) x y)
-  (if (char? y)
-      (< (%character->fixnum x)
-	 (%character->fixnum y))
-      (error "Incompatible types: (< ~S ~S)." x y)))
+  (error "Incompatible types: (< ~S ~S)." x y))
 
 ;;; eof

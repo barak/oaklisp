@@ -35,6 +35,9 @@
 	  (set! ((%register 'segment-type)) (the-runtime stack-segment))
 	  (set! ((%register 'method-type)) (the-runtime %method))
 	  (set! ((%register 'operation-type)) (the-runtime operation))
+	  ;; Defined further down the cold load, in multi-method.oak,
+	  ;; but this runs long after that.
+	  (set! ((%register 'multi-method-type)) (the-runtime %multi-method))
 
 	  (warm-boot)
 	  ;; (format t "warm boot actions ~S~%" warm-boot-actions)

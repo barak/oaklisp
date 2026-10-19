@@ -102,17 +102,17 @@
 	    ((= 5 (rest-length args)) (+/5 . args))
 	    (else (+/>5 . args))))))
 
+(add-method (plus/2 (fixnum) x (fixnum) y)
+  (plus/2 (%bignum-from-fixnum x) y))
+
 (add-method (plus/2 (fixnum) x y)
-  (cond ((eq? (get-type y) fixnum)
-	 (plus/2 (%bignum-from-fixnum x) y))
-	(else
-	 (plus/2 y x))))
+  (plus/2 y x))
+
+(add-method (times/2 (fixnum) x (fixnum) y)
+  (times/2 (%bignum-from-fixnum x) y))
 
 (add-method (times/2 (fixnum) x y)
-  (cond ((eq? (get-type y) fixnum)
-	 (times/2 (%bignum-from-fixnum x) y))
-	(else
-	 (times/2 y x))))
+  (times/2 y x))
 
 (define-constant 1+
   (add-method ((make-fancy-open-coded-operation
@@ -183,40 +183,38 @@
 	    (else (*/>5 . args))))))
 
 (define-constant remainder
-  (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin)
-		'((remainder)) 2 1)
-	       (fixnum) x y)
-    (cond ((zero? y)
-	   (error "Illegal second arg: (REMAINDER ~D ~D).~%" x y))
-	  ((eq? (get-type y) fixnum)
-	   (remainder x y))
-	  ((eq? (get-type y) bignum)
-	   ;; A bignum divisor always exceeds a fixnum dividend in
-	   ;; magnitude, so the truncated quotient is zero and the
-	   ;; remainder is the dividend itself.
-	   x)
-	  (else
-	   ;;(error "Illegal second arg: (REMAINDER ~D ~D).~%" x y)
-	   (^super integer remainder x y)
-	   ))))
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((remainder)) 2 1))
+
+(add-method (remainder (fixnum) x (fixnum) y)
+  (if (zero? y)
+      (error "Illegal second arg: (REMAINDER ~D ~D).~%" x y)
+      (remainder x y)))
+
+;;; The case of a bignum divisor is in bignum.oak, where the type is.
+
+(add-method (remainder (fixnum) x y)
+  (if (zero? y)
+      (error "Illegal second arg: (REMAINDER ~D ~D).~%" x y)
+      (^super integer remainder x y)))
 
 (define-constant modulo
-  (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin)
-		'((modulo)) 2 1)
-	       (fixnum) x y)
-    (cond ((zero? y)
-	   (error "Illegal second arg: (MODULO ~D ~D).~%" x y))
-	  ((eq? (get-type y) fixnum)
-	   (modulo x y))
-	  ((eq? (get-type y) bignum)
-	   ;; Likewise the floored remainder, which differs from the
-	   ;; truncated one only when the signs disagree.
-	   (cond ((zero? x) 0)
-		 ((negative? x) (if (negative? y) x (+ x y)))
-		 (else (if (negative? y) (+ x y) x))))
-	  (else (^super integer modulo x y)))))
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((modulo)) 2 1))
+
+(add-method (modulo (fixnum) x (fixnum) y)
+  (if (zero? y)
+      (error "Illegal second arg: (MODULO ~D ~D).~%" x y)
+      (modulo x y)))
+
+;;; The case of a bignum divisor is in bignum.oak, where the type is.
+
+(add-method (modulo (fixnum) x y)
+  (if (zero? y)
+      (error "Illegal second arg: (MODULO ~D ~D).~%" x y)
+      (^super integer modulo x y)))
 
 
 (add-method (modulo (real) x y)
@@ -228,46 +226,43 @@
 (define-old-name mod modulo)
 
 (define-constant quotient
-  (add-method ((make-fancy-open-coded-operation (list foldable-mixin) '((div)) 2 1)
-	       (fixnum) x y)
-    (cond ((zero? y)
-	   (error "Illegal second arg: (QUOTIENT ~D ~D).~%" x y))
-	  ((eq? (get-type y) bignum)
-	   0)
-	  ((eq? (get-type y) fixnum)
-	   ;; The DIV instruction traps on exactly one pair of fixnums:
-	   ;; the most negative fixnum divided by -1, whose quotient is
-	   ;; the one quotient of two fixnums that is not itself a
-	   ;; fixnum.  Re-issuing the instruction here would trap again,
-	   ;; forever, so answer that case directly.
-	   (if (and (most-negative-fixnum? x) (= y -1))
-	       (- x)
-	       (quotient x y)))
-	  (else (error "Illegal second arg: (QUOTIENT ~D ~D).~%" x y)))))
+  (make-fancy-open-coded-operation (list foldable-mixin) '((div)) 2 1))
+
+(add-method (quotient (fixnum) x (fixnum) y)
+  (cond ((zero? y)
+	 (error "Illegal second arg: (QUOTIENT ~D ~D).~%" x y))
+	;; The DIV instruction traps on exactly one pair of fixnums:
+	;; the most negative fixnum divided by -1, whose quotient is
+	;; the one quotient of two fixnums that is not itself a
+	;; fixnum.  Re-issuing the instruction here would trap again,
+	;; forever, so answer that case directly.
+	((and (most-negative-fixnum? x) (= y -1)) (- x))
+	(else (quotient x y))))
+
+;;; The case of a bignum divisor is in bignum.oak, where the type is.
+
+(add-method (quotient (fixnum) x y)
+  (error "Illegal second arg: (QUOTIENT ~D ~D).~%" x y))
 
 (define-old-name div quotient)
 
 (define-constant quotientm
-  (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin)
-		'((quotientm)) 2 1)
-	       (fixnum) x y)
-    (cond ((zero? y)
-	   (error "Illegal second arg: (QUOTIENTM ~D ~D).~%" x y))
-	  ((eq? (get-type y) fixnum)
-	   ;; Same trap as QUOTIENT above: the most negative fixnum over
-	   ;; -1 is the one case the instruction cannot represent.
-	   (if (and (most-negative-fixnum? x) (= y -1))
-	       (- x)
-	       (quotientm x y)))
-	  ((eq? (get-type y) bignum)
-	   ;; A bignum divisor always exceeds a fixnum dividend in
-	   ;; magnitude, so the truncated quotient is zero; flooring it
-	   ;; gives -1 exactly when the signs differ and X isn't zero.
-	   (cond ((zero? x) 0)
-		 ((negative? x) (if (negative? y) 0 -1))
-		 (else (if (negative? y) -1 0))))
-	  (else (error "Illegal second arg: (QUOTIENTM ~D ~D).~%" x y)))))
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((quotientm)) 2 1))
+
+(add-method (quotientm (fixnum) x (fixnum) y)
+  (cond ((zero? y)
+	 (error "Illegal second arg: (QUOTIENTM ~D ~D).~%" x y))
+	;; Same trap as QUOTIENT above: the most negative fixnum over
+	;; -1 is the one case the instruction cannot represent.
+	((and (most-negative-fixnum? x) (= y -1)) (- x))
+	(else (quotientm x y))))
+
+;;; The case of a bignum divisor is in bignum.oak, where the type is.
+
+(add-method (quotientm (fixnum) x y)
+  (error "Illegal second arg: (QUOTIENTM ~D ~D).~%" x y))
 
 (define-constant zero?
   (add-method ((make-fancy-open-coded-operation
@@ -306,28 +301,32 @@
 ;;; comparison operators are defined in terms of these.
 
 (define-constant =
-  (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin)
-		'((=)) 2 1)
-	       (fixnum) x y)
-    (fselect-type y
-      ((fixnum) (= x y))
-      ((number) #f)
-      (otherwise (error "Illegal second arg (= ~D ~D).~%" x y)))))
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((=)) 2 1))
+
+(add-method (= (fixnum) x (fixnum) y) (= x y))
+(add-method (= (fixnum) x (number) y) #f)
+(add-method (= (fixnum) x y)
+  (error "Illegal second arg (= ~D ~D).~%" x y))
 
 (define-constant <
-  (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin)
-		'((<)) 2 1)
-	       (fixnum) x y)
-    (fselect-type y
-      ((fixnum)   (< x y))
-      ((bignum)   (not (negative? y)))
-      ((rational) (< (* x (denominator y)) (numerator y)))
-      ((float) (if (zero? x)
-		   (< x (float-sign y))
-		   (< (#^float x) y)))
-      (otherwise  (error "Illegal second arg (< ~D ~D).~%" x y)))))
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((<)) 2 1))
+
+(add-method (< (fixnum) x (fixnum) y) (< x y))
+
+;;; A bignum second argument is handled in bignum.oak and a ratio in
+;;; rational.oak, where those types are defined.
+
+(add-method (< (fixnum) x (float) y)
+  (if (zero? x)
+      (< x (float-sign y))
+      (< (#^float x) y)))
+
+(add-method (< (fixnum) x y)
+  (error "Illegal second arg (< ~D ~D).~%" x y))
 
 ;;;
 
@@ -369,13 +368,13 @@
 ;;; folded.
 
 (define-constant rot-left
-  (add-method ((make-fancy-open-coded-operation
-		'()
-		'((rot)) 2 1)
-	       (fixnum) x y)
-    (fselect-type y
-      ((fixnum) (rot-left x y))
-      (otherwise (error "Illegal second arg (ROT-LEFT ~D ~D).~%" x y)))))
+  (make-fancy-open-coded-operation
+   '()
+   '((rot)) 2 1))
+
+(add-method (rot-left (fixnum) x (fixnum) y) (rot-left x y))
+(add-method (rot-left (fixnum) x y)
+  (error "Illegal second arg (ROT-LEFT ~D ~D).~%" x y))
 
 (define-constant rot-right
   (add-method ((make-fancy-open-coded-operation
@@ -385,32 +384,33 @@
     (rot-left x (- y))))
 
 (define-constant ash-left
-  (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin)
-		'((ash)) 2 1)
-	       (fixnum) x y)
-    (fselect-type y
-      ((fixnum)
-       ;; The ASH instruction traps when a left shift would not fit in
-       ;; a fixnum, just as PLUS and TIMES do, so that the answer can
-       ;; be promoted here instead of being silently truncated.
-       ;; Multiplication does the promotion for us.  Right shifts never
-       ;; trap, so a negative count can only get here via a first class
-       ;; call of this operation.
-       (if (negative? y)
-	   (ash-right x (- y))
-	   (* x (expt 2 y))))
-      (otherwise (^super integer ash-left x y)))))
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((ash)) 2 1))
+
+(add-method (ash-left (fixnum) x (fixnum) y)
+  ;; The ASH instruction traps when a left shift would not fit in a
+  ;; fixnum, just as PLUS and TIMES do, so that the answer can be
+  ;; promoted here instead of being silently truncated.
+  ;; Multiplication does the promotion for us.  Right shifts never
+  ;; trap, so a negative count can only get here via a first class
+  ;; call of this operation.
+  (if (negative? y)
+      (ash-right x (- y))
+      (* x (expt 2 y))))
+
+(add-method (ash-left (fixnum) x y)
+  (^super integer ash-left x y))
 
 (define-constant ash-right
-  (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin
-		      backwards-args-mixin)
-		'((negate)(swap 1)(ash)) 2 1)
-	       (fixnum) x y)
-    (fselect-type y
-      ((fixnum) (ash-left x (- y)))
-      (otherwise (^super integer ash-right x y)))))
+  (make-fancy-open-coded-operation
+   (list foldable-mixin
+	 backwards-args-mixin)
+   '((negate)(swap 1)(ash)) 2 1))
+
+(add-method (ash-right (fixnum) x (fixnum) y) (ash-left x (- y)))
+(add-method (ash-right (fixnum) x y)
+  (^super integer ash-right x y))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Bitwise operations
@@ -423,40 +423,36 @@
     (bit-not x)))
 
 (define-constant bit-and
-  (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin)
-		'((bit-and)) 2 1)
-	       (fixnum) x y)
-    (fselect-type y
-      ((fixnum) (bit-and y x))
-      (otherwise (^super integer bit-and x y)))))
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((bit-and)) 2 1))
+
+(add-method (bit-and (fixnum) x (fixnum) y) (bit-and y x))
+(add-method (bit-and (fixnum) x y) (^super integer bit-and x y))
 
 (define-constant bit-or
-  (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin)
-		'((bit-or)) 2 1)
-	       (fixnum) x y)
-    (fselect-type y
-      ((fixnum) (bit-or y x))
-      (otherwise (^super integer bit-or x y)))))
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((bit-or)) 2 1))
+
+(add-method (bit-or (fixnum) x (fixnum) y) (bit-or y x))
+(add-method (bit-or (fixnum) x y) (^super integer bit-or x y))
 
 (define-constant bit-xor
-  (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin)
-		'((bit-xor)) 2 1)
-	       (fixnum) x y)
-    (fselect-type y
-      ((fixnum) (bit-xor y x))
-      (otherwise (^super integer bit-xor x y)))))
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((bit-xor)) 2 1))
+
+(add-method (bit-xor (fixnum) x (fixnum) y) (bit-xor y x))
+(add-method (bit-xor (fixnum) x y) (^super integer bit-xor x y))
 
 (define-constant bit-nand
-  (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin)
-		'((bit-nand)) 2 1)
-	       (fixnum) x y)
-    (fselect-type y
-      ((fixnum) (bit-nand y x))
-      (otherwise (^super integer bit-nand x y)))))
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((bit-nand)) 2 1))
+
+(add-method (bit-nand (fixnum) x (fixnum) y) (bit-nand y x))
+(add-method (bit-nand (fixnum) x y) (^super integer bit-nand x y))
 
 (define-constant bit-andca
   (add-method ((make-fancy-open-coded-operation
@@ -466,22 +462,20 @@
     (bit-and x (bit-not y))))
 
 (define-constant bit-nor
-  (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin)
-		'((bit-nor)) 2 1)
-	       (fixnum) x y)
-    (fselect-type y
-      ((fixnum) (bit-nor y x))
-      (otherwise (^super integer bit-nor x y)))))
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((bit-nor)) 2 1))
+
+(add-method (bit-nor (fixnum) x (fixnum) y) (bit-nor y x))
+(add-method (bit-nor (fixnum) x y) (^super integer bit-nor x y))
 
 (define-constant bit-equiv
-  (add-method ((make-fancy-open-coded-operation
-		(list foldable-mixin)
-		'((bit-equiv)) 2 1)
-	       (fixnum) x y)
-    (fselect-type y
-      ((fixnum) (bit-equiv y x))
-      (otherwise (^super integer bit-equiv x y)))))
+  (make-fancy-open-coded-operation
+   (list foldable-mixin)
+   '((bit-equiv)) 2 1))
+
+(add-method (bit-equiv (fixnum) x (fixnum) y) (bit-equiv y x))
+(add-method (bit-equiv (fixnum) x y) (^super integer bit-equiv x y))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -691,15 +685,25 @@
 ;(define-instance exp operation)
 
 ;;; Make the usual equality tests work on numbers.
+;;;
+;;; These dispatch on the second argument as well, so that a number is
+;;; unequal to a non-number rather than to everything the first
+;;; argument's type does not recognise -- and so that a promise in
+;;; either position is forced and the comparison retried, which is
+;;; what makes (EQV? 3 (DELAY 3)) agree with (EQV? (DELAY 3) 3).
 
 (dolist (op (list eqv? equal?))
 
-  (add-method (op (number) x y)
+  (add-method (op (number) x (number) y)
     (and (eq? (get-type x) (get-type y))
 	 (= x y)))
 
-  (add-method (op (fixnum) x y)
-    (eq? x y)))
+  (add-method (op (number) x y) #f)
+
+  (add-method (op (fixnum) x (fixnum) y)
+    (eq? x y))
+
+  (add-method (op (fixnum) x y) #f))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

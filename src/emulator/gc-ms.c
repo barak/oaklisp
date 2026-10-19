@@ -777,6 +777,7 @@ ms_mark_roots(void)
     ms_mark_ref(e_uninitialized);
     ms_mark_ref(e_method_type);
     ms_mark_ref(e_operation_type);
+    ms_mark_ref(e_multi_method_type);
 
     /* Tables stored as pointers with offset */
     if (e_subtype_table)

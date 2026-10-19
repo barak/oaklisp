@@ -91,6 +91,10 @@
 (add-method (abs (complex) self)
   (sqrt (abs-squared self)))
 
+(add-method (plus/2 (complex (xr the-real-part) (xi the-imag-part)) x
+		    (complex (yr the-real-part) (yi the-imag-part)) y)
+  (make-complex (+ xr yr) (+ xi yi)))
+
 (add-method (plus/2 (complex the-real-part the-imag-part) x y)
   (make-complex (+ the-real-part (real-part y))
 		(+ the-imag-part (imag-part y))))
@@ -103,32 +107,40 @@
   (make complex the-real-part (- the-imag-part)))
 (add-method (conjugate (number) self) self)
 
-(add-method (times/2 (complex the-real-part the-imag-part) x y)
-  (efselect-type y
-    ((complex)
-     (let ((y-real (real-part y))
-	   (y-imag (imag-part y)))
-       (make-complex (- (* the-real-part y-real)
-			(* the-imag-part y-imag))
-		     (+ (* the-real-part y-imag)
-			(* the-imag-part y-real)))))
-    ((number)
-     (make-complex (* the-real-part y) (* the-imag-part y)))))
+(add-method (times/2 (complex (xr the-real-part) (xi the-imag-part)) x
+		     (complex (yr the-real-part) (yi the-imag-part)) y)
+  (make-complex (- (* xr yr) (* xi yi))
+		(+ (* xr yi) (* xi yr))))
 
-(add-method (/ (complex the-real-part the-imag-part) x y)
-  (efselect-type y
-    ((complex) (* (/ x (abs-squared y)) (conjugate y)))
-    ((number) (make-complex (/ the-real-part y)
-			    (/ the-imag-part y)))))
+(add-method (times/2 (complex the-real-part the-imag-part) x (number) y)
+  (make-complex (* the-real-part y) (* the-imag-part y)))
 
-(add-method (/r (complex the-real-part the-imag-part) x y)
-  (efselect-type y
-    ((complex) (/ x y))
-    ((number) (* (/ y (abs-squared x)) (conjugate x)))))
+(add-method (times/2 (complex) x y)
+  (error "Inappropriate type.~%"))
 
-(add-method (= (complex the-real-part the-imag-part) x y)
+(add-method (/ (complex) x (complex) y)
+  (* (/ x (abs-squared y)) (conjugate y)))
+
+(add-method (/ (complex the-real-part the-imag-part) x (number) y)
+  (make-complex (/ the-real-part y) (/ the-imag-part y)))
+
+(add-method (/ (complex) x y)
+  (error "Inappropriate type.~%"))
+
+(add-method (/r (complex) x (complex) y) (/ x y))
+
+(add-method (/r (complex) x (number) y)
+  (* (/ y (abs-squared x)) (conjugate x)))
+
+(add-method (/r (complex) x y)
+  (error "Inappropriate type.~%"))
+
+(add-method (= (complex the-real-part the-imag-part) x (number) y)
   (and (= the-imag-part (imag-part y))
        (= the-real-part (real-part y))))
+
+(add-method (= (complex) x y)
+  (error "Illegal second arg (= ~S ~S)." x y))
 
 
 ;;; As for the other numeric types: EQUAL? compares the components, so

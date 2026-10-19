@@ -29,23 +29,94 @@ run-time, these tables are searched to find the methods which are used
 to handle operations on objects. The only mechanism for manipulating
 method tables is the following side-effecting special form.
 
-\sform{add-method}{\lpar operation $[$\lpar type \dt
-ivar-list\rpar$]$ \dt arg-list\rpar \dt body}
-\doc{Adds a method for \emph{operation} to the method table of \emph{type}.
-If a method for \emph{operation} already exists, it is replaced.  The
-value returned by \df{add-method} is \emph{operation}.}
+\sform{add-method}{\lpar operation \dt parameters\rpar \dt body}
+\doc{Adds a method for \emph{operation} to the method table of the
+type of its first parameter.  If a method with the same parameter
+types already exists there, it is replaced.  The value returned by
+\df{add-method} is \emph{operation}.}
 
-The body of the form is surrounded by an implicit \df{block}.  The
-arguments to the method are specified by \emph{arg-list}.  Since the
-first argument is always the object handling the message, a useful
-convention is to call it \df{self}.  Instance variables of \emph{type}
-can be referenced in the body if they are declared in \emph{ivar-list}.
-Instance variables of supertypes may not be referenced in any case.
-Naming conflicts between instance variables and arguments are resolved
-by the rule that the variables in \emph{arg-list} shadow instance
-variables that have the same names.  Oaklisp closes methods over free
-variable references at compile-time, thereby solving the upward funarg
-problem and allowing procedures to share state in a controlled manner.
+Each parameter is a variable, optionally preceded by a parenthesized
+group naming the type it is specialized to and, after that, instance
+variables of that type which the body may use:
+\begin{flushleft}\tt
+\emph{parameter} ::= [\lpar\emph{type} \emph{slot}\ldots\rpar] \emph{variable}\\
+\emph{slot} ::= \emph{name} $|$ \lpar\emph{variable} \emph{name}\rpar
+\end{flushleft}
+A parameter written without a group is not specialized, which is the
+same as specializing it to \df{object}.
+
+The body of the form is surrounded by an implicit \df{block}.  Since
+the first argument is always the object handling the message, a useful
+convention is to call it \df{self}.  Instance variables of a
+parameter's type can be referenced, and assigned, in the body if they
+are named in that parameter's group; instance variables the type
+inherits may not be named in any case.  A slot written
+\lpar\emph{variable} \emph{name}\rpar\ is bound to \emph{variable}
+rather than to its own name, which is needed when two parameters have
+the same type and so the same slot names, and is useful whenever the
+declared name is wrong for the body.  Naming conflicts between
+instance variables and parameters are resolved by the rule that the
+parameter variables shadow instance variables of the same name.
+Oaklisp closes methods over free variable references at compile-time,
+thereby solving the upward funarg problem and allowing procedures to
+share state in a controlled manner.
+
+\section{Dispatching on Several Arguments}
+
+A method specialized on more than its first parameter is chosen by the
+types of all of them.  Where the following would once have been
+written as one method on \df{bignum} that examined the type of its
+second argument by hand, it can be written as the cases it is made of:
+\begin{flushleft}\tt
+(add-method (plus (bignum digits) x (fixnum) y) \ldots)\\
+(add-method (plus (bignum digits) x (bignum) y) \ldots)\\
+(add-method (plus (bignum digits) x y) \ldots)
+\end{flushleft}
+Two parameters of the same type reach their slots through the
+aliasing form:
+\begin{flushleft}\tt
+(add-method (plus (complex (xr re) (xi im)) x\\
+~~~~~~~~~~~~~~~~~(complex (yr re) (yi im)) y)\\
+~~(make complex (+ xr yr) (+ xi yi)))
+\end{flushleft}
+
+Method lookup is unchanged in its first step: the type of the first
+argument and then its supertypes are searched, depth first and left to
+right, and the first type with a method for the operation decides the
+matter, shadowing everything above it exactly as a single method
+always has.  What changes is that the methods of one operation sharing
+one such type are now considered together, and the most specific of
+those that apply to the call is the one that runs.
+
+A method applies when every specializer is the type of the
+corresponding argument or a supertype of it.  Of two that apply, the
+more specific is the one whose specializer, at the first parameter
+where they differ, comes first in the search order of that argument's
+own type.  A method specializing on nothing after the first
+parameter --- which is what an ordinary \df{add-method} writes ---
+applies to every call and is the least specific of all, so it serves
+as the fallback.  If no method applies, the call fails as a call on an
+operation with no method for its argument does.
+
+There are no ambiguous calls to report.  The search order of a type
+totally orders its ancestors, so at the parameter where two methods
+differ one of them always comes first, and comparing the parameters
+left to right therefore picks out exactly one most specific method.
+
+A promise in any dispatched position is forced and the call retried,
+which is how a method written this way keeps the behaviour of the
+\df{fselect-type} it replaces.  Forcing happens when the method that
+would otherwise be chosen matched the promise only through
+\df{object}, so a method that really wants a promise still gets one.
+This is what makes the equality and comparison operators symmetric:
+\texttt{(eqv? (delay 3) 3)} and \texttt{(eqv? 3 (delay 3))} are both
+true, where before the second was false.
+
+The numeric tower is written this way.  Each type's file now carries
+the rules that mention it --- \df{bignum.oak} says what \texttt{(< fixnum
+bignum)} means, rather than \df{numbers.oak} naming a type that does
+not exist yet --- and comparing values of unrelated kinds is the same
+error whichever side each is on.
 
 
 \section{Scoping}
@@ -93,7 +164,8 @@ arguments of any type.
 Oaklisp readily accommodates the functional programming style, since
 methods can be defined for the type \df{object}, which is the
 supertype of all other types.  In fact, if the type specifier is
-omitted in an \df{add-method} form, the type \df{object} is assumed.
+omitted from a parameter of an \df{add-method} form, the type
+\df{object} is assumed.
 Thus, \texttt{(add-method (\mbox{cons-1} x) (cons x 1))} defines a method that
 is valid for any type.  To give the language a more familiar
 appearance when this programming style is used, the following macros
