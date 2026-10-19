@@ -28,6 +28,27 @@ and instantiable ones in bold.  Floating point numbers are not
 implemented.} \label{fig:numhier}
 \end{figure}
 
+\section{The Types}
+
+\ty{number}
+\doc{The top of the hierarchy, and a coercable type: \dfcoer{number}
+reads a number out of a string or a character.}
+\ty{real}
+\ty{complex}
+\doc{\df{complex} is the instantiable one; a complex number whose
+imaginary part works out to zero is reduced to a real, so no instance
+of \df{complex} is ever real.}
+\ty{rational}
+\ty{fraction}
+\doc{\df{fraction} is the instantiable one, always in lowest terms
+with a positive denominator, and never with a denominator of one.}
+\ty{integer}
+\doc{Instantiated as \df{fixnum} or \df{bignum}, whichever the value
+fits; which one it is is not something a program should ask.}
+\ty{float}
+\doc{Declared, but not implemented: this Oaklisp has no floating
+point numbers, and the exact tower is used instead.}
+
 \section{Arithmetic}
 
 \op{+}{\dt numbers}

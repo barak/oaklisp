@@ -130,6 +130,17 @@ one of those above.}
 \op{architecture-name}{architecture}
 \doc{The name of \emph{architecture}, the inverse of the above.}
 
+\fn{make-architecture}{word-size instructions-per-ref endian}
+\doc{Builds one from its three parts, which are checked: there is no
+packing of four instructions into a 32-bit reference, and
+\emph{endian} must be \df{little}, \df{big} or \df{\#f} for
+bytecode, which does not depend on it.}
+
+\fn{architecture-word-size}{architecture}
+\fn{architecture-instructions-per-ref}{architecture}
+\fn{architecture-endian}{architecture}
+\doc{The three parts of one.}
+
 \gv{most-positive-fixnum}
 \gv{most-negative-fixnum}
 \doc{The largest and smallest fixnums of the running system:

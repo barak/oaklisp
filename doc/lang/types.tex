@@ -188,6 +188,41 @@ Programs should be written in such a way that if \df{\#f} and \df{()}
 were not the same object, they would still work.}
 
 
+\section{Undefined Values}
+
+Several forms have no value to return in some case: an \df{if} with
+no alternative whose test was false, an instance variable that was
+never assigned.  Rather than return \df{()}, which a program might
+go on to use, these return a distinguished object that says where it
+came from.  Nothing can be done with one but print it, so a value
+that should not have been used shows up in the output instead of
+being mistaken for a list.
+
+\ty{undefined}
+\doc{The type of all of them.  \texttt{(make undefined
+\emph{origin})} makes one that prints with \emph{origin} in it.}
+
+\ob{if-undefined-value}
+\ob{cond-undefined-value}
+\ob{when-undefined-value}
+\ob{unless-undefined-value}
+\ob{while-undefined-value}
+\doc{Returned by those forms when no clause was taken, or when the
+loop finished.}
+
+\ob{variable-undefined-value}
+\ob{ivar-undefined-value}
+\doc{The value of a variable or an instance variable that has never
+been assigned.}
+
+\ob{generic-undefined-value}
+\doc{For everything else.}
+
+\fn{make-undefined-variable-value}{symbol}
+\doc{An undefined value that names the variable it came from, which
+is what the evaluator gives a reference to a variable that was
+declared and never assigned.}
+
 \section{Coercion}
 
 Some types are \emph{coercable}, meaning that there is an operation

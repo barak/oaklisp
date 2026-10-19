@@ -37,6 +37,13 @@ figure~\ref{fig:seqhier}.
 and instantiable ones in bold.} \label{fig:seqhier}
 \end{figure}
 
+\ty{sequence}
+\doc{The top of the hierarchy: anything \df{nth} reads.}
+\ty{vector-type}
+\doc{The sequences of fixed length whose elements are reached by
+index, of which \df{simple-vector} and \df{string} are the
+instantiable ones.}
+
 \section{Type Predicates}
 
 \pr{sequence?}{object}
@@ -104,6 +111,8 @@ documented in Section~\ref{sec:controlmap}.
 
 \op{vector}{\dt objects}
 \doc{Returns a \df{simple-vector} containings \emph{objects}.}
+\fn{make-string}{length}
+\doc{A string of that length, whose characters are unspecified.}
 \makin{simple-vector}{length}
 \coercer{simple-vector}{sequence}
 
@@ -142,9 +151,18 @@ be lazy and unbounded.}
 \texttt{d}'s.  If you think you need more, you should probably be
 defining accessor functions or using \df{nth} or perhaps
 \df{destructure}.}
-\lo{first}{sequence}
-\doc{Along with \df{second} through \df{tenth}, the element at that
-position.  These go through \df{nth}, so they read any sequence.}
+\fn{first}{sequence}
+\fn{second}{sequence}
+\fn{third}{sequence}
+\fn{fourth}{sequence}
+\fn{fifth}{sequence}
+\fn{sixth}{sequence}
+\fn{seventh}{sequence}
+\fn{eighth}{sequence}
+\fn{ninth}{sequence}
+\fn{tenth}{sequence}
+\doc{The element at that position.  These go through \df{nth}, so
+they read any sequence, not just a list.}
 \lo{last-pair}{pair}
 \doc{Takes successive \df{cdr}'s of \emph{pair} until it finds a pair
 whose \df{cdr} is not a pair, which it returns.  \evto{(last-pair '(a
