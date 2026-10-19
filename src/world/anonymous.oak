@@ -17,6 +17,12 @@
 
 ;;; Copyright (C) 1987 Kevin J. Lang & Barak A. Pearlmutter
 
+;;; Printing an object that has no name of its own.  When
+;;; #*FANCY-REFERENCES is true, FORMAT asks for an expression that
+;;; evaluates to the object in the current locale, so a nameless
+;;; operation prints as (SETTER FOO) rather than as a number.
+;;; DESCRIBE, APROPOS and the thread system turn it on.
+
 (set! #*fancy-references #f)
 
 (define expression-table (make-eq-hash-table))
@@ -42,6 +48,12 @@
     (if *expression-table-mutex* (release-mutex *expression-table-mutex*))
     result))
 
+
+;;; Search a locale and its superiors for an expression naming VALUE:
+;;; a variable bound to it, or an application of one of the accessors
+;;; registered below to something a variable is bound to.  REASONABLE-
+;;; EXPRESSION above caches the answer and rechecks it before reuse,
+;;; since a variable can be assigned between printings.
 
 (define-instance create-accessor-expression operation)
 
@@ -76,6 +88,9 @@
 (set! fancy-accessor-operations '())
 
 
+;;; Is VAL reachable from GUY by one registered accessor?  Answers
+;;; the call (OP GUY) as a list, or NIL.
+
 (define (could-you-get-this-value? guy val)
   (iterate next ((guards fancy-accessor-guards)(ops fancy-accessor-operations))
     (cond ((null? guards)
@@ -85,6 +100,8 @@
 	   (list (car ops) guy))
 	  (else
 	   (next (cdr guards)(cdr ops))))))
+
+;;; Register an accessor: objects satisfying AG can be asked AO.
 
 (define (how-to-get-val ag ao)
   (if *expression-table-mutex* (acquire-mutex *expression-table-mutex*))
@@ -123,6 +140,9 @@
 	       nil)))
 	(else nil)))
 
+
+;;; Whether TY would find a method for OP, asked of the type rather
+;;; than by trying the call.
 
 (define-instance got-a-method? operation)
 

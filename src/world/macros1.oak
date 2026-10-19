@@ -23,9 +23,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+;;; Ignore the forms, yielding the symbol COMMENT.
+
 (define-syntax (comment . x)
   ''comment)
 
+
+;;; LET* is nested LETs, so each clause sees the ones before it.
 
 (define-syntax (let* clauses . body)
   (if (null? clauses)
@@ -33,6 +37,11 @@
       `(let (,(car clauses))
 	 (let* ,(cdr clauses)
 	   ,@body))))
+
+;;; DEFINE assigns a variable, writing (DEFINE (F . ARGS) . BODY) for
+;;; a procedure and (DEFINE (FLUID X) VAL) for a fluid.  It does not
+;;; create the variable: a reference to one never assigned reads as
+;;; undefined, so there is nothing to distinguish DEFINE from SET!.
 
 (define-syntax define
   (lambda (form)
@@ -178,6 +187,10 @@
 	   while-undefined-value))))
 
 
+;;; Dispatch on the type of SELECTOR: each clause heads a list of
+;;; types, and the first clause one of whose types the selector
+;;; belongs to is taken.  OTHERWISE heads the fall-through clause.
+
 (define-syntax (select-type selector . clauses)
   (let ((tv (genvar)))
     `(let ((,tv (get-type ,selector)))
@@ -190,6 +203,11 @@
 				      types))
 			   ,@body))))
 		    clauses)))))
+
+;;; SELECT-TYPE that forces: a forcible selector matching no clause
+;;; is forced and the dispatch begun again, so a promise is seen as
+;;; whatever it delivers.  The selector may be written (VAR EXPR) to
+;;; name the forced value something other than the expression.
 
 (define-syntax (fselect-type selector . clauses)
 
@@ -233,6 +251,8 @@
 
 
 
+;;; The same two, with an OTHERWISE clause that signals an error.
+
 (define-syntax (eselect-type selector . clauses)
   `(select-type ,selector
      ,@clauses
@@ -243,6 +263,10 @@
 		 ,@clauses
 		 (otherwise (error "Inappropriate type.~%"))))
 
+
+;;; CASE as in Common Lisp, with OTHERWISE also accepted for ELSE.
+;;; The keys are constants rather than expressions, compared with EQ?
+;;; where that settles it and EQV? where it does not.
 
 (define-syntax (case key . clauses)
   (let ((keyvar (genvar)))

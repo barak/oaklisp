@@ -24,6 +24,13 @@
 (define *fluid-table-mutex* #f)
 
 
+;;; The fluid binding list belongs to the process, so these reach it
+;;; through the current one; before there are processes, and in a
+;;; world built without threads, it is the global FLUID-BINDING-LIST.
+;;; ADD-TO-CURRENT-FLUID-BINDINGS adds a binding at the far end, where
+;;; a search that found nothing else will see it, which is how a new
+;;; fluid acquires its top-level value.
+
 (define get-current-fluid-bindings
   (add-method ((make operation))
     (let ((z (or %no-threading (%load-process))))

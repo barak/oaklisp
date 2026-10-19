@@ -28,6 +28,12 @@
 		 (else `((locater ,(car place)) ,@(cdr place))))))))
 
 
+;;; Assignment.  A symbol is assigned through its locative; anything
+;;; else is macroexpanded until it is a symbol or a call, and then the
+;;; SETTER of the call's operation does the work.  Since DEFINE-SYNTAX
+;;; returns the expander it installs, SET gets the same one as SET!,
+;;; which is its older name.
+
 (define-syntax set
 
   (define-syntax set!
@@ -48,6 +54,10 @@
 
 
 
+;;; OR and AND in terms of IF.  OR binds each clause so that what
+;;; comes out is the value that was true, not T.  Empty, OR is false
+;;; and AND is true.
+
 (define-syntax (or . clauses)
   (if (null? clauses) ''#f
       (if (null? (cdr clauses)) (car clauses)
@@ -60,6 +70,10 @@
 	((null? (cdr clauses)) (car clauses))
 	(else `(if ,(car clauses) (and ,@(cdr clauses)) '#f))))
 
+
+;;; IF with no alternative yields IF-UNDEFINED-VALUE rather than
+;;; something that might be mistaken for an answer.  %IF is the
+;;; special form the compiler knows.
 
 (define-syntax if
   (lambda (form)
@@ -113,6 +127,11 @@
 
 
 
+
+;;; A procedure is an operation with one method, specialized on
+;;; nothing, so LAMBDA is just that ADD-METHOD.  The formals are
+;;; checked here because ADD-METHOD, seeing them after expansion,
+;;; would complain about something the programmer did not write.
 
 (define-syntax (lambda varlist . body)
   (let ((improper-part (improper-list? varlist)))
@@ -189,6 +208,10 @@
 
 
 
+;;; LET is an application of a LAMBDA, and ITERATE is a named LET
+;;; with the label out in front, expanded into LABELS so that going
+;;; round the loop is a tail call.
+
 (define-syntax (let clauses . body)
   ;; For R3RS compatibility, make the LET into an ITERATE if it
   ;; starts with a symbol.
@@ -215,8 +238,18 @@
 ;;;;;;;;;;;;;;;;;
 
 
+;;; Read THE-VAR as it is now.  Routing the fetch through a locative
+;;; and IDENTITY hides the variable from the compiler, which would
+;;; otherwise fold in the value a frozen or constant one had when the
+;;; reference was compiled.
+
 (define-syntax (the-runtime the-var)
   `(contents (identity (make-locative ,the-var))))
+
+;;; (FLUID X) names the fluid variable X, which is what the reader
+;;; makes of #*X.  BIND binds them, by pushing pairs onto the list
+;;; that a fluid reference searches; the old list is restored on the
+;;; way out, so a throw past the BIND undoes the binding too.
 
 (define-syntax (fluid x)
   `(%fluid ',x))
@@ -250,6 +283,9 @@
 	       (set-current-fluid-bindings ,old-binding-list)))))
 
 
+
+;;; BLOCK0 returns its first form, evaluating the rest afterwards for
+;;; effect.  BLOCK is an ordinary body, and %BLOCK the special form.
 
 (define-syntax (block0 form0 . body)
   (let ((v (genvar)))

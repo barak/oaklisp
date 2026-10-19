@@ -77,9 +77,18 @@
   (^super operation initialize self))
 
 
+;;; A settable operation that can also hand back a locative for the
+;;; place it reads, so MAKE-LOCATIVE works on a call to it.  Like the
+;;; setter, the locater is an operation in its own right, made when
+;;; the operation is initialized.
+
 (define-instance locatable-operation
   type '(the-locater) (list settable-operation))
 
+
+;;; (SETTER OP) is the operation that assigns what OP reads; SET!
+;;; expands into a call to it.  SETTER is itself settable, so a type
+;;; can supply its own.
 
 (define-constant-instance setter
   (mix-types oc-mixer (list foldable-mixin locatable-operation)))
@@ -90,6 +99,10 @@
 
 (add-method ((setter setter) (settable-operation the-setter) self new-setter)
   (set! the-setter new-setter))
+
+;;; CONTENTS reads the cell a locative points at and (SETTER
+;;; CONTENTS) writes it.  Both are open coded, and the methods just
+;;; below are what a call that is not open coded lands on.
 
 (define-constant-instance contents
   (mix-types oc-mixer (list locative-open-coded-mixin locatable-operation))
@@ -133,6 +146,9 @@
 
 
 
+;;; (LOCATER OP) is the operation that returns a locative for the
+;;; place OP reads; MAKE-LOCATIVE of a call expands into a call to it.
+
 (define-constant-instance locater
   (mix-types oc-mixer (list foldable-mixin locatable-operation)))
 
@@ -166,6 +182,9 @@
 
 
 
+
+;;; Returns its argument.  Open coded, so it is free where a
+;;; one-argument operation has to be passed.
 
 (define-constant-instance identity
   (mix-types oc-mixer (list object-open-coded-mixin operation))

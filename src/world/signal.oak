@@ -32,6 +32,11 @@
 
 
 
+;;; The root of the hierarchy.  A condition remembers the
+;;; continuation of the SIGNAL that raised it, which is what PROCEED
+;;; returns to; GENERAL-ERROR is a condition that cannot be proceeded
+;;; from.
+
 (define-instance condition type '(continuation) '())
 
 (define-instance general-error type '() (list condition))
@@ -43,6 +48,10 @@
 
 
 
+;;; Mixed in, this says a handler may PROCEED, and carries the
+;;; message describing what proceeding will do -- the text the
+;;; debugger offers as a restart.
+
 (define-instance proceedable-mixin type '(message) '())
 
 (add-method (initialize (proceedable-mixin message) self the-mess)
@@ -51,6 +60,9 @@
 
 
 
+
+;;; The two combinations: an error that can be proceeded from, and a
+;;; condition that is not an error at all.
 
 (define-instance proceedable-error type
   '() (list proceedable-mixin general-error))
@@ -325,6 +337,9 @@
 	     (^super proceedable-error really-invoke-debugger self)))
     (apply op args)))
 
+
+;;; Too few or too many arguments, split by whether the method wanted
+;;; exactly that many or that many and a rest.
 
 (define-instance nargs-exact-error type '() (list nargs-error object))
 (define-instance nargs-gte-error type '() (list nargs-error object))
