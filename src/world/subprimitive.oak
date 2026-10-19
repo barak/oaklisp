@@ -322,6 +322,9 @@
 	     op)))))
 
 
+;;; Return the second argument and drop the rest, which the
+;;; open coding does with one BLT-STK rather than by popping.
+
 (define-constant second-arg
   (add-method ((make-foldable-open-coded-operation
 		(lambda (n)
@@ -335,6 +338,9 @@
 
 
 
+;;; Leave a zero on the stack, which is how room is made for a
+;;; result that will be stored over it.
+
 (define-constant %push
   (add-method ((make-open-coded-operation (lambda (n) '((load-imm 0))) nil 1)
 	       (object) . args)
@@ -342,10 +348,16 @@
 
 
 
+;;; A cell of its own holding X, answered as a locative.  This is
+;;; how a variable that is closed over moves off the stack.
+
 (define-constant %make-cell
   (add-method ((make-open-coded-operation '((make-cell)) 1 1)
 	       (object) x)
     (make-locative x)))
+
+;;; An environment vector of the locatives on the stack, which is
+;;; what a method closing over anything is built with.
 
 (define-constant %make-closed-environment
   (add-method ((make-open-coded-operation
@@ -363,12 +375,17 @@
      . args)))
 
 
+;;; Whether the first instruction of a reference sits in its high
+;;; half, which on every machine so far is the byte order too.
+
 (define-constant %big-endian?
   (add-method ((make-open-coded-operation '((big-endian?)) 0 1)
 	       (object))
     (%big-endian?)))
 
 
+
+;;; The size of an operation with nothing mixed in, in words.
 
 (define-constant %simple-operation-length 5)
 

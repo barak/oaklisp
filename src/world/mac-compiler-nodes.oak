@@ -86,6 +86,9 @@
   (list ast-contour-node))
 
 
+;;; The remaining leaves: a locative to a variable, a body, and a
+;;; NATIVE-CATCH.
+
 (define-instance ast-make-locative-node type '(variable) (list ast-node))
 
 (define-instance ast-block-node type '(body) (list ast-node))
@@ -275,6 +278,14 @@
 		   vars)
 	    self))))))
 
+
+;;; Applying an operation to each subnode: WALK- for effect, MAP-
+;;; replacing each subnode with what the operation returned, and the
+;;; WITH-ARG forms passing a second argument along.  A pass is
+;;; written as a method per node type that does its own work and then
+;;; calls one of these, so no pass has to know the shape of a node it
+;;; does not care about.  ADD-MAP-WALK below defines the four methods
+;;; for a node type from the list of slots holding subnodes.
 
 (define-instance walk-ast operation)
 (define-instance map-ast! operation)
