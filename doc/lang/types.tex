@@ -151,8 +151,12 @@ Most of the type predicates in this manual were made this way.}
 \emph{type}.}
 
 \fn{has-method?}{type operation}
-\doc{Whether \emph{operation} applied to an instance of \emph{type}
-would find a method, asked without making the call.}
+\doc{Whether a method search for \emph{operation} starting at
+\emph{type} would find one, asked without making the call.  The
+search goes up to the supertypes and not down to the subtypes, so
+this is false of an abstract type whose instantiable subtypes supply
+the method.  The value when there is one is the method rather than
+\df{\#t}.}
 
 \section{Constants}
 

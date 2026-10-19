@@ -58,8 +58,9 @@ instantiable ones.}
 \pr{improper-list?}{object}
 \doc{Of an improper list, returns the non-pair tail it ends in, which
 is a true value; of a proper list, \df{\#f}.}
-\pr{subsequence?}{sequence1 sequence2}
-\doc{Whether \emph{sequence1} occurs within \emph{sequence2}.}
+\op{subsequence?}{sequence1 sequence2}
+\doc{The index at which \emph{sequence1} first occurs within
+\emph{sequence2}, or \df{\#f} if it does not.}
 
 
 \section{Sequence Operations}
