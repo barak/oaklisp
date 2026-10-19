@@ -23,6 +23,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+;;; The compiler reads a form into a tree of these, walks the tree
+;;; with the passes in mac-compiler1 through mac-compiler3, each of
+;;; which fills in more of the slots, and emits code from it in
+;;; mac-code.  Every node knows the contour it sits in, which is how
+;;; a variable reference finds out where its variable lives.
+
 (define-instance ast-node type '(enclosing-contour stack-map) (list object))
 
 (define-instance ast-constant-node type
@@ -38,6 +44,12 @@
   '(variable expression)
   (list ast-node))
 
+
+;;; A contour binds names: a method's parameters and instance
+;;; variables, or a LABELS clause's labels.  The lists below it are
+;;; filled in by the variable classification pass, which decides
+;;; which of those names can live on the stack and which have to be
+;;; moved to the heap because something closes over them.
 
 (define-instance ast-contour-node
   type '(localvars			;names added in this contour
@@ -78,9 +90,19 @@
 
 (define-instance ast-block-node type '(body) (list ast-node))
 
+;;; A variable reference, classified by VAR-TYPE into STACK (a local
+;;; in a frame still on the stack), IVAR (a slot of the object the
+;;; method is running on), EVAR (closed over, so reached through the
+;;; environment) and GLOBAL.  CAR-POS? records that it was in the
+;;; operator position, where a label can be jumped to rather than
+;;; called.
+
 (define-instance ast-variable-node
   type '(var-type name source-contour car-pos?)
   (list ast-node))
+
+;;; A call.  TAIL-POS? says the value is the value of the enclosing
+;;; method, so the call can reuse its frame.
 
 (define-instance ast-combination-node
   type '(op args tail-pos? rest-name)

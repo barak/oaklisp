@@ -91,6 +91,11 @@
 ;things like constants and variable references.
 
 
+;;; A node generates its value and then its continuation: NGUYS-TO-POP
+;;; says how much of the frame is dead, POP-ARGS emits the popping,
+;;; and PRIMITIVE-CONTINUATION puts the two together and either falls
+;;; through, jumps, or returns.
+
 (define-instance primitive-continuation operation)
 (define-instance nguys-to-pop operation)
 (define-instance pop-args operation)
@@ -144,6 +149,10 @@
 ;;;          generate the code for variable references                  ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+;;; Where a variable sits: COMPUTE-OFFSET finds its position in the
+;;; map it belongs to, and GEN-ACCESS-CODE emits the instruction that
+;;; reads or writes at that offset, which differs by VAR-TYPE.
 
 (define-instance compute-offset operation)
 (define-instance gen-access-code operation)
@@ -207,6 +216,9 @@ variable.  Use DEFINE-LOCAL-SYNTAX to macroexpand it here too.~%"
 ; which may be one of three things: the symbol TAIL, the symbol NEXT,
 ; or a label, which can be any other symbol.
 
+
+;;; Code for a whole top-level form: generate, peephole, and wrap it
+;;; up as the block the assembler takes.
 
 (define-instance top-level-gen-code operation)
 

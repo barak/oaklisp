@@ -17,6 +17,9 @@
 
 ;;; queue.oak
 
+;;; A queue is a pair of the list and its last pair, so adding at
+;;; the end costs no walk.  QAPPEND empties Q2 into the end of Q1.
+
 (define (make-queue)
   (list '()))
 
