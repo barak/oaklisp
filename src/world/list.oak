@@ -26,6 +26,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+;;; (IOTA N) counts from 1 to N, (IOTA0 N) from 0 to N-1; both are
+;;; N elements long.
+
 (define (iota n)
   (iterate step ((i n)(l '()))
     (if (zero? i) l (step (- i 1) (cons i l)))))

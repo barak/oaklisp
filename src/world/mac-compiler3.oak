@@ -25,6 +25,12 @@
 ;some of these use eq? get-type instead of is-a?
 
 
+;;; Replace what can be worked out now with the answer: a call to a
+;;; foldable operation on constants, a reference to a frozen
+;;; variable.  This is also where a method's instance variable map is
+;;; guessed, since folding is what turns the type expression into the
+;;; type itself.
+
 (define-instance fold-constants-v operation)
 
 (add-method (fold-constants-v (ast-node) self locale)
@@ -161,6 +167,10 @@
       (munch-together ivarlist ivar-list)
       #f))
 
+;;; Lay the slots the method asked for out in the order the type has
+;;; them, with #f where the type has a slot the method did not name,
+;;; and nothing past the last one it did.
+
 (define (munch-together ivarlist ivar-list)
   ;; ivarlist is the requested one, ivar-list the real one.
   (cond ((null? ivar-list) '())
@@ -176,6 +186,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+;;; Whether THING is of the right type and ACCESSOR of it is VALUE.
+;;; Recognizing an expanded form means asking that of each piece,
+;;; and the type has to be checked before the accessor is applied.
 
 (define (guarded-value-probe thing required-type accessor value)
   (and (is-a? thing required-type)
@@ -443,6 +457,10 @@
 ;;; Note: the following code assumes that every form leaves exactly
 ;;; one result on the stack.
 
+
+;;; Record in each node what the value stack looks like where it
+;;; runs, which is what a continuation needs in order to say where
+;;; the live values are.
 
 (define-instance stash-stack-map operation)
 

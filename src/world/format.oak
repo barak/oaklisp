@@ -39,6 +39,11 @@
 		 control-string 0 (length control-string) . args))))
 
 
+;;; The loop proper: copy the control string to the stream, handing
+;;; each ~ to the directive parser, which consumes what arguments it
+;;; wants and resumes here past the directive.  Arguments left over
+;;; at the end are an error the user can ignore.
+
 (define (formati stream control-string index limit . args)
   (iterate aux ((index index))
     (if (< index limit)

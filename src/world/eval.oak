@@ -26,6 +26,10 @@
 (set! #*top-level-evaluator interpreter-eval)
 
 
+;;; Interpret, except where the form installs a method, which the
+;;; interpreter has no way to do, so those go to the compiler.
+;;; CONTAINS-ADD-METHOD? looks for one anywhere but under a quote.
+
 (define (hybrid-eval form locale)
   ((if (contains-add-method? form) compiler-eval interpreter-eval)
    form locale))

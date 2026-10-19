@@ -36,6 +36,12 @@
 ;;;    fixnum* bignum*
 
 
+;;; The tower itself.  NUMBER is coercable, so #^NUMBER names the
+;;; coercer, and self-evaluatory, so a literal needs no quote.  The
+;;; types between NUMBER and the two with instances of their own,
+;;; FIXNUM and BIGNUM, hold the methods that apply to everything
+;;; below them.
+
 (define-constant-instance number
   coercable-type '() (list self-evaluatory-mixin))
 
@@ -224,6 +230,9 @@
   (- x (* y (truncate (/ x y)))))
 
 (define-old-name mod modulo)
+
+;;; Truncating division.  QUOTIENT is open coded as the DIV
+;;; instruction, with the method below for the cases DIV traps on.
 
 (define-constant quotient
   (make-fancy-open-coded-operation (list foldable-mixin) '((div)) 2 1))
@@ -480,6 +489,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+;;; Magnitude and exponentiation.  EXPT/R is EXPT with the arguments
+;;; the other way about, which is the order the recursion wants, and
+;;; is where the work is actually done.
 
 (define-constant-instance abs
   (mix-types oc-mixer (list foldable-mixin operation)))

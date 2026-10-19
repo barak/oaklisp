@@ -18,6 +18,11 @@
 ;;; Copyright (C) 1986 Barak A. Pearlmutter & Kevin J. Lang
 
 
+;;; A .oa file keeps its symbols in one vector at the front, and
+;;; refers to them by index.  These two convert between that and the
+;;; form the loader and the compiler work in, where each patch names
+;;; its symbol outright.
+
 (define (make-oa-list oaf-list)
   (let ((sym-vec (#^simple-vector (car oaf-list))))
     (labels (((rewrite-syms clause)
@@ -77,6 +82,9 @@
 	out)))
 
 
+;;; Cut a flat list of patches into a list of three-element lists,
+;;; reusing the pairs rather than consing new ones.
+
 (define (triplify! inlist)
   (iterate step ((in inlist) (out '()))
     (if in
@@ -90,6 +98,9 @@
 
 
 
+
+;;; Read a decimal integer without going through the reader, which
+;;; is far more than this needs and much slower.
 
 (define (dumb-read-number stream)
   (let* ((the-char (peek-char stream))
@@ -142,6 +153,10 @@
 		   (cond ((cdr funlist) => identity)
 			 (else function-list))))))))
 
+
+;;; Read a .oa file with a reader per position: the symbol vector,
+;;; then the blocks, then the flat lists of patches and opcodes,
+;;; which are numbers and nothing else.
 
 (define (read-oaf-list stream)
   (read-list-using-functions

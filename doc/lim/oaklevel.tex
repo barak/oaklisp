@@ -48,6 +48,14 @@ their values.  The \df{bind} construct simply pushes variable/value
 pairs onto this list before executing its body and pops them off
 afterwards.}
 
+\fn{get-current-fluid-bindings}{}
+\fn{set-current-fluid-bindings}{list}
+\doc{Read and write that list.  The binding list belongs to the
+process rather than to the system, so these ask the current one; in a
+world built without threads, and before the first process exists,
+they use the global \df{fluid-binding-list}.  \df{bind} and the
+abnormal exits go through these rather than naming the variable.}
+
 It would be easy to implement fluid variables using the unwind
 protection facilities, but instead the abnormal control constructs
 (\df{native-catch} and \df{call/cc}) are careful to save and restore
@@ -108,6 +116,12 @@ actions.  Along with stack heights, the catch tag contains
 \df{saved-fluid-binding-list}, which is restored immediately before
 the stacks are actually chopped off.
 
+
+\ty{escape-object}
+\doc{A catch tag: the two stack heights, \df{saved-wind-count} and
+\df{saved-fluid-binding-list}.  \df{\%escape-object-length} is its
+size in words, which \df{native-catch} expands into a
+\df{\%allocate} of.}
 
 \section{Call/CC}
 

@@ -23,6 +23,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+;;; The compiler reads a form into a tree of these, walks the tree
+;;; with the passes in mac-compiler1 through mac-compiler3, each of
+;;; which fills in more of the slots, and emits code from it in
+;;; mac-code.  Every node knows the contour it sits in, which is how
+;;; a variable reference finds out where its variable lives.
+
 (define-instance ast-node type '(enclosing-contour stack-map) (list object))
 
 (define-instance ast-constant-node type
@@ -38,6 +44,12 @@
   '(variable expression)
   (list ast-node))
 
+
+;;; A contour binds names: a method's parameters and instance
+;;; variables, or a LABELS clause's labels.  The lists below it are
+;;; filled in by the variable classification pass, which decides
+;;; which of those names can live on the stack and which have to be
+;;; moved to the heap because something closes over them.
 
 (define-instance ast-contour-node
   type '(localvars			;names added in this contour
@@ -74,13 +86,26 @@
   (list ast-contour-node))
 
 
+;;; The remaining leaves: a locative to a variable, a body, and a
+;;; NATIVE-CATCH.
+
 (define-instance ast-make-locative-node type '(variable) (list ast-node))
 
 (define-instance ast-block-node type '(body) (list ast-node))
 
+;;; A variable reference, classified by VAR-TYPE into STACK (a local
+;;; in a frame still on the stack), IVAR (a slot of the object the
+;;; method is running on), EVAR (closed over, so reached through the
+;;; environment) and GLOBAL.  CAR-POS? records that it was in the
+;;; operator position, where a label can be jumped to rather than
+;;; called.
+
 (define-instance ast-variable-node
   type '(var-type name source-contour car-pos?)
   (list ast-node))
+
+;;; A call.  TAIL-POS? says the value is the value of the enclosing
+;;; method, so the call can reuse its frame.
 
 (define-instance ast-combination-node
   type '(op args tail-pos? rest-name)
@@ -253,6 +278,14 @@
 		   vars)
 	    self))))))
 
+
+;;; Applying an operation to each subnode: WALK- for effect, MAP-
+;;; replacing each subnode with what the operation returned, and the
+;;; WITH-ARG forms passing a second argument along.  A pass is
+;;; written as a method per node type that does its own work and then
+;;; calls one of these, so no pass has to know the shape of a node it
+;;; does not care about.  ADD-MAP-WALK below defines the four methods
+;;; for a node type from the list of slots holding subnodes.
 
 (define-instance walk-ast operation)
 (define-instance map-ast! operation)

@@ -40,6 +40,9 @@
       0))
 
 
+;;; MAP that leaves the tail of an improper list alone, since in a
+;;; parameter list that tail is the rest argument and not an element.
+
 (define (map-proper-part op l)
   (let ((improper-part (improper-list? l)))
     (if improper-part
@@ -48,6 +51,9 @@
 	  proper-answer)
 	(map op l))))
 
+
+;;; The forms the compiler knows itself.  These are recognized by
+;;; name and are never looked up, so they cannot be shadowed.
 
 (define (special-form? sym)
   (or (eq? sym 'quote)

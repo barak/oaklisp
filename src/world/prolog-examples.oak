@@ -19,6 +19,14 @@
 
 
 
+;;; Examples of the logic subsystem in prolog.oak.  Nothing here is
+;;; part of the system; the file is for trying the RELATION form out,
+;;; and for seeing what the familiar Prolog predicates look like
+;;; written in it.  Several carry their Prolog original in a comment.
+;;;
+;;; The list predicates, with a P- prefix where Oaklisp already has
+;;; the name.
+
 (define p-member
   (relation
    ((a) (p-member ,a (,a . ,_)))
@@ -70,6 +78,8 @@
 
 
 
+;;; The ancestor example, with a small family to ask it about.
+
 (define parent
   (relation
    ((x y) (parent ,x ,y) :- (father ,x ,y))
@@ -98,6 +108,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+
+;;; Arithmetic, which needs IS to evaluate, and the cut.
 
 (define pfact
   (relation

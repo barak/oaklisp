@@ -198,6 +198,9 @@
 ;;;;;;;;;;;;;;;;;
 
 
+;;; Case conversion, defined on characters just below and on strings
+;;; further down.
+
 (define-instance upcase operation)
 (define-instance downcase operation)
 
@@ -334,6 +337,8 @@
   (#^string (list s)))
 
 
+;;; Write the characters of SELF to STREAM, with nothing around them.
+
 (define-instance write-string operation)
 
 (add-method (write-string (string char-count) self stream)
@@ -443,6 +448,10 @@
   (#^string (map downcase (#^list-type self))))
 
 
+;;; Write S with a backslash before every backslash and before every
+;;; occurrence of the delimiter it is to appear between, so that
+;;; reading the result back gives S again.
+
 (define (write-string-with-slashes s delimiter-to-avoid stream)
   (dotimes (i (length s))
     (let ((c (nth s i)))
@@ -450,6 +459,8 @@
 	      (eq? c #\\))
 	  (write-char stream #\\))
       (write-char stream c))))
+
+;;; Whether printing S between double quotes would need any of that.
 
 (define-instance requires-slashification? operation)
 

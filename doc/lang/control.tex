@@ -63,6 +63,8 @@ count of the current element in the list, starting at zero.}
 \sform{while}{condition \dt body}
 \doc{\meq{}{(let ((q (lambda () \emph{test}))(x (lambda () \dt
 \emph{body}))) (iterate aux () (cond ((\emph{q}) (\emph{x}) (aux)))))}}
+\sform{when}{test \dt body}
+\doc{\meq{}{(cond (\emph{test} \dt \emph{body}))}}
 \sform{unless}{test \dt body}
 \doc{\meq{}{(cond ((not \emph{test}) \dt \emph{body}))}}
 \sform{do}{\lpar \lpar var initial step \rpar \ldots \rpar
@@ -70,6 +72,37 @@ count of the current element in the list, starting at zero.}
 \doc{\meq{}{(iterate aux ((\emph{var initial}) \ldots)
 (cond (\emph{termination-test} \dt \emph{termination-body})
       (else (block \dt \emph{body}) (aux \emph{step} \ldots))))}}
+
+\sform{until}{condition \dt body}
+\doc{Like \df{while}, but goes round while \emph{condition} is false.}
+
+\sform{case}{key \dt clauses}
+\doc{Each clause is \emph{\lpar\lpar object \ldots\rpar \dt body\rpar};
+the first one listing an object that \emph{key} matches is evaluated.
+The objects are not evaluated.  A final clause headed by \df{else} or
+by \texttt{otherwise} is taken when no other matches.}
+
+\sform{select-type}{object \dt clauses}
+\doc{Dispatches on the type of \emph{object}.  Each clause is
+\emph{\lpar\lpar type \ldots\rpar \dt body\rpar}, and the first one
+naming a type that \emph{object} belongs to is evaluated; a clause
+headed by \texttt{otherwise} is taken when none does.  This asks the
+question \df{add-method} answers by dispatching, and is for the cases
+where a method would be awkward: where the operation is not yours to
+add methods to, or where the body belongs with the caller rather than
+with the type.}
+
+\sform{fselect-type}{object \dt clauses}
+\doc{Like \df{select-type}, except that an \emph{object} matching no
+clause is forced if it is a \df{forcible}, and the dispatch begun
+again on the result, so a promise is seen as whatever it delivers.
+\emph{Object} may also be written \emph{\lpar variable form\rpar},
+which names the forced value \emph{variable} within the clauses.}
+
+\sform{eselect-type}{object \dt clauses}
+\sform{efselect-type}{object \dt clauses}
+\doc{These two are \df{select-type} and \df{fselect-type} with an
+\texttt{otherwise} clause that signals an error.}
 
 \section{Mapping Constructs} \label{sec:controlmap}
 
@@ -91,3 +124,22 @@ elements, and returns a list of the returned values.}
 \op{map\protect\bang}{operation \dt sequences}
 \doc{Like \df{map}, except that the retuned values are destructively
 placed into the successive storage locations of the first \emph{sequence}.}
+
+\op{map-and-reverse}{operation \dt lists}
+\doc{Like \df{map} on lists, but the results come back in reverse
+order, which saves a \df{reverse\protect\bang} where the order does not
+matter.}
+
+\section{Searching}
+
+\op{any?}{predicate \dt lists}
+\doc{Applies \emph{predicate} to the elements in turn and returns the
+first true result, or \df{\#f} if there is none.}
+\op{every?}{predicate \dt lists}
+\doc{Returns a true value if \emph{predicate} holds of every element,
+and \df{\#f} otherwise.  The value is what \emph{predicate} returned
+for the last element, and that last call is made tail recursively.}
+\op{position}{object sequence}
+\op{position-in-list}{object list}
+\doc{The index of the first element \df{eq?} to \emph{object}, or
+\df{\#f} if there is none.}

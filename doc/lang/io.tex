@@ -74,6 +74,28 @@ this, one can get back to a previous position.}
 \op{write-string}{string output-stream}
 \doc{Writes the characters of \emph{string} to \emph{stream}.}
 
+\ty{file-stream}
+\doc{A stream over an open file; \df{file-input-stream} and
+\df{file-output-stream} are the two instantiable kinds.}
+
+\fn{open-input-file}{filename}
+\fn{open-output-file}{filename}
+\fn{open-output-file-append}{filename}
+\doc{Open the named file and return a stream on it.  Opening for
+output truncates a file that is already there; the \df{append} form
+adds to it.  Failure signals \df{error-opening-read} or one of its
+siblings, which can be proceeded from with another name.  The stream
+must be closed, so \df{with-open-file} below is usually what you
+want.}
+
+\op{close}{stream}
+\doc{Closes the stream.  Closing one twice is harmless.}
+
+\gv{standard-input}
+\gv{standard-output}
+\gv{standard-error}
+\doc{The streams the process was started with.}
+
 \mc{with-open-file}{\lpar variable filename \dt options\rpar \dt body}
 \doc{Binds \emph{variable} to a stream which is connected to the file
 with the name \emph{filename}.  \emph{Options} is not evaluated, and
@@ -92,9 +114,28 @@ changed in future versions of the system.}
 characters of \emph{sequence}.  Although \emph{sequence} is usually a
 string, this will work correctly for any sequence type.}
 
+\makin{string-input-stream}{sequence}
+\doc{A stream that reads the characters of \emph{sequence};
+\df{with-input-from-string} is the usual way to make one.}
+
 \makin{string-output-stream}{}
 \doc{These save all their output and return it as a string in response
 to the \dfcoer{string} operation.}
+
+\section{Whole Files}
+
+\fn{read-file}{filename}
+\doc{Reads the file and returns the list of the forms in it.}
+
+\fn{write-file}{filename object}
+\doc{Writes \emph{object} to the file, so that \df{read-file} reads
+it back.  The stream is an \df{ugly} one, since no one is going to
+look at the layout, and \dffl{print-length} and \dffl{print-level}
+are lifted so that nothing is abbreviated away.}
+
+\fn{dofile}{filename operation}
+\doc{Applies \emph{operation} to each form of the file in turn.  This
+is \df{read-file} without holding the whole file at once.}
 
 
 
@@ -109,6 +150,10 @@ Common Lisp reader below.
 \op{read}{input-stream}
 \doc{Returns a lisp object read from \emph{stream}.  This is sensitive
 to a large number of factors detailed below.}
+
+\ty{read-table}
+\doc{A vector indexed by character, holding what the reader should do
+with each.  \df{nth} reads and sets the entries.}
 
 \ob{standard-read-table}
 \doc{This holds the read table for usual lisp syntax.  The \df{nth}
@@ -157,6 +202,13 @@ to print using analogous syntax.  For instance, the quote syntax is
 defined with the line \texttt{(define-quotelike-macro-char
 \texttt{\#'} 'quote)} in the system internals.
 \end{docenv}
+
+\op{define-quotelike-\#-macro-char}{character object}
+\doc{The same for a character after a \texttt{\#}: \texttt{\#*foo}
+reads as \texttt{(fluid foo)} because of
+\texttt{(define-quotelike-\#-macro-char \#$\backslash$* 'fluid)}.  A
+numeric argument between the \texttt{\#} and the character is an
+error.}
 
 \ob{the-unread-object}
 \doc{When a reader macro returns this, the reader takes it to mean
@@ -319,3 +371,19 @@ escaped.  See the implementation manual for details.}
 \doc{This can be either \df{normal}, \df{fancy} or \df{float}.  In
 these cases, \texttt{(/ -5 3)} would print as either \texttt{-5/3},
 \texttt{-1$\cdot$2/3} or \texttt{-1.6666666666}, respectively.}
+
+\section{Extending the Printer}
+
+\fn{define-format-control}{character argument-count operation}
+\doc{Defines \texttt{\~{}\emph{character}} as a format directive.
+\emph{Operation} is called with the stream, the numeric parameters,
+and \emph{argument-count} arguments taken from those remaining.  The
+character is not case sensitive.}
+
+\op{print-list-end}{list delimiter? length budget ending stream}
+\doc{Prints the rest of a list, and is what a type whose instances
+print as lists calls once it has written its opening delimiter.
+\emph{Delimiter?} says whether a space is needed first, \emph{length}
+is \dffl{print-length} or \df{\#f}, \emph{budget} counts down the
+pairs left before the printer decides the list is circular and
+signals, and \emph{ending} is written after the last element.}

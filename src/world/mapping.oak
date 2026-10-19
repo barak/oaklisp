@@ -175,6 +175,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+;;; MAP, FOR-EACH and MAP! take any number of lists.  Rather than
+;;; listify the rest arguments on every call, each dispatches on how
+;;; many it was given to MAPn, which walks n lists with the arguments
+;;; still on the stack; GENERAL-MAP takes over past five.  MAPCDR and
+;;; FOR-EACH-CDR hand the operation the pairs themselves rather than
+;;; their cars.
+
 (define-instance map operation)
 (define-instance map1 operation)
 (define-instance map2 operation)
@@ -263,6 +270,9 @@
 
 
 
+
+;;; MAP delivering the results in reverse order, which saves the
+;;; final REVERSE! where the caller does not care about the order.
 
 (define-instance map-and-reverse operation)
 (define-instance map-and-reverse1 operation)
@@ -372,6 +382,10 @@
 	(else (set! (car l) (op (car l)))
 	      (map!1 op (cdr l))
 	      l)))
+
+;;; Whether PRED? holds of every element.  The last element is tried
+;;; in tail position, so what EVERY? returns is what the predicate
+;;; returned for it.
 
 (define-instance every? operation)
 
@@ -523,6 +537,10 @@
 		 (aux o old)))
 	  (else new))))
 
+
+;;; APPEND copies every list but the last, which it shares; APPEND!
+;;; instead relinks the final pair of each, so the lists given to it
+;;; must not be wanted afterwards.
 
 (define-instance append operation)
 (define-instance append! operation)
@@ -740,6 +758,8 @@
 (add-method (setequal? (list-type) a b)
   (null? (setxor a b)))
 
+
+;;; Whether every element of A appears in B, comparing with EQ?.
 
 (define-instance subset? operation)
 

@@ -42,6 +42,8 @@
 		  (format #t "~&~A (~A)~%" sym (contents cell))))))
 
 
+;;; The variables of a locale satisfying PRED?, by name.
+
 (define-instance find-sorted-vars operation)
 
 (add-method (find-sorted-vars (locale variable-table) self pred?)

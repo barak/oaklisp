@@ -37,6 +37,13 @@ figure~\ref{fig:seqhier}.
 and instantiable ones in bold.} \label{fig:seqhier}
 \end{figure}
 
+\ty{sequence}
+\doc{The top of the hierarchy: anything \df{nth} reads.}
+\ty{vector-type}
+\doc{The sequences of fixed length whose elements are reached by
+index, of which \df{simple-vector} and \df{string} are the
+instantiable ones.}
+
 \section{Type Predicates}
 
 \pr{sequence?}{object}
@@ -46,6 +53,14 @@ and instantiable ones in bold.} \label{fig:seqhier}
 \pr{pair?}{object}
 \pr{null?}{object}
 \pr{atom?}{object}
+\pr{proper-list?}{object}
+\doc{True of a list whose last pair has \df{()} for its \df{cdr}.}
+\pr{improper-list?}{object}
+\doc{Of an improper list, returns the non-pair tail it ends in, which
+is a true value; of a proper list, \df{\#f}.}
+\op{subsequence?}{sequence1 sequence2}
+\doc{The index at which \emph{sequence1} first occurs within
+\emph{sequence2}, or \df{\#f} if it does not.}
 
 
 \section{Sequence Operations}
@@ -72,6 +87,23 @@ The same rule about the last argument applies here as in \df{append}.}
 
 \op{reverse}{sequence}
 \op{reverse\protect\bang}{sequence}
+\op{head}{sequence n}
+\doc{The first \emph{n} elements.}
+\op{subseq}{sequence start count}
+\doc{\emph{Count} elements beginning at index \emph{start}.}
+\op{fill\protect\bang}{sequence object}
+\doc{Stores \emph{object} in every position, and returns the
+sequence.}
+\op{make-proper}{list}
+\doc{The proper list of the elements of \emph{list}, which may be
+improper; the tail it ends in is dropped.}
+\op{sort}{sequence predicate}
+\op{sort\protect\bang}{sequence predicate}
+\doc{Sorts into the order \emph{predicate} imposes.  It is called on
+two elements and answers whether the first may come before the
+second, so it should be a ``less than or equal'' test.  \df{sort}
+copies; \df{sort\protect\bang} sorts in place and the argument should
+not be used afterwards.}
 
 Some mapping operations are also applicable to sequences, and are
 documented in Section~\ref{sec:controlmap}.
@@ -80,6 +112,8 @@ documented in Section~\ref{sec:controlmap}.
 
 \op{vector}{\dt objects}
 \doc{Returns a \df{simple-vector} containings \emph{objects}.}
+\fn{make-string}{length}
+\doc{A string of that length, whose characters are unspecified.}
 \makin{simple-vector}{length}
 \coercer{simple-vector}{sequence}
 
@@ -87,6 +121,15 @@ documented in Section~\ref{sec:controlmap}.
 \section{List Constructors}
 
 \op{list}{\dt objects}
+\op{list*}{\dt objects}
+\doc{Like \df{list}, but the last of the \emph{objects} becomes the
+tail of the result rather than its last element.}
+\op{iota}{n}
+\doc{The list of the integers from 1 to \emph{n}.}
+\op{iota0}{n}
+\doc{The list of the integers from 0 to \emph{n}$-$1.}
+\op{splice}{list-of-lists}
+\doc{The lists appended together.}
 \makin{list-type}{length fill-value}
 \coercer{list-type}{sequence}
 \op{cons}{object1 object2}
@@ -109,6 +152,18 @@ be lazy and unbounded.}
 \texttt{d}'s.  If you think you need more, you should probably be
 defining accessor functions or using \df{nth} or perhaps
 \df{destructure}.}
+\fn{first}{sequence}
+\fn{second}{sequence}
+\fn{third}{sequence}
+\fn{fourth}{sequence}
+\fn{fifth}{sequence}
+\fn{sixth}{sequence}
+\fn{seventh}{sequence}
+\fn{eighth}{sequence}
+\fn{ninth}{sequence}
+\fn{tenth}{sequence}
+\doc{The element at that position.  These go through \df{nth}, so
+they read any sequence, not just a list.}
 \lo{last-pair}{pair}
 \doc{Takes successive \df{cdr}'s of \emph{pair} until it finds a pair
 whose \df{cdr} is not a pair, which it returns.  \evto{(last-pair '(a
@@ -156,6 +211,16 @@ an error is signaled.}
 \emph{object} according to \emph{predicate}.}
 
 \op{memq}{object list}
+\op{memv}{object list}
+\op{member}{object list}
+\doc{These three differ only in the comparison: \df{eq?}, \df{eqv?}
+and \df{equal?} respectively.}
+\op{remove}{sequence object}
+\op{remove-if}{sequence predicate}
+\doc{A copy of \emph{sequence} without the elements \df{eq?} to
+\emph{object}, or without those satisfying \emph{predicate}.  Note
+the argument order, which is that of the sequence operations rather
+than of \df{memq} above.}
 \op{del}{predicate object list}
 \op{delq}{object list}
 \op{del\protect\bang}{predicate object list}
@@ -167,10 +232,34 @@ an error is signaled.}
 
 \op{ass}{predicate object list}
 \op{assq}{object list}
+\op{assv}{object list}
+\op{assoc}{object list}
+\doc{The first pair of \emph{list} whose \df{car} matches
+\emph{object}, or \df{()}.  As with \df{memq}, the three differ only
+in the comparison.}
+\op{rass}{predicate object list}
+\op{rassq}{object list}
+\doc{The same, looking at the \df{cdr} of each pair instead of the
+\df{car}.}
 \so{cdr-ass}{predicate object list}
 \so{cdr-assq}{object list}
 
 
+
+\section{Set Operations on Lists}
+
+A set is a list whose elements are taken to be distinct.  These
+operations compare with \df{eq?} and leave the order of the result
+undefined.
+
+\op{union}{list1 list2}
+\op{intersection}{list1 list2}
+\op{setdifference}{list1 list2}
+\doc{The elements of \emph{list1} that are not in \emph{list2}.}
+\op{setxor}{list1 list2}
+\doc{The elements in one list but not the other.}
+\pr{subset?}{list1 list2}
+\pr{setequal?}{list1 list2}
 
 \section{Lists as Stacks}
 

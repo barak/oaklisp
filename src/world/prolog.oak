@@ -216,6 +216,12 @@
 
 
 
+;;; A structure with every bound logic variable replaced by what it
+;;; stands for, so Oaklisp code can be handed something with no logic
+;;; variables left in it.  FOLLOW-CHAIN does the same for a variable
+;;; bound to an atom, and is cheaper where that is all that is
+;;; needed.
+
 (define (deep-copy x)
   (let ((x (follow-chain x)))
     (cond ((eq? x _) _)
@@ -350,6 +356,9 @@
 
 
 
+;;; The anonymous variable _ is a logic variable too and answers
+;;; this; the places that must tell it apart compare against it.
+
 (define logic-variable? (type-pred logic-variable))
 
 
@@ -456,6 +465,8 @@
 
 
 
+;;; Ask the terminal, again until the answer is one or the other.
+
 (define (y-or-n? prompt)
   (iterate aux ()
     (format #t "~A? " prompt)
@@ -515,6 +526,10 @@
     (otherwise `(lambda () ,code))))
 
 
+;;; Whether any clause cuts.  A relation that does is wrapped in a
+;;; NATIVE-CATCH and the cut throws to it; one that does not pays
+;;; nothing for the catch.
+
 (define (has-! clauses)
   (and (not (null? clauses))
        (or (memq '! (cddar clauses)) (has-! (cdr clauses)))))
@@ -526,6 +541,16 @@
 
 
 
+
+;;; Compiling a relation.  The clauses become nested code rather
+;;; than a list walked at run time: each is tried, and its failure
+;;; continuation is the code for the clause after it, so backtracking
+;;; is an ordinary return.  K is the success continuation and CUTFAIL
+;;; is what a cut throws to.
+;;;
+;;; PROCESS-CLAUSE, PROCESS-RHS and SYM-UNIFY below are each
+;;; superseded further down by a version that also hacks the left
+;;; hand side variables.
 
 (define (process-clauses clauses cformals k cutfail)
   (if (null? clauses) '#f
@@ -580,6 +605,10 @@
 
 
 
+;;; The Prolog IS, which is just unification: the arithmetic has
+;;; already happened, since an expression after a comma is evaluated
+;;; as Oaklisp.
+
 (define (is k x y)
   (unify x y k))
 
@@ -606,6 +635,11 @@
 
 
 
+;;; Work out which of a left hand side's variables need copying on
+;;; the way in.  One that occurs just once can take the incoming
+;;; argument as it stands; one that occurs again must be unified
+;;; against it, so only the first occurrence is marked.
+
 (define (analyse-lhs-variables input-list)
   (let* ((vars-to-copy '())
 	 (seen-it '())
@@ -630,6 +664,8 @@
     (list (reverse vars-to-copy) hacked-list)))
 
 
+
+;;; Every leaf of a structure, as a set.
 
 (define (all-atoms-in inlist)
   (cond ((pair? inlist)

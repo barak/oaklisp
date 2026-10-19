@@ -22,6 +22,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+;;; COMPILE is the whole of it: read the form into a tree, run the
+;;; passes over the tree in order, and generate code.
+;;; EXPAND-COMPILE macroexpands first, which is what the file
+;;; compiler and the interpreter both call.
+
 (define-instance compile operation)
 (define-instance expand-compile operation)
 

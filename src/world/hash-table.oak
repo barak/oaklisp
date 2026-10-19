@@ -41,6 +41,10 @@
 ;;;    generic hash tables
 
 
+;;; A table is told how to hash a key and how to compare two of
+;;; them, and is otherwise ordinary: a vector of buckets, each a list
+;;; of (key . value) pairs, grown when it fills.
+
 (define-instance generic-hash-table
   type '(table count size key-op =?) (list hash-table object))
 
@@ -84,6 +88,10 @@
 
 
 
+;;; Rehash into a table of NEW-SIZE buckets.  The entries themselves
+;;; are reused rather than remade, so a locative into one survives
+;;; the move.
+
 (define-instance resize operation)
 
 (add-method (resize (generic-hash-table key-op table count size) self new-size)
@@ -104,6 +112,9 @@
 
 ;;; String hash tables:
 
+
+;;; Hashing a string by its characters, so that two strings with the
+;;; same text land in the same bucket; EQUAL? then tells them apart.
 
 (define-instance string-hash-key operation)
 
@@ -148,6 +159,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;    EQ? hash tables
 
+
+;;; Keyed by identity, so the hash is OBJECT-HASH, which hands out a
+;;; number per object and keeps it across garbage collections.
 
 (define-instance eq-hash-table
   type '(table count size) (list hash-table object))
@@ -281,6 +295,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;  table-entry interface, like in T
 
+
+;;; (TABLE-ENTRY TAB KEY) reads the value and is settable.  It
+;;; answers #f for a key that is absent, so ask PRESENT? to tell that
+;;; from a stored #f.
 
 (define-instance table-entry settable-operation)
 

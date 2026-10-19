@@ -40,6 +40,11 @@ If \emph{location} is a list, then it is interpreted as a reference to
 a settable access operation.  For example, \texttt{(set! (car foo) 'bar)}
 means the same thing as \texttt{(rplaca foo 'bar)} in Common Lisp.}
 
+\sform{pset}{\lpar location new-value\rpar \ldots}
+\doc{Assigns all the locations at once: every \emph{new-value} is
+evaluated before any of them is stored, so \texttt{(pset (a x) (x a))}
+exchanges them.}
+
 \lo{setter}{operation}
 \doc{Takes a settable access operation and returns the corresponding
 alteration operation.}

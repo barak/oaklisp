@@ -50,9 +50,160 @@ in the compiler locale.}
 
 \section{Object File Formats}
 
+A \texttt{.oa} file is read with \df{read} and holds one form, so it
+is the external representation of a list and nothing more.  A header
+line may come first:
+
+\begin{flushleft}\tt
+;oaklisp-bytecode word-size=32 instructions-per-ref=2
+\end{flushleft}
+
+naming the architecture the file was assembled for.  The loader and
+both cold linkers check the packing against their own; the word size
+matters only because integer constants were range checked against
+it.  A natively compiled file carries a second header line,
+\texttt{;oaklisp-native \emph{name}\texttt{.so}}, naming the shared
+object to load alongside it.
+
+The form itself is
+
+\begin{flushleft}\tt
+(\emph{symbol-vector} (\emph{block} \ldots))
+\end{flushleft}
+
+The symbols a file mentions are collected into one vector at the
+front and referred to by index, which keeps a file that names the
+same symbol a hundred times from writing it a hundred times.
+\df{make-oa-list} and \df{make-oaf-list} in \texttt{load-oaf.oak}
+convert between that and the form the loader and the assembler work
+in, where each reference names its symbol outright.
+
+Each \emph{block} is
+
+\begin{flushleft}\tt
+(\emph{patches} \emph{opcodes})
+\end{flushleft}
+
+\emph{Opcodes} is a flat list of 16-bit instruction numbers, of even
+length, which the loader packs
+\df{\%\%instructions-per-ref} to a reference.  \emph{Patches} is a
+flat list of triples --- \df{triplify!} cuts it into threes without
+consing --- each of them a kind, an offset into the block, and a
+value.  A kind of 5 or more means the value is an index into the
+symbol vector and the real kind is five less.  The kinds are 0 for a
+global variable, 1 for a reference to another block, and 2 for a
+constant.  A constant may be a symbol, \df{()}, \df{\#t}, a number, a
+character, a pair or a string.
+
+The top-level block of a file is distinguished by the chain the cold
+linker builds through it: see Chapter~\ref{sec:boot} and
+\texttt{tool.oak}.
+
+The intermediate extensions are the same data at earlier stages.
+A \texttt{.omac} file is macroexpanded source, still a list of forms.
+A \texttt{.ou} file is the instruction list the code generator
+produced, and a \texttt{.oc} file is that list after the peephole
+optimizer.  Both are written only when asked for; the ordinary path
+from \texttt{.oak} to \texttt{.oa} holds them in memory.
+\df{include-stage?} in \texttt{file-compiler.oak} decides which
+stages a given run passes through, by numbering the extensions in
+the order above.
 
 \section{Compiler Internals}
 
-Some compiler internals documentation.  Very sketchy, just enough to
-give people a vague idea of what the internal program representation
-is and what the various passes are for.
+\subsection{The Representation}
+
+A form is read into a tree of AST nodes (\texttt{mac-compiler-nodes.oak}),
+walked by a series of passes each of which fills in more of the slots,
+and finally turned into a list of instructions.  Every node knows
+the contour it sits in, which is how a variable reference finds out
+where its variable lives.
+
+The node types are \df{ast-constant-node}, \df{ast-variable-node},
+\df{ast-if-node}, \df{ast-set-node}, \df{ast-block-node},
+\df{ast-combination-node} for a call, \df{ast-make-locative-node},
+\df{ast-catch-node}, and the two contours: \df{ast-method-node} and
+\df{ast-labels-node}.  A contour binds names, and carries the lists
+that say which of them can live on the stack and which have been
+closed over and must be moved to the heap.
+
+A variable reference is classified by \df{var-type} into
+\df{stack} (a local in a frame that is still there), \df{ivar} (a
+slot of the object the method is running on), \df{evar} (closed
+over, and so reached through the environment) and \df{global}.
+
+The AST walkers are \df{walk-ast} and \df{map-ast!}, with
+\df{-with-arg} variants that pass a second argument along.  A pass is
+written as a method per node type that does its own work and then
+calls one of these, so no pass needs to know the shape of a node it
+does not care about.  By convention a pass whose name ends in
+\texttt{-v} may replace nodes and so its value matters; one without
+the suffix only changes nodes in place.
+
+\subsection{The Passes}
+
+\df{compile} (\texttt{mac-compiler2.oak}) runs them in this order.
+\df{expand-compile} is the same preceded by macroexpansion, and is
+what the file compiler and the interpreter call.
+
+\begin{itemize}
+\item \df{code->ast} reads the form into a tree.
+
+\item \emph{Annotation}: \df{mark-inline-lambdas} finds the
+applications of a literal lambda that can be compiled as a binding
+rather than a call; \df{mark-tail-nodes} finds the calls in tail
+position relative to a \df{labels}; and
+\df{top-level-resolve-variables} classifies every variable
+reference.
+
+\item \df{rewrite-labels-v} rewrites a \df{labels} that cannot be
+compiled with jumps --- one whose labels are referred to anywhere but
+as a call in tail position --- into \df{let} and \df{set\protect\bang}.
+Doing so can expose more work, so annotation and this pass alternate
+until the count of labels stops changing.
+
+\item \df{fold-constants-v} replaces what can be worked out now with
+the answer: a call to a foldable operation on constants, a reference
+to a frozen variable.  This is also where a method's instance
+variable map is guessed, since folding is what turns the type
+expression into the type itself.
+
+\item \df{insert-method-maker-v} replaces a method node with the code
+that will build and install the method at run time, which is a call
+to \df{\%install-method-with-env} or one of its relatives.
+
+\item \df{heapify-variables-v} moves the variables that are closed
+over off the stack: \df{determine-heap-vars} finds them by looking
+for \df{\%make-locative}, \df{indirect-to-heap-v} rewrites the
+references to go through the locative, \df{fold-contents-v} undoes
+that again where the reference was itself a \df{make-locative} or an
+assignment, and \df{insert-heap-prologue} emits the
+\df{\%make-cell} calls at the head of the method.
+
+\item \df{stash-stack-map} records in each node what the value stack
+looks like where it runs, which is what a continuation needs in
+order to say where the live values are.
+\end{itemize}
+
+\df{gen-code} (\texttt{mac-code.oak}) then walks the finished tree.
+Each node generates its value and then its continuation, which is
+the symbol \df{tail}, the symbol \df{next}, or a label;
+\df{nguys-to-pop} says how much of the frame is dead,
+\df{pop-args} emits the popping, and
+\df{primitive-continuation} puts the two together and either falls
+through, jumps, or returns.  \df{peephole-optimize}
+(\texttt{peephole.oak}, from the rules compiled by
+\texttt{crunch.oak}) cleans up after it, and \df{assemble}
+(\texttt{assembler.oak}) resolves the labels and lays the
+instructions out, padding inline arguments to a reference boundary
+according to \dffl{target-architecture}.
+
+\subsection{Native Compilation}
+
+\df{native-compile-file} takes the same path as far as the
+peephole-optimized instruction lists and then translates each block
+into a C function instead of assembling it.  The \texttt{.oa} file it
+writes is ordinary bytecode whose blocks are stubs, so a world
+without the shared object can still load it and run the escapes.
+This is described in \texttt{CompilerPlan.md} and in the comments at
+the top of \texttt{src/emulator/oak-native.h}.

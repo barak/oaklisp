@@ -25,6 +25,11 @@
 
 
 
+;;; Make an operation PREFIXVAR reading the instance variable VAR of
+;;; TYP, for each VAR named.  CREATE-SETTERS and CREATE-LOCATERS do
+;;; the same with an operation that can also be assigned, and one
+;;; that can be assigned and located.
+
 (define-syntax (create-accessors typ prefix . vars)
   `(block
      ,@(map (lambda (x)
@@ -68,6 +73,9 @@
 			    (set! ,x val)))))
 	      vars))))
 
+;;; Bind each name to a fresh operation over the body, the way LET
+;;; binds values: an operation private to the code that uses it.
+
 (define-syntax (with-operations names . body)
   `(let ,(map (lambda (x) `(,x (make operation)))
 	      names)
@@ -93,6 +101,9 @@
 	      ,newstatus))))
 
 
+;;; PUSH, POP and SWAP work on any place SET! understands, and go
+;;; through its locative so that the place is evaluated once.
+
 (define-syntax (push location expr)
   (if (symbol? location)
       `(set! ,location (cons ,expr ,location))
@@ -117,6 +128,11 @@
        (set! (contents l2) v1))))
 
 
+;;; Open FILE over the body and close it on the way out, by a throw
+;;; as well as normally.  The options name the direction: IN, OUT,
+;;; APPEND, and with UGLY the variants whose stream keeps no column,
+;;; for output whose layout nobody is going to look at.
+
 (let ((option-set-alist
        '( ((in) . open-input-file)
 	  ((out) . open-output-file)
@@ -130,10 +146,15 @@
 		     (block ,@body)
 		     (close ,var)))))
 
+;;; Read from a string as from a file.
+
 (define-syntax (with-input-from-string (var str) . body)
   `(let ((,var (make string-input-stream ,str)))
      ,@body))
 
+
+;;; Replace the contents of PLACE with PROC of it, evaluating the
+;;; place once.  PUSH and the arithmetic shorthands are this.
 
 (define-syntax (modify-location place proc)
   (labels ((normal

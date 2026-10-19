@@ -28,6 +28,27 @@ and instantiable ones in bold.  Floating point numbers are not
 implemented.} \label{fig:numhier}
 \end{figure}
 
+\section{The Types}
+
+\ty{number}
+\doc{The top of the hierarchy, and a coercable type: \dfcoer{number}
+reads a number out of a string or a character.}
+\ty{real}
+\ty{complex}
+\doc{\df{complex} is the instantiable one; a complex number whose
+imaginary part works out to zero is reduced to a real, so no instance
+of \df{complex} is ever real.}
+\ty{rational}
+\ty{fraction}
+\doc{\df{fraction} is the instantiable one, always in lowest terms
+with a positive denominator, and never with a denominator of one.}
+\ty{integer}
+\doc{Instantiated as \df{fixnum} or \df{bignum}, whichever the value
+fits; which one it is is not something a program should ask.}
+\ty{float}
+\doc{Declared, but not implemented: this Oaklisp has no floating
+point numbers, and the exact tower is used instead.}
+
 \section{Arithmetic}
 
 \op{+}{\dt numbers}
@@ -42,6 +63,13 @@ implemented.} \label{fig:numhier}
 \op{max}{n \dt ns}
 \op{min}{n \dt ns}
 \op{expt}{n1 n2}
+\op{sqrt}{n}
+\doc{The principal square root, which must be exact: there are no
+floating point numbers, so the square root of 2 is an error, while
+that of 4/9 is 2/3 and that of $-1$ is \texttt{i}.}
+\op{signum}{n}
+\doc{$-1$, 0 or 1 according to the sign of a real; for a complex
+number, the number divided by its magnitude.}
 \op{gcd}{\dt ns}
 \doc{The non-negative greatest common divisor of \emph{ns}, or zero
 when there are none.}
@@ -68,6 +96,12 @@ there are none.}
 \pr{even?}{n}
 \pr{odd?}{n}
 \pr{factor?}{n1 n2}
+\pr{integer?}{object}
+\pr{fixnum?}{object}
+\pr{exact?}{object}
+\pr{inexact?}{object}
+\doc{Every number in Oaklisp is exact, so \df{exact?} is true of each
+of them and \df{inexact?} of none.  They are here for R3RS.}
 
 
 \section{Rounding}
@@ -112,3 +146,12 @@ These operations are only defined for integers.
 
 \op{real-part}{number}
 \op{imag-part}{number}
+\op{conjugate}{number}
+
+\section{Factoring}
+
+\op{factor}{n}
+\doc{The prime factors of \emph{n}, largest first, with $-1$ at the
+front when \emph{n} is negative.  \evto{(factor 360)}{(5 3 3 2 2 2)}.
+Trial division against a stored table of primes, so it is only worth
+asking of small numbers.}

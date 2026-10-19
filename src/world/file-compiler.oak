@@ -29,6 +29,11 @@
 	(".oc"   . 3)
 	(".oa"   . 4)))
 
+;;; Compilation runs through the stages above in order, and a run is
+;;; named by where it starts and where it stops.  CANEXNO turns an
+;;; extension into its place in that order, and INCLUDE-STAGE? below
+;;; asks whether a given stage falls between two of them.
+
 (define (canexno ex)
   (cdr (assoc ex canonical-extension-numbers)))
 
@@ -85,6 +90,9 @@
 		 (load-time-macro-names (cdr forms)))))
 	(else (load-time-macro-names (cdr forms)))))
 
+
+;;; Progress on the terminal, as much of it as #*COMPILER-NOISINESS
+;;; asks for: the form at level 1, and the stages within it at 2.
 
 (define (print-appropriate-noise form)
   (when (> #*compiler-noisiness 0)
@@ -215,6 +223,9 @@
 			      (gen-code (compile locale form) 'tail)))))))))))
 
 
+;;; Compile a form and hand back the instructions, for looking at
+;;; what the compiler made of something.
+
 (define (cc x)
   (peephole-optimize
    (bind ((#*compiling-a-file? #f))
@@ -222,6 +233,8 @@
 	       'tail))))
 
 
+
+;;; The same, for a caller that has its own continuation to append.
 
 (define (compile-code-fragment which-locale sexpr continuation-code)
   (peephole-optimize

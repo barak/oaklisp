@@ -139,9 +139,12 @@ The compiler reaches a fixpoint: `make check` runs `check-fixpoint`, `check-cold
 ### Tag scheme (2-bit, low bits)
 
 - `00` = fixnum (62-bit signed on 64-bit, 30-bit on 32-bit)
-- `01` = locative (pointer to a single cell)
-- `10` = other immediate (characters, etc.)
+- `01` = immediate other than a fixnum (characters, weak pointers)
+- `10` = locative (pointer to a single cell)
 - `11` = reference to boxed heap object
+
+(`INT_TAG`, `IMM_TAG`, `LOC_TAG`, `PTR_TAG` in `data.h`, and the same
+order in `tool.oak`'s `tagize_*`.)
 
 TAGSIZE is always 2 (number of tag bits). REF_SHIFT = log2(sizeof(ref_t)): 2 on 32-bit, 3 on 64-bit. Pointer/locative tags encode word addresses shifted by REF_SHIFT. On 32-bit, TAGSIZE == REF_SHIFT by coincidence; on 64-bit they differ — code that conflates them will break.
 

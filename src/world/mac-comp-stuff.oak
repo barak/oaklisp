@@ -18,6 +18,10 @@
 ;;; Copyright (C) 1987 Kevin J. Lang and Barak A. Pearlmutter
 
 
+;;; Odds and ends the compiler needs of the runtime.  A call is
+;;; worth folding only if the operation promises to do nothing else,
+;;; which is what FOLDABLE-MIXIN says.
+
 (define-instance get-ivar-list operation)
 (add-method (get-ivar-list (type ivar-list) self)
   ivar-list)
@@ -37,9 +41,15 @@
 
 
 
+;;; Shadows the one in mapping.oak with a version that goes through
+;;; SETDIFFERENCE, since the sets here are variable lists and small.
+
 (define (subset? x y)
   (null? (setdifference x y)))
 
+
+;;; MAP and FOR-EACH passing a second argument along unchanged,
+;;; which saves closing over it at every node of a tree walk.
 
 (define-instance map-with-arg operation)
 (add-method (map-with-arg (operation) op l arg)
@@ -54,6 +64,9 @@
       (op (car left) arg)
       (step (cdr left)))))
 
+
+;;; Position of THING among KEYS, answered from the matching VALS: a
+;;; rib of an environment, looked up by name.
 
 (define (rib-lookup keys vals thing)
   (let ((pos (position-in-list thing keys)))
@@ -71,6 +84,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+
+;;; Installing a method, as instructions rather than as a call,
+;;; because it is what ADD-METHOD expands into and so must work
+;;; before there are methods to call.  It builds the %METHOD object
+;;; out of the code body and environment on the stack and puts it in
+;;; the type's alist.
 
 (define-constant _%install-method-with-env
   (make-open-coded-operation

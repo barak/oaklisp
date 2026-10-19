@@ -18,6 +18,9 @@
 ;;; Copyright (C) 1988 Kevin J. Lang & Barak A. Pearlmutter.
 
 
+;;; Times the four bignum operations on numbers big enough to be
+;;; worth timing, in milliseconds.
+
 (define (bignum-speed-test)
   (set frog1 (apply * (subseq prime-list 0 60)))
   (set frog2 (apply * (subseq prime-list 60 45)))
@@ -52,6 +55,11 @@
     (set! the-cdr old-car))
   self)
 
+
+;;; Multiplying a long list of numbers pairwise up a balanced tree
+;;; keeps the partial products the same size as each other, which is
+;;; much faster than multiplying them in one at a time.  FACT is the
+;;; example, and the reason this is here.
 
 (define-instance multiply-tree operation)
 

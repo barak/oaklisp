@@ -149,6 +149,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+;;; The first ten elements, by name.  These go through NTH, so they
+;;; read any sequence, not just a list.
+
 (define first 	(lambda (x) (nth x 0)))
 (define second 	(lambda (x) (nth x 1)))
 (define third 	(lambda (x) (nth x 2)))

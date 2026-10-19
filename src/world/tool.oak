@@ -118,6 +118,11 @@
 (define coercable-type-size 10)
 
 
+;;; The target machine's constants: the tags a reference can carry,
+;;; the two opcodes the linker emits itself, and the stack sizes the
+;;; world header asks the emulator for.  CACHE-PAIRS? makes equal
+;;; constant pairs share storage.
+
 (define int-tag 0)
 (define imm-tag 1)
 (define loc-tag 2)
@@ -239,6 +244,11 @@
     (cons 'world out-file)))
 
 
+;;; The first two passes: count what the files hold, which fixes the
+;;; size of each region, and then lay the regions out one after
+;;; another.  Nothing is written to the world until the sizes are
+;;; known, since an address depends on where its region begins.
+
 (define (tool inlist in-names)
   (set! stashed-inlist inlist)
   (init-tables)
@@ -324,6 +334,10 @@
 
 
 
+;;; First pass.  Every block, variable, symbol and constant is
+;;; counted so that COMPUTE-BASE-ADDRESSES below can place the four
+;;; regions; the lists built here also fix the order of the layout.
+
 (define (count-opcodes blk)
   (let ((op-co (length (second blk))))
     (unless (zero? (modulo op-co target-instructions-per-ref))
@@ -387,6 +401,10 @@
 
 (set! next-free-dat 0)
 
+;;; Opcodes, then variables, then symbols, then data, each region
+;;; starting where the last one ended.  ALLOC-DAT hands out the data
+;;; region a piece at a time as the constants are written.
+
 (define (compute-base-addresses)
   (set! start-of-opc-space 0)
   (set! start-of-var-space (+ start-of-opc-space (opcode-words opc-count)))
@@ -440,6 +458,10 @@
 
 (set! first-regular-blk-addr 0)
 
+;;; Second pass: give every code block its address.  Blocks are
+;;; numbered per file, so the table is keyed by file and block
+;;; together.
+
 (define (uniq-blkno filno blkno)
   (+ blkno (* max-blks filno)))
 
@@ -483,6 +505,10 @@
 ;  throw code out into the world
 
 
+
+;;; Third pass: write the code blocks into the opcode region, and
+;;; with them every constant they refer to, which is what drags the
+;;; pairs, strings and symbols into the data region.
 
 (define (spew-opcodes inlist in-names)
   (format #t " spew")
@@ -582,6 +608,10 @@
 	(else (error "refgen: bad constant data <~s> ~&" c))))
 
 
+;;; Constants are written into the data region as they are met.  A
+;;; pair may be shared with an equal one already written, which is
+;;; safe only because no constant here contains itself.
+
 (define (pair-alloc c)
   (let ((newpair (alloc-dat pair-size)))
     (store-world-ptr where-cons-pair-lives newpair)
@@ -609,6 +639,9 @@
 	 (strwordlen (+ 3 (quotient (+ strlen (- cpw 1)) cpw))))
     strwordlen))
 
+
+;;; Every empty string in the world is the same object; the rest are
+;;; written out one by one.
 
 (define (string-alloc c)
   (let ((strlen (length c)))
@@ -691,6 +724,10 @@
 
 
 
+;;; The method the emulator enters when it loads the world: an empty
+;;; environment and the first code block, which is the first file's
+;;; top-level block.
+
 (define (layout-boot-method)
   (set! where-boot-method-lives (alloc-dat method-size))
   (store-world-ptr where-nil-lives where-boot-method-lives)
@@ -721,14 +758,21 @@
 
 
 
+;;; Print the whole world, for when something is in the wrong place.
+
 (define (pw)
   (dotimes (i (length world))
     (format #t "~s " (nth world i))))
 
 
+;;; NAME plus an extension, in lower case.
+
 (define (extensionize base ext)
   (append (downcase (#^string base)) ext))
 
+
+;;; Read one compiled file: a header line, then the single form that
+;;; holds the symbol vector and the blocks.
 
 (define (read-oa-file file)		;file already has an extension
   (check-oa-file-header file)
@@ -944,6 +988,10 @@
     (format #t "~&Total words:~D~%" actual-size)))
 
 
+;;; The four numbers the emulator reads before the world itself: the
+;;; two stack sizes, the boot method, and how much of the world is in
+;;; use.
+
 (define	(write-world-header outfile)
   (bind ((#*print-radix 16))
     (print-hex value-stack-size #f outfile)
@@ -957,6 +1005,8 @@
 
 
 
+;;; The .sym file, so that a world can be read with names in hand.
+
 (define (dump-tables filename)
   (write-file filename `((variables ,(ordered-toble->alist var-table var-list))
 			 (symbols   ,(ordered-toble->alist sym-table sym-list)))))
@@ -966,6 +1016,10 @@
 ; toble stuff
 ;
 
+
+;;; A toble is a hash table keyed by symbol whose entries are
+;;; addresses in the world being built.  The lists beside them, not
+;;; the tables, fix the order things are laid out in.
 
 (define (toble-install key toble)
   (if (toble-probe key toble)
