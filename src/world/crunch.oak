@@ -297,6 +297,12 @@
 
 
 
+;;; The peephole optimizer is a program the crunch rules are
+;;; compiled into, rather than a loop that interprets them.  FORALLs
+;;; are expanded out, the productions are grouped by the length of
+;;; their left hand sides, and each group becomes one matching
+;;; function.
+
 (define (new-hairy-code raw-crunch-list listproc)
   (let ((hacked-crunch-list
 	 (catagorize-crunches
@@ -382,6 +388,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+
+;;; Productions are grouped by the first opcode of their left hand
+;;; side, so these order and compare them by its name.
 
 (define (crunch-key-less? a b)
   (< (#^string (caaar a))

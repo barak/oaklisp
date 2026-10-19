@@ -101,6 +101,10 @@
 
 
 
+;;; Load compiled bytecode, after any native modules the header
+;;; names, which have to be in place before the code that calls them
+;;; runs.
+
 (define (load-oa-file locale file)
   (load-code-segment
    locale
@@ -322,6 +326,10 @@
 
 
 
+;;; Load source, a form at a time: expand in a sub-locale holding
+;;; the file's own local syntax, then evaluate in the real one.  The
+;;; forms are echoed as they go by, since this is slow.
+
 (define (load-oak-file the-locale file-name)
   (let* ((raw-forms (read-file (append file-name ".oak")))
 	 (sub-locale (make locale (list the-locale))))
@@ -343,6 +351,9 @@
 
 
 
+
+;;; Load a file of macro definitions, evaluated rather than
+;;; compiled.
 
 (define (load-omac-file locale file)
   (dofile (append file ".omac")
