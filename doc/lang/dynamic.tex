@@ -304,12 +304,13 @@ while opening files occur.}
 \makin{error-opening-read}{filename}
 \makin{error-opening-write}{filename}
 \makin{error-opening-append}{filename}
-\doc{Signaled when the file cannot be opened that way.  Proceeding
-with a string retries under that name.}
+\doc{Signaled when the file cannot be opened for reading, writing or
+appending.  Proceeding with a file name retries under it, and
+proceeding with nothing retries the same one.}
 
 \makin{error-changing-directory}{filename}
-\doc{Signaled by the setter of \df{cwd}.  Proceeding with a string
-retries with that directory.}
+\doc{Signaled by the setter of \df{cwd}.  Proceeding works the same
+way.}
 
 \ty{read-error}
 \doc{Subtypes of this are signaled when \df{read} sees malformed or

@@ -81,10 +81,12 @@ this, one can get back to a previous position.}
 \fn{open-input-file}{filename}
 \fn{open-output-file}{filename}
 \fn{open-output-file-append}{filename}
-\doc{Open the named file and return a stream on it.  The stream must
-be closed; \df{with-open-file} below does that for you and should be
-preferred.  \df{open-output-file} on a file that already exists asks
-before clobbering it.}
+\doc{Open the named file and return a stream on it.  Opening for
+output truncates a file that is already there; the \df{append} form
+adds to it.  Failure signals \df{error-opening-read} or one of its
+siblings, which can be proceeded from with another name.  The stream
+must be closed, so \df{with-open-file} below is usually what you
+want.}
 
 \op{close}{stream}
 \doc{Closes the stream.  Closing one twice is harmless.}
