@@ -61,6 +61,11 @@ that \df{call-with-current-continuation} is excessively verbose.}
 
 \index{\texttt{call/cc}|see \texttt{call-with-current-continuation}}
 
+\ty{continuation}
+\doc{The type of the object \df{call/cc} hands its operation.  A
+continuation is an ordinary operation of one argument, so it can be
+stored, passed, and called as often as you like.}
+
 \sform{catch}{variable \dt body}
 \doc{\emph{variable} is lexically bound to an escape operation that
 may be called from anywhere within \emph{body}'s dynamic extent. If
@@ -246,10 +251,33 @@ then call \emph{after-operation}, which should never return.}
 \doc{Invokes \emph{operation} on \emph{error} after moving back to the
 context of the error if its been salted away.}
 
+\fn{show-handlers}{}
+\doc{Prints the restart handlers that are active, numbered as
+\df{ret} wants them.  The debugger does this when it is entered; this
+is for asking again later.}
+
+\fn{dump-stack}{object \dt ignored}
+\doc{Prints \emph{object} and then recurses without bound, so the
+stack overflows and the system prints it.  A blunt instrument for
+seeing what the stack looks like.}
+
 
 \subsection{Error Types}
 
 There are a plethora of error types defined in Oaklisp.
+
+\ty{condition}
+\doc{The root of the hierarchy.  A condition records the
+continuation of the \df{signal} that raised it, which is where
+\df{proceed} returns to.  Not every condition is an error.}
+
+\ty{proceedable-mixin}
+\doc{Mixed into a condition, this says that \df{proceed} may be
+applied to it, and carries the message describing what proceeding
+will do, which is the text the debugger offers.}
+
+\ty{proceedable-condition}
+\doc{A condition, not an error, that can be proceeded from.}
 
 \ty{general-error}
 \doc{This is the top of the error type hierarchy.  An operation
@@ -265,13 +293,31 @@ report.}
 \ty{generic-proceedable-error}
 \doc{Signaled by \df{cerror}.}
 
+\ty{proceedable-fs-error}
+\doc{A file system error that can be proceeded from, which the ones
+below all are.}
+
 \ty{error-opening}
 \doc{Various subtypes of this are signaled when various types of error
 while opening files occur.}
 
+\makin{error-opening-read}{filename}
+\makin{error-opening-write}{filename}
+\makin{error-opening-append}{filename}
+\doc{Signaled when the file cannot be opened that way.  Proceeding
+with a string retries under that name.}
+
+\makin{error-changing-directory}{filename}
+\doc{Signaled by the setter of \df{cwd}.  Proceeding with a string
+retries with that directory.}
+
 \ty{read-error}
 \doc{Subtypes of this are signaled when \df{read} sees malformed or
 truncated input.}
+
+\ty{proceedable-read-error}
+\doc{Those of them that can be proceeded from, which is most: the
+value proceeded with is taken as what was read.}
 
 \ty{unexpected-eof}
 \doc{This subtype of \df{read-error} is signaled when the reader comes

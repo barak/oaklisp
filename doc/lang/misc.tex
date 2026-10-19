@@ -125,6 +125,18 @@ internals sometimes force instances of \df{forcible} automatically,
 for instance when sending them messages for which no appropriate
 method can otherwise be found.}
 
+\sform{future}{\dt body}
+\doc{Like \df{delay}, but the computation is started at once in a
+process of its own rather than waited for.  \df{force} returns its
+value, waiting if it is not ready.  With threads loaded, \df{delay}
+also makes one of these, so a promise and a future are the same
+object differing only in whether anyone has set it going.}
+
+\ty{future-obj}
+\doc{The type of both, a subtype of \df{forcible} and of \df{mutex}:
+several processes may force the same one, and only the first runs the
+body while the others wait.}
+
 \fv{forcible-print-magic}
 \doc{Controls how delays are printed.  This is how \texttt{(delay 'foo)}
 would print under various settings of \texttt{forcible-print-magic}.
