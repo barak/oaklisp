@@ -48,3 +48,4 @@
 				(+ (force f1) (force f2)))) 3)
 (check "gc survives" (let loop ((n 300000) (l '())) (if (= n 0) (length (head l 5)) (loop (- n 1) (cons n (if (> (length l) 100) '() l))))) 5)
 (check "big vector gc" (let ((v (make simple-vector 200000))) (dotimes (i 200000) (set! (nth v i) (list i))) (%gc) (car (nth v 199999))) 199999)
+(check "pset exchanges" (let ((a 1) (b 2)) (pset (a b) (b a)) (list a b)) '(2 1))

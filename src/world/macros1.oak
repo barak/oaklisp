@@ -130,7 +130,7 @@
 (define-syntax (pset . clauses)
   (let ((locvars (map genvar/1 clauses))
 	(valvars (map genvar/1 clauses)))
-    (when (any? (map null? (map cddr clauses)))
+    (when (any? (lambda (clause) (not (null? (cddr clause)))) clauses)
       (error "Malformed PSET clause within ~S." `(pset ,@clauses)))
     `((lambda ,locvars
 	((lambda ,valvars

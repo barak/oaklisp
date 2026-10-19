@@ -141,6 +141,19 @@ As you would expect, \df{subtype?} is transitive.  Since each type is
 a subtype of itself, \df{subtype?} defines a partial ordering of all
 the types in the system.}
 
+\fn{type-pred}{type}
+\doc{Returns a predicate true of instances of \emph{type} and false
+of everything else.  A \df{forcible} is forced and the question asked
+again of the result, so a promise is judged by what it delivers.
+Most of the type predicates in this manual were made this way.}
+\fn{inverse-type-pred}{type}
+\doc{The complement: true of everything that is not an instance of
+\emph{type}.}
+
+\fn{has-method?}{type operation}
+\doc{Whether \emph{operation} applied to an instance of \emph{type}
+would find a method, asked without making the call.}
+
 \section{Constants}
 
 Some objects have external representations that are not
