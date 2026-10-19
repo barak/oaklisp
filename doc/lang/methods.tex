@@ -145,6 +145,10 @@ performs the bindings simultaneously whereas \df{let*} performs the bindings
 sequentially so that each value expression can refer to the preceding
 variables.}
 
+\sform{letrec}
+{\lpar\lpar var$_1$ val$_1$\rpar\ldots\lpar var$_n$ val$_n$\rpar\rpar \dt body}
+\doc{The R3RS name for \df{labels}.}
+
 \sform{labels}
 {\lpar\lpar var$_1$ val$_1$\rpar\ldots\lpar var$_n$ val$_n$\rpar\rpar \dt body}
 \doc{\df{labels} differs from \df{let} in that the value expressions are
@@ -185,6 +189,29 @@ an ordinary variable gets it bound to a list of the extra arguments,
 which \df{lambda} collects with \df{listify-args}.  Only \df{lambda}
 does this; \df{add-method} always binds a rest name the native way.
 
+
+\sform{with-operations}{\lpar name \ldots\rpar \dt body}
+\doc{Binds each \emph{name} to a fresh operation over \emph{body}, as
+\df{let} binds values.  The operations are private to the code that
+adds methods to them, which keeps an operation meant for one type's
+internal use out of any locale.}
+
+\section{Generated Accessors}
+
+Writing out an accessor for each instance variable of a type is
+tedious, so these macros do it.  Each defines an operation named by
+\emph{prefix} and the variable run together, so
+\texttt{(create-accessors point pt- x y)} defines \texttt{pt-x} and
+\texttt{pt-y}.
+
+\mc{create-accessors}{type prefix \dt ivars}
+\doc{Defines a plain operation reading each instance variable.}
+\mc{create-setters}{type prefix \dt ivars}
+\doc{Defines a settable operation for each, so the variable can be
+assigned through it.}
+\mc{create-locaters}{type prefix \dt ivars}
+\doc{Defines a locatable operation for each, so the variable can be
+read, assigned and located.}
 
 \section{Dispatching to Supertypes}
 

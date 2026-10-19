@@ -87,6 +87,17 @@ effect.  \emph{Note:} this language feature is in flux.  Currently, it
 sends an \df{initialize} message to the object with the new
 \emph{make-args}.}
 
+\sform{define-constant-instance}{var typ \dt make-args}
+\doc{\df{define-instance} with \emph{var} frozen, as
+\df{define-constant} freezes it.}
+
+\fn{freeze-in-current-locale}{symbol}
+\doc{Marks \emph{symbol} frozen, so that the compiler may substitute
+its value for a reference rather than fetching it.  A frozen variable
+is not meant to be assigned again; the system freezes most of its own
+names, which is why redefining one of them in the system locale
+usually has no effect on code already compiled.}
+
 \sform{define-syntax}{macro-name expander}
 \doc{
 Installs \emph{macro-name} in the current locale.  \emph{expander}
@@ -132,6 +143,23 @@ a convenient interactive interface to higher-level code.}
 \doc{Returns a new locale which inherits names from the locales in
 \emph{superior-list}. During recursive name lookups, the superiors are
 searched deapth first in left-to-right order.}
+
+The system builds these locales.
+
+\gv{system-locale}
+\doc{Everything: the language and its implementation.  This is the
+locale the read-eval-print loop starts in.}
+\gv{oaklisp-locale}
+\doc{The user-level view of the language, with no superiors.  It
+holds just the names listed in
+\texttt{src/world/oaklisp-exports.oak}, each shared with
+\df{system-locale} rather than copied, so a frozen name stays frozen
+and a macro keeps its expander.}
+\gv{user-locale}
+\doc{Inherits from \df{oaklisp-locale} alone.  This is where user
+code belongs.}
+\gv{compiler-locale}
+\doc{The compiler's own names; inherits from \df{system-locale}.}
 
 \section{Variables} \label{variables}
 
@@ -193,6 +221,15 @@ superior locales if necessary.}
 as a macro name, or \df{\#f} otherwise. The search is constrained to
 \emph{locale} itself.}
 
+\section{Sharing Names Between Locales}
+
+\fn{export-sharing-cell}{source destination symbol}
+\doc{Installs \emph{symbol} in \emph{destination} with the same value
+cell it has in \emph{source}, so that an assignment through either
+name is seen through both.  This is how \df{oaklisp-locale} is built
+out of \df{system-locale}.  A warning is issued if \emph{symbol} is
+not installed in \emph{source} itself.}
+
 \section{Compilation}
 
 All evaluation in Oaklisp is performed with respect to some locale.
@@ -235,3 +272,8 @@ necessary.  If \emph{symbol} is not found anywhere, an error occurs.}
 \df{\#f}.  The search is constrained to \emph{locale} itself. If
 \emph{symbol} is not installed as a variable in \emph{locale}, an error
 occurs.}
+
+\fn{cc}{form}
+\doc{Compiles \emph{form} in the current locale and returns the
+instructions rather than running them, for looking at what the
+compiler made of something.}
