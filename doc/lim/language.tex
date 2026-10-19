@@ -71,6 +71,20 @@ whether special forms it encounters are syntactically correct.
 \doc{This turns into \df{\%add-method}, filling in the default type and
 putting a block around the body if necessary.}
 
+\mc{native-add-method}
+{\lpar operation \lpar type \dt ivar-list\rpar \dt arg-list\rpar \dt body}
+\doc{The same macro under a second name.  \df{scheme-locale}
+shadows \df{add-method} with one that gives a dotted parameter list
+its R3RS meaning, binding a list; that expander calls this name for
+the real thing, which is why both are exported.}
+
+\mc{\protect\_add-method}
+{\lpar operation \lpar type \dt ivar-list\rpar \dt arg-list\rpar \dt body}
+\doc{Expands into \df{\protect\_\%add-method} rather than \df{\%add-method},
+which makes the crude open-coded kind of method: the body is the
+instructions themselves, and nothing is wrapped around it.  This is
+how the subprimitives are defined.}
+
 \mc{lambda}{arglist \dt body}
 \doc{\macdef{}{(add-method ((make operation) \dt \emph{arglist}) \dt
 \emph{body})} Functions are made by hanging methods off of \df{object}.
@@ -323,6 +337,13 @@ error normal Oaklisp code is not trapped to.  Rather, you're lucky if
 the system dumps core.
 
 
+\op{\%slot}{n}
+\doc{Returns the locatable operation that reads slot \emph{n} of an
+object.  The operation is built the first time it is asked for and
+remembered, and is foldable, so a constant \emph{n} compiles into the
+bare \df{load-slot} instruction.  Nothing is checked: the object is
+not asked whether it has that many slots.}
+
 \op{\%assq}{object alist}
 \doc{Does the usual association list lookup, but assumes that \emph{alist}
 is made out of simple cons pairs.  Passing it lazy lists or things
@@ -431,6 +452,30 @@ of \df{{\protect\upar}super}.  Once the compiler is modified to handle the
 
 
 
+
+\mc{comment}{\dt forms}
+\doc{Ignores the forms and yields the symbol \df{comment}.  For
+commenting out code that must still read.}
+
+\mc{the-runtime}{variable}
+\doc{Reads \emph{variable} as it is now, by routing the fetch through
+a locative and \df{identity} so that the compiler cannot see which
+variable it is.  Without this, a reference to a frozen or constant
+variable has the value it had when the reference was compiled.}
+
+\mc{mit-block}{\dt body}
+\doc{A body in which a leading run of \df{define} forms binds
+locally, as in MIT Scheme, rather than installing names in a locale.
+The procedure definitions become a \df{labels} so that they may call
+one another, and the rest become a \df{let} of undefined values
+followed by assignments, so that each sees all of them.  This is what
+\df{begin} means in \df{scheme-locale}.}
+
+\fn{signal-destructure-error}{found required}
+\doc{Signals the error that \df{destructure*} raises when the
+structure does not match the template.  The expansion calls this
+rather than building the message inline, which would make every
+\df{destructure*} large.}
 
 \section{Defined Types}
 
