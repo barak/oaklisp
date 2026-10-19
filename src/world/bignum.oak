@@ -21,6 +21,13 @@
 ;;;;;;;;;;;;;;;;;;;;;; create the type ;;;;;;;;;;;;;;;;;;
 
 
+;;; A bignum is a sign and a list of digits to BIGNUM-BASE, least
+;;; significant first, with no leading zero digit and none of the
+;;; digits negative.  Zero is a fixnum, never a bignum, and so is
+;;; anything else that fits: the arithmetic below normalizes its
+;;; result back down whenever it can, so that EQ? decides equality of
+;;; small integers.
+
 (define-instance bignum coercable-type '(sign digits) (list integer object))
 
 (create-accessors bignum bignum- sign digits)
@@ -825,6 +832,9 @@
 ;;;;;;;;;;;; assorted stuff ;;;;;;;;;;;;;;;;;;
 
 
+;;; Carry along the digit list until every digit is in range,
+;;; extending it if the last carry does not fit.
+
 (define (normalize-digitlist l carry)
   (if (null? l)
       (if (= carry 0) '()
@@ -835,6 +845,10 @@
 	(cons xmb (normalize-digitlist (cdr l) x/b)))))
 
 
+
+;;; Compare magnitudes.  A longer list is the larger, since neither
+;;; has a leading zero; equal lengths are compared from the most
+;;; significant digit, which is the far end.
 
 (define (digitlist-< l1 l2)
   (let ((len1 (length l1))

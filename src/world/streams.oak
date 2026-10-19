@@ -186,6 +186,10 @@
   self)
 
 
+;;; The two ordinary file streams.  An output stream hacks
+;;; freshlines, so it has to be told of every character written; the
+;;; ugly one below does not, and is what .oa files are written to.
+
 (define-instance file-input-stream
   type '() (list file-stream input-stream object))
 
@@ -216,6 +220,10 @@
 
 ;;;
 
+
+;;; Open a file by name, answering a stream.  The APPEND forms add
+;;; to a file that is already there, and the UGLY forms give back a
+;;; stream that keeps no column, for output no one will read.
 
 (define-instance open-input-file operation)
 (define-instance open-output-file operation)
