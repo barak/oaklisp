@@ -39,6 +39,56 @@ operation can be used to add, modify, and remove associations.
 
 
 
+\makin{equal-hash-table}{}
+\doc{\df{generic-hash-table} with \df{equal?} for the comparison, so
+that lists and strings that look alike are the same key.}
+
+\fn{make-eq-hash-table}{}
+\fn{make-equal-hash-table}{}
+\fn{make-string-hash-table}{}
+\doc{Return a new table of each kind.  A string table hashes the
+characters, so two strings with the same text land in the same
+bucket, and compares with \df{equal?}.}
+
+\ty{hash-table}
+\doc{The supertype of all of these.}
+
+\section{Symbols}
+
+\ty{symbol}
+\pr{symbol?}{object}
+\so{intern}{string}
+\doc{The symbol with that name, made if there is none.  Symbols are
+interned, so this is the only way two of them become \df{eq?}.}
+\fn{gensym}{prefix}
+\doc{A fresh symbol whose name is \emph{prefix} and a number.  It is
+interned like any other, so a second \df{gensym} with the same prefix
+is still a different symbol only because the number differs.}
+\fn{generate-symbol}{prefix}
+\fn{genvar}{}
+\doc{\df{gensym} with the prefix \texttt{v}, which is what macro
+expanders use for a temporary.}
+\fn{genvar/1}{ignored}
+\doc{\df{genvar} taking an argument, so it can be mapped over a list
+to make one new name per element.}
+
+\section{Characters}
+
+\ty{character}
+\pr{char?}{object}
+\pr{graphic?}{character}
+\doc{Whether the character has a printing glyph.}
+\pr{digit?}{character radix}
+\doc{Whether the character is a digit in that radix.}
+\fn{digit-value}{character}
+\doc{The number the character stands for as a digit, counting
+\texttt{a} as 10 and upward; the character is not checked.}
+\fn{digit->char}{n}
+\doc{The other way, using upper case letters past 9.}
+\op{upcase}{object}
+\op{downcase}{object}
+\doc{Defined on characters and on strings.}
+
 \section{Delays}
 
 Oaklisp's delays are compatible with the facility defined in R3RS, but
@@ -89,3 +139,75 @@ would print under various settings of \texttt{forcible-print-magic}.
 The default is \df{transparent}.  A setting of \df{indicate} is more
 instructive if you encounter odd behavior that might be due to
 delays.}
+
+\section{Threads}
+
+Oaklisp's processes are green threads: they run in the one emulator
+and switch at the points named here, and at alarms when the system
+was built with preemption.  A process is a continuation and a set of
+fluid bindings, so \df{bind} in one is not seen in another.
+
+\ty{process}
+\doc{A process descriptor.}
+\fn{current-process}{}
+\doc{The descriptor of the process this code is running in.}
+\op{process-id}{process}
+\fn{lwp}{thunk}
+\doc{Queues \emph{thunk} to be run in the current process, which is
+to say as a coroutine of it, sharing its fluid bindings.}
+\fn{process-run-fn}{operation arguments}
+\doc{Queues a call of \emph{operation} on \emph{arguments} in a
+process of its own, with its own fluid bindings.}
+\fn{pause}{}
+\doc{Lets any other runnable process go, and returns when its turn
+comes round again.}
+
+\makin{mutex}{}
+\op{acquire-mutex}{mutex}
+\doc{Waits until the mutex is free and takes it.  This is a spin
+lock, so a semaphore is better where the wait may be long.}
+\op{release-mutex}{mutex}
+
+\makin{test-and-settable}{}
+\op{test-and-set}{test-and-settable predicate new-value}
+\doc{Under the object's own mutex, applies \emph{predicate} to the
+value it holds; if the answer is true the value becomes
+\emph{new-value}, which is returned, and otherwise \df{\#f} is
+returned.  Unlike the usual test-and-set the test is any predicate
+and the new value any object, which is why a failure is told from a
+success by the \df{\#f}.}
+
+\makin{semaphore}{}
+\op{wait}{semaphore}
+\doc{Decrements the count, and blocks until a \df{signal} if it goes
+negative.  A blocked process leaves the run queue, so this is the one
+to wait on.}
+\op{signal}{semaphore}
+\doc{Increments the count and wakes the process that has waited
+longest, if any.}
+
+\section{The Outside World}
+
+\op{get-time}{}
+\doc{The CPU time used so far, in milliseconds.}
+\mc{time}{\lpar n\rpar \dt body}
+\doc{Runs \emph{body} \emph{n} times and returns the average time in
+milliseconds.}
+
+\fn{deep-describe}{object}
+\doc{Like \df{describe}, but goes on to describe the contents of each
+instance variable rather than just naming them.}
+
+\gv{argline}
+\doc{The command line arguments after the \texttt{--}, as a list of
+strings.  This is set at startup from \df{get-argline}.}
+\fn{get-argline}{}
+\doc{Reads the argument list out of the emulator afresh.}
+\so{cwd}{}
+\doc{The current directory, as a string.  Setting it changes the
+process's directory, and signals \df{error-changing-directory} if it
+cannot.  The value is what Oaklisp last set, not what the operating
+system would say, since there is no primitive that asks.}
+
+\fn{fact}{n}
+\doc{Factorial, kept around because it is what everyone types first.}
