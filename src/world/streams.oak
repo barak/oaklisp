@@ -221,9 +221,10 @@
 ;;;
 
 
-;;; Open a file by name, answering a stream.  The APPEND forms add
-;;; to a file that is already there, and the UGLY forms give back a
-;;; stream that keeps no column, for output no one will read.
+;;; Open a file by name, answering a stream.  Opening for output
+;;; truncates; the APPEND forms add to what is there.  The UGLY forms
+;;; give back a stream that keeps no column, for output whose layout
+;;; nobody is going to look at.
 
 (define-instance open-input-file operation)
 (define-instance open-output-file operation)

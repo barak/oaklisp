@@ -130,8 +130,8 @@
 
 ;;; Open FILE over the body and close it on the way out, by a throw
 ;;; as well as normally.  The options name the direction: IN, OUT,
-;;; APPEND, and with UGLY the variants that do not ask before
-;;; clobbering an existing file.
+;;; APPEND, and with UGLY the variants whose stream keeps no column,
+;;; for output whose layout nobody is going to look at.
 
 (let ((option-set-alist
        '( ((in) . open-input-file)

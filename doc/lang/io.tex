@@ -128,9 +128,10 @@ to the \dfcoer{string} operation.}
 \doc{Reads the file and returns the list of the forms in it.}
 
 \fn{write-file}{filename object}
-\doc{Writes \emph{object} to the file, so that \df{read-file} would
-read it back.  The file is opened \df{ugly}, since nothing about the
-layout is meant for a reader.}
+\doc{Writes \emph{object} to the file, so that \df{read-file} reads
+it back.  The stream is an \df{ugly} one, since no one is going to
+look at the layout, and \dffl{print-length} and \dffl{print-level}
+are lifted so that nothing is abbreviated away.}
 
 \fn{dofile}{filename operation}
 \doc{Applies \emph{operation} to each form of the file in turn.  This
